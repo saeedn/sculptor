@@ -68,6 +68,12 @@ explicitly so nothing is missed:
   `is_always_interrupt_and_send`, `is_panel_layout_per_workspace`.
 - **`HelloAgent`** — a test-double agent type, removable with the
   rich-agent cleanup.
+- **Rich-chat test fakes** — `FakeClaude` (`agents/testing/fake_claude*.py`),
+  `fake_pi`, `fake_claude_pause`, and the `real_claude/` & `real_pi/`
+  integration suites. The vast majority of integration tests assume a
+  rich chat agent (~131 of ~285 integration files reference
+  `FakeClaude`), so the test suite needs a deliberate triage — see
+  REQ-TEST.
 
 ### What stays (the core)
 
@@ -290,6 +296,35 @@ resurrected (REQ-WS-4, REQ-AGENT-5).
   `enable_frontend_plugins` (and the frontend plugins system /
   `PanelRegistryProvider` plugin path), plus the already-listed
   workspace/agent experimental flags.
+
+### Integration tests (REQ-TEST)
+- **REQ-TEST-1** — The integration test suite MUST be triaged against
+  the slimmed feature set. Every test that exercises removed surface
+  (rich chat, Claude/Pi rich agents, in-place/clone workspaces,
+  telemetry, dependency management, theme builder, panel
+  drag-and-drop, experimental flags) MUST be explicitly classified as
+  either **delete** (the behavior no longer exists) or **rewrite**
+  (the behavior survives but must be exercised through a terminal
+  agent instead of rich chat). The classification MUST be deliberate
+  per test, not a blanket deletion — the assessment is the
+  deliverable, captured so reviewers can see the rationale per test
+  or per test file.
+- **REQ-TEST-2** — Tests classified **rewrite** MUST be re-expressed
+  against a terminal agent (plain and/or registered) rather than the
+  rich chat interface.
+- **REQ-TEST-3** — `FakeClaude` and the other rich-chat fakes
+  (`fake_claude*`, `fake_pi`, `fake_claude_pause`) and the `real_claude/`
+  / `real_pi/` suites MUST be removed once their dependent tests are
+  deleted or rewritten. No surviving test may depend on them.
+- **REQ-TEST-4** — If the rewritten terminal-agent tests need
+  deterministic agent behavior, a **fake registered terminal agent**
+  (a test registration whose launch command is a controllable
+  scripted process) MUST be provided as the replacement test harness.
+  It SHOULD be introduced only to the extent the rewritten tests
+  actually require it (avoid rebuilding FakeClaude's breadth).
+- **REQ-TEST-5** — After triage, `just test-unit` and the integration
+  suite MUST pass green with no references to removed agent types,
+  fakes, or rich-chat surface.
 
 ### Core (preserved) (REQ-CORE)
 - **REQ-CORE-1** — Worktree workspace management with multiple agents

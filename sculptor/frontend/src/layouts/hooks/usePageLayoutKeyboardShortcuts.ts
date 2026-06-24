@@ -16,7 +16,6 @@ import { useOpenSettings } from "../../common/state/hooks/useOpenSettings.ts";
 import { useResolvedTheme } from "../../common/Utils.ts";
 import { useCommandPalette } from "../../components/CommandPalette";
 import { useFocusMode, useSideToggle, useZenMode } from "../../components/panels/hooks.ts";
-import { chatToolDensityAtom } from "../../pages/workspace/components/chat-alpha/atoms.ts";
 
 export const usePageLayoutKeyboardShortcuts = (): void => {
   const { toggleDevPanel } = useDevPanel();
@@ -39,7 +38,6 @@ export const usePageLayoutKeyboardShortcuts = (): void => {
   const { toggle: toggleRightPanel } = useSideToggle("right");
   const resolvedTheme = useResolvedTheme();
   const setThemeSettings = useSetAtom(themeSettingsAtom);
-  const setChatToolDensity = useSetAtom(chatToolDensityAtom);
 
   const isChatSearchVisible = useAtomValue(chatSearchVisibleAtom);
   const isChatSearchVisibleRef = useRef(isChatSearchVisible);
@@ -175,16 +173,6 @@ export const usePageLayoutKeyboardShortcuts = (): void => {
             setThemeSettings((prev) => ({ ...prev, appearance: newTheme }));
           },
         ],
-        [
-          "toggle_tool_density",
-          (): void => {
-            // Same chat-panel gate as `chat_search` — the density toggle
-            // only makes sense where tool calls render.
-            const hasChatPanel = document.querySelector(`[data-testid="${ElementIds.CHAT_PANEL}"]`) !== null;
-            if (!hasChatPanel) return;
-            setChatToolDensity((prev) => (prev === "expanded" ? "default" : "expanded"));
-          },
-        ],
         ...(isOnWorkspacePage
           ? ([
               ["zen_mode", (): void => toggleZenMode()],
@@ -224,7 +212,6 @@ export const usePageLayoutKeyboardShortcuts = (): void => {
     keybindingsMap,
     resolvedTheme,
     setThemeSettings,
-    setChatToolDensity,
     toggleFocusMode,
     toggleZenMode,
     toggleLeftPanel,

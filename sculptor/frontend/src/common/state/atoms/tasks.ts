@@ -175,10 +175,6 @@ export const taskSupportsToolUseRenderingAtomFamily = atomFamily<string, Atom<bo
   atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsToolUseRendering),
 );
 
-export const taskSupportsChatInterfaceAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsChatInterface),
-);
-
 export const taskSupportsModelSelectionAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
   atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsModelSelection),
 );

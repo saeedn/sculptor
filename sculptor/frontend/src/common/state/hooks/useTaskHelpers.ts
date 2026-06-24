@@ -10,7 +10,6 @@ import {
   taskSelectedModelIdAtomFamily,
   taskStatusAtomFamily,
   taskSupportsBackgroundTasksAtomFamily,
-  taskSupportsChatInterfaceAtomFamily,
   taskSupportsCompactionAtomFamily,
   taskSupportsContextResetAtomFamily,
   taskSupportsFastModeAtomFamily,
@@ -98,11 +97,6 @@ export const useTaskSupportsSessionResume = (taskId: string): boolean | undefine
 /** Subscribe to only the task's `supports_tool_use_rendering` capability. */
 export const useTaskSupportsToolUseRendering = (taskId: string): boolean | undefined =>
   useAtomValue(taskSupportsToolUseRenderingAtomFamily(taskId));
-
-/** Subscribe to only the task's `supports_chat_interface` capability —
- * the coarse main-panel switch (chat interface vs terminal panel). */
-export const useTaskSupportsChatInterface = (taskId: string): boolean | undefined =>
-  useAtomValue(taskSupportsChatInterfaceAtomFamily(taskId));
 
 /** Subscribe to only the task's `supports_model_selection` capability. */
 export const useTaskSupportsModelSelection = (taskId: string): boolean | undefined =>

@@ -1,9 +1,7 @@
-import { ArrowDownIcon, MessageSquareIcon, Rows3Icon, RowsIcon, SearchIcon } from "lucide-react";
-
-import { chatToolDensityAtom } from "~/pages/workspace/components/chat-alpha/atoms.ts";
+import { ArrowDownIcon, MessageSquareIcon, SearchIcon } from "lucide-react";
 
 import type { CommandRuntime } from "../runtime.ts";
-import type { Command, CommandIcon } from "../types.ts";
+import type { Command } from "../types.ts";
 
 export const buildChatCommands = (runtime: CommandRuntime): Array<Command> => [
   {
@@ -43,30 +41,5 @@ export const buildChatCommands = (runtime: CommandRuntime): Array<Command> => [
     icon: ArrowDownIcon,
     when: (ctx) => ctx.hasChatPanel,
     perform: () => runtime.ui.jumpChatToBottom(),
-  },
-  {
-    id: "chat.toggle_tool_density",
-    // Stable title for fuzzy-search ranking. `getTitle` provides the
-    // state-dependent display label. Keywords cover both verbs so
-    // searching "expand" or "compact" both surface this row.
-    title: "Toggle tool call density",
-    subtitle: "Switch between compact and expanded tool rows",
-    keywords: ["expand", "collapse", "compact", "rows", "tools"],
-    group: "chat",
-    icon: Rows3Icon,
-    shortcut: "toggle_tool_density",
-    when: (ctx) => ctx.hasChatPanel,
-    getTitle: (): string => {
-      const current = runtime.store.get(chatToolDensityAtom);
-      return current === "expanded" ? "Compact tool calls" : "Expand tool calls";
-    },
-    getIcon: (): CommandIcon => {
-      const current = runtime.store.get(chatToolDensityAtom);
-      return current === "expanded" ? RowsIcon : Rows3Icon;
-    },
-    perform: (): void => {
-      const current = runtime.store.get(chatToolDensityAtom);
-      runtime.store.set(chatToolDensityAtom, current === "expanded" ? "default" : "expanded");
-    },
   },
 ];

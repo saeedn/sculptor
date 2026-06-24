@@ -1,11 +1,9 @@
 import { Flex } from "@radix-ui/themes";
-import type { Editor as TipTapEditor } from "@tiptap/react";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { ReactElement } from "react";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo } from "react";
 
 import { useImbueNavigate, useWorkspacePageParams } from "../../common/NavigateUtils.ts";
-import type { InsertSkillArg } from "../../common/state/atoms/chatActions.ts";
 import { tasksArrayAtom } from "../../common/state/atoms/tasks.ts";
 import {
   agentIdForWorkspaceAtomFamily,
@@ -34,9 +32,6 @@ const ZenTopGradient = (): ReactElement | null => {
 
 const WorkspacePageContent = ({ taskID }: { taskID: string }): ReactElement => {
   const { workspaceID } = useWorkspacePageParams();
-  const appendTextRef = useRef<((text: string) => void) | null>(null);
-  const insertSkillRef = useRef<((skill: InsertSkillArg) => void) | null>(null);
-  const editorRef = useRef<TipTapEditor | null>(null);
 
   // Sync artifacts for the currently viewed task only
   useArtifactSync(workspaceID, taskID);
@@ -49,8 +44,9 @@ const WorkspacePageContent = ({ taskID }: { taskID: string }): ReactElement => {
   // Mark agent as read when user views the chat
   useMarkRead(workspaceID, taskID);
 
-  // Memoize center content — AlphaChatInterface owns its own data subscriptions,
-  // so this subtree is stable across most re-renders of WorkspacePageContent.
+  // Memoize center content — the terminal panel owns its own data
+  // subscriptions, so this subtree is stable across most re-renders of
+  // WorkspacePageContent.
   const centerContent = useMemo(
     () => (
       <Flex direction="column" className={styles.centerPanel}>
@@ -60,7 +56,7 @@ const WorkspacePageContent = ({ taskID }: { taskID: string }): ReactElement => {
           workspaceId={workspaceID}
           chatContent={
             <Flex direction="column" className={styles.centerPanel}>
-              <ChatPanelContent appendTextRef={appendTextRef} insertSkillRef={insertSkillRef} editorRef={editorRef} />
+              <ChatPanelContent />
               <AgentTabs />
             </Flex>
           }

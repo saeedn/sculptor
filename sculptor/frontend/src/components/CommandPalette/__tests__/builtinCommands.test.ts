@@ -2,7 +2,6 @@ import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_THEME_SETTINGS, themeSettingsAtom } from "../../../common/state/atoms/theme.ts";
-import { chatToolDensityAtom } from "../../../pages/workspace/components/chat-alpha/atoms.ts";
 import { buildChatCommands } from "../builtinCommands/chat.ts";
 import { buildHelpCommands } from "../builtinCommands/help.ts";
 import { buildNavigationCommands } from "../builtinCommands/navigation.ts";
@@ -475,9 +474,7 @@ describe("buildThemeCommands", () => {
 describe("buildChatCommands", () => {
   it("emits exactly the expected command ids", () => {
     const cmds = buildChatCommands(makeRuntime());
-    expect(cmds.map((c) => c.id).sort()).toEqual(
-      ["chat.focus_input", "chat.search", "chat.jump_bottom", "chat.toggle_tool_density"].sort(),
-    );
+    expect(cmds.map((c) => c.id).sort()).toEqual(["chat.focus_input", "chat.search", "chat.jump_bottom"].sort());
   });
 
   it("chat.focus_input.when requires hasChatPanel (not surfaced on AddWorkspace, see review M10)", () => {
@@ -513,53 +510,6 @@ describe("buildChatCommands", () => {
     expect(runtime.ui.focusChatInput).toHaveBeenCalledTimes(1);
     expect(runtime.ui.showChatSearch).toHaveBeenCalledTimes(1);
     expect(runtime.ui.jumpChatToBottom).toHaveBeenCalledTimes(1);
-  });
-
-  describe("chat.toggle_tool_density", () => {
-    afterEach(() => {
-      // Reset to default so a flipped value doesn't leak into other tests.
-      getDefaultStore().set(chatToolDensityAtom, "default");
-    });
-
-    it("requires hasChatPanel", () => {
-      const cmd = buildChatCommands(makeRuntime()).find((c) => c.id === "chat.toggle_tool_density")!;
-      expect(cmd.when!(WORKSPACE_WITH_CHAT_CTX)).toBe(true);
-      expect(cmd.when!(WORKSPACE_CTX)).toBe(false);
-      expect(cmd.when!(ROOT_CTX)).toBe(false);
-    });
-
-    it("declares the matching keybinding shortcut id", () => {
-      const cmd = buildChatCommands(makeRuntime()).find((c) => c.id === "chat.toggle_tool_density")!;
-      expect(cmd.shortcut).toBe("toggle_tool_density");
-    });
-
-    it("closes the palette after running (the user sees the new density immediately)", () => {
-      const cmd = buildChatCommands(makeRuntime()).find((c) => c.id === "chat.toggle_tool_density")!;
-      expect(cmd.keepOpen).not.toBe(true);
-    });
-
-    it("perform flips default -> expanded -> default", () => {
-      const runtime = makeRuntime();
-      const cmd = buildChatCommands(runtime).find((c) => c.id === "chat.toggle_tool_density")!;
-
-      runtime.store.set(chatToolDensityAtom, "default");
-      runPerform(cmd);
-      expect(runtime.store.get(chatToolDensityAtom)).toBe("expanded");
-
-      runPerform(cmd);
-      expect(runtime.store.get(chatToolDensityAtom)).toBe("default");
-    });
-
-    it("getTitle reflects the current density", () => {
-      const runtime = makeRuntime();
-      const cmd = buildChatCommands(runtime).find((c) => c.id === "chat.toggle_tool_density")!;
-
-      runtime.store.set(chatToolDensityAtom, "default");
-      expect(cmd.getTitle!(WORKSPACE_WITH_CHAT_CTX)).toBe("Expand tool calls");
-
-      runtime.store.set(chatToolDensityAtom, "expanded");
-      expect(cmd.getTitle!(WORKSPACE_WITH_CHAT_CTX)).toBe("Compact tool calls");
-    });
   });
 });
 

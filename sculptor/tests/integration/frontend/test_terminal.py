@@ -67,7 +67,10 @@ def test_terminal_panel_creates_single_websocket_connection(sculptor_instance_: 
     terminal_ws_connections: list[str] = []
 
     def on_websocket(ws):
-        if "/terminal/" in ws.url and ws.url.endswith("/ws"):
+        # Count only the workspace bottom-terminal endpoint; the agent terminal
+        # panel (/agents/{id}/terminal/ws) is always mounted now and is not the
+        # subject of these bottom-terminal connection assertions.
+        if "/terminal/" in ws.url and ws.url.endswith("/ws") and "/agents/" not in ws.url:
             terminal_ws_connections.append(ws.url)
 
     page.on("websocket", on_websocket)
@@ -220,7 +223,10 @@ def test_add_terminal_tab_creates_new_session(sculptor_instance_: SculptorInstan
     new_terminal_ws_connections: list[str] = []
 
     def on_websocket(ws):
-        if "/terminal/" in ws.url and ws.url.endswith("/ws"):
+        # Count only the workspace bottom-terminal endpoint; the agent terminal
+        # panel (/agents/{id}/terminal/ws) is always mounted now and is not the
+        # subject of these bottom-terminal connection assertions.
+        if "/terminal/" in ws.url and ws.url.endswith("/ws") and "/agents/" not in ws.url:
             new_terminal_ws_connections.append(ws.url)
 
     page.on("websocket", on_websocket)

@@ -32,9 +32,15 @@ from playwright.sync_api import Page
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import expect
 
+from sculptor.testing.elements.terminal import ensure_terminal_panel_open
 from sculptor.testing.elements.terminal import get_xterm_buffer_text
-from sculptor.testing.elements.terminal import open_terminal_and_wait
 from sculptor.testing.elements.terminal import run_command_in_active_terminal
+from sculptor.testing.fake_terminal_agent import DEFAULT_DISPLAY_NAME
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import release_fake_agent_wait
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import wait_for_file
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
 from sculptor.testing.playwright_utils import request_with_retry
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
@@ -83,31 +89,35 @@ def _wait_for_worktree_removed(
 
 
 def _read_shell_pid_from_active_terminal(page: Page) -> int:
-    """Type ``echo "PID:$$"`` into the active xterm and return its shell pid.
+    """Type ``echo "PID:$$"`` into the active (bottom panel) xterm and return its shell pid.
 
     The typed command shows up as the literal ``PID:$$`` in the buffer (the
     shell expands ``$$`` only when it executes), so the regex ``PID:(\\d+)``
     matches only the output line. ``window.__xterm`` is the active terminal.
+
+    A freshly-mounted terminal can still drop the first typed keystrokes even with
+    the no-op padding, so retry the echo a few times until the marker lands.
     """
-    run_command_in_active_terminal(page, 'echo "PID:$$"')
-    try:
-        result = page.wait_for_function(
-            """() => {
-                const xterm = window.__xterm;
-                if (!xterm) return null;
-                const buffer = xterm.buffer.active;
-                const lines = [];
-                for (let i = 0; i <= buffer.baseY + buffer.cursorY; i++) {
-                    const line = buffer.getLine(i);
-                    if (line) lines.push(line.translateToString(true));
-                }
-                const match = /PID:(\\d+)/.exec(lines.join('\\n'));
-                return match ? parseInt(match[1]) : null;
-            }"""
-        )
-        return result.json_value()
-    except PlaywrightTimeoutError:
-        raise AssertionError(f"never saw PID marker; buffer was:\n{get_xterm_buffer_text(page)!r}")
+    read_marker_js = """() => {
+        const xterm = window.__xterm;
+        if (!xterm) return null;
+        const buffer = xterm.buffer.active;
+        const lines = [];
+        for (let i = 0; i <= buffer.baseY + buffer.cursorY; i++) {
+            const line = buffer.getLine(i);
+            if (line) lines.push(line.translateToString(true));
+        }
+        const match = /PID:(\\d+)/.exec(lines.join('\\n'));
+        return match ? parseInt(match[1]) : null;
+    }"""
+    for _attempt in range(5):
+        run_command_in_active_terminal(page, 'echo "PID:$$"')
+        try:
+            result = page.wait_for_function(read_marker_js, timeout=10_000)
+            return result.json_value()
+        except PlaywrightTimeoutError:
+            continue
+    raise AssertionError(f"never saw PID marker; buffer was:\n{get_xterm_buffer_text(page)!r}")
 
 
 def _wait_for_dead(page: Page, pid: int, timeout: float = 15.0) -> bool:
@@ -141,22 +151,27 @@ def test_delete_workspace_with_open_terminal_kills_pty_and_removes_worktree(
 ) -> None:
     """Deleting a workspace with a live terminal kills the PTY and removes the worktree.
 
-    The agent is idle (Fake Claude's instant default response), so this exercises
-    the idle-task finalization path alongside the PTY stop + worktree removal.
+    The terminal agent is idle (it has finished launching and is sitting at its
+    prompt), so this exercises the idle-task finalization path alongside the PTY
+    stop + worktree removal.
     """
     page = sculptor_instance_.page
     user_repo_path = sculptor_instance_.project_path
 
     worktrees_before = set(_worktree_paths(user_repo_path))
-    start_task_and_wait_for_ready(page, prompt="Hello", workspace_name="Deletion Cleanup WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Deletion Cleanup WS")
     workspace_id = _workspace_id_from_url(page)
 
     new_worktrees = set(_worktree_paths(user_repo_path)) - worktrees_before
     assert len(new_worktrees) == 1, f"expected exactly one new worktree, got {new_worktrees}"
     worktree_path = new_worktrees.pop()
 
-    # Open the bottom terminal panel and capture its live shell pid.
-    open_terminal_and_wait(page)
+    # Open the bottom terminal panel and capture its live shell pid. Opening the
+    # panel explicitly focuses its xterm (unlike the agent terminal, which is not
+    # auto-focused on initial mount), so keystrokes land reliably. Settle after
+    # opening so the shell prompt has rendered before we type.
+    ensure_terminal_panel_open(page)
+    page.wait_for_timeout(3000)
     shell_pid = _read_shell_pid_from_active_terminal(page)
     assert shell_pid > 0
     os.kill(shell_pid, 0)  # sanity: the shell is reachable on the host
@@ -189,34 +204,41 @@ def test_delete_workspace_with_running_agent_finalizes_and_removes_worktree(
 ) -> None:
     """Deleting a workspace while its agent is mid-run tears everything down cleanly.
 
-    A long ``fake_claude:sleep`` keeps the agent in a running (cancellable) state,
-    so the cascade delete hits the cooperative ``is_deleting`` shutdown path for a
-    *running* task — the complement of the idle path in the test above.
+    The fake terminal agent is held busy on a sentinel (a multi_step that blocks
+    on wait_for_file) so its tab shows the running dot, so the cascade delete hits
+    the cooperative ``is_deleting`` shutdown path for a *running* task — the
+    complement of the idle path in the test above.
     """
     page = sculptor_instance_.page
     user_repo_path = sculptor_instance_.project_path
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
     worktrees_before = set(_worktree_paths(user_repo_path))
-    # wait_for_agent_to_finish=False: we want the agent still running when we delete.
-    task_page = start_task_and_wait_for_ready(
-        page,
-        prompt='fake_claude:sleep `{"seconds": 120}`',
-        workspace_name="Running Agent Delete WS",
-        wait_for_agent_to_finish=False,
-    )
+    _, agent_tab_bar = start_fake_terminal_agent(page, agents_dir, workspace_name="Running Agent Delete WS")
     workspace_id = _workspace_id_from_url(page)
 
     new_worktrees = set(_worktree_paths(user_repo_path)) - worktrees_before
     assert len(new_worktrees) == 1, f"expected exactly one new worktree, got {new_worktrees}"
     worktree_path = new_worktrees.pop()
 
-    # Confirm the agent is actually running (cancellable) before we delete.
-    chat_panel = task_page.get_chat_panel()
-    expect(chat_panel.get_stop_button()).to_be_visible(timeout=30_000)
+    # Hold the fake terminal agent busy by blocking it on a sentinel, then confirm
+    # its tab shows the running dot (the agent is mid-run / cancellable). Do not
+    # write any file: an uncommitted/untracked file would block the safe worktree
+    # removal we assert on below.
+    terminal_tab = agent_tab_bar.get_agent_tab_by_name(f"{DEFAULT_DISPLAY_NAME} 1").first
+    send_fake_agent_command(
+        agents_dir,
+        multi_step([wait_for_file("release.sentinel")]),
+    )
+    expect(terminal_tab).to_have_attribute("data-dot-status", "running", timeout=30_000)
 
     layout = PlaywrightProjectLayoutPage(page=page)
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(1)
+
+    # Release the held sentinel so the runner can exit cleanly if it reaches that
+    # point during teardown (the cascade may also signal it to stop first).
+    release_fake_agent_wait(agents_dir, "release.sentinel")
 
     layout.delete_workspace_via_context_menu(workspace_tab_index=0)
 

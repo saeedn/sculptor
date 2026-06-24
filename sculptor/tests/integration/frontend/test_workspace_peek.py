@@ -3,41 +3,46 @@
 Tests cover:
 - Popover appears on workspace tab hover with correct status content
 - Idle state shows popover with workspace name, summary, and agent row (no banner)
-- Waiting state shows orange waiting banner when agent asks a question
+- Waiting state shows orange waiting banner when a terminal agent signals waiting
 - Hover mechanics: popover appears on hover and dismisses on mouse leave
+- Diff stats in the popover footer
+
+Agent state is driven by the fake registered terminal agent: a terminal agent's
+peek status is derived from the lifecycle signal it last posted since its most
+recent run start (busy -> WORKING, waiting -> WAITING, otherwise IDLE). To hold a
+WAITING state the agent signals `waiting` and then blocks on a sentinel, so no
+trailing `idle` fires until the test releases it.
 """
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.ask_user_question import get_ask_user_question_panel
-from sculptor.testing.elements.chat_panel import select_model_by_name
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.elements.task_starter import FAKE_CLAUDE_MODEL_NAME
+from sculptor.testing.fake_terminal_agent import add_registered_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import wait_for_file
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
-from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.playwright_utils import navigate_to_add_workspace_page
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
 
-@user_story("to see workspace peek status when hovering over a workspace tab with a finished agent")
+@user_story("to see workspace peek status when hovering over a workspace tab with an idle agent")
 def test_workspace_peek_popover_idle_state(
     sculptor_instance_: SculptorInstance,
 ) -> None:
-    """After an agent finishes its turn, hovering the workspace tab shows a
-    popover with the workspace name, a summary, and an agent row.  No alert
-    banner is shown because the agent is idle (ready for more input).
+    """When the agent is idle, hovering the workspace tab shows a popover with the
+    workspace name, a summary, and an agent row.  No alert banner is shown
+    because the agent is idle (ready for more input).
     """
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(
-        page,
-        prompt='fake_claude:text `{"text": "All done!"}`',
-        workspace_name="Idle WS",
-    )
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Idle WS")
 
     # Navigate away so we can hover over the workspace tab
     navigate_to_add_workspace_page(page)
@@ -56,42 +61,25 @@ def test_workspace_peek_popover_idle_state(
     expect(peek.get_agent_rows().first).to_be_visible()
 
 
-@user_story("to see workspace peek waiting status when an agent asks a question")
+@user_story("to see workspace peek waiting status when a terminal agent signals waiting")
 def test_workspace_peek_popover_waiting_state(
     sculptor_instance_: SculptorInstance,
 ) -> None:
-    """When an agent invokes AskUserQuestion, hovering the workspace tab shows
-    a popover with an orange waiting banner.
+    """When a terminal agent signals waiting (and holds it), hovering the
+    workspace tab shows a popover with an orange waiting banner.
     """
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Create a workspace where the agent asks a question.  AUQ prompts leave
-    # the agent in WAITING state rather than completing the turn, so don't
-    # wait for the agent to "finish" — wait for the AUQ panel directly as the
-    # signal that the response has rendered.
-    start_task_and_wait_for_ready(
-        page,
-        prompt="""\
-fake_claude:ask_user_question `{
-  "questions": [
-    {
-      "question": "Which color do you prefer?",
-      "header": "Color",
-      "options": [
-        {"label": "Red", "description": "A warm color"},
-        {"label": "Blue", "description": "A cool color"}
-      ],
-      "multiSelect": false
-    }
-  ]
-}`""",
-        workspace_name="Waiting WS",
-        wait_for_agent_to_finish=False,
+    start_fake_terminal_agent(page, agents_dir, workspace_name="Waiting WS")
+
+    # Drive the agent into a held WAITING state: signal `waiting` then block on a
+    # sentinel so no trailing `idle` overrides it.
+    send_fake_agent_command(
+        agents_dir,
+        multi_step([bash("sculpt signal waiting"), wait_for_file("hold.sentinel")]),
     )
-
-    auq_panel = get_ask_user_question_panel(page)
-    expect(auq_panel).to_be_visible(timeout=30_000)
 
     # Navigate away so we can hover over the workspace tab
     navigate_to_add_workspace_page(page)
@@ -118,11 +106,7 @@ def test_workspace_peek_popover_hover_mechanics(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(
-        page,
-        prompt='fake_claude:text `{"text": "Done"}`',
-        workspace_name="Hover WS",
-    )
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Hover WS")
 
     # Navigate away so we can hover over the workspace tab
     navigate_to_add_workspace_page(page)
@@ -158,7 +142,8 @@ def test_workspace_peek_popover_on_scrolled_tab(
     for i in range(3):
         start_task_and_wait_for_ready(
             sculptor_page=page,
-            prompt='fake_claude:text `{"text": "Done"}`',
+            agent_type="terminal",
+            model_name=None,
             workspace_name=f"WS {i + 1}",
         )
 
@@ -183,22 +168,6 @@ def test_workspace_peek_popover_on_scrolled_tab(
     page.set_viewport_size(original_size)
 
 
-_AUQ_PROMPT = """\
-fake_claude:ask_user_question `{
-  "questions": [
-    {
-      "question": "Which approach do you prefer?",
-      "header": "Approach",
-      "options": [
-        {"label": "Option A", "description": "First option"},
-        {"label": "Option B", "description": "Second option"}
-      ],
-      "multiSelect": false
-    }
-  ]
-}`"""
-
-
 @user_story("to see the workspace status turn yellow when any agent needs my attention")
 def test_workspace_peek_waiting_overrides_running_in_banner(
     sculptor_instance_: SculptorInstance,
@@ -208,32 +177,34 @@ def test_workspace_peek_waiting_overrides_running_in_banner(
     even though another agent is still running.
     """
     page = sculptor_instance_.page
-    task_page = PlaywrightTaskPage(page=page)
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
+    second_registration_id = "fake-terminal-agent-2"
 
-    # Create a workspace with a first agent that stays running (sleeping)
-    start_task_and_wait_for_ready(
+    # Create a workspace whose first registered fake terminal agent will be held
+    # BUSY (running), then add a SECOND, independently-drivable fake terminal
+    # agent that will be held WAITING.
+    task_page, _ = start_fake_terminal_agent(page, agents_dir, workspace_name="Running+Waiting WS")
+    add_registered_fake_terminal_agent(
         page,
-        prompt='fake_claude:sleep `{"seconds": 60}`',
-        workspace_name="Running+Waiting WS",
-        wait_for_agent_to_finish=False,
+        agents_dir,
+        registration_id=second_registration_id,
+        display_name="Fake Terminal Agent 2",
     )
 
-    # Add a second agent to the same workspace
-    agent_tab_bar = task_page.get_agent_tab_bar()
-    add_agent_button = agent_tab_bar.get_add_agent_button()
-    expect(add_agent_button).to_be_visible()
-    add_agent_button.click()
+    # Hold the first fake terminal agent BUSY (running) by blocking on a sentinel.
+    send_fake_agent_command(
+        agents_dir,
+        multi_step([write_file("running.txt", "busy"), wait_for_file("running.sentinel")]),
+    )
 
-    # The new blank agent needs a model selected before it can receive messages
-    chat_panel = task_page.get_chat_panel()
-    select_model_by_name(chat_panel, FAKE_CLAUDE_MODEL_NAME)
-
-    # Send an AUQ prompt to the second agent so it enters WAITING state
-    send_chat_message(chat_panel, _AUQ_PROMPT)
-
-    # Wait for the AUQ panel to appear, confirming the agent is in WAITING state
-    auq_panel = get_ask_user_question_panel(page)
-    expect(auq_panel).to_be_visible()
+    # Hold the second fake terminal agent WAITING: signal `waiting` then block on
+    # a sentinel so no trailing `idle` overrides it. Attention must win over the
+    # still-running first agent in the banner.
+    send_fake_agent_command(
+        agents_dir,
+        multi_step([bash("sculpt signal waiting"), wait_for_file("waiting.sentinel")]),
+        registration_id=second_registration_id,
+    )
 
     # Navigate away so the workspace tab is hoverable
     navigate_to_add_workspace_page(page)
@@ -244,8 +215,7 @@ def test_workspace_peek_waiting_overrides_running_in_banner(
     peek = task_page.get_workspace_peek_popover()
     expect(peek).to_be_visible()
 
-    # The banner must surface the waiting agent — attention takes priority over
-    # a still-running agent.
+    # The banner must surface the waiting agent — attention takes priority.
     expect(peek.get_banner()).to_be_visible()
     expect(peek.get_banner()).to_contain_text("needs your")
 
@@ -255,13 +225,11 @@ def test_peek_popover_shows_diff_stats(sculptor_instance_: SculptorInstance) -> 
     """Hovering over the workspace tab should show a popover with
     target-branch diff stats (+N / -N)."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(
-        page,
-        prompt='fake_claude:write_file `{"file_path": "hello.py", "content": "print(\'hello\')"}`',
-    )
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    # A file write so the workspace has an uncommitted diff for the footer stats.
+    send_fake_agent_command_and_wait(agents_dir, write_file("hello.py", "print('hello')\n"))
 
     workspace_tab = task_page.get_workspace_tabs().first
     expect(workspace_tab).to_be_visible()

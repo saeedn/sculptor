@@ -58,6 +58,17 @@ class PlaywrightAgentTabBarElement:
         expect(menu).to_be_visible()
         return menu
 
+    def add_terminal_agent(self) -> None:
+        """Add a built-in terminal agent to the current workspace via the agent-type menu.
+
+        The bare ``+`` button adds the default (chat) agent; tab-lifecycle tests
+        that want a chat-free second agent open the type menu and pick Terminal.
+        """
+        self.open_agent_type_menu()
+        terminal_item = self.get_agent_type_menu_item_terminal()
+        expect(terminal_item).to_be_visible()
+        terminal_item.click()
+
     def open_diagnostics_submenu(self, tab: Locator) -> None:
         """Right-click a tab and hover on Diagnostics to open the submenu."""
         tab.click(button="right")

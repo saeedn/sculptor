@@ -11,8 +11,9 @@ These tests verify:
 import pytest
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
+from sculptor.testing.elements.terminal import get_agent_terminal_panel
+from sculptor.testing.elements.terminal import run_command_in_agent_terminal
+from sculptor.testing.elements.terminal import wait_for_xterm_substring
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -33,23 +34,20 @@ def test_create_second_agent_in_existing_workspace(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create first agent in a new workspace
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Multi Agent WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Multi Agent WS")
 
     # Verify one agent tab exists
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(1)
 
     # Click the "+" button in the agent tabs bar to add a second agent
-    add_agent_button = agent_tab_bar.get_add_agent_button()
-    expect(add_agent_button).to_be_visible()
-    add_agent_button.click()
+    agent_tab_bar.add_terminal_agent()
 
     # Wait for the second agent tab to appear
     expect(agent_tabs).to_have_count(2)
 
-    # Verify the chat panel is visible for the new agent
-    chat_panel = task_page.get_chat_panel()
-    expect(chat_panel).to_be_visible()
+    # Verify the terminal panel is visible for the new agent
+    expect(get_agent_terminal_panel(page)).to_be_visible()
 
 
 @user_story("to see which agents share a workspace")
@@ -65,11 +63,10 @@ def test_multiple_agent_tabs_shown_for_shared_workspace(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create first agent in a new workspace
-    start_task_and_wait_for_ready(page, prompt="First agent task", workspace_name="Shared WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Shared WS")
 
     # Add a second agent to the same workspace
-    add_agent_button = agent_tab_bar.get_add_agent_button()
-    add_agent_button.click()
+    agent_tab_bar.add_terminal_agent()
 
     # Verify 2 agent tabs are visible
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -86,7 +83,7 @@ def test_single_agent_shows_one_agent_tab(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create one agent in a new workspace
-    start_task_and_wait_for_ready(page, prompt="Only agent in workspace", workspace_name="Solo WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Solo WS")
 
     # Verify exactly one agent tab
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -112,11 +109,10 @@ def test_workspaces_have_isolated_agent_tabs(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create workspace A with first agent
-    start_task_and_wait_for_ready(page, prompt="Agent A1", workspace_name="Workspace A")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace A")
 
     # Add a second agent to workspace A
-    add_agent_button = agent_tab_bar.get_add_agent_button()
-    add_agent_button.click()
+    agent_tab_bar.add_terminal_agent()
 
     # Verify workspace A has 2 agent tabs
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -124,7 +120,7 @@ def test_workspaces_have_isolated_agent_tabs(
 
     # Create workspace B with one agent (this navigates to the Add Workspace page
     # and creates a new workspace)
-    start_task_and_wait_for_ready(page, prompt="Agent B1", workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace B")
 
     # Verify workspace B has 1 agent tab
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -166,7 +162,7 @@ def test_workspace_deleted_when_last_agent_deleted(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create a workspace with one agent
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Deletable WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Deletable WS")
 
     # Verify workspace tab and agent tab exist
     workspace_tabs = task_page.get_workspace_tabs()
@@ -224,11 +220,10 @@ def test_workspace_survives_when_other_agents_remain(
     dirs_before_creation = {p for p in workspaces_dir.iterdir() if p.is_dir()} if workspaces_dir.exists() else set()
 
     # Create a workspace with first agent
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Surviving WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Surviving WS")
 
     # Add a second agent to the same workspace
-    add_agent_button = agent_tab_bar.get_add_agent_button()
-    add_agent_button.click()
+    agent_tab_bar.add_terminal_agent()
 
     # Wait for 2 agent tabs
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -259,14 +254,13 @@ def test_workspace_survives_when_other_agents_remain(
     for ws_dir in new_dirs:
         assert ws_dir.is_dir(), f"Workspace directory {ws_dir} should still exist"
 
-    # Verify the remaining agent is operational by navigating to it and sending a message
+    # Verify the remaining agent is operational by navigating to it and running a
+    # command in its terminal, then confirming the output lands in the buffer.
     agent_tabs.first.click()
-    chat_panel = task_page.get_chat_panel()
-    expect(chat_panel).to_be_visible()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
 
-    send_chat_message(chat_panel, "Are you still there?")
-    # 2 user messages (initial prompt + follow-up) + 2 assistant responses
-    wait_for_completed_message_count(chat_panel, expected_message_count=4)
+    run_command_in_agent_terminal(page, "echo still-here")
+    wait_for_xterm_substring(page, "still-here")
 
 
 @user_story("to see agent tabs numbered starting from 1 even after deleting earlier agents")
@@ -275,42 +269,41 @@ def test_agent_tab_reuses_lowest_available_number(
 ) -> None:
     """Deleting an auto-named agent and adding a new one should reuse the lowest number.
 
-    The first agent created via the Add Workspace form is auto-named "Claude 1"
-    (even when a prompt is provided, the backend auto-assigns "Agent N" names).
+    Terminal agents are auto-named "Terminal N"; the backend assigns the lowest
+    available number when a new agent is created.
 
     Steps:
-    1. Create a workspace — first agent is auto-named "Claude 1"
-    2. Click "+" twice to create "Claude 2" and "Claude 3"
-    3. Delete "Claude 2"
-    4. Click "+" — the new agent should be "Claude 2", not "Claude 4"
+    1. Create a workspace — first agent is auto-named "Terminal 1"
+    2. Add two more agents to create "Terminal 2" and "Terminal 3"
+    3. Delete "Terminal 2"
+    4. Add another — the new agent should be "Terminal 2", not "Terminal 4"
     """
     page = sculptor_instance_.page
     task_page = PlaywrightTaskPage(page=page)
     agent_tab_bar = task_page.get_agent_tab_bar()
 
-    # Create a workspace — the first agent is auto-named "Claude 1".
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Reuse WS")
+    # Create a workspace — the first agent is auto-named "Terminal 1".
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Reuse WS")
 
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(1)
-    expect(agent_tabs.first).to_have_text("Claude 1")
+    expect(agent_tabs.first).to_have_text("Terminal 1")
 
-    # Add two more agents via the "+" button — they get "Claude 2" and "Claude 3".
-    add_agent_button = agent_tab_bar.get_add_agent_button()
-    add_agent_button.click()
+    # Add two more terminal agents — they get "Terminal 2" and "Terminal 3".
+    agent_tab_bar.add_terminal_agent()
     expect(agent_tabs).to_have_count(2)
-    expect(agent_tabs.nth(1)).to_have_text("Claude 2")
+    expect(agent_tabs.nth(1)).to_have_text("Terminal 2")
 
-    add_agent_button.click()
+    agent_tab_bar.add_terminal_agent()
     expect(agent_tabs).to_have_count(3)
-    expect(agent_tabs.nth(2)).to_have_text("Claude 3")
+    expect(agent_tabs.nth(2)).to_have_text("Terminal 3")
 
-    # Delete "Claude 2". On slow CI the close+confirm flow occasionally loses
+    # Delete "Terminal 2". On slow CI the close+confirm flow occasionally loses
     # the click (Radix AlertDialog.Action auto-closes the dialog before
-    # onConfirm fires), so target Agent 2 by text and retry the UI flow
+    # onConfirm fires), so target Terminal 2 by text and retry the UI flow
     # until the tab actually disappears.
     for _attempt in range(3):
-        tab2 = agent_tab_bar.get_agent_tab_by_name("Claude 2").first
+        tab2 = agent_tab_bar.get_agent_tab_by_name("Terminal 2").first
         if not tab2.is_visible():
             break  # already gone — a previous attempt succeeded
         tab2.click()
@@ -323,25 +316,25 @@ def test_agent_tab_reuses_lowest_available_number(
         confirm_button.click()
         expect(agent_tab_bar.get_delete_confirmation_dialog()).to_be_hidden()
         try:
-            expect(agent_tab_bar.get_agent_tab_by_name("Claude 2")).to_have_count(0)
+            expect(agent_tab_bar.get_agent_tab_by_name("Terminal 2")).to_have_count(0)
             break
         except AssertionError:
             continue
     else:
-        expect(agent_tab_bar.get_agent_tab_by_name("Claude 2")).to_have_count(0)
+        expect(agent_tab_bar.get_agent_tab_by_name("Terminal 2")).to_have_count(0)
     expect(agent_tabs).to_have_count(2)
 
     # The UI removes the tab optimistically, but the backend's "lowest
     # available number" query for the next add needs to see the deletion
     # committed — on slow CI the add request can race the delete commit and
-    # return Agent 4 instead of reusing Agent 2. Give the backend more
+    # return Terminal 4 instead of reusing Terminal 2. Give the backend more
     # breathing room than the UI-only round-trip would imply.
     page.wait_for_timeout(3_000)
 
     # Add another agent — should reuse number 2, not increment to 4.
-    add_agent_button.click()
+    agent_tab_bar.add_terminal_agent()
     expect(agent_tabs).to_have_count(3)
-    expect(agent_tabs.nth(2)).to_have_text("Claude 2")
+    expect(agent_tabs.nth(2)).to_have_text("Terminal 2")
 
 
 @pytest.mark.skip(

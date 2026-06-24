@@ -33,10 +33,10 @@ def test_optimistic_agent_deletion_removes_tab_immediately(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="Optimistic WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Optimistic WS")
 
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
-    agent_tab_bar.get_add_agent_button().click()
+    agent_tab_bar.add_terminal_agent()
 
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(2)
@@ -58,7 +58,7 @@ def test_optimistic_agent_deletion_last_agent_creates_new_one(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="Only agent", workspace_name="Last Agent WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Last Agent WS")
 
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -88,8 +88,8 @@ def test_optimistic_workspace_deletion_removes_tab_immediately(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="WS1 agent", workspace_name="Workspace One")
-    start_task_and_wait_for_ready(page, prompt="WS2 agent", workspace_name="Workspace Two")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace One")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace Two")
 
     layout = PlaywrightProjectLayoutPage(page=page)
     workspace_tabs = layout.get_workspace_tabs()
@@ -114,10 +114,10 @@ def test_agent_deletion_failure_rolls_back_and_shows_error_toast(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="Rollback WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Rollback WS")
 
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
-    agent_tab_bar.get_add_agent_button().click()
+    agent_tab_bar.add_terminal_agent()
 
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(2)
@@ -162,10 +162,10 @@ def test_agent_deletion_failure_retry_succeeds(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="Retry WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Retry WS")
 
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
-    agent_tab_bar.get_add_agent_button().click()
+    agent_tab_bar.add_terminal_agent()
 
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(2)
@@ -212,8 +212,8 @@ def test_workspace_deletion_failure_rolls_back_and_shows_error_toast(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="WS1 agent", workspace_name="Workspace One")
-    start_task_and_wait_for_ready(page, prompt="WS2 agent", workspace_name="Workspace Two")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace One")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace Two")
 
     layout = PlaywrightProjectLayoutPage(page=page)
     workspace_tabs = layout.get_workspace_tabs()
@@ -267,8 +267,8 @@ def test_deleting_active_workspace_clamps_active_index(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="WS A agent", workspace_name="Workspace A")
-    start_task_and_wait_for_ready(page, prompt="WS B agent", workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace A")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace B")
 
     layout = PlaywrightProjectLayoutPage(page=page)
     workspace_tabs = layout.get_workspace_tabs()
@@ -308,8 +308,8 @@ def test_deleting_non_active_workspace_preserves_active_index(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="WS A agent", workspace_name="Workspace A")
-    start_task_and_wait_for_ready(page, prompt="WS B agent", workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace A")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace B")
 
     layout = PlaywrightProjectLayoutPage(page=page)
     workspace_tabs = layout.get_workspace_tabs()

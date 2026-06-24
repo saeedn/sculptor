@@ -26,8 +26,8 @@ def test_workspace_context_menu_rename(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    # Step 1: Create a workspace.
-    start_task_and_wait_for_ready(page, prompt="Test task", workspace_name="Original Name")
+    # Step 1: Create a workspace with a terminal agent (no chat surface).
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Original Name")
 
     # Step 2: Right-click the workspace tab.
     workspace_tabs = layout.get_workspace_tabs()
@@ -70,8 +70,8 @@ def test_workspace_context_menu_rename_escape_cancels(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    # Step 1: Create a workspace.
-    start_task_and_wait_for_ready(page, prompt="Test task", workspace_name="Keep This Name")
+    # Step 1: Create a workspace with a terminal agent (no chat surface).
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Keep This Name")
 
     # Step 2: Right-click and click Rename.
     workspace_tabs = layout.get_workspace_tabs()

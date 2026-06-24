@@ -10,6 +10,10 @@ be higher than the settings page count whenever agents were being deleted.
 
 Root cause: get_active_tasks() in sql_implementation.py was missing a
 .where(is_deleting.is_(False)) filter that get_tasks_for_user() already had.
+
+The agent here is a fake registered terminal agent held busy on a sentinel, so
+it is in a running (cancellable) state when deleted — exercising the is_deleting
+window the bug lived in.
 """
 
 import re
@@ -17,10 +21,13 @@ import re
 from playwright.sync_api import Page
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
-from sculptor.testing.elements.ask_user_question import get_ask_user_question_panel
+from sculptor.testing.fake_terminal_agent import DEFAULT_DISPLAY_NAME
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import release_fake_agent_wait
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import wait_for_file
 from sculptor.testing.playwright_utils import navigate_to_settings_page
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
@@ -60,7 +67,7 @@ def test_agent_count_matches_between_settings_and_diagnostics(
     """Agent count in diagnostics overlay should match the settings page total.
 
     Steps:
-    1. Create a workspace with an agent that asks a user question (stays running)
+    1. Create a workspace with a fake terminal agent held busy (running)
     2. Delete the running agent via the close button
     3. Read the health check API's activeTaskCount
     4. Read the settings page's total agent count across all project rows
@@ -68,49 +75,44 @@ def test_agent_count_matches_between_settings_and_diagnostics(
     """
     page = sculptor_instance_.page
     base_url = sculptor_instance_.backend_api_url
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Create a workspace with an agent that asks a user question.
-    # This keeps the agent in RUNNING state, waiting for user input.
-    start_task_and_wait_for_ready(
-        page,
-        prompt="""\
-fake_claude:ask_user_question `{
-  "questions": [
-    {
-      "question": "Pick a language",
-      "header": "Language",
-      "options": [
-        {"label": "Python", "description": "A versatile language"},
-        {"label": "Rust", "description": "For systems programming"}
-      ],
-      "multiSelect": false
-    }
-  ]
-}`""",
-        wait_for_agent_to_finish=False,
-        workspace_name="Agent Count Test WS",
+    # Create a workspace whose first agent is a registered fake terminal agent.
+    _, agent_tab_bar = start_fake_terminal_agent(page, agents_dir, workspace_name="Agent Count Test WS")
+
+    # Hold the terminal agent busy (running, cancellable) by blocking on a
+    # sentinel. Write no file so the agent's worktree stays clean for teardown.
+    terminal_tab = agent_tab_bar.get_agent_tab_by_name(f"{DEFAULT_DISPLAY_NAME} 1").first
+    send_fake_agent_command(
+        agents_dir,
+        multi_step([wait_for_file("release.sentinel")]),
     )
-
-    # Wait for the Q&A panel to appear (agent is running and waiting for user input)
-    ask_panel = get_ask_user_question_panel(page)
-    expect(ask_panel).to_be_visible()
+    expect(terminal_tab).to_have_attribute("data-dot-status", "running", timeout=30_000)
 
     # Save the URL before deletion so we can detect when the new agent loads
     old_url = page.url
 
-    # Delete the agent via the close button on the agent tab
-    agent_tab_bar = PlaywrightAgentTabBarElement(page)
+    # Delete the running terminal agent via the close button on the agent tab.
     agent_tabs = agent_tab_bar.get_agent_tabs()
-    expect(agent_tabs).to_have_count(1)
-    agent_tab_bar.delete_agent_via_close_button(0)
+    # The workspace has the chat first agent plus the fake terminal agent; delete
+    # the fake terminal agent (the held-busy one) specifically.
+    terminal_index = None
+    for index in range(agent_tabs.count()):
+        if agent_tabs.nth(index).get_attribute("data-dot-status") == "running":
+            terminal_index = index
+            break
+    assert terminal_index is not None, "expected to find the held-busy terminal agent tab"
+    agent_tab_bar.delete_agent_via_close_button(terminal_index)
 
     # Wait for the deletion dialog to close
     expect(agent_tab_bar.get_delete_confirmation_dialog()).to_be_hidden()
 
-    # After deleting the last agent, the frontend auto-creates a new one and
-    # navigates to its URL. Wait for the URL to change from the old agent's
-    # path to the new one, proving the post-deletion navigation completed.
-    page.wait_for_url(lambda url: url != old_url and "/agent/" in url)
+    # Release the sentinel so the runner can exit cleanly during teardown.
+    release_fake_agent_wait(agents_dir, "release.sentinel")
+
+    # After deletion the frontend may navigate to the remaining agent. Wait for
+    # the URL to change, proving the post-deletion navigation completed.
+    page.wait_for_url(lambda url: url != old_url)
 
     # Now compare: the health check API count should match the settings page count.
     # With the bug, the health check would still count the is_deleting task,

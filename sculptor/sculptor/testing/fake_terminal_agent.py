@@ -259,6 +259,36 @@ def stop_fake_terminal_agent(
 # --- Playwright entry point ----------------------------------------------------
 
 
+def add_registered_fake_terminal_agent(
+    page: Page,
+    terminal_agents_dir: Path,
+    *,
+    registration_id: str = DEFAULT_REGISTRATION_ID,
+    display_name: str = DEFAULT_DISPLAY_NAME,
+    expected_banner: str = READY_BANNER,
+) -> PlaywrightAgentTabBarElement:
+    """Register the fake terminal agent and add it to the *current* workspace.
+
+    Unlike ``start_fake_terminal_agent`` (which creates the workspace and its
+    first agent), this adds the fake as an additional agent to a workspace that
+    already exists — the building block for multi-agent tab-lifecycle tests that
+    need a second, remotely-drivable terminal agent. Selecting the registration
+    from the agent-type menu launches a fresh instance and waits for its ready
+    banner. Returns the agent tab bar POM.
+    """
+    register_fake_terminal_agent(terminal_agents_dir, registration_id=registration_id, display_name=display_name)
+
+    agent_tab_bar = PlaywrightAgentTabBarElement(page)
+    agent_tab_bar.open_agent_type_menu()
+    registered_item = agent_tab_bar.get_agent_type_menu_item_registered(registration_id)
+    expect(registered_item).to_be_visible()
+    registered_item.click()
+
+    expect(get_agent_terminal_panel(page)).to_be_visible()
+    wait_for_xterm_substring(page, expected_banner)
+    return agent_tab_bar
+
+
 def start_fake_terminal_agent(
     page: Page,
     terminal_agents_dir: Path,

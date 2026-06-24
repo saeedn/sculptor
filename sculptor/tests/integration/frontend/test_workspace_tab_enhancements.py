@@ -3,6 +3,7 @@
 from playwright.sync_api import expect
 
 from sculptor.constants import ElementIDs
+from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
 from sculptor.testing.playwright_utils import blur_active_element
@@ -25,10 +26,10 @@ def test_cmd_t_opens_new_workspace_page(
     add_ws_page = PlaywrightAddWorkspacePage(page=page)
 
     # Create a workspace so we have somewhere to navigate from
-    start_task_and_wait_for_ready(page, prompt="Setup task", workspace_name="Shortcut WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Shortcut WS")
 
-    # Verify we're on the task page (chat panel visible, no workspace name input)
-    expect(add_ws_page.get_chat_panel()).to_be_visible()
+    # Verify we're on the task page (terminal panel visible, no workspace name input)
+    expect(get_agent_terminal_panel(page)).to_be_visible()
 
     # Blur the active element to ensure focus is not trapped in a text input
     # (e.g. the chat input), which could consume the keypress instead of
@@ -57,8 +58,8 @@ def test_cmd_w_closes_workspace_tab_without_deletion(
     layout = PlaywrightProjectLayoutPage(page=page)
 
     # Create two workspaces so closing one still leaves a tab
-    start_task_and_wait_for_ready(page, prompt="Task 1", workspace_name="WS One")
-    start_task_and_wait_for_ready(page, prompt="Task 2", workspace_name="WS Two")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="WS One")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="WS Two")
 
     # Verify both workspace tabs exist
     workspace_tabs = layout.get_workspace_tabs()
@@ -91,7 +92,7 @@ def test_context_menu_delete_removes_workspace(
     add_ws_page = PlaywrightAddWorkspacePage(page=page)
 
     # Create a workspace
-    start_task_and_wait_for_ready(page, prompt="Deletable task", workspace_name="Deletable WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Deletable WS")
 
     workspace_tabs = add_ws_page.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(1)
@@ -123,11 +124,11 @@ def test_new_workspace_tab_x_navigates_to_mru_workspace(
     add_ws_page = PlaywrightAddWorkspacePage(page=page)
 
     # Create a workspace so we have an MRU workspace
-    start_task_and_wait_for_ready(page, prompt="MRU task", workspace_name="MRU WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="MRU WS")
 
     # Verify we're on the task page
-    chat_panel = add_ws_page.get_chat_panel()
-    expect(chat_panel).to_be_visible()
+    terminal_panel = get_agent_terminal_panel(page)
+    expect(terminal_panel).to_be_visible()
 
     # Verify the workspace tab is visible in the tab bar before navigating away.
     # The close button on the Add Workspace tab only renders when there is at
@@ -156,8 +157,8 @@ def test_new_workspace_tab_x_navigates_to_mru_workspace(
     expect(close_button).to_be_visible(timeout=30_000)
     close_button.click()
 
-    # Verify we navigated back to the workspace (chat panel visible)
-    expect(chat_panel).to_be_visible()
+    # Verify we navigated back to the workspace (terminal panel visible)
+    expect(terminal_panel).to_be_visible()
 
     # Verify workspace tab is still there
     expect(add_ws_page.get_workspace_tabs()).to_have_count(1)
@@ -175,7 +176,7 @@ def test_cmd_w_on_new_workspace_page_navigates_to_mru_workspace(
     add_ws_page = PlaywrightAddWorkspacePage(page=page)
 
     # Create a workspace so we have an MRU workspace
-    start_task_and_wait_for_ready(page, prompt="MRU task", workspace_name="MRU WS 2")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="MRU WS 2")
 
     # Navigate to Add Workspace page via "+" button
     add_ws_page.get_add_workspace_button().click()
@@ -197,7 +198,7 @@ def test_cmd_w_on_new_workspace_page_navigates_to_mru_workspace(
     page.keyboard.press(f"{mod_key}+w")
 
     # Verify navigation back to the workspace
-    expect(add_ws_page.get_chat_panel()).to_be_visible()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
 
     # No delete confirmation dialog should appear
     expect(add_ws_page.get_delete_confirmation_dialog()).to_be_hidden()

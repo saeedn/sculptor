@@ -37,8 +37,8 @@ def test_workspace_close_failure_shows_error_toast(
     layout = PlaywrightProjectLayoutPage(page)
     toast_element = PlaywrightToastElement(page)
 
-    start_task_and_wait_for_ready(page, prompt="WS1 agent", workspace_name="Workspace One")
-    start_task_and_wait_for_ready(page, prompt="WS2 agent", workspace_name="Workspace Two")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace One")
+    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace Two")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)

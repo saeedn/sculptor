@@ -28,10 +28,10 @@ verdict column (the base verdict for ambiguous rows):
 | scope | DELETE | REWRITE | KEEP | files classified | (+infra) |
 |---|---|---|---|---|---|
 | frontend | 116 | 65 | 28 | 209 | +2 = 211 |
-| regression | 18 | 15 | 2 | 35 | +2 = 37 |
+| regression | 21 | 12 | 2 | 35 | +2 = 37 |
 | real_claude | 15³ | 0 | 3¹ | 18 | — |
 | real_pi | 17³ | 0 | 0 | 17 | — |
-| **total** | **166** | **80** | **33** | **279** | +6 = 285² |
+| **total** | **169** | **77** | **33** | **279** | +6 = 285² |
 
 ¹ real_claude KEEP = the one surviving terminal-agent test + its
 `__init__`/`conftest`. ² The "+infra" column holds the frontend, regression,
@@ -41,10 +41,11 @@ real_pi (17) figures **fold in their own 3 infra files each**
 `helpers.py` → DELETE), rather than in the "+infra" column — that is why the
 column is "files classified," not "test files." Genuine `test_*.py` files =
 **273**; all integration `.py` = **285**. All previously-ambiguous rows are
-resolved (see §6); one further row was reclassified in review (see §6, row 7).
+resolved (see §6); two further rows were reclassified in review (see §6, rows 7
+and 8).
 
-**So: ~60% of the suite is DELETE, ~29% REWRITE against the fake terminal
-agent, ~12% KEEP.** The REWRITE bucket (80 files) is the real work — it is
+**So: ~61% of the suite is DELETE, ~28% REWRITE against the fake terminal
+agent, ~12% KEEP.** The REWRITE bucket (77 files) is the real work — it is
 what sizes the REQ-TEST-4 fake-terminal-agent harness and validates the
 architecture's "narrower than FakeClaude" assumption: every REWRITE row
 above needs only the side-effecting DSL (write/edit/bash/git) plus
@@ -307,9 +308,9 @@ a vehicle to mutate the workspace.
 | test_regression_setup_command_rerun.py | REWRITE | no | workspace setup-command rerun/persistence | setup-command survives; plain prompt vehicle |
 | test_regression_streaming_warning.py | DELETE | no | spurious chat warning block in streaming | rich-chat warning-block / streaming processor removed |
 | test_regression_target_branch_merge_base_oldlines.py | REWRITE | yes | vs-target-branch single-file diff (merge-base) | diff viewer survives; FakeClaude authors git history |
-| test_regression_task_list_after_restart.py | REWRITE | yes | agent task-list popover persistence | task-list/restart survives; re-express against terminal agent |
-| test_regression_task_list_after_sync_dir_wiped.py | REWRITE | yes | task-list cache backfill after sync-dir wipe | task-list survives; FakeClaude TaskCreate vehicle |
-| test_regression_task_list_claude_config_dir.py | REWRITE | yes | task-list honoring CLAUDE_CONFIG_DIR | task-list survives; re-express against terminal agent |
+| test_regression_task_list_after_restart.py | DELETE | yes | agent task-list popover persistence | RESOLVED (reclassified, row 8): the agent-tasks/task-list popover (`AgentTasksPanel`/`AgentTasksGraph`/`StatusPill`) lives **entirely inside `chat-alpha/`** (deleted in Task 8.4) and was fed by the rich agent's sculptor-MCP Task tools via `message_conversion` (both removed). Terminal `claude` has no path to populate Sculptor tasks → subject does not survive |
+| test_regression_task_list_after_sync_dir_wiped.py | DELETE | yes | task-list cache backfill after sync-dir wipe | RESOLVED (row 8): task-list popover surface removed with `chat-alpha`; no terminal-mode data source (MCP Task tools gone) |
+| test_regression_task_list_claude_config_dir.py | DELETE | yes | task-list honoring CLAUDE_CONFIG_DIR | RESOLVED (row 8): task-list popover surface removed with `chat-alpha`; no terminal-mode data source |
 | test_regression_task_status_after_restart.py | REWRITE | yes | task status not ERROR after restart mid-turn | lifecycle + restart recovery survives; FakeClaude sleep vehicle |
 | test_regression_terminal_light_mode_contrast.py | REWRITE | no | terminal panel light-mode ANSI palette | terminal + appearance survive; plain prompt vehicle |
 | test_regression_terminal_link.py | REWRITE | no | terminal panel link opening (Electron) | terminal panel survives; plain prompt vehicle |
@@ -381,9 +382,16 @@ scripted, controllable program) carrying only the side-effecting command DSL
 real registration emits. Deliberately narrower than `FakeClaude` — no JSONL
 streaming, tool pills, MCP control, or AUQ blocks (those surfaces are gone).
 
-**Shared-fixture edits (not test subjects, but must change):**
-- `frontend/conftest.py` — drop the Pi harness fixture and the auto-update
-  mock it re-exports.
+**Shared-fixture edits (not test subjects, but must change — now owned by
+specific tasks):**
+- `frontend/conftest.py` — drop the auto-update-mock re-export
+  (`mock_electron_api` from `sculptor.testing.auto_update_mock`) **in Task 2.3**,
+  and drop the `pi` harness fixture + `["claude","pi"]` parametrization **in
+  Task 8.3**.
+- `sculptor/sculptor/testing/auto_update_mock.py` — **deleted in Task 2.3**
+  (the updater test double).
+- `real_claude/conftest.py` (KEEP) — drop its `auto_update_mock` import **in
+  Task 2.3** so the surviving file collects after the module is deleted.
 - `regression/conftest.py` — re-exports playwright fixtures; survives.
 
 ---
@@ -391,8 +399,8 @@ streaming, tool pills, MCP control, or AUQ blocks (those surfaces are gone).
 ## §6. Ambiguous — RESOLVED
 
 The six originally-flagged rows were settled with the user (and grounded in
-code, not guessed); a seventh (row 7) was caught and reclassified during
-review. The verdicts are reflected in the tables above.
+code, not guessed); a seventh (row 7) and an eighth (row 8) were caught and
+reclassified during review. The verdicts are reflected in the tables above.
 
 - **frontend/test_custom_actions.py** → **REWRITE.** The actions panel
   survives untouched: `chatActionsAtom` is agent-agnostic and
@@ -426,3 +434,15 @@ review. The verdicts are reflected in the tables above.
   `shutil.which("claude")` fail (e.g. an empty `PATH`), asserting the same
   friendly error. KEEP "no change needed" was incorrect because the test's
   *vehicle* (not just subject) sits on deleted surface.
+- **(row 8) the three `regression/test_regression_task_list_*` files**
+  (`_after_restart`, `_after_sync_dir_wiped`, `_claude_config_dir`) →
+  **DELETE** (were REWRITE). Caught during plan review. The triage had marked
+  them REWRITE on the assumption the agent task-list survives, but the code is
+  unambiguous: the agent-tasks/task-list popover (`AgentTasksPanel.tsx`,
+  `AgentTasksGraph.tsx`, `StatusPill.tsx`) lives **entirely inside
+  `chat-alpha/`** — deleted wholesale in Task 8.4 — and its data was produced by
+  the rich agent's sculptor-MCP `Task*` tools, surfaced via `message_conversion`
+  (both removed in Task 8.3). A terminal `claude` is the vanilla CLI with no
+  sculptor MCP server, so there is no mechanism to populate Sculptor's task list
+  and no popover to assert against. The *subject* is a removed surface → DELETE.
+  (These move from Task 7.4's REWRITE set to Task 8.1's DELETE set.)

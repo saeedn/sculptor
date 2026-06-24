@@ -339,12 +339,16 @@ quarantine code**:
 - `BinaryMode`/`DependencyPaths`/`DependencyInfo` removed (see Dependency
   resolution — binary lookup is now PATH-only with no config field).
 
-> **Spec note:** this relaxes REQ-WS-4 / REQ-AGENT-5, which were written
-> as "legacy rows MUST NOT crash the app." Because we discard the old DB
-> rather than read it, that robustness requirement is moot. The
-> architecture satisfies the *intent* (a slimmed, worktree/terminal-only
-> data model) by clean break rather than by defensive loading. Flagged in
-> Open Questions for the user to confirm against the spec wording.
+> **Spec note (resolved in Plan):** REQ-WS-4 / REQ-AGENT-5 were written as
+> "legacy rows MUST NOT crash the app." The clean break satisfies this **only if
+> the upgrade actually discards/replaces the old DB before opening it** —
+> otherwise the slimmed app deserializes a pre-slim row and crashes on the
+> removed enum values. So this is *not* left as a bare assumption: Plan Task 6.1
+> adds an **explicit fresh-start guard** (bump the data-dir `.format_version` in
+> `utils/migration.py`; discard/replace a pre-slim DB before open) **and a
+> startup test** that loads a pre-slim DB and asserts no crash. That is the
+> mitigation named in the Risks section, now adopted — so REQ-WS-4/AGENT-5 are
+> met by whole-DB clean break + guard, not by row-level defensive loading.
 
 ## Migration Strategy
 
@@ -575,10 +579,13 @@ registration) advances it.
 
 **The per-file classification is done** — see the companion
 `test-triage.md` (the REQ-TEST-1 deliverable). Headline: of 279 classified
-files, **166 DELETE / 80 REWRITE / 33 KEEP** (~60% / 29% / 12%), all
-verdicts firm (the six initially-ambiguous rows are resolved in §6).
+files, **169 DELETE / 77 REWRITE / 33 KEEP** (~61% / 28% / 12%), all
+verdicts firm (the six initially-ambiguous rows plus two review-caught rows are
+resolved in §6 — including the three `test_regression_task_list_*` files
+reclassified REWRITE→DELETE because the agent task-list popover lives inside the
+deleted `chat-alpha/` tree and has no terminal-mode data source).
 Crucially, this **confirms the "narrower than FakeClaude" assumption**:
-every one of the 80 REWRITE files needs only the side-effecting DSL
+every one of the 77 REWRITE files needs only the side-effecting DSL
 (write/edit/bash/git) plus
 terminal lifecycle signals — none needs JSONL streaming, tool pills, MCP
 control, or AUQ blocks. So the fake terminal-agent harness can be built to
@@ -610,9 +617,13 @@ Resolved in Q&A:
   Drop the `Claude`/`pi` values, keep `Terminal`/`Registered`, and re-point
   the default at the bundled `claude-code` registration.
 
-Remaining for the user to confirm against the spec:
+Resolved in Plan review:
 
-- The Data-Model clean break **relaxes REQ-WS-4 / REQ-AGENT-5** ("must not
-  crash on legacy rows"): because the old DB is discarded, that
-  robustness requirement is moot. Confirm the spec wording should be read
-  as satisfied-by-clean-break, or update the spec in the Spec tab.
+- ~~The Data-Model clean break relaxes REQ-WS-4 / REQ-AGENT-5~~ → **kept as a
+  hard requirement, satisfied by an explicit guard.** REQ-WS-4 / REQ-AGENT-5
+  ("must not crash on legacy rows") are met by the **fresh-start guard** in Task
+  6.1 — discard/replace a pre-slim DB before it is opened (bump
+  `.format_version`), with a startup test asserting no crash. No spec change is
+  needed; the requirement holds and is now testable. (The earlier "out of scope /
+  moot" framing was a gap: without the guard, opening a pre-slim DB crashes on
+  the removed `IN_PLACE`/`CLONE`/`CLAUDE`/`PI` values.)

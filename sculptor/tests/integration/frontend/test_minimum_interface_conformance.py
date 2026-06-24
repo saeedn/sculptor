@@ -1,81 +1,85 @@
-"""Minimum-interface conformance suite parametrized over Claude and pi.
+"""Minimum-interface conformance suite for the terminal agent.
 
-Both harnesses must satisfy two invariants:
+The terminal agent is the only surviving agent kind (the Claude/pi chat
+harnesses are removed in the slim-down). It must satisfy two invariants,
+re-expressed against the terminal surface (there is no chat surface):
 
-- Turn-boundary signalling: a user message produces a user-then-assistant
-  pair and the thinking indicator settles after the turn ends.
-- Structured failure reporting: a subprocess-side failure surfaces as an
-  error block, not a silent drop.
-
-The exact streaming-frame schemas differ between Claude and pi, so the
-assertions stick to the harness-agnostic chat surface — the minimum
-interface every harness must honour.
+- Turn-boundary signalling: a command runs as one busy → idle turn (the tab dot
+  goes running while busy and settles calm when the turn ends) and its output
+  reaches the terminal.
+- Structured failure surfacing: a command that fails (non-zero exit, output on
+  stderr) surfaces in the terminal output rather than being silently dropped,
+  and the turn still completes (the agent settles calm — a failure is not a
+  wedge).
 """
 
-import pytest
+import re
+
+from playwright.sync_api import Locator
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.elements.task_starter import FAKE_CLAUDE_MODEL_NAME
-from sculptor.testing.fake_pi import install_fake_pi_binary
-from sculptor.testing.pages.task_page import PlaywrightTaskPage
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
+from sculptor.testing.elements.terminal import get_agent_terminal_panel
+from sculptor.testing.elements.terminal import wait_for_xterm_substring
+from sculptor.testing.fake_terminal_agent import DEFAULT_DISPLAY_NAME
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import release_fake_agent_wait
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import wait_for_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-from tests.integration.frontend.conftest import HarnessTestConfig
 
-_TEXT_DIRECTIVE_BY_HARNESS: dict[str, str] = {
-    "claude": 'fake_claude:text `{"text": "TURN-OK-91827"}`',
-    "pi": 'fake_pi:emit_text `{"text": "TURN-OK-91827"}`',
-}
-
-_ERROR_DIRECTIVE_BY_HARNESS: dict[str, str] = {
-    "claude": 'fake_claude:api_error `{"message": "FAIL-OK-66341"}`',
-    "pi": 'fake_pi:error `{"message": "FAIL-OK-66341"}`',
-}
+_CALM = re.compile(r"^(read|unread)$")
 
 
-def _open_workspace_for(
-    sculptor_instance_: SculptorInstance,
-    harness: HarnessTestConfig,
-    workspace_name: str,
-) -> PlaywrightTaskPage:
-    """Create a workspace for the parametrized harness and return the task page.
+def _terminal_tab(agent_tab_bar: PlaywrightAgentTabBarElement) -> Locator:
+    return agent_tab_bar.get_agent_tab_by_name(f"{DEFAULT_DISPLAY_NAME} 1").first
 
-    Pi-side skips the model selector (no Fake Pi entry in the LLMModel enum)
-    and pre-installs the FakePi binary; Claude-side uses Fake Claude.
-    """
-    if harness.first_agent_type == "pi":
-        install_fake_pi_binary(sculptor_instance_.fake_bin_dir)
-        model_name = None
-    else:
-        model_name = FAKE_CLAUDE_MODEL_NAME
-    return start_task_and_wait_for_ready(
-        sculptor_page=sculptor_instance_.page,
-        workspace_name=workspace_name,
-        model_name=model_name,
-        agent_type=harness.first_agent_type,
+
+@user_story("to see the terminal agent round-trip a turn (command runs, output appears, turn ends)")
+def test_turn_boundary_signalling(sculptor_instance_: SculptorInstance) -> None:
+    page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
+
+    _task_page, agent_tab_bar = start_fake_terminal_agent(
+        page, agents_dir, workspace_name="Conformance: turn boundary"
     )
+    terminal_tab = _terminal_tab(agent_tab_bar)
+    expect(terminal_tab).to_be_visible()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
+
+    # While the turn is in flight (held on a sentinel) the dot is running.
+    send_fake_agent_command(
+        agents_dir,
+        multi_step([bash("echo TURN-OK-91827"), wait_for_file("turn.sentinel")]),
+    )
+    expect(terminal_tab).to_have_attribute("data-dot-status", "running")
+
+    # The command's output reached the terminal during the turn.
+    wait_for_xterm_substring(page, "TURN-OK-91827")
+
+    # Releasing the sentinel ends the turn: the dot settles calm.
+    release_fake_agent_wait(agents_dir, "turn.sentinel")
+    expect(terminal_tab).to_have_attribute("data-dot-status", _CALM)
 
 
-@pytest.mark.parametrize("harness", ["claude", "pi"], indirect=True)
-@user_story("to see every harness round-trip a turn (user message in, assistant text out, turn ends)")
-def test_turn_boundary_signalling(sculptor_instance_: SculptorInstance, harness: HarnessTestConfig) -> None:
-    task_page = _open_workspace_for(sculptor_instance_, harness, "Conformance: turn boundary")
-    chat_panel = task_page.get_chat_panel()
+@user_story("to see a structured failure surface (not a silent drop) when the agent command errors")
+def test_structured_failure_reporting(sculptor_instance_: SculptorInstance) -> None:
+    page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    send_chat_message(chat_panel, _TEXT_DIRECTIVE_BY_HARNESS[harness.first_agent_type])
-    wait_for_completed_message_count(chat_panel, expected_message_count=2)
-    expect(chat_panel.get_assistant_messages().last).to_contain_text("TURN-OK-91827")
+    _task_page, agent_tab_bar = start_fake_terminal_agent(
+        page, agents_dir, workspace_name="Conformance: failure reporting"
+    )
+    terminal_tab = _terminal_tab(agent_tab_bar)
+    expect(terminal_tab).to_be_visible()
 
+    # A failing command surfaces in the terminal output, not silently dropped.
+    send_fake_agent_command_and_wait(agents_dir, bash("echo FAIL-OK-66341 1>&2; exit 1"))
+    wait_for_xterm_substring(page, "FAIL-OK-66341")
 
-@pytest.mark.parametrize("harness", ["claude", "pi"], indirect=True)
-@user_story("to see a structured failure surface (not a silent drop) when the agent subprocess errors")
-def test_structured_failure_reporting(sculptor_instance_: SculptorInstance, harness: HarnessTestConfig) -> None:
-    task_page = _open_workspace_for(sculptor_instance_, harness, "Conformance: failure reporting")
-    chat_panel = task_page.get_chat_panel()
-
-    send_chat_message(chat_panel, _ERROR_DIRECTIVE_BY_HARNESS[harness.first_agent_type])
-    expect(chat_panel.get_thinking_indicator()).not_to_be_visible()
-    expect(chat_panel.get_error_block().first).to_be_visible()
+    # The turn still completed: a non-zero exit settles calm, not stuck running.
+    expect(terminal_tab).to_have_attribute("data-dot-status", _CALM)

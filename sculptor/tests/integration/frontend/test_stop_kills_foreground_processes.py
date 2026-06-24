@@ -1,8 +1,14 @@
-"""Test that Stop kills foreground subprocesses spawned by the agent.
+"""Test that stopping a terminal agent kills foreground subprocesses it spawned.
 
-When the user clicks Stop, any subprocess the agent spawned in the
-foreground (e.g. a long-running Bash tool call) must be terminated, not
-left running as an orphan.
+When the user stops a terminal agent (deleting it tears down its PTY), any
+subprocess the agent spawned in the foreground (e.g. a long-running command in
+its shell) must be terminated, not left running as an orphan. Closing the PTY
+primary fd delivers SIGHUP to the shell's foreground process group, so the whole
+descendant tree is reaped — the process-group teardown SCU-211 guards.
+
+The fake terminal agent's ``bash`` DSL runs a real shell child in the agent's
+cwd, so the spawned subprocess is a real OS process in that foreground group —
+ideal for this test.
 
 See SCU-211 (kill foreground processes on stop).
 """
@@ -16,19 +22,12 @@ from pathlib import Path
 from playwright.sync_api import Page
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import PlaywrightChatPanelElement
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import DEFAULT_DISPLAY_NAME
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-
-
-def _click_stop(chat_panel: PlaywrightChatPanelElement) -> None:
-    """Click Stop. Does NOT wait for the thinking indicator to clear — the bug
-    under test is that the indicator may settle (agent CLI is killed) while a
-    leaked subprocess keeps running."""
-    stop_button = chat_panel.get_stop_button()
-    expect(stop_button).to_be_visible()
-    stop_button.click()
 
 
 def _read_pid_file(pid_path: Path, page: Page, timeout: float = 15.0) -> int:
@@ -65,53 +64,57 @@ def _kill_process(pid: int) -> None:
         pass
 
 
-@user_story("to have foreground subprocesses killed when I click Stop")
+@user_story("to have foreground subprocesses killed when I stop the agent")
 def test_stop_kills_foreground_subprocess(sculptor_instance_: SculptorInstance) -> None:
-    """Clicking Stop while the agent is blocked on a foreground subprocess
-    must kill the subprocess, not just the agent CLI.
+    """Stopping the terminal agent while it is blocked on a foreground
+    subprocess must kill the subprocess, not just disconnect.
 
-    Uses ``fake_claude:spawn_subprocess_and_hang`` to model the realistic
-    leak: the agent spawns a subprocess via ``Popen`` (no auto-cleanup) and
-    then hangs. When Sculptor sends SIGTERM/SIGKILL to the agent CLI alone,
-    the subprocess is orphaned and survives indefinitely.
+    The agent's ``bash`` turn writes the child's PID to a file, then blocks the
+    turn on a long ``sleep`` (so the agent stays busy and the child is a live
+    foreground process). Deleting the agent stops its PTY; closing the primary
+    fd SIGHUPs the foreground process group, which must cascade to the child.
 
-    The fix is process-group isolation (``start_new_session=True`` at spawn,
-    ``os.killpg`` on shutdown) so the kill cascades to all descendants.
+    Without process-group teardown, the orphaned subprocess survives until its
+    own sleep finishes (300s). See SCU-211.
     """
     pid_path = Path(tempfile.mktemp(prefix="scu211_foreground_", suffix=".pid"))
     leaked_pid: int | None = None
 
+    page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
+
     try:
-        args_json = f'{{"pid_file": "{pid_path}", "child_seconds": 300, "hang_seconds": 60}}'
-        prompt = f"fake_claude:spawn_subprocess_and_hang `{args_json}`"
+        _task_page, agent_tab_bar = start_fake_terminal_agent(page, agents_dir, workspace_name="SCU-211 WS")
+        terminal_tab = agent_tab_bar.get_agent_tab_by_name(f"{DEFAULT_DISPLAY_NAME} 1").first
+        expect(terminal_tab).to_be_visible()
 
-        task_page = start_task_and_wait_for_ready(
-            sculptor_page=sculptor_instance_.page,
-            prompt=prompt,
-            wait_for_agent_to_finish=False,
+        # The agent spawns a long-lived foreground child and records its PID,
+        # then the turn blocks on the same child (sleep) — the agent stays busy
+        # with a live foreground process the whole time.
+        send_fake_agent_command(
+            agents_dir,
+            bash(f'echo $$ > "{pid_path}"; exec sleep 300'),
         )
-        chat_panel = task_page.get_chat_panel()
+        expect(terminal_tab).to_have_attribute("data-dot-status", "running")
 
-        expect(chat_panel.get_thinking_indicator()).to_be_visible(timeout=10_000)
-
-        leaked_pid = _read_pid_file(pid_path, sculptor_instance_.page)
+        leaked_pid = _read_pid_file(pid_path, page)
         assert _is_process_alive(leaked_pid), (
             f"Subprocess (PID {leaked_pid}) should be alive immediately after writing its PID"
         )
 
-        _click_stop(chat_panel)
+        # Stop the agent: deleting it tears down the PTY (manager.stop()).
+        agent_tab_bar.delete_agent_via_close_button(agent_tab_index=1)
 
-        # The subprocess must die within 20s of Stop. Without the fix, the
-        # agent CLI dies (via SIGTERM/SIGKILL on its PID) but the orphaned
-        # subprocess keeps running until its own sleep finishes (300s).
-        # Polled state is an OS process, not the browser DOM, so use
-        # ``time.sleep`` instead of ``page.wait_for_timeout``.
+        # The subprocess must die within 20s of stop. Without process-group
+        # teardown the agent program is killed but the orphaned child keeps
+        # running until its own 300s sleep finishes. Polled state is an OS
+        # process, not the browser DOM, so use ``time.sleep``.
         deadline = time.monotonic() + 20.0
         while time.monotonic() < deadline and _is_process_alive(leaked_pid):
             time.sleep(0.2)
 
         assert not _is_process_alive(leaked_pid), (
-            f"Foreground subprocess (PID {leaked_pid}) is still alive 20s after Stop — the agent CLI was killed but its child subprocess was orphaned. See SCU-211."
+            f"Foreground subprocess (PID {leaked_pid}) is still alive 20s after stop — the agent program was killed but its child subprocess was orphaned. See SCU-211."
         )
     finally:
         if leaked_pid is not None:

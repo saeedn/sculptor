@@ -10,6 +10,8 @@ from playwright.sync_api import expect
 
 from sculptor.testing.elements.action_dialog import get_action_dialog
 from sculptor.testing.elements.base import insert_mention_into_tiptap
+from sculptor.testing.elements.terminal import get_agent_terminal_panel
+from sculptor.testing.fake_terminal_agent import add_registered_fake_terminal_agent
 from sculptor.testing.pages.settings_page import PlaywrightSettingsPage
 from sculptor.testing.playwright_utils import navigate_to_settings_page
 from sculptor.testing.playwright_utils import soft_reload_page
@@ -322,33 +324,59 @@ def test_builtin_chips(sculptor_instance_: SculptorInstance) -> None:
     )
 
 
-@user_story("to click a draft action and have the chat input focused with the prompt drafted in")
-def test_draft_action_populates_and_focuses_chat_input(sculptor_instance_: SculptorInstance) -> None:
-    """Clicking any draft (non-auto-submit) action inserts its prompt into the chat input
-    and gives focus to the input so the user can immediately type without clicking.
+@user_story("to click a draft action and have its prompt drafted into a capable terminal agent's PTY")
+def test_draft_action_drafts_prompt_into_terminal_pty(sculptor_instance_: SculptorInstance) -> None:
+    """Clicking a draft (non-auto-submit) action routes its prompt to a capable
+    terminal agent's PTY without submitting it.
 
-    This covers the general ChatInput behavior — not specific to built-in chips.
+    For a terminal agent that accepts automated prompts, ``useTerminalChatActions``
+    registers ``appendText`` to write through ``postAgentTerminalInput`` with
+    ``submit=false`` — the prompt is typed into the PTY (visible via the line-
+    discipline echo) but no Enter is sent. We assert the drafted text reaches the
+    terminal buffer; the auto-submit (PTY routing) path itself is covered in
+    ``test_terminal_agent_automated_prompts.py``.
     """
-    task_page = _create_task_and_navigate(sculptor_instance_)
     page = sculptor_instance_.page
-    actions_panel = task_page.get_actions_panel()
 
-    # Create a user-defined draft action (auto-submit off).
+    # Create a user-defined draft action (auto-submit off) before launching the
+    # agent. No spaces in the prompt so it lands on a single xterm line.
+    task_page = _create_task_and_navigate(sculptor_instance_)
+    actions_panel = task_page.get_actions_panel()
     actions_panel.get_add_button().click()
     dialog = get_action_dialog(page)
     expect(dialog).to_be_visible()
     dialog.fill_name("My Draft Action")
-    dialog.fill_prompt("Draft this into the input")
+    dialog.fill_prompt("DRAFT-INTO-PTY")
     # The auto-submit switch defaults to ON; toggle it OFF so the chip drafts instead of sends.
     dialog.get_auto_submit_switch().click()
     dialog.click_save()
     expect(dialog).not_to_be_visible()
 
-    actions_panel.get_action_chip_by_name("My Draft Action").click()
+    # Add the fake terminal agent (it accepts automated prompts) and wait until
+    # it is at its prompt so the action chip is enabled.
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
+    add_registered_fake_terminal_agent(page, agents_dir)
+    expect(get_agent_terminal_panel(page)).to_be_visible()
 
-    chat_input = task_page.get_chat_panel().get_chat_input()
-    expect(chat_input).to_contain_text("Draft this into the input")
-    expect(chat_input).to_be_focused()
+    # Click the draft chip: its text must reach the PTY (visible via the line-
+    # without being submitted.
+    actions_panel = task_page.get_actions_panel()
+    draft_chip = actions_panel.get_action_chip_by_name("My Draft Action")
+    expect(draft_chip).to_be_enabled()
+
+    # The draft routes through useTerminalChatActions -> postAgentTerminalInput
+    # with submit=false: the prompt is typed into the PTY but no Enter is sent.
+    # The fake runner ignores PTY stdin (and a bare PTY need not echo), so we
+    # assert the routing request itself carries the drafted text and does not
+    # submit — the terminal counterpart of appendText populating a composer.
+    with page.expect_request(
+        lambda request: "/terminal/input" in request.url and request.method == "POST"
+    ) as request_info:
+        draft_chip.click()
+
+    body = request_info.value.post_data_json
+    assert body is not None and body.get("text") == "DRAFT-INTO-PTY", f"unexpected draft input: {body}"
+    assert body.get("submit") is False, f"draft action must not submit: {body}"
 
 
 @user_story("to delete a group from the workspace actions panel and have its actions deleted too")

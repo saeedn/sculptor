@@ -33,7 +33,9 @@ def test_terminal_theme_updates_on_toggle(sculptor_instance_: SculptorInstance) 
     page = sculptor_instance_.page
     task_page = PlaywrightTaskPage(page=page)
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    # Plain terminal first agent: a model-free vehicle that opens a workspace
+    # whose terminal panel carries the xterm theme under test (no chat model).
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     # Wait for xterm theme to be fully initialized, then record initial colors.

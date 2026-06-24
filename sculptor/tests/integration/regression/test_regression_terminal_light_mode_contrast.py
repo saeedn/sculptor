@@ -76,7 +76,9 @@ def test_terminal_text_is_legible_in_light_mode(sculptor_instance_: SculptorInst
     page = sculptor_instance_.page
     task_page = PlaywrightTaskPage(page=page)
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    # Plain terminal first agent: a model-free vehicle that opens a workspace
+    # whose terminal panel carries the xterm theme under test (no chat model).
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
     wait_for_xterm_theme_ready(page)
 

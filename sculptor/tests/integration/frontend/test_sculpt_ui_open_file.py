@@ -62,16 +62,16 @@ def _run_sculpt_ui_open_file(
     return result.returncode, result.stdout, result.stderr
 
 
-_NO_OP_PROMPT = """\
-fake_claude:text `{"text": "ready"}`"""
-
-
 def _start_empty_workspace(page: Page) -> str:
-    """Start a workspace and return its workspace_id with no agent activity."""
+    """Start a workspace and return its workspace_id with no agent activity.
+
+    Uses a plain terminal first agent: these tests only need the workspace UI
+    shell and its diff panel, not a chat agent, so the terminal vehicle avoids
+    any LLM/model dependency.
+    """
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt=_NO_OP_PROMPT,
-        wait_for_agent_to_finish=True,
+        agent_type="terminal",
     )
     return _extract_workspace_id_from_url(page.url)
 

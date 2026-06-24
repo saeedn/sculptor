@@ -13,7 +13,6 @@ backend's logging.
 
 import json
 import os
-import re
 import subprocess
 import sys
 import time
@@ -23,7 +22,6 @@ from typing import Any
 import playwright.sync_api
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
 from sculptor.testing.pages.home_page import PlaywrightHomePage
 from sculptor.testing.playwright_utils import navigate_to_home_page
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
@@ -75,31 +73,8 @@ def _run_sculpt(instance: SculptorInstance, args: list[str]) -> tuple[int, str]:
     return result.returncode, result.stdout
 
 
-def _run_sculpt_raw(instance: SculptorInstance, args: list[str]) -> tuple[int, str]:
-    """Like _run_sculpt but does not inject --json.
-
-    Use for commands that produce non-standard output (e.g. NDJSON from --follow --json).
-    """
-    project_id = _get_project_id(instance)
-
-    env = {
-        **os.environ,
-        "SCULPT_PROJECT_ID": project_id,
-    }
-
-    full_args = args + ["--base-url", instance.backend_api_url]
-    result = subprocess.run(
-        [sys.executable, "-m", "sculpt.main"] + full_args,
-        capture_output=True,
-        text=True,
-        env=env,
-        timeout=30,
-    )
-    return result.returncode, result.stdout
-
-
 def _run_sculpt_capture(instance: SculptorInstance, args: list[str]) -> tuple[int, str, str]:
-    """Like _run_sculpt_raw but also returns stderr.
+    """Like _run_sculpt but does not inject --json and also returns stderr.
 
     Use for error cases — cli_error writes the message to stderr (which the
     other helpers discard), so asserting on it needs the captured stream.
@@ -120,126 +95,6 @@ def _run_sculpt_capture(instance: SculptorInstance, args: list[str]) -> tuple[in
         timeout=30,
     )
     return result.returncode, result.stdout, result.stderr
-
-
-class _Matcher:
-    """Base class for flexible value matchers used in _assert_matches."""
-
-    def matches(self, value: object) -> bool:
-        raise NotImplementedError
-
-    def describe(self) -> str:
-        raise NotImplementedError
-
-
-class _AnyStr(_Matcher):
-    """Matches any non-empty string."""
-
-    def matches(self, value: object) -> bool:
-        return isinstance(value, str) and len(value) > 0
-
-    def describe(self) -> str:
-        return "<any non-empty str>"
-
-
-class _AnyIsoDatetime(_Matcher):
-    """Matches an ISO 8601 datetime string (e.g. '2026-01-15T10:30:00Z')."""
-
-    def matches(self, value: object) -> bool:
-        return isinstance(value, str) and len(value) >= 19 and "T" in value
-
-    def describe(self) -> str:
-        return "<any ISO datetime>"
-
-
-class _AnyNumber(_Matcher):
-    """Matches any int or float, optionally requiring >= 0."""
-
-    def __init__(self, *, non_negative: bool = False) -> None:
-        self._non_negative = non_negative
-
-    def matches(self, value: object) -> bool:
-        if not isinstance(value, (int, float)):
-            return False
-        if self._non_negative and value < 0:
-            return False
-        return True
-
-    def describe(self) -> str:
-        return "<any number >= 0>" if self._non_negative else "<any number>"
-
-
-class _AnyIntOrNone(_Matcher):
-    """Matches an int or None."""
-
-    def matches(self, value: object) -> bool:
-        return value is None or isinstance(value, int)
-
-    def describe(self) -> str:
-        return "<int | None>"
-
-
-class _AnyStrOrNone(_Matcher):
-    """Matches a string or None."""
-
-    def matches(self, value: object) -> bool:
-        return value is None or isinstance(value, str)
-
-    def describe(self) -> str:
-        return "<str | None>"
-
-
-# Singleton matcher instances for use in expected dicts
-ANY_STR = _AnyStr()
-ANY_ISO_DATETIME = _AnyIsoDatetime()
-ANY_NON_NEGATIVE_NUMBER = _AnyNumber(non_negative=True)
-ANY_INT_OR_NONE = _AnyIntOrNone()
-ANY_STR_OR_NONE = _AnyStrOrNone()
-
-
-def _values_match(expected: object, actual: object) -> bool:
-    """Recursively check whether actual matches the expected template."""
-    if isinstance(expected, _Matcher):
-        return expected.matches(actual)
-    if isinstance(expected, dict):
-        if not isinstance(actual, dict):
-            return False
-        if set(expected.keys()) != set(actual.keys()):
-            return False
-        return all(_values_match(expected[k], actual[k]) for k in expected)
-    if isinstance(expected, list):
-        if not isinstance(actual, list):
-            return False
-        if len(expected) != len(actual):
-            return False
-        return all(_values_match(e, a) for e, a in zip(expected, actual))
-    return expected == actual
-
-
-def _describe_expected(value: object) -> object:
-    """Convert matchers to their descriptions for error messages."""
-    if isinstance(value, _Matcher):
-        return value.describe()
-    if isinstance(value, dict):
-        return {k: _describe_expected(v) for k, v in value.items()}
-    if isinstance(value, list):
-        return [_describe_expected(v) for v in value]
-    return value
-
-
-def _assert_matches(actual: object, expected: object) -> None:
-    """Assert that actual matches the expected template.
-
-    The expected template can contain:
-    - Literal values (compared with ==)
-    - _Matcher instances (e.g. ANY_STR, ANY_ISO_DATETIME)
-    - Nested dicts/lists (recursively matched, keys must match exactly)
-    """
-    if not _values_match(expected, actual):
-        expected_desc = _describe_expected(expected)
-        exp_json = json.dumps(expected_desc, indent=2, default=str)
-        act_json = json.dumps(actual, indent=2, default=str)
-        raise AssertionError(f"Value mismatch:\n  expected: {exp_json}\n  actual:   {act_json}")
 
 
 def _assert_is_iso_datetime(value: object) -> None:
@@ -331,15 +186,14 @@ RUN_KEYS = {"workspace_id", "agent_id", "strategy", "model", "prompt"}
 @user_story("to create a workspace via the CLI and confirm it exists")
 def test_workspace_create_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """Create a workspace with the sculpt CLI and verify it appears in the workspace list."""
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "CLI Created", "--strategy", "clone"]
-    )
+    base_branch = _worktree_branch(sculptor_instance_.project_path)
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "CLI Created")
     assert exit_code == 0, f"workspace create failed: {output}"
     created = json.loads(output)
 
     assert set(created.keys()) == WORKSPACE_CREATE_KEYS
     _assert_subset(
-        {"description": "CLI Created", "strategy": "CLONE", "source_branch": None},
+        {"description": "CLI Created", "strategy": "WORKTREE", "source_branch": base_branch},
         created,
     )
 
@@ -353,7 +207,7 @@ def test_workspace_create_via_cli(sculptor_instance_: SculptorInstance) -> None:
     ws_match = next(w for w in workspaces if w["id"] == created["id"])
     assert set(ws_match.keys()) == WORKSPACE_LIST_ALL_KEYS
     _assert_subset(
-        {"description": "CLI Created", "strategy": "CLONE", "agent_count": 0},
+        {"description": "CLI Created", "strategy": "WORKTREE", "agent_count": 0},
         ws_match,
     )
     _assert_is_iso_datetime(ws_match["created_at"])
@@ -363,9 +217,7 @@ def test_workspace_create_via_cli(sculptor_instance_: SculptorInstance) -> None:
 @user_story("to inspect workspace details via the CLI")
 def test_workspace_show_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """Create a workspace and then retrieve its details via `sculpt workspace show`."""
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "Show Test", "--strategy", "clone"]
-    )
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "Show Test")
     assert exit_code == 0, f"workspace create failed: {output}"
     created = json.loads(output)
     ws_id = created["id"]
@@ -380,7 +232,7 @@ def test_workspace_show_via_cli(sculptor_instance_: SculptorInstance) -> None:
             "id": ws_id,
             "repo_id": created["repo_id"],
             "description": "Show Test",
-            "strategy": "CLONE",
+            "strategy": "WORKTREE",
             "agent_count": 0,
         },
         detail,
@@ -392,9 +244,7 @@ def test_workspace_show_via_cli(sculptor_instance_: SculptorInstance) -> None:
 @user_story("to delete a workspace via the CLI")
 def test_workspace_delete_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """Create a workspace, delete it via CLI, and verify it no longer appears in the list."""
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "Delete Me", "--strategy", "clone"]
-    )
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "Delete Me")
     assert exit_code == 0, f"workspace create failed: {output}"
     created = json.loads(output)
     ws_id = created["id"]
@@ -442,6 +292,20 @@ def _worktree_branch(worktree_path: Path) -> str:
     return result.stdout.strip()
 
 
+def _create_workspace_via_cli(instance: SculptorInstance, name: str) -> tuple[int, str]:
+    """Create a worktree workspace via ``sculpt workspace create``.
+
+    Worktree (the only surviving strategy) requires an explicit source branch,
+    so mirror a real invocation by sourcing the repo's current branch — the same
+    value the Add Workspace form pre-selects.
+    """
+    base_branch = _worktree_branch(instance.project_path)
+    return _run_sculpt(
+        instance,
+        ["workspace", "create", "--name", name, "--strategy", "worktree", "--branch", base_branch],
+    )
+
+
 def _wait_for_new_worktree(
     instance: SculptorInstance,
     before: set[Path],
@@ -480,6 +344,7 @@ def test_run_with_repo_to_already_registered_path_is_idempotent(
     the full CLI -> /api/v1/projects/initialize -> /api/v1/projects -> /api/v1/workspaces
     chain. Without the fix, `sculpt run --repo <auto-registered project>` is the exact
     invocation pattern that blocks every agent that tries to spawn a workspace."""
+    base_branch = _worktree_branch(sculptor_instance_.project_path)
     exit_code, output = _run_sculpt(
         sculptor_instance_,
         [
@@ -492,14 +357,16 @@ def test_run_with_repo_to_already_registered_path_is_idempotent(
             "--name",
             "SCU-1309 idempotent repo",
             "--strategy",
-            "clone",
+            "worktree",
+            "--branch",
+            base_branch,
         ],
     )
     assert exit_code == 0, f"`sculpt run --repo <already-registered>` failed: {output}"
     assert "Failed to initialize repo (no response)" not in output
     result = json.loads(output)
     assert set(result.keys()) == RUN_KEYS
-    _assert_subset({"strategy": "CLONE", "prompt": "scu-1309 idempotent --repo"}, result)
+    _assert_subset({"strategy": "WORKTREE", "prompt": "scu-1309 idempotent --repo"}, result)
 
 
 @user_story("to spawn a worktree-strategy agent via the sculpt CLI with an explicit branch name")
@@ -631,9 +498,7 @@ def test_repo_show_via_cli(sculptor_instance_: SculptorInstance) -> None:
 @user_story("to create a workspace via the CLI and see it in the UI")
 def test_workspace_created_via_cli_visible_in_ui(sculptor_instance_: SculptorInstance) -> None:
     """Create a workspace via the sculpt CLI and verify it appears on the home page."""
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "CLI Visible In UI", "--strategy", "clone"]
-    )
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "CLI Visible In UI")
     assert exit_code == 0, f"workspace create failed: {output}"
 
     page = sculptor_instance_.page
@@ -707,9 +572,7 @@ def test_workspace_deleted_via_cli_disappears_from_ui(sculptor_instance_: Sculpt
 @user_story("to create an agent via the CLI and see it in the agent list")
 def test_agent_create_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """Create a workspace and agent via the CLI, then list agents in that workspace."""
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "Agent Test WS", "--strategy", "clone"]
-    )
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "Agent Test WS")
     assert exit_code == 0, f"workspace create failed: {output}"
     ws_id = json.loads(output)["id"]
 
@@ -737,9 +600,7 @@ def test_agent_create_via_cli(sculptor_instance_: SculptorInstance) -> None:
 @user_story("to inspect agent details via the CLI")
 def test_agent_show_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """Create an agent and retrieve its details via `sculpt agent show`."""
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "Agent Show WS", "--strategy", "clone"]
-    )
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "Agent Show WS")
     assert exit_code == 0
     ws = json.loads(output)
 
@@ -772,9 +633,7 @@ def test_agent_show_via_cli(sculptor_instance_: SculptorInstance) -> None:
 @user_story("to check an agent's status via the CLI")
 def test_agent_status_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """Create an agent and check its status via `sculpt agent status`."""
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "Agent Status WS", "--strategy", "clone"]
-    )
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "Agent Status WS")
     assert exit_code == 0
     ws_id = json.loads(output)["id"]
 
@@ -797,9 +656,7 @@ def test_agent_status_via_cli(sculptor_instance_: SculptorInstance) -> None:
 @user_story("to delete an agent via the CLI")
 def test_agent_delete_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """Create an agent, delete it, and verify it no longer appears in the list."""
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "Agent Delete WS", "--strategy", "clone"]
-    )
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "Agent Delete WS")
     assert exit_code == 0
     ws_id = json.loads(output)["id"]
 
@@ -865,9 +722,7 @@ def test_agent_created_in_ui_visible_via_cli(sculptor_instance_: SculptorInstanc
 @user_story("to create a workspace and agent via CLI and see the agent in the UI")
 def test_agent_created_via_cli_visible_in_ui(sculptor_instance_: SculptorInstance) -> None:
     """Create a workspace and agent via the CLI, then verify the workspace tab appears in the UI."""
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "CLI Agent UI Check", "--strategy", "clone"]
-    )
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "CLI Agent UI Check")
     assert exit_code == 0
     ws_id = json.loads(output)["id"]
 
@@ -890,12 +745,10 @@ def test_multiple_workspaces_via_cli(sculptor_instance_: SculptorInstance) -> No
     created_ids = []
 
     for name in names:
-        exit_code, output = _run_sculpt(
-            sculptor_instance_, ["workspace", "create", "--name", name, "--strategy", "clone"]
-        )
+        exit_code, output = _create_workspace_via_cli(sculptor_instance_, name)
         assert exit_code == 0, f"workspace create failed for {name}: {output}"
         created = json.loads(output)
-        _assert_subset({"description": name, "strategy": "CLONE"}, created)
+        _assert_subset({"description": name, "strategy": "WORKTREE"}, created)
         created_ids.append(created["id"])
 
     exit_code, output = _run_sculpt(sculptor_instance_, ["workspace", "list", "--all"])
@@ -910,16 +763,28 @@ def test_multiple_workspaces_via_cli(sculptor_instance_: SculptorInstance) -> No
 @user_story("to use the `sculpt run` shortcut to create a workspace and agent in one step")
 def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorInstance) -> None:
     """The `sculpt run` command should create a workspace with an agent in a single step."""
+    base_branch = _worktree_branch(sculptor_instance_.project_path)
     exit_code, output = _run_sculpt(
         sculptor_instance_,
-        ["run", "--model", "haiku", "--name", "Run Command Test", "--strategy", "clone", "Do something"],
+        [
+            "run",
+            "--model",
+            "haiku",
+            "--name",
+            "Run Command Test",
+            "--strategy",
+            "worktree",
+            "--branch",
+            base_branch,
+            "Do something",
+        ],
     )
     assert exit_code == 0, f"run command failed: {output}"
     result = json.loads(output)
 
     assert set(result.keys()) == RUN_KEYS
     _assert_subset(
-        {"strategy": "CLONE", "model": "CLAUDE-4-HAIKU", "prompt": "Do something"},
+        {"strategy": "WORKTREE", "model": "CLAUDE-4-HAIKU", "prompt": "Do something"},
         result,
     )
 
@@ -928,7 +793,7 @@ def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorIns
     exit_code, output = _run_sculpt(sculptor_instance_, ["workspace", "show", ws_id])
     assert exit_code == 0
     ws_detail = json.loads(output)
-    _assert_subset({"description": "Run Command Test", "strategy": "CLONE"}, ws_detail)
+    _assert_subset({"description": "Run Command Test", "strategy": "WORKTREE"}, ws_detail)
 
     # Verify the agent exists in that workspace
     exit_code, output = _run_sculpt(sculptor_instance_, ["agent", "list", "--workspace", ws_id])
@@ -952,9 +817,7 @@ def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorIns
 @user_story("to create agents with --harness and have a bare create reuse the most-recently-used one")
 def test_agent_create_harness_records_and_reuses_mru_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """`sculpt agent create --harness X` records X as the default; a later bare create reuses it."""
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "Harness MRU WS", "--strategy", "clone"]
-    )
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "Harness MRU WS")
     assert exit_code == 0, f"workspace create failed: {output}"
     ws_id = json.loads(output)["id"]
 
@@ -979,8 +842,10 @@ def test_agent_create_harness_records_and_reuses_mru_via_cli(sculptor_instance_:
 @user_story("to be told that `sculpt run` cannot create a terminal agent, since it always sends a prompt")
 def test_run_rejects_explicit_terminal_harness_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """`sculpt run --harness Terminal` is rejected up front (a terminal agent can't take a prompt)."""
+    base_branch = _worktree_branch(sculptor_instance_.project_path)
     exit_code, _stdout, stderr = _run_sculpt_capture(
-        sculptor_instance_, ["run", "do something", "--strategy", "clone", "--harness", "Terminal"]
+        sculptor_instance_,
+        ["run", "do something", "--strategy", "worktree", "--branch", base_branch, "--harness", "Terminal"],
     )
     assert exit_code == 1, f"expected rejection, got exit {exit_code}; stderr={stderr!r}"
     assert "sculpt run" in stderr, stderr
@@ -989,9 +854,21 @@ def test_run_rejects_explicit_terminal_harness_via_cli(sculptor_instance_: Sculp
 @user_story("to pass an explicit chat harness to `sculpt run`")
 def test_run_accepts_explicit_chat_harness_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """`sculpt run --harness Claude` is accepted and creates the workspace + a chat agent."""
+    base_branch = _worktree_branch(sculptor_instance_.project_path)
     exit_code, output = _run_sculpt(
         sculptor_instance_,
-        ["run", "do something", "--strategy", "clone", "--model", "haiku", "--harness", "Claude"],
+        [
+            "run",
+            "do something",
+            "--strategy",
+            "worktree",
+            "--branch",
+            base_branch,
+            "--model",
+            "haiku",
+            "--harness",
+            "Claude",
+        ],
     )
     assert exit_code == 0, f"run --harness Claude failed: {output}"
     result = json.loads(output)
@@ -1006,9 +883,7 @@ def test_run_accepts_explicit_chat_harness_via_cli(sculptor_instance_: SculptorI
 def test_run_reuses_mru_and_falls_back_for_terminal_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """A bare `sculpt run` reads the shared default; a Terminal default falls back to Claude (it has a prompt)."""
     # Record a Terminal default through `agent create` (shares the server-side MRU with run).
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["workspace", "create", "--name", "Run MRU WS", "--strategy", "clone"]
-    )
+    exit_code, output = _create_workspace_via_cli(sculptor_instance_, "Run MRU WS")
     assert exit_code == 0, f"workspace create failed: {output}"
     ws_id = json.loads(output)["id"]
     exit_code, output = _run_sculpt(
@@ -1019,8 +894,10 @@ def test_run_reuses_mru_and_falls_back_for_terminal_via_cli(sculptor_instance_: 
 
     # A bare `run` always sends a prompt, so the Terminal default must fall back to a chat
     # agent rather than failing — the run succeeds and the created agent is not a terminal one.
+    base_branch = _worktree_branch(sculptor_instance_.project_path)
     exit_code, output = _run_sculpt(
-        sculptor_instance_, ["run", "do something", "--strategy", "clone", "--model", "haiku"]
+        sculptor_instance_,
+        ["run", "do something", "--strategy", "worktree", "--branch", base_branch, "--model", "haiku"],
     )
     assert exit_code == 0, f"run with a Terminal MRU should fall back to Claude, not fail: {output}"
     result = json.loads(output)
@@ -1029,298 +906,3 @@ def test_run_reuses_mru_and_falls_back_for_terminal_via_cli(sculptor_instance_: 
     exit_code, output = _run_sculpt(sculptor_instance_, ["agent", "show", result["agent_id"]])
     assert exit_code == 0, f"agent show failed: {output}"
     assert not json.loads(output)["title"].startswith("Terminal"), output
-
-
-# ---------------------------------------------------------------------------
-# Agent tests: WebSocket-powered commands
-# ---------------------------------------------------------------------------
-
-
-def _create_fake_claude_agent(
-    instance: SculptorInstance,
-    workspace_name: str,
-    prompt: str,
-) -> tuple[str, str]:
-    """Create a FakeClaude agent via the UI and return (workspace_id, agent_id).
-
-    Uses start_task_and_wait_for_ready to create the agent with FakeClaude,
-    then resolves the IDs via the CLI.
-    """
-    page = instance.page
-    start_task_and_wait_for_ready(
-        sculptor_page=page,
-        prompt=prompt,
-        workspace_name=workspace_name,
-    )
-
-    exit_code, output = _run_sculpt(instance, ["workspace", "list", "--all"])
-    assert exit_code == 0, f"workspace list failed: {output}"
-    workspaces = json.loads(output)
-    ws = next(w for w in workspaces if w.get("description") == workspace_name)
-
-    exit_code, output = _run_sculpt(instance, ["agent", "list", "--workspace", ws["id"]])
-    assert exit_code == 0, f"agent list failed: {output}"
-    agents = json.loads(output)
-    assert len(agents) >= 1
-
-    return ws["id"], agents[0]["id"]
-
-
-def _parse_ndjson(output: str) -> list[dict[str, Any]]:
-    """Parse newline-delimited JSON output into a list of event dicts."""
-    lines = [line for line in output.strip().split("\n") if line]
-    return [json.loads(line) for line in lines]
-
-
-def _expected_user_message(prompt_text: str, *, sent_via: str | None = None) -> dict[str, Any]:
-    """Build the expected template for a FakeClaude user message.
-
-    Args:
-        prompt_text: The text content of the message.
-        sent_via: Expected value of the sentVia field. None for UI-sent messages,
-            "sculpt" for messages sent via the sculpt CLI.
-    """
-    return {
-        "role": "USER",
-        "id": ANY_STR,
-        "content": [{"objectType": "TextBlock", "type": "text", "text": prompt_text}],
-        "parentToolUseId": None,
-        "approximateCreationTime": ANY_ISO_DATETIME,
-        "turnMetrics": None,
-        "stopped": False,
-        "sentVia": sent_via,
-    }
-
-
-def _expected_assistant_message(response_text: str) -> dict[str, Any]:
-    """Build the expected template for a FakeClaude assistant message."""
-    return {
-        "role": "ASSISTANT",
-        "id": ANY_STR,
-        "content": [{"objectType": "TextBlock", "type": "text", "text": response_text}],
-        "parentToolUseId": None,
-        "approximateCreationTime": ANY_ISO_DATETIME,
-        "turnMetrics": {
-            "durationSeconds": ANY_NON_NEGATIVE_NUMBER,
-            "inputTokens": ANY_INT_OR_NONE,
-            "outputTokens": ANY_INT_OR_NONE,
-            "reasoningTokens": ANY_INT_OR_NONE,
-            "changedFiles": [],
-            "contextTotalTokens": ANY_INT_OR_NONE,
-            "autoCompactThreshold": ANY_INT_OR_NONE,
-        },
-        "stopped": False,
-        "sentVia": None,
-    }
-
-
-def _expected_status_event(agent_id: str) -> dict[str, Any]:
-    """Build the expected template for a --follow status NDJSON event."""
-    return {
-        "type": "status",
-        "data": {
-            "id": agent_id,
-            "status": "READY",
-            "updated_at": ANY_ISO_DATETIME,
-            "current_activity": ANY_STR_OR_NONE,
-            "last_activity": ANY_STR_OR_NONE,
-            "waiting_detail": None,
-            "error_detail": None,
-            "task_completed": 0,
-            "task_total": 0,
-            "current_task_subject": None,
-        },
-    }
-
-
-@user_story("to view agent messages via the CLI")
-def test_agent_messages_via_cli(sculptor_instance_: SculptorInstance) -> None:
-    """Create an agent with a prompt and check its messages via `sculpt agent messages`."""
-    prompt = 'fake_claude:text `{"text": "Hello from FakeClaude"}`'
-    _ws_id, agent_id = _create_fake_claude_agent(
-        sculptor_instance_,
-        workspace_name="Agent Messages WS",
-        prompt=prompt,
-    )
-
-    exit_code, output = _run_sculpt(sculptor_instance_, ["agent", "messages", agent_id])
-    assert exit_code == 0, f"agent messages failed: {output}"
-    messages = json.loads(output)
-    assert isinstance(messages, list)
-    assert len(messages) == 2, f"Expected exactly 2 messages (user + assistant), got {len(messages)}"
-
-    _assert_matches(messages[0], _expected_user_message(prompt))
-    _assert_matches(messages[1], _expected_assistant_message("Hello from FakeClaude"))
-
-
-@user_story("to view rich agent details via the CLI show command")
-def test_agent_show_includes_rich_fields(sculptor_instance_: SculptorInstance) -> None:
-    """Verify `sculpt agent show` returns rich WebSocket-sourced fields for a completed agent."""
-    ws_id, agent_id = _create_fake_claude_agent(
-        sculptor_instance_,
-        workspace_name="Agent Rich Show WS",
-        prompt='fake_claude:text `{"text": "Show me details"}`',
-    )
-
-    exit_code, output = _run_sculpt(sculptor_instance_, ["agent", "show", agent_id])
-    assert exit_code == 0, f"agent show failed: {output}"
-    detail = json.loads(output)
-
-    assert set(detail.keys()) == AGENT_SHOW_KEYS
-    _assert_subset(
-        {
-            "id": agent_id,
-            "workspace_id": ws_id,
-            "is_deleted": False,
-            "interface": "API",
-            "status": "READY",
-            "error_detail": None,
-        },
-        detail,
-    )
-    _assert_is_iso_datetime(detail["created_at"])
-    _assert_is_iso_datetime(detail["updated_at"])
-
-
-@user_story("to follow agent status via the CLI and get NDJSON output")
-def test_agent_status_follow_json(sculptor_instance_: SculptorInstance) -> None:
-    """Create a completed FakeClaude agent and follow its status with --follow --json.
-
-    A completed agent is in terminal state (READY), so --follow should emit
-    one status event and one exit event, then exit with code 0.
-    """
-    _ws_id, agent_id = _create_fake_claude_agent(
-        sculptor_instance_,
-        workspace_name="Agent Follow WS",
-        prompt='fake_claude:text `{"text": "Follow my status"}`',
-    )
-
-    exit_code, output = _run_sculpt_raw(sculptor_instance_, ["agent", "status", agent_id, "--follow", "--json"])
-    assert exit_code == 0, f"agent status --follow failed with code {exit_code}: {output}"
-
-    events = _parse_ndjson(output)
-    assert len(events) == 2, f"Expected exactly 2 NDJSON lines (status + exit), got {len(events)}"
-
-    _assert_matches(events[0], _expected_status_event(agent_id))
-    assert events[1] == {"type": "exit", "data": {"reason": "terminal_state"}}
-
-
-@user_story("to follow agent messages via the CLI and get NDJSON output")
-def test_agent_messages_follow_json(sculptor_instance_: SculptorInstance) -> None:
-    """Create a completed FakeClaude agent and follow its messages with --follow --json.
-
-    Should emit a status event, message events (user + assistant), and an exit event.
-    """
-    prompt = 'fake_claude:text `{"text": "Follow my messages"}`'
-    _ws_id, agent_id = _create_fake_claude_agent(
-        sculptor_instance_,
-        workspace_name="Agent Msg Follow WS",
-        prompt=prompt,
-    )
-
-    exit_code, output = _run_sculpt_raw(sculptor_instance_, ["agent", "messages", agent_id, "--follow", "--json"])
-    assert exit_code == 0, f"agent messages --follow failed with code {exit_code}: {output}"
-
-    events = _parse_ndjson(output)
-    assert len(events) == 4, f"Expected exactly 4 NDJSON lines (status + 2 messages + exit), got {len(events)}"
-
-    _assert_matches(events[0], _expected_status_event(agent_id))
-    _assert_matches(events[1], {"type": "message", "data": _expected_user_message(prompt)})
-    _assert_matches(events[2], {"type": "message", "data": _expected_assistant_message("Follow my messages")})
-    assert events[3] == {"type": "exit", "data": {"reason": "terminal_state"}}
-
-
-@user_story("to see artifact names produced by a FakeClaude agent that uses TaskCreate")
-def test_agent_show_artifact_names(sculptor_instance_: SculptorInstance) -> None:
-    """Create a FakeClaude agent that uses TaskCreate, producing a PLAN artifact.
-
-    Verify that `sculpt agent show` reports the artifact name in `artifact_names`.
-    """
-    prompt = """\
-fake_claude:multi_step `{
-  "steps": [
-    {"command": "task_create", "args": {"id": "1", "subject": "First task", "status": "in_progress", "activeForm": "Working on first task"}},
-    {"command": "task_create", "args": {"id": "2", "subject": "Second task", "status": "pending", "activeForm": "Working on second task"}}
-  ]
-}`"""
-    ws_id, agent_id = _create_fake_claude_agent(
-        sculptor_instance_,
-        workspace_name="Agent Artifact WS",
-        prompt=prompt,
-    )
-
-    exit_code, output = _run_sculpt(sculptor_instance_, ["agent", "show", agent_id])
-    assert exit_code == 0, f"agent show failed: {output}"
-    detail = json.loads(output)
-
-    assert set(detail.keys()) == AGENT_SHOW_KEYS
-    _assert_subset(
-        {
-            "id": agent_id,
-            "workspace_id": ws_id,
-            "is_deleted": False,
-            "interface": "API",
-            "status": "READY",
-            "error_detail": None,
-        },
-        detail,
-    )
-    assert sorted(detail["artifact_names"]) == ["PLAN"]
-
-
-# ---------------------------------------------------------------------------
-# sent_via badge tests: sculpt CLI → verify badge in UI
-# ---------------------------------------------------------------------------
-
-
-@user_story("to see which messages were sent by sculpt in the UI")
-def test_sculpt_send_shows_sent_via_badge_in_ui(sculptor_instance_: SculptorInstance) -> None:
-    """Send a follow-up message via sculpt CLI and verify the 'via sculpt' badge is shown in the UI.
-
-    Also confirms that the initial UI-sent message does NOT display the badge.
-    """
-    prompt = 'fake_claude:text `{"text": "Initial response"}`'
-    task_page = start_task_and_wait_for_ready(
-        sculptor_page=sculptor_instance_.page,
-        prompt=prompt,
-        workspace_name="Sculpt Badge WS",
-        wait_for_agent_to_finish=True,
-    )
-    agent_id = task_page.get_task_id()
-    ws_match = re.search(r"/ws/([a-zA-Z0-9_-]+)/", sculptor_instance_.page.url)
-    assert ws_match, f"Could not extract workspace ID from URL: {sculptor_instance_.page.url}"
-    workspace_id = ws_match.group(1)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
-
-    # Send a follow-up message via sculpt CLI
-    follow_up = 'fake_claude:text `{"text": "Sculpt follow-up"}`'
-    exit_code, output = _run_sculpt(
-        sculptor_instance_, ["agent", "send", agent_id, follow_up, "--workspace", workspace_id]
-    )
-    assert exit_code == 0, f"agent send failed: {output}"
-
-    # Wait for the sculpt-sent message and the agent's response to appear
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=4)
-
-    # The sculpt-sent message is the 3rd message (index 2, 0-based)
-    messages = chat_panel.get_messages()
-    sculpt_message = messages.nth(2)
-
-    # Verify the 'via sculpt' badge is visible on the sculpt-sent message
-    badge = chat_panel.get_sent_via_badge(sculpt_message)
-    expect(badge).to_be_visible()
-    expect(badge).to_contain_text("sculpt")
-
-    # Verify the initial UI-sent message (index 0) has NO badge
-    ui_message = messages.nth(0)
-    ui_badge = chat_panel.get_sent_via_badge(ui_message)
-    expect(ui_badge).to_have_count(0)
-
-    # Also verify that the CLI messages output includes sentVia for the sculpt-sent message
-    exit_code, output = _run_sculpt(sculptor_instance_, ["agent", "messages", agent_id])
-    assert exit_code == 0, f"agent messages failed: {output}"
-    cli_messages = json.loads(output)
-    assert len(cli_messages) == 4, f"Expected 4 messages, got {len(cli_messages)}"
-    _assert_matches(cli_messages[2], _expected_user_message(follow_up, sent_via="sculpt"))
-    _assert_matches(cli_messages[0], _expected_user_message(prompt, sent_via=None))

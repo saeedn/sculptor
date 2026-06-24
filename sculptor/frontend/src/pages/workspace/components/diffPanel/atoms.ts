@@ -41,17 +41,15 @@ export const diffPanelStateAtomFamily = atomFamily((workspaceId: string) =>
 );
 
 /**
- * Whether the diff viewer column is visible.  Stored globally by default so
- * the panel behaves like the other docked panels (a single shared open/close
- * state across workspaces).  When the experimental "per-workspace panel
- * layout" flag is enabled, `usePerWorkspacePanelLayout` saves/restores this
- * value per workspace on switch — mirroring how zone visibility is handled.
+ * Whether the diff viewer column is visible.  Stored globally so the panel
+ * behaves like the other docked panels (a single shared open/close state
+ * across workspaces).
  */
 export const diffPanelOpenAtom = atomWithDebouncedStorage<boolean>("sculptor-diffPanel-open", false, 200);
 
 /**
- * Diff/chat split ratio (0–100).  Global with optional per-workspace
- * override, parallelling `diffPanelOpenAtom`.
+ * Diff/chat split ratio (0–100).  Stored globally, parallelling
+ * `diffPanelOpenAtom`.
  */
 export const diffPanelSplitRatioAtom = atomWithDebouncedStorage<number>("sculptor-diffPanel-splitRatio", 50, 200);
 

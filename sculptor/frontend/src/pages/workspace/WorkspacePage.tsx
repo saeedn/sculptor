@@ -15,7 +15,6 @@ import {
 } from "../../common/state/atoms/workspaces.ts";
 import { useMarkRead } from "../../common/state/hooks/useMarkRead";
 import { usePanelLayoutSync } from "../../common/state/hooks/usePanelLayoutSync.ts";
-import { usePerWorkspacePanelLayout } from "../../common/state/hooks/usePerWorkspacePanelLayout.ts";
 import { useWorkspaceFiles } from "../../common/state/hooks/useWorkspaceFiles.ts";
 import { zenModeActiveAtom } from "../../components/panels/atoms.ts";
 import { DockingLayout } from "../../components/panels/DockingLayout";
@@ -42,7 +41,6 @@ const WorkspacePageContent = ({ taskID }: { taskID: string }): ReactElement => {
   // Sync artifacts for the currently viewed task only
   useArtifactSync(workspaceID, taskID);
   usePanelLayoutSync();
-  usePerWorkspacePanelLayout(workspaceID);
 
   // Pre-warm the file list cache so @-mention fuzzy search has data ready
   // before the user types, even if the file browser panel is not open.

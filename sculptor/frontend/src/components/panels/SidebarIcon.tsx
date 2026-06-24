@@ -1,4 +1,3 @@
-import { useDraggable } from "@dnd-kit/core";
 import { Tooltip } from "@radix-ui/themes";
 import { useAtomValue } from "jotai";
 import { type ReactElement, useState } from "react";
@@ -33,7 +32,6 @@ export const SidebarIcon = ({ panelId, zoneId }: SidebarIconProps): ReactElement
   const { togglePanel } = usePanelActions();
 
   const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
-  const { attributes, listeners, setNodeRef } = useDraggable({ id: panelId });
 
   if (!panelDef) return null;
 
@@ -52,7 +50,7 @@ export const SidebarIcon = ({ panelId, zoneId }: SidebarIconProps): ReactElement
       <Tooltip content={panelDef.displayName} side="right" open={isContextMenuOpen ? false : undefined}>
         <div>
           <PanelContextMenu panelId={panelId} zoneId={zoneId} onOpenChange={setIsContextMenuOpen}>
-            <div ref={setNodeRef} className={iconClassName} onClick={handleClick} {...listeners} {...attributes}>
+            <div role="button" className={iconClassName} onClick={handleClick}>
               <Icon size={18} />
             </div>
           </PanelContextMenu>

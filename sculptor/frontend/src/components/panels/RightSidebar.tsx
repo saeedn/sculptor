@@ -3,59 +3,36 @@ import type { ReactElement } from "react";
 import { memo } from "react";
 
 import { focusModeActiveAtom, panelsInZoneAtom, zenModeActiveAtom } from "~/components/panels/atoms.ts";
-import type { DropTarget } from "~/components/panels/SidebarDropZone";
-import { SidebarDropZone } from "~/components/panels/SidebarDropZone";
-import type { PanelId } from "~/components/panels/types.ts";
-import { hasZoneContent } from "~/components/panels/utils.ts";
+import { SidebarIcon } from "~/components/panels/SidebarIcon";
+import type { PanelId, ZoneId } from "~/components/panels/types.ts";
 
 import styles from "./Sidebar.module.scss";
 
-type RightSidebarProps = {
-  dropTarget: DropTarget | undefined;
-  activeDragId: PanelId | null;
-};
+const SidebarZone = ({ zoneId, panelIds }: { zoneId: ZoneId; panelIds: ReadonlyArray<PanelId> }): ReactElement => (
+  <div data-droppable-id={zoneId}>
+    {panelIds.map((panelId) => (
+      <SidebarIcon key={panelId} panelId={panelId} zoneId={zoneId} />
+    ))}
+  </div>
+);
 
-const RightSidebarInner = ({ dropTarget, activeDragId }: RightSidebarProps): ReactElement | null => {
+const RightSidebarInner = (): ReactElement | null => {
   const isZenModeActive = useAtomValue(zenModeActiveAtom);
   const isFocusModeActive = useAtomValue(focusModeActiveAtom);
   const topRightPanels = useAtomValue(panelsInZoneAtom("top-right"));
   const bottomRightPanels = useAtomValue(panelsInZoneAtom("bottom-right"));
 
-  const hasTopRight = hasZoneContent({ panelIds: topRightPanels, zoneId: "top-right", dropTarget });
-  const hasBottomRight = hasZoneContent({ panelIds: bottomRightPanels, zoneId: "bottom-right", dropTarget });
-  const shouldShowDivider = hasTopRight && hasBottomRight;
-  // The bottom drop zone is visible whenever it actually has content, or when
-  // top has content to drop next to. The one case it hides is when the side is
-  // (or would become, via dragging the only top panel) entirely empty — then
-  // only top-right is shown so drops can only land there.
-  const isDraggingOnlyTopPanel =
-    activeDragId !== null && topRightPanels.length === 1 && topRightPanels[0] === activeDragId;
-  const shouldShowBottomRight = bottomRightPanels.length > 0 || (topRightPanels.length > 0 && !isDraggingOnlyTopPanel);
+  const shouldShowDivider = topRightPanels.length > 0 && bottomRightPanels.length > 0;
 
   if (isZenModeActive || isFocusModeActive) return null;
 
   return (
     <div className={`${styles.sidebar} ${styles.right}`}>
-      <SidebarDropZone
-        zoneId="top-right"
-        panelIds={topRightPanels}
-        dropTarget={dropTarget}
-        activeDragId={activeDragId}
-        expandWhenEmpty={!hasBottomRight}
-      />
+      <SidebarZone zoneId="top-right" panelIds={topRightPanels} />
 
       {shouldShowDivider && <div className={styles.divider} />}
 
-      {shouldShowBottomRight && (
-        <SidebarDropZone
-          zoneId="bottom-right"
-          panelIds={bottomRightPanels}
-          dropTarget={dropTarget}
-          activeDragId={activeDragId}
-          expandWhenEmpty
-          expandDuringDrag={!isDraggingOnlyTopPanel}
-        />
-      )}
+      {bottomRightPanels.length > 0 && <SidebarZone zoneId="bottom-right" panelIds={bottomRightPanels} />}
 
       <div className={styles.spacer} />
     </div>

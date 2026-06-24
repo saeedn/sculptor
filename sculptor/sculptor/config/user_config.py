@@ -268,10 +268,6 @@ class UserConfig(SerializableModel):
         default=True,
         description="Whether to enable smooth text streaming animation in the chat",
     )
-    is_panel_layout_per_workspace: bool = Field(
-        default=False,
-        description="When enabled, panel visibility and sizes are local to each workspace instead of shared",
-    )
     enable_in_place_workspaces: bool = Field(
         default=False,
         description="When enabled, the in-place workspace mode is available during workspace creation",

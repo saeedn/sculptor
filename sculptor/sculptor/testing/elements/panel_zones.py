@@ -54,9 +54,6 @@ class PlaywrightPanelZonesElement:
     def get_focus_mode_button(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.FOCUS_MODE_BUTTON)
 
-    def get_configure_context_menu_item(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.PANEL_CONTEXT_MENU_CONFIGURE)
-
     def get_file_browser_panel(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.FILE_BROWSER_PANEL)
 
@@ -71,20 +68,3 @@ class PlaywrightPanelZonesElement:
         icon = self._page.locator(f'[data-panel-icon="{plugin_id}"]')
         expect(icon).to_be_visible()
         icon.click()
-
-    def move_panel_to_zone(self, panel_icon_id: ElementIDs, zone_key: str) -> None:
-        """Move a panel to a different zone via its sidebar icon context menu.
-
-        Right-clicks the panel's sidebar icon, hovers "Move to", and selects
-        the target zone.  The panel must already be registered (icon visible
-        in the sidebar).
-        """
-        icon = self._page.get_by_test_id(panel_icon_id)
-        expect(icon).to_be_visible()
-        icon.click(button="right")
-        move_to = self._page.get_by_test_id(ElementIDs.PANEL_CONTEXT_MENU_MOVE_TO)
-        expect(move_to).to_be_visible()
-        move_to.hover()
-        zone_option = self._page.get_by_test_id(f"{ElementIDs.PANEL_CONTEXT_MENU_ZONE_OPTION}-{zone_key}")
-        expect(zone_option).to_be_visible()
-        zone_option.click()

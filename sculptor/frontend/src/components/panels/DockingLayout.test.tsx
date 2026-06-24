@@ -1,4 +1,3 @@
-import { DndContext } from "@dnd-kit/core";
 import { cleanup, fireEvent, screen, within } from "@testing-library/react";
 import { createStore } from "jotai";
 import { Circle } from "lucide-react";
@@ -17,8 +16,6 @@ import {
   zoneVisibilityAtom,
 } from "~/components/panels/atoms.ts";
 import { DockingLayout } from "~/components/panels/DockingLayout";
-import { LeftSidebar } from "~/components/panels/LeftSidebar";
-import { RightSidebar } from "~/components/panels/RightSidebar";
 import { renderWithProviders } from "~/components/panels/testUtils";
 import type { PanelDefinition, PanelId } from "~/components/panels/types.ts";
 
@@ -361,112 +358,6 @@ describe("DockingLayout", () => {
     });
   });
 
-  describe("drag visual feedback", () => {
-    it("shows placeholder before the first icon when drop target is index 0", () => {
-      const store = createDefaultTestStore();
-      const { container } = renderTest(
-        <DndContext>
-          <LeftSidebar dropTarget={{ zoneId: "top-left", index: 0 }} activeDragId={null} />
-        </DndContext>,
-        store,
-      );
-
-      const topLeftZone = getDropZone(container, "top-left");
-      const children = Array.from(topLeftZone!.children);
-      expect(children[0]!.className).toContain("placeholder");
-    });
-
-    it("shows placeholder after the last icon when drop target is past the end", () => {
-      const store = createDefaultTestStore();
-      // top-left has info and cost (indices 0 and 1), so dropTarget index 2 = after last
-      const { container } = renderTest(
-        <DndContext>
-          <LeftSidebar dropTarget={{ zoneId: "top-left", index: 2 }} activeDragId={null} />
-        </DndContext>,
-        store,
-      );
-
-      const topLeftZone = getDropZone(container, "top-left");
-      const children = Array.from(topLeftZone!.children);
-      expect(children[children.length - 1]!.className).toContain("placeholder");
-    });
-
-    it("shows no placeholder when there is no drop target", () => {
-      const store = createDefaultTestStore();
-      const { container } = renderTest(
-        <DndContext>
-          <LeftSidebar dropTarget={undefined} activeDragId={null} />
-        </DndContext>,
-        store,
-      );
-
-      const placeholders = container.querySelectorAll("[class*='placeholder']");
-      expect(placeholders.length).toBe(0);
-    });
-
-    it("shows placeholder in empty zone when targeted by drop", () => {
-      const store = createDefaultTestStore();
-      // bottom-left is empty by default
-      const { container } = renderTest(
-        <DndContext>
-          <LeftSidebar dropTarget={{ zoneId: "bottom-left", index: 0 }} activeDragId={null} />
-        </DndContext>,
-        store,
-      );
-
-      const bottomLeftZone = getDropZone(container, "bottom-left");
-      expect(bottomLeftZone).not.toBeNull();
-      const placeholder = bottomLeftZone!.querySelector("[class*='placeholder']");
-      expect(placeholder).not.toBeNull();
-    });
-
-    it("does not show placeholder in empty zone when not targeted", () => {
-      const store = createDefaultTestStore();
-      const { container } = renderTest(
-        <DndContext>
-          <LeftSidebar dropTarget={undefined} activeDragId={null} />
-        </DndContext>,
-        store,
-      );
-
-      const bottomLeftZone = getDropZone(container, "bottom-left");
-      expect(bottomLeftZone).not.toBeNull();
-      const placeholder = bottomLeftZone!.querySelector("[class*='placeholder']");
-      expect(placeholder).toBeNull();
-    });
-
-    it("shows placeholder before the first icon in the right sidebar", () => {
-      const store = createDefaultTestStore();
-      const { container } = renderTest(
-        <DndContext>
-          <RightSidebar dropTarget={{ zoneId: "top-right", index: 0 }} activeDragId={null} />
-        </DndContext>,
-        store,
-      );
-
-      const topRightZone = getDropZone(container, "top-right");
-      const children = Array.from(topRightZone!.children);
-      expect(children[0]!.className).toContain("placeholder");
-    });
-
-    it("unmounts the dragged icon from its source zone", () => {
-      const store = createDefaultTestStore();
-      // top-left has info and cost; drag info out of it
-      const { container } = renderTest(
-        <DndContext>
-          <LeftSidebar dropTarget={undefined} activeDragId="info" />
-        </DndContext>,
-        store,
-      );
-
-      const topLeftZone = getDropZone(container, "top-left");
-      const icons = topLeftZone!.querySelectorAll("[data-panel-icon]");
-      // Only cost should remain; info is unmounted while being dragged
-      expect(icons.length).toBe(1);
-      expect(icons[0]!.getAttribute("data-panel-icon")).toBe("cost");
-    });
-  });
-
   describe("reorder within zone", () => {
     it("renders icons in the order specified by zoneOrderAtom", () => {
       const store = createDefaultTestStore();
@@ -616,23 +507,6 @@ describe("DockingLayout", () => {
 
       // Info content should be visible in top-right (where it moved)
       expect(screen.getByText(TEST_PANEL_CONTENT.info)).toBeInTheDocument();
-    });
-  });
-
-  describe("context menu", () => {
-    it("right-clicking an icon opens a context menu with the panel name", () => {
-      const store = createDefaultTestStore();
-      const { container } = renderTest(<DockingLayout />, store);
-
-      const infoIcon = getClickableIcon(container, "info");
-      expect(infoIcon).not.toBeNull();
-
-      fireEvent.contextMenu(infoIcon!);
-
-      // Radix context menu renders in a portal — the panel display name "Info" also
-      // appears in the InfoPanel content, so we check that "Move to" (unique to the
-      // context menu) is present as a proxy for the menu opening.
-      expect(screen.getByText("Move to")).toBeInTheDocument();
     });
   });
 

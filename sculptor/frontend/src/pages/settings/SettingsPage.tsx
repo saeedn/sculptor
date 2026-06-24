@@ -18,7 +18,6 @@ import {
   isEntityMentionsEnabledAtom,
   isFrontendPluginsEnabledAtom,
   isInPlaceWorkspacesEnabledAtom,
-  isPanelLayoutPerWorkspaceAtom,
   isPiAgentEnabledAtom,
   isReviewAllEnabledAtom,
   isRichMarkdownRenderingEnabledAtom,
@@ -38,7 +37,6 @@ import { EnvironmentVariablesSection } from "./components/EnvironmentVariablesSe
 import { FileBrowserSettingsSection } from "./components/FileBrowserSettingsSection.tsx";
 import { GitSettingsSection } from "./components/GitSettingsSection.tsx";
 import { KeybindingsSection } from "./components/KeybindingsSection.tsx";
-import { PanelsSettingsSection } from "./components/PanelsSettingsSection.tsx";
 import { PiSettingsSection } from "./components/PiSettingsSection.tsx";
 import { PluginsSettingsSection } from "./components/PluginsSettingsSection.tsx";
 import { ReposSection } from "./components/ReposSection.tsx";
@@ -92,7 +90,6 @@ export const SettingsPage = (): ReactElement => {
   const isEntityMentionsEnabled = useAtomValue(isEntityMentionsEnabledAtom);
   const isRichMarkdownRenderingEnabled = useAtomValue(isRichMarkdownRenderingEnabledAtom);
   const isSmoothStreamingEnabled = useAtomValue(isSmoothStreamingUserPreferenceAtom);
-  const isPanelLayoutPerWorkspace = useAtomValue(isPanelLayoutPerWorkspaceAtom);
   const isDefaultFastMode = useAtomValue(isDefaultFastModeAtom);
   const defaultEffortLevel = useAtomValue(defaultEffortLevelAtom);
   const [toast, setToast] = useState<ToastContent | null>(null);
@@ -267,9 +264,6 @@ export const SettingsPage = (): ReactElement => {
               {activeSection === SettingsSection.KEYBINDINGS && (
                 <KeybindingsSection onSettingChange={handleSettingChange} />
               )}
-              {activeSection === SettingsSection.PANELS && (
-                <PanelsSettingsSection onSettingChange={handleSettingChange} />
-              )}
               {activeSection === SettingsSection.PLUGINS && <PluginsSettingsSection />}
               {activeSection === SettingsSection.PRIVACY && (
                 <SettingsSectionLayout description="Your email address.">
@@ -324,17 +318,6 @@ export const SettingsPage = (): ReactElement => {
                       checked={isSmoothStreamingEnabled}
                       onCheckedChange={(checked) =>
                         handleSettingChange(UserConfigField.IS_SMOOTH_STREAMING_ENABLED, checked)
-                      }
-                    />
-                  </SettingRow>
-                  <SettingRow
-                    title="Per-workspace panel layout"
-                    description="Panel visibility and sizes are local to each workspace. Panel positions are still shared."
-                  >
-                    <Switch
-                      checked={isPanelLayoutPerWorkspace}
-                      onCheckedChange={(checked) =>
-                        handleSettingChange(UserConfigField.IS_PANEL_LAYOUT_PER_WORKSPACE, checked)
                       }
                     />
                   </SettingRow>

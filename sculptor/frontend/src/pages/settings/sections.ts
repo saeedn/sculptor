@@ -5,7 +5,6 @@ import {
   FolderTreeIcon,
   GitBranchIcon,
   KeyboardIcon,
-  LayoutGridIcon,
   PlayIcon,
   PuzzleIcon,
   ShieldCheckIcon,
@@ -33,7 +32,6 @@ export const SettingsSection = {
   GENERAL: "GENERAL",
   AGENT: "AGENT",
   KEYBINDINGS: "KEYBINDINGS",
-  PANELS: "PANELS",
   PLUGINS: "PLUGINS",
   DEPENDENCIES: "DEPENDENCIES",
   PI: "PI",
@@ -89,14 +87,6 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
     paletteKeywords: ["shortcuts", "hotkeys"],
     icon: KeyboardIcon,
     testId: ElementIds.SETTINGS_NAV_KEYBINDINGS,
-  },
-  {
-    id: SettingsSection.PANELS,
-    displayName: "Panels",
-    paletteSubtitle: "Configure panel layout, shortcuts, and visibility",
-    paletteKeywords: ["layout", "docking", "zones"],
-    icon: LayoutGridIcon,
-    testId: ElementIds.SETTINGS_NAV_PANELS,
   },
   // Visibility of the Plugins section is gated on the experimental
   // frontend-plugins flag at both consumers of this array (the Settings

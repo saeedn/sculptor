@@ -168,11 +168,6 @@ export const isSmoothStreamingUserPreferenceAtom = atom<boolean>(
   (get) => (get(userConfigAtom)?.isSmoothStreamingEnabled as boolean | undefined) ?? true,
 );
 
-// Per-workspace panel layout
-export const isPanelLayoutPerWorkspaceAtom = atom<boolean>(
-  (get) => get(userConfigAtom)?.isPanelLayoutPerWorkspace ?? false,
-);
-
 // In-place workspaces (opt-in — off by default)
 export const isInPlaceWorkspacesEnabledAtom = atom<boolean>(
   (get) => get(userConfigAtom)?.enableInPlaceWorkspaces ?? false,

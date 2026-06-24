@@ -134,7 +134,7 @@ do it.
 
 ### How to ask
 
-For every question, ask with your question tool — `mcp__sculptor__ask_user_question` if it's available, otherwise the built-in `AskUserQuestion`. Never ask in plain text: only the tool call puts the workspace into the "waiting for input" state that alerts the user.
+For every question, ask with your question tool — the built-in `AskUserQuestion`. Never ask in plain text: only the tool call puts the workspace into the "waiting for input" state that alerts the user.
 Provide concrete, distinct options grounded in what you found in the
 codebase. Sculptor's UI always shows a free-text field alongside the
 options, so you do not need to include an explicit "Other" option.

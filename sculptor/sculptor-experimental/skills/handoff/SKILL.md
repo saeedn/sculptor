@@ -34,7 +34,7 @@ The handoff can land in one of two places:
 
 If `$ARGUMENTS` already makes the choice clear (e.g. it mentions "new agent",
 "same workspace", or "new workspace"), use that. **Otherwise, ask the user which
-one with your question tool** — `mcp__sculptor__ask_user_question` if it's available, otherwise the built-in `AskUserQuestion` — and
+one with your question tool** — the built-in `AskUserQuestion` — and
 wait for the answer before creating anything. (The tool call raises the
 "waiting for input" status that alerts the user; don't ask in plain text.)
 

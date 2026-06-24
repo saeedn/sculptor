@@ -421,7 +421,7 @@ Use your question tool to ask the user to review the files:
 > `.sculptor/testing.md`, and `.sculptor/docs.md`. Please review them and
 > let me know if anything needs to be adjusted.
 
-**You MUST ask with your question tool here** — `mcp__sculptor__ask_user_question` if it's available, otherwise the built-in `AskUserQuestion` — not a plain text message. The tool call is what raises the "waiting for input" status that alerts the user.
+**You MUST ask with your question tool here** — the built-in `AskUserQuestion` — not a plain text message. The tool call is what raises the "waiting for input" status that alerts the user.
 The tool triggers a UI notification in Sculptor that grabs the user's attention
 — without it, the user may not notice the question.
 

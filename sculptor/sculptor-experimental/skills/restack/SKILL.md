@@ -112,7 +112,7 @@ git status --porcelain
 ```
 
 If non-empty, list the affected paths and ask via the AskUserQuestion tool
-(`mcp__sculptor__ask_user_question`) whether to commit them first (infer a concise
+(the built-in `AskUserQuestion`) whether to commit them first (infer a concise
 message and run `git add -A && git commit -m "<msg>"`, surfacing the message), or
 proceed propagating only the already-committed work, or abort.
 
@@ -125,7 +125,7 @@ git -C "<child-worktree>" status --porcelain
 
 If any stacked branch is dirty, **do not pick a policy yourself** — list the dirty
 branches and ask the user how to resolve via the AskUserQuestion tool
-(`mcp__sculptor__ask_user_question`), offering at least:
+(the built-in `AskUserQuestion`), offering at least:
 - **Stash & re-apply** — `git -C <wt> stash push -u` before that branch's merge,
   `git -C <wt> stash pop` after (warn that the pop can itself conflict).
 - **Skip dirty branches** — leave each dirty branch (and its descendants)

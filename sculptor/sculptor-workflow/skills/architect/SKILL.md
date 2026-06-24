@@ -393,7 +393,7 @@ path. The user can resume the pipeline later by invoking
   spec issue, capture it in `architecture.md`'s *Open Questions*
   section and flag it to the user — they can return to the Spec tab
   to resolve it.
-- **Ask every question with your question tool** — `mcp__sculptor__ask_user_question` if it's available, otherwise the built-in `AskUserQuestion`. Never ask in plain text: only the tool call puts the
+- **Ask every question with your question tool** — the built-in `AskUserQuestion`. Never ask in plain text: only the tool call puts the
   workspace into the "waiting for input" state that alerts the user.
 - **Follow the Q&A ritual in every step that asks the user a
   question.** Ending a Q&A turn without asking the user a question is

@@ -1,6 +1,6 @@
 """Configuration for real Claude integration tests.
 
-These tests run against the real Claude CLI (not FakeClaude). They require:
+These tests run against the real Claude CLI (not a fake agent). They require:
 - A real `claude` CLI binary installed and on PATH
 - The CLI to be logged in (run ``claude /login`` once to write OAuth
   credentials to ``~/.claude/``). The conftest just stops Sculptor from
@@ -23,6 +23,11 @@ import sculptor.testing.server_utils as server_utils_mod
 from sculptor.testing.dependency_stubs import disable_default_claude_stub_for_session
 from sculptor.testing.playwright_conftest import *  # noqa: F401, F403
 from sculptor.testing.resources import invalidate_shared_instance
+
+# Pytest marker for real Claude tests. Use as @real_claude on every test
+# function. Re-homed here from the deleted helpers.py (the rich-chat helper
+# module) so the surviving terminal-agent test still imports cleanly.
+real_claude = pytest.mark.real_claude
 
 
 @pytest.fixture(scope="session")

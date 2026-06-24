@@ -187,7 +187,7 @@ def test_workspace_row_shows_current_branch_not_source_branch(
     """
     page = sculptor_instance_.page
 
-    # Step 1: Create a workspace. FakeClaude checks out a new branch in the clone.
+    # Step 1: Create a workspace. The agent checks out a new branch in the worktree.
     start_task_and_wait_for_ready(
         sculptor_page=page,
         prompt='fake_claude:bash `{"command": "git checkout -b feature-xyz"}`',

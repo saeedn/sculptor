@@ -27,7 +27,7 @@ from sculptor.testing.elements.terminal import get_xterm_buffer_text
 from sculptor.testing.elements.terminal import type_into_agent_terminal
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
-from tests.integration.real_claude.helpers import real_claude
+from tests.integration.real_claude.conftest import real_claude
 
 _SAMPLE_DIR = Path(__file__).parents[4] / "samples" / "terminal_agents" / "claude-code"
 

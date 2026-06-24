@@ -36,10 +36,8 @@ _ResponseT = TypeVar("_ResponseT")
 
 def get_any_onboarding_step(page: Page) -> Locator:
     """Return a locator that matches any onboarding wizard step."""
-    return (
-        page.get_by_test_id(ElementIDs.ONBOARDING_WELCOME_STEP)
-        .or_(page.get_by_test_id(ElementIDs.ONBOARDING_INSTALLATION_STEP))
-        .or_(page.get_by_test_id(ElementIDs.ONBOARDING_ADD_REPO_STEP))
+    return page.get_by_test_id(ElementIDs.ONBOARDING_PATH_CHECK_STEP).or_(
+        page.get_by_test_id(ElementIDs.ONBOARDING_ADD_REPO_STEP)
     )
 
 

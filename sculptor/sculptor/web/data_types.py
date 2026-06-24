@@ -491,6 +491,13 @@ class ConfigStatusResponse(SerializableModel):
     has_dependencies_passing: bool
 
 
+class ToolAvailability(SerializableModel):
+    """Whether the external CLI tools onboarding checks for are on PATH."""
+
+    claude: bool
+    git: bool
+
+
 class UploadFileResponse(SerializableModel):
     file_id: str
 

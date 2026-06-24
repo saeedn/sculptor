@@ -941,12 +941,17 @@ def test_complete_onboarding_allows_empty_email_after_skip(
     assert response.status_code == 200, response.text
 
 
-def test_complete_onboarding_rejects_empty_email_without_welcome_step(
+def test_complete_onboarding_backfills_consent_for_anonymous_user(
     client: TestClient, onboarding_test_config: UserConfig
 ) -> None:
+    """The new onboarding collects no email or consent, so completing with a
+    fresh anonymous config succeeds and backfills the privacy consent."""
     response = client.post("/api/v1/config/complete")
-    assert response.status_code == 400, response.text
-    assert "Welcome step" in response.json()["detail"]
+    assert response.status_code == 200, response.text
+    saved = user_config_module.get_user_config_instance()
+    assert saved.user_email == ""
+    assert saved.is_privacy_policy_consented is True
+    assert saved.is_telemetry_level_set is True
 
 
 # Agent-type creation path (terminal agents).

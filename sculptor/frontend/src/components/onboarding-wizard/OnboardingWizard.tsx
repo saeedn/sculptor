@@ -1,27 +1,25 @@
 import { Flex } from "@radix-ui/themes";
-import { posthog } from "posthog-js";
 import type { ReactElement } from "react";
 import { useState } from "react";
 
-import { completeOnboarding, getConfigStatus, saveUserEmail, skipAccountSetup } from "~/api";
+import { completeOnboarding, getConfigStatus } from "~/api";
 import { HTTPException } from "~/common/Errors.ts";
-import { ValidationError } from "~/common/Errors.ts";
 import { TitleBar } from "~/components/TitleBar";
 
 import { AddRepoStep } from "./AddRepoStep.tsx";
 import styles from "./OnboardingWizard.module.scss";
+import { PathCheckStep } from "./PathCheckStep.tsx";
 import { StepIndicator } from "./StepIndicator.tsx";
-import { WelcomeStep } from "./WelcomeStep.tsx";
 
 // eslint-disable-next-line react-refresh/only-export-components -- enum-style const shared with non-component code
 export const OnboardingStep = {
-  EMAIL: "EMAIL",
+  PATH_CHECK: "PATH_CHECK",
   ADD_REPO: "ADD_REPO",
 } as const;
 
 export type OnboardingStep = (typeof OnboardingStep)[keyof typeof OnboardingStep];
 
-const STEP_ORDER: Array<OnboardingStep> = [OnboardingStep.EMAIL, OnboardingStep.ADD_REPO];
+const STEP_ORDER: Array<OnboardingStep> = [OnboardingStep.PATH_CHECK, OnboardingStep.ADD_REPO];
 const STEP_COUNT = STEP_ORDER.length;
 
 type OnboardingWizardProps = {
@@ -33,10 +31,6 @@ export const OnboardingWizard = ({ initialStep, onComplete }: OnboardingWizardPr
   const [currentStep, setCurrentStep] = useState<OnboardingStep>(initialStep);
   const [maxVisitedStep, setMaxVisitedStep] = useState(STEP_ORDER.indexOf(initialStep));
   const [isLoading, setIsLoading] = useState(false);
-  const [email, setEmail] = useState("");
-  const [fullName, setFullName] = useState<string | null>(null);
-  const [didOptInToMarketing, setDidOptInToMarketing] = useState(false);
-  const [isTelemetryEnabled, setIsTelemetryEnabled] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const goToStep = (step: OnboardingStep): void => {
@@ -45,85 +39,12 @@ export const OnboardingWizard = ({ initialStep, onComplete }: OnboardingWizardPr
     setError(null);
   };
 
-  const handleEmailSubmit = async (
-    email: string,
-    fullName: string | null,
-    didOptInToMarketing: boolean,
-    isTelemetryEnabled: boolean,
-  ): Promise<void> => {
+  const handlePathCheckContinue = async (): Promise<void> => {
     setIsLoading(true);
     setError(null);
 
     try {
-      // Console output ends up in Sentry breadcrumbs (and potentially in
-      // diagnostics), so never log the actual email/name.
-      console.log("Saving user email. Marketing opt-in:", didOptInToMarketing);
-      await saveUserEmail({
-        body: {
-          userEmail: email,
-          fullName: fullName,
-          didOptInToMarketing: didOptInToMarketing,
-          isTelemetryEnabled: isTelemetryEnabled,
-        },
-        meta: { skipWsAck: true },
-      });
-
-      // The Clay webhook subscribes to this event for mailing-list signup.
-      if (isTelemetryEnabled) {
-        posthog.capture("onboarding.email_confirmation", {
-          did_opt_in_to_marketing: didOptInToMarketing,
-        });
-      }
-
-      setEmail(email);
-      setFullName(fullName);
-      setDidOptInToMarketing(didOptInToMarketing);
-      setIsTelemetryEnabled(isTelemetryEnabled);
-      await handleInstallationComplete();
-    } catch (err) {
-      let errorMessage = "Failed to save email";
-      if (err instanceof ValidationError) {
-        errorMessage = err.detail[0].msg;
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      setError(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSkipAccountSetup = async (isTelemetryEnabled: boolean): Promise<void> => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      await skipAccountSetup({
-        body: { isTelemetryEnabled: isTelemetryEnabled },
-        meta: { skipWsAck: true },
-      });
-
-      setIsTelemetryEnabled(isTelemetryEnabled);
-      await handleInstallationComplete();
-    } catch (err) {
-      let errorMessage = "Failed to continue without an account";
-      if (err instanceof HTTPException) {
-        errorMessage = err.detail;
-      } else if (err instanceof Error) {
-        errorMessage = err.message;
-      }
-      setError(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleInstallationComplete = async (): Promise<void> => {
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Check if user already has a project — returning users should skip the add-repo step.
+      // Returning users who already have a project skip the add-repo step.
       const { data: configStatus } = await getConfigStatus({ meta: { skipWsAck: true } });
       if (configStatus?.hasProject) {
         await completeOnboarding({ meta: { skipWsAck: true } });
@@ -175,19 +96,8 @@ export const OnboardingWizard = ({ initialStep, onComplete }: OnboardingWizardPr
   const currentStepIndex = STEP_ORDER.indexOf(currentStep);
 
   const renderStep = (): ReactElement => {
-    if (currentStep === OnboardingStep.EMAIL) {
-      return (
-        <WelcomeStep
-          onNext={handleEmailSubmit}
-          onSkip={handleSkipAccountSetup}
-          isLoading={isLoading}
-          error={error}
-          initialEmail={email}
-          initialFullName={fullName}
-          initialDidOptInToMarketing={didOptInToMarketing}
-          initialIsTelemetryEnabled={isTelemetryEnabled}
-        />
-      );
+    if (currentStep === OnboardingStep.PATH_CHECK) {
+      return <PathCheckStep onContinue={handlePathCheckContinue} isLoading={isLoading} />;
     }
 
     return <AddRepoStep onComplete={handleAddRepoComplete} isLoading={isLoading} error={error} />;

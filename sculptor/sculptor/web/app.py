@@ -8,6 +8,7 @@ import os
 import platform
 import queue
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -212,6 +213,7 @@ from sculptor.web.data_types import SkillInfo
 from sculptor.web.data_types import SkipAccountSetupRequest
 from sculptor.web.data_types import StartTaskRequest
 from sculptor.web.data_types import TerminalInputRequest
+from sculptor.web.data_types import ToolAvailability
 from sculptor.web.data_types import UpdateUserConfigRequest
 from sculptor.web.data_types import UpdateWorkspaceRequest
 from sculptor.web.data_types import UploadFileResponse
@@ -2722,6 +2724,22 @@ def get_config_status(
     )
 
 
+@router.get("/api/v1/tool-availability")
+def get_tool_availability(
+    request: Request,
+    user_session: UserSession = Depends(get_user_session),
+) -> ToolAvailability:
+    """Report whether the external CLI tools onboarding checks for are on PATH.
+
+    Read-only: resolves ``claude`` and ``git`` via ``shutil.which`` and never
+    installs or modifies PATH. Backs the onboarding PATH-check screen.
+    """
+    return ToolAvailability(
+        claude=shutil.which("claude") is not None,
+        git=shutil.which("git") is not None,
+    )
+
+
 @router.post("/api/v1/config/email")
 def save_user_email(
     request: Request,
@@ -2799,12 +2817,10 @@ def complete_onboarding(request: Request, user_session: UserSession = Depends(ge
     user_config = get_user_config_instance()
     if not user_config:
         raise HTTPException(status_code=400, detail="User config not initialized")
-    # An empty email means the user skipped account setup on the welcome step
-    # (anonymous identity); only non-empty emails are validated.
+    # The new onboarding no longer collects an email; an empty email is the
+    # normal anonymous identity. Only non-empty emails are validated.
     if user_config.user_email and not check_is_user_email_field_valid(user_config):
         raise HTTPException(status_code=400, detail="Invalid email address")
-    if not user_config.user_email and not user_config.is_privacy_policy_consented:
-        raise HTTPException(status_code=400, detail="Welcome step has not been completed")
 
     # Ensure privacy consent and telemetry level are set for returning users
     # who may have created their account before these fields were added.

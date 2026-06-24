@@ -16,7 +16,6 @@ import {
 } from "../common/state/atoms/toasts.ts";
 import { useProject } from "../common/state/hooks/useProjects.ts";
 import { useUnifiedStream } from "../common/state/hooks/useUnifiedStream";
-import { AutoUpdateToasts } from "../components/AutoUpdateToasts.tsx";
 import { CommandPalette } from "../components/CommandPalette";
 import { CommandRegistrations } from "../components/CommandPalette/CommandRegistrations.tsx";
 import { DevModeIndicator } from "../components/DevModeIndicator.tsx";
@@ -31,7 +30,6 @@ import { Toast } from "../components/Toast.tsx";
 import { TopBar } from "../components/TopBar.tsx";
 import { VersionDisplay } from "../components/VersionDisplay.tsx";
 import { WarningStatusBanner } from "../components/WarningStatusBanner.tsx";
-import { useAutoUpdateListener } from "../hooks/useAutoUpdateListener.ts";
 import { workspaceDefaultLayout, workspacePanels } from "../pages/workspace/panels/workspacePanels.ts";
 import { PluginLoader } from "../plugins/PluginLoader.tsx";
 import { PluginOverlays } from "../plugins/PluginOverlays.tsx";
@@ -97,7 +95,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
 
   useUnifiedStream();
   usePageLayoutKeyboardShortcuts();
-  useAutoUpdateListener();
   useSyncActiveTabFromRoute();
 
   const hasBackendStopped = backendStatus.status === "unresponsive";
@@ -160,7 +157,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
         onClose={() => setIsRepoPathDialogOpen(false)}
       />
       <NotificationToasts />
-      <AutoUpdateToasts />
       <Toast
         open={deleteErrorToast !== null}
         onOpenChange={handleDeleteErrorOpenChange}

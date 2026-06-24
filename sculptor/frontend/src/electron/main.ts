@@ -23,7 +23,6 @@ import Store from "electron-store";
 
 import type { AnyBackendStatus, SculptorDevInfo } from "../shared/types";
 import { APP_SCHEME, getAppRendererUrl, resolveRequestToFilePath, shouldFallbackToIndex } from "./appProtocol";
-import { initAutoUpdater } from "./autoUpdater";
 import type { ZoomCommand } from "./constants";
 import {
   BACKEND_PORT_CHANNEL_NAME,
@@ -32,7 +31,6 @@ import {
   BROWSER_PANEL_OPEN_IN_PANEL_CHANNEL_NAME,
   CAPTURE_SCREENSHOT_CHANNEL_NAME,
   GET_APP_VERSION_CHANNEL_NAME,
-  GET_AUTO_UPDATE_STATUS_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
   GET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
@@ -152,7 +150,6 @@ let isQuitting = false;
 // destroys a transient window before the main window exists. Destroying it would
 // otherwise fire window-all-closed and quit the app mid-startup (see the handler).
 let isMigrating = false;
-let autoUpdaterManager: ReturnType<typeof initAutoUpdater> = null;
 let isInCustomCommandMode = false;
 let customCommandBackendUrl: string | null = null;
 // Resolved once customCommandBackendUrl is set (or immediately if not in custom command mode).
@@ -199,9 +196,9 @@ if (process.env.SCULPTOR_SESSION_TOKEN) {
 const userDataOverride = process.env.SCULPTOR_USER_DATA_DIR;
 if (userDataOverride) {
   app.setPath("userData", userDataOverride);
-  // Also redirect the cache directory so that libraries like electron-updater
-  // (which stores downloads in app.getPath("cache")) don't leak state between
-  // test instances or across CI runs on persistent runners.
+  // Also redirect the cache directory so libraries that cache to
+  // app.getPath("cache") don't leak state between test instances or across CI
+  // runs on persistent runners.
   app.setPath("cache", path.join(userDataOverride, "cache"));
 } else if (!app.isPackaged || app.getVersion().includes("-dev.")) {
   app.setPath("userData", path.join(getSculptorFolder(), "internal", "electron"));
@@ -925,10 +922,9 @@ const createWindow = async (): Promise<void> => {
   });
 
   // Intercept window close to show a confirmation dialog.
-  // Skip if already quitting (e.g., user already confirmed, or auto-update).
+  // Skip if already quitting (e.g., user already confirmed).
   window.on("close", (e) => {
     if (isQuitting) return;
-    if (autoUpdaterManager?.isUpdating) return;
 
     e.preventDefault();
     logger.info("[main] window close intercepted, showing confirmation dialog");
@@ -1153,16 +1149,6 @@ app.whenReady().then(async () => {
   // is no longer needed (any future window-all-closed is a real user close).
   isMigrating = false;
 
-  // Initialize auto-updater (no-op for unpackaged/dev builds)
-  autoUpdaterManager = initAutoUpdater(window!, store, () => {
-    sendBackendState({ status: "shutting_down", payload: { message: "Installing update..." } });
-  });
-
-  // Renderer pulls initial auto-update status on mount, avoiding push race conditions.
-  ipcMain.handle(GET_AUTO_UPDATE_STATUS_CHANNEL_NAME, () => {
-    return autoUpdaterManager ? autoUpdaterManager.getStatus() : { type: "disabled" };
-  });
-
   // Switch the logger from the temp file to the final location inside the
   // sculptor folder now that the data folder is known.
   finalizeLogger();
@@ -1339,7 +1325,7 @@ app.on("before-quit", async (e): Promise<void> => {
   e.preventDefault();
 
   try {
-    const statusMessage = autoUpdaterManager?.isUpdating ? "Installing update..." : "Shutting down...";
+    const statusMessage = "Shutting down...";
     logger.info("[main] before-quit: %s", statusMessage);
     await shutdownBackend(statusMessage);
   } catch (error) {

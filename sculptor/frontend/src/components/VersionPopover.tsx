@@ -1,14 +1,11 @@
-import { Button, Flex, IconButton, Popover, Switch, Text } from "@radix-ui/themes";
+import { Flex, IconButton, Popover, Switch, Text } from "@radix-ui/themes";
 import { useAtomValue } from "jotai";
 import { X } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { ElementIds } from "~/api";
-import { getUpdateChannelDisplayName, getUpdateStatusText } from "~/common/autoUpdateUtils.ts";
-import { autoUpdateStatusAtom, updateChannelAtom } from "~/common/state/atoms/autoUpdate.ts";
 import { healthCheckDataAtom } from "~/common/state/atoms/backend.ts";
 import { useDevPanel } from "~/common/state/hooks/useDevPanel.ts";
-import { useInstallUpdate } from "~/hooks/useInstallUpdate.ts";
 
 import { useReactGrab } from "./DevPanel/useReactGrab.ts";
 import { useTanstackDevtools } from "./DevPanel/useTanstackDevtools.ts";
@@ -34,13 +31,10 @@ const InfoRow = ({ label, value, testId }: InfoRowProps): ReactElement => (
 
 export const VersionPopover = (): ReactElement => {
   const healthCheckData = useAtomValue(healthCheckDataAtom);
-  const autoUpdateStatus = useAtomValue(autoUpdateStatusAtom);
-  const updateChannel = useAtomValue(updateChannelAtom);
   const { isDevPanelOpen, showDevPanel, hideDevPanel } = useDevPanel();
   const reactGrab = useReactGrab();
   const tanstackDevtools = useTanstackDevtools();
   const tanstackEventLog = useTanstackEventLog();
-  const { install, isInstalling } = useInstallUpdate();
 
   const formatDiskSpace = (gb: number | undefined): string => {
     if (gb === undefined) return "—";
@@ -62,9 +56,6 @@ export const VersionPopover = (): ReactElement => {
       <Popover.Trigger>
         <Text data-testid={ElementIds.VERSION} className={styles.trigger}>
           {healthCheckData?.version}
-          {(autoUpdateStatus?.type === "ready" || autoUpdateStatus?.type === "downloading") && (
-            <span className={styles.updateDot} data-testid={ElementIds.UPDATE_DOT} />
-          )}
         </Text>
       </Popover.Trigger>
       <Popover.Content
@@ -90,32 +81,6 @@ export const VersionPopover = (): ReactElement => {
             <InfoRow label="Git SHA" value={healthCheckData?.gitSha} />
             {healthCheckData?.ciJobId && <InfoRow label="CI Job" value={healthCheckData.ciJobId} />}
             {healthCheckData?.ciRef && <InfoRow label="Source" value={healthCheckData.ciRef} />}
-          </Flex>
-          <Text size="2" weight="medium" mt="1">
-            Updates
-          </Text>
-          <Flex direction="column" gap="2" className={styles.details}>
-            <InfoRow
-              label="Channel"
-              value={updateChannel ? getUpdateChannelDisplayName(updateChannel) : undefined}
-              testId={ElementIds.VERSION_POPOVER_CHANNEL}
-            />
-            <InfoRow
-              label="Status"
-              value={getUpdateStatusText(autoUpdateStatus, updateChannel, healthCheckData?.version)}
-              testId={ElementIds.VERSION_POPOVER_STATUS}
-            />
-            {autoUpdateStatus?.type === "ready" && (
-              <Button
-                size="1"
-                variant="soft"
-                disabled={isInstalling}
-                onClick={install}
-                data-testid={ElementIds.VERSION_POPOVER_RESTART_BUTTON}
-              >
-                {isInstalling ? "Restarting..." : "Install and restart"}
-              </Button>
-            )}
           </Flex>
           <Text size="2" weight="medium" mt="1">
             Diagnostics

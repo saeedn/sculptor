@@ -17,17 +17,6 @@ export type BackendStatus<T extends keyof BackendStatusPayloads = keyof BackendS
 
 export type AnyBackendStatus = BackendStatus<keyof BackendStatusPayloads>;
 
-export type UpdateChannel = "STABLE" | "RC";
-
-export type AutoUpdateStatus =
-  | { type: "disabled" }
-  | { type: "idle"; channel: UpdateChannel; latestChannelVersion?: string }
-  | { type: "checking"; channel: UpdateChannel }
-  | { type: "available"; channel: UpdateChannel; version: string }
-  | { type: "downloading"; channel: UpdateChannel; percent: number }
-  | { type: "ready"; channel: UpdateChannel; version: string }
-  | { type: "error"; channel: UpdateChannel; message: string };
-
 export type CustomBackendSettings = {
   customBackendCommand: string;
   backendReadinessTimeout: number;
@@ -55,14 +44,6 @@ export type SculptorElectronAPI = {
   // File storage operations
   saveFile: (fileData: ArrayBuffer, filename: string) => Promise<string>;
   getFileData: (filePath: string) => Promise<string>;
-  // Auto-update status (pull initial + push updates)
-  getAutoUpdateStatus: () => Promise<AutoUpdateStatus>;
-  onAutoUpdateStatus: (callback: (status: AutoUpdateStatus) => void) => (...args: Array<unknown>) => void;
-  removeAutoUpdateStatusListener: (wrappedCallback: (...args: Array<unknown>) => void) => void;
-  // Auto-update commands (renderer → main)
-  installUpdate: () => Promise<boolean>;
-  checkForUpdate: () => Promise<void>;
-  setUpdateChannel: (channel: UpdateChannel) => Promise<void>;
   // Custom backend settings
   getCustomBackendSettings: () => Promise<CustomBackendSettings>;
   setCustomBackendSettings: (settings: Partial<CustomBackendSettings>) => Promise<void>;

@@ -2,17 +2,12 @@ import { contextBridge, ipcRenderer, webFrame } from "electron";
 
 import type { ZoomCommand } from "./electron/constants.ts";
 import {
-  AUTO_UPDATE_CHECK_CHANNEL_NAME,
-  AUTO_UPDATE_INSTALL_CHANNEL_NAME,
-  AUTO_UPDATE_SET_CHANNEL_CHANNEL_NAME,
-  AUTO_UPDATE_STATUS_CHANNEL_NAME,
   BACKEND_PORT_CHANNEL_NAME,
   BACKEND_STATUS_CHANGE_CHANNEL_NAME,
   BROWSER_PANEL_CAPTURE_TO_CLIPBOARD_CHANNEL_NAME,
   BROWSER_PANEL_OPEN_IN_PANEL_CHANNEL_NAME,
   CAPTURE_SCREENSHOT_CHANNEL_NAME,
   GET_APP_VERSION_CHANNEL_NAME,
-  GET_AUTO_UPDATE_STATUS_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
   GET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
@@ -25,13 +20,7 @@ import {
   TEST_READ_CLIPBOARD_PNG_CHANNEL_NAME,
   ZOOM_COMMAND_CHANNEL_NAME,
 } from "./electron/constants.ts";
-import type {
-  AnyBackendStatus,
-  AutoUpdateStatus,
-  CustomBackendSettings,
-  SculptorDevInfo,
-  UpdateChannel,
-} from "./shared/types.ts";
+import type { AnyBackendStatus, CustomBackendSettings, SculptorDevInfo } from "./shared/types.ts";
 
 const isInPytest = !!process.env.PYTEST_CURRENT_TEST;
 
@@ -68,21 +57,6 @@ contextBridge.exposeInMainWorld("sculptor", {
   saveFile: (fileData: ArrayBuffer, filename: string): Promise<string> =>
     ipcRenderer.invoke(SAVE_FILE_CHANNEL_NAME, fileData, filename),
   getFileData: (filePath: string): Promise<string> => ipcRenderer.invoke(GET_FILE_DATA_CHANNEL_NAME, filePath),
-  // Auto-update status (pull initial + push updates)
-  getAutoUpdateStatus: () => ipcRenderer.invoke(GET_AUTO_UPDATE_STATUS_CHANNEL_NAME),
-  onAutoUpdateStatus: (
-    callback: (status: AutoUpdateStatus) => void,
-  ): ((_event: unknown, status: AutoUpdateStatus) => void) => {
-    const wrappedCallback = (_event: unknown, status: AutoUpdateStatus): void => callback(status);
-    ipcRenderer.on(AUTO_UPDATE_STATUS_CHANNEL_NAME, wrappedCallback);
-    return wrappedCallback;
-  },
-  removeAutoUpdateStatusListener: (wrappedCallback: (...args: Array<unknown>) => void) =>
-    ipcRenderer.off(AUTO_UPDATE_STATUS_CHANNEL_NAME, wrappedCallback),
-  // Auto-update commands
-  installUpdate: (): Promise<boolean> => ipcRenderer.invoke(AUTO_UPDATE_INSTALL_CHANNEL_NAME),
-  checkForUpdate: () => ipcRenderer.invoke(AUTO_UPDATE_CHECK_CHANNEL_NAME),
-  setUpdateChannel: (channel: UpdateChannel) => ipcRenderer.invoke(AUTO_UPDATE_SET_CHANNEL_CHANNEL_NAME, channel),
   // Custom backend settings
   getCustomBackendSettings: (): Promise<CustomBackendSettings> =>
     ipcRenderer.invoke(GET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME),

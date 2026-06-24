@@ -19,10 +19,10 @@ import { TitleBar } from "./TitleBar.tsx";
 
 // Once the renderer enters ``shutting_down``, the boundary locks the state
 // (see ``maybeSetBackendStatus``). If the Electron main process never
-// transitions out — e.g. ``autoUpdater.quitAndInstall()`` failed and the
-// app silently stays alive — the user is left on an indefinite progress
-// bar. After this stall timeout elapses we swap the spinner for a
-// recovery message so the user knows to relaunch the app manually.
+// transitions out — e.g. a quit that stalls and the app silently stays
+// alive — the user is left on an indefinite progress bar. After this stall
+// timeout elapses we swap the spinner for a recovery message so the user
+// knows to relaunch the app manually.
 const SHUTDOWN_STALL_TIMEOUT_MS = 30_000;
 
 const getShutdownStallTimeoutMs = (): number => {
@@ -214,11 +214,10 @@ export const BackendStatusBoundary = (props: PropsWithChildren<BackendStatusBoun
     }
   }, 3000);
 
-  // SCU-403: ``autoUpdater.quitAndInstall()`` can fail silently (e.g. when
-  // Squirrel's cached download has been purged). The boundary locks into
-  // ``shutting_down`` once entered, so without this safety net the user
-  // sees an indefinite progress bar. After the stall timeout we surface a
-  // recovery message instead.
+  // SCU-403: a quit can stall silently and leave the main process alive. The
+  // boundary locks into ``shutting_down`` once entered, so without this safety
+  // net the user sees an indefinite progress bar. After the stall timeout we
+  // surface a recovery message instead.
   useEffect(() => {
     if (backendStatus.status !== "shutting_down") {
       setIsShutdownStalled(false);

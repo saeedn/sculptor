@@ -1,17 +1,12 @@
-import { Box, Button, Flex, SegmentedControl, Select, Separator, Spinner, Switch } from "@radix-ui/themes";
+import { Box, Flex, SegmentedControl, Select, Separator, Switch } from "@radix-ui/themes";
 import { useAtom, useAtomValue } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { type ReactElement, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { getUpdateStatusText } from "~/common/autoUpdateUtils.ts";
-import { autoUpdateStatusAtom, updateChannelAtom } from "~/common/state/atoms/autoUpdate.ts";
-import { healthCheckDataAtom } from "~/common/state/atoms/backend.ts";
 import { themeBuilderSettingsAtom } from "~/common/state/atoms/themeBuilder.ts";
 import { ModelSelectOptions } from "~/components/ModelSelectOptions.tsx";
-import { useInstallUpdate } from "~/hooks/useInstallUpdate.ts";
-import type { UpdateChannel } from "~/shared/types.ts";
 
 import { ElementIds, UserConfigField } from "../../api";
 import {
@@ -72,7 +67,6 @@ const activeSectionAtom = atomWithStorage<SettingsSection>("sculptor-settings-ac
 export const SettingsPage = (): ReactElement => {
   const [activeSection, setActiveSection] = useAtom(activeSectionAtom);
   const [searchParams] = useSearchParams();
-  const { install, isInstalling } = useInstallUpdate();
 
   // Apply ?section= query param once on mount (e.g. when linked from an error block).
   useEffect(() => {
@@ -103,10 +97,6 @@ export const SettingsPage = (): ReactElement => {
   const isPanelLayoutPerWorkspace = useAtomValue(isPanelLayoutPerWorkspaceAtom);
   const isDefaultFastMode = useAtomValue(isDefaultFastModeAtom);
   const defaultEffortLevel = useAtomValue(defaultEffortLevelAtom);
-  const autoUpdateStatus = useAtomValue(autoUpdateStatusAtom);
-  const [updateChannel, setUpdateChannel] = useAtom(updateChannelAtom);
-  const healthCheckData = useAtomValue(healthCheckDataAtom);
-  const [isChannelSwitching, setIsChannelSwitching] = useState(false);
   const [toast, setToast] = useState<ToastContent | null>(null);
 
   const { updateField } = useUserConfig();
@@ -124,32 +114,6 @@ export const SettingsPage = (): ReactElement => {
         type: ToastType.ERROR,
         title: `Failed to update setting`,
       });
-    }
-  };
-
-  const handleUpdateChannelChange = async (channel: UpdateChannel): Promise<void> => {
-    if (!window.sculptor) return;
-    setIsChannelSwitching(true);
-    try {
-      await window.sculptor.setUpdateChannel(channel);
-      setUpdateChannel(channel);
-    } catch (error) {
-      console.error("Failed to set update channel:", error);
-      setToast({
-        type: ToastType.ERROR,
-        title: "Failed to change update channel",
-      });
-    } finally {
-      setIsChannelSwitching(false);
-    }
-  };
-
-  const handleCheckForUpdates = async (): Promise<void> => {
-    if (!window.sculptor) return;
-    try {
-      await window.sculptor.checkForUpdate();
-    } catch (error) {
-      console.error("Failed to check for updates:", error);
     }
   };
 
@@ -227,68 +191,6 @@ export const SettingsPage = (): ReactElement => {
                         </Flex>
                       </SegmentedControl.Item>
                     </SegmentedControl.Root>
-                  </SettingRow>
-
-                  <SettingRow
-                    title="Software Updates"
-                    description={getUpdateStatusText(autoUpdateStatus, updateChannel, healthCheckData?.version)}
-                  >
-                    <Flex align="center" gap="2">
-                      <Select.Root
-                        value={updateChannel ?? ""}
-                        onValueChange={(value) => handleUpdateChannelChange(value as UpdateChannel)}
-                        disabled={
-                          !window.sculptor ||
-                          isChannelSwitching ||
-                          updateChannel === null ||
-                          autoUpdateStatus?.type === "disabled"
-                        }
-                      >
-                        <Select.Trigger
-                          variant="soft"
-                          data-testid={ElementIds.SETTINGS_UPDATE_CHANNEL_SELECT}
-                          placeholder="N/A"
-                        />
-                        <Select.Content>
-                          <Select.Item value="STABLE" data-testid={ElementIds.SETTINGS_UPDATE_CHANNEL_OPTION_STABLE}>
-                            Stable
-                          </Select.Item>
-                          <Select.Item value="RC" data-testid={ElementIds.SETTINGS_UPDATE_CHANNEL_OPTION_RC}>
-                            Latest
-                          </Select.Item>
-                        </Select.Content>
-                      </Select.Root>
-                      {autoUpdateStatus?.type === "ready" && (
-                        <Button
-                          variant="soft"
-                          disabled={isInstalling}
-                          onClick={install}
-                          data-testid={ElementIds.SETTINGS_INSTALL_UPDATE_BUTTON}
-                        >
-                          {isInstalling ? "Restarting..." : "Install and restart"}
-                        </Button>
-                      )}
-                      <Button
-                        variant="soft"
-                        onClick={handleCheckForUpdates}
-                        disabled={
-                          !window.sculptor ||
-                          autoUpdateStatus === null ||
-                          autoUpdateStatus.type === "checking" ||
-                          autoUpdateStatus.type === "disabled"
-                        }
-                        data-testid={ElementIds.SETTINGS_CHECK_FOR_UPDATES_BUTTON}
-                      >
-                        {autoUpdateStatus?.type === "checking" ? (
-                          <Flex align="center" gap="2">
-                            <Spinner size="1" />
-                            Checking...
-                          </Flex>
-                        ) : (
-                          "Check for updates"
-                        )}
-                      </Button>
-                    </Flex>
                   </SettingRow>
                 </SettingsSectionLayout>
               )}

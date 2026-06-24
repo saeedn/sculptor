@@ -17,7 +17,6 @@ import pytest
 
 import sculptor.testing.resources as resources_mod
 import sculptor.testing.server_utils as server_utils_mod
-from sculptor.testing.auto_update_mock import mock_electron_api as mock_electron_api  # noqa: F401
 from sculptor.testing.dependency_stubs import disable_default_pi_stub_for_session
 from sculptor.testing.playwright_conftest import *  # noqa: F401, F403
 from sculptor.testing.resources import invalidate_shared_instance

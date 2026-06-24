@@ -1,7 +1,6 @@
 import pytest
 
 from sculptor.foundation.pydantic_serialization import FrozenModel
-from sculptor.testing.auto_update_mock import mock_electron_api as mock_electron_api  # noqa: F401
 from sculptor.testing.elements.task_starter import FAKE_CLAUDE_MODEL_NAME
 from sculptor.testing.elements.task_starter import FAKE_PI_MODEL_NAME
 from sculptor.testing.playwright_conftest import *  # noqa: F401, F403

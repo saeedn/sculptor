@@ -180,9 +180,6 @@ export const workspaceBranchDeletionPolicyAtom = atom<"never" | "delete_if_safe"
     "delete_if_safe",
 );
 
-// Review All combined diff view (experimental — off by default)
-export const isReviewAllEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.enableReviewAll ?? false);
-
 // Entity mentions (experimental — off by default)
 export const isEntityMentionsEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.enableEntityMentions ?? false);
 

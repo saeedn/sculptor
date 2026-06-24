@@ -13,7 +13,7 @@ menu is shown.
 
 from playwright.sync_api import expect
 
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
@@ -25,12 +25,9 @@ def test_collapsed_banner_has_no_inert_overflow_menu(
     """A narrowed (collapsed) workspace banner must not render an inert
     overflow menu whose items have no effect."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(
-        page,
-        prompt='fake_claude:text `{"text": "Done"}`',
-        workspace_name="Banner Overflow WS",
-    )
+    task_page, _ = start_fake_terminal_agent(page, agents_dir, workspace_name="Banner Overflow WS")
 
     # Wait for the banner to fully render (branch name resolved, no skeleton)
     # so progressive collapse measures real content widths, not placeholders.

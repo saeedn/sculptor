@@ -46,8 +46,11 @@ import re
 from playwright.sync_api import Response
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
@@ -57,13 +60,13 @@ from sculptor.testing.user_stories import user_story
 # loop read old-side indices in the 30s/40s — valid in the 75-line merge-base,
 # but out of range for the shrunk `main` tip.
 _SHRUNK_HELPERS = (
-    "# Helper utilities for the project.\\n\\n\\n"
-    + "def is_even(n):\\n    return n % 2 == 0\\n\\n\\n"
-    + "def is_odd(n):\\n    return n % 2 != 0\\n\\n\\n"
-    + "def clamp(value, min_val, max_val):\\n    return max(min_val, min(max_val, value))\\n\\n\\n"
-    + "def reverse_string(s):\\n    return s[::-1]\\n\\n\\n"
-    + "def count_vowels(s):\\n    return sum(1 for c in s.lower() if c in 'aeiou')\\n\\n\\n"
-    + "def flatten(nested):\\n    return [item for sublist in nested for item in sublist]\\n"
+    "# Helper utilities for the project.\n\n\n"
+    + "def is_even(n):\n    return n % 2 == 0\n\n\n"
+    + "def is_odd(n):\n    return n % 2 != 0\n\n\n"
+    + "def clamp(value, min_val, max_val):\n    return max(min_val, min(max_val, value))\n\n\n"
+    + "def reverse_string(s):\n    return s[::-1]\n\n\n"
+    + "def count_vowels(s):\n    return sum(1 for c in s.lower() if c in 'aeiou')\n\n\n"
+    + "def flatten(nested):\n    return [item for sublist in nested for item in sublist]\n"
 )
 
 # Advance the target branch (main) to a commit that shortens src/helpers.py to a
@@ -84,31 +87,6 @@ _ADVANCE_MAIN = (
     + "git update-ref refs/heads/main $C"
 )
 
-_PROMPT = f"""\
-fake_claude:multi_step `{{
-  "steps": [
-    {{
-      "command": "write_file",
-      "args": {{
-        "file_path": "src/helpers.py",
-        "content": "{_SHRUNK_HELPERS}"
-      }}
-    }},
-    {{
-      "command": "bash",
-      "args": {{
-        "command": "git add -A && git commit -m 'Shrink helpers.py on branch'"
-      }}
-    }},
-    {{
-      "command": "bash",
-      "args": {{
-        "command": "{_ADVANCE_MAIN}"
-      }}
-    }}
-  ]
-}}`"""
-
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
 
 
@@ -125,6 +103,7 @@ def test_target_branch_diff_fetches_oldlines_from_merge_base(
     array and crashes Pierre's renderHunks.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
     # Capture the gitRef used for src/helpers.py read-file-at-ref requests (the
     # "old" side of the diff).
@@ -151,13 +130,24 @@ def test_target_branch_diff_fetches_oldlines_from_merge_base(
     page.on("pageerror", lambda err: js_errors.append(err.message))
     page.on("console", lambda msg: js_errors.append(msg.text) if msg.type == "error" else None)
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(
+        agents_dir,
+        multi_step(
+            [
+                write_file("src/helpers.py", _SHRUNK_HELPERS),
+                bash("git add -A && git commit -m 'Shrink helpers.py on branch'"),
+                bash(_ADVANCE_MAIN),
+            ]
+        ),
+    )
 
     # Open the Changes tab in the default "All" (vs-target-branch) scope and
     # open the single-file diff for helpers.py.
     task_page.activate_changes_panel()
+    # Force a fresh diff fetch (cold-start: the initial files-changed signal can
+    # land before the frontend's diff subscription is ready).
+    task_page.get_file_browser().get_refresh_button().click()
 
     changes_panel = task_page.get_changes_panel()
     changes_tree = changes_panel.get_changes_tree()

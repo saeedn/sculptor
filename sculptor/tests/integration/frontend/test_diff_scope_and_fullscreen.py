@@ -1,68 +1,61 @@
 """Integration tests for the diff scope picker and expanded diff view.
 
-Tests verify that the scope picker defaults to All when opened from
-the Changes tab, and that the expand toggle works correctly.
+Tests verify that the scope picker defaults to All when a diff is opened from
+the Changes tab, and that the expand toggle works correctly. (These behaviours
+used to be reached via the experimental Review All combined view; they survive
+on the single-file diff opened from the Changes tab.)
 """
 
-from playwright.sync_api import Page
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import navigate_to_settings_page
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
+from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
 
-def _enable_review_all_via_settings(page: Page) -> None:
-    """Enable the Review All experimental setting via the Settings UI."""
-    settings_page = navigate_to_settings_page(page=page)
-    experimental = settings_page.click_on_experimental()
-    experimental.enable_review_all()
+def _open_file_diff_from_changes(task_page: PlaywrightTaskPage) -> None:
+    """Open hello.py's diff from the Changes tab (All scope)."""
+    task_page.activate_changes_panel(scope="all")
+    # Force a fresh diff fetch (cold-start: the initial files-changed signal can
+    # land before the frontend's diff subscription is ready).
+    task_page.get_file_browser().get_refresh_button().click()
+    changes_panel = task_page.get_changes_panel()
+    changes_tree = changes_panel.get_changes_tree()
+    expect(changes_tree).to_be_visible()
+    changes_tree.get_tree_rows().filter(has_text="hello.py").click()
 
 
-_WRITE_FILE_PROMPT = """\
-fake_claude:write_file `{
-  "file_path": "hello.py",
-  "content": "print('hello')\\n"
-}`"""
-
-
-@user_story("to see the scope picker default to All from the Changes tab")
+@user_story("to see the Changes tab scope picker default to All")
 def test_scope_picker_defaults_to_all(sculptor_instance_: SculptorInstance) -> None:
-    """Opening Review All from Changes tab should default to All scope."""
+    """The Changes tab scope picker should default to the All scope."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    _enable_review_all_via_settings(page)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, write_file("hello.py", "print('hello')\n"))
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_FILE_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page.activate_changes_panel(scope="all")
+    task_page.get_file_browser().get_refresh_button().click()
 
-    task_page.activate_changes_panel()
-    task_page.click_review_all()
-
-    # The Changes tab also renders its own DiffScopePicker, so we scope to the
-    # diff panel to avoid a strict-mode violation from two matching elements.
-    diff_panel = task_page.get_diff_panel()
-    scope_picker = diff_panel.get_scope_picker()
+    changes_panel = task_page.get_changes_panel()
+    scope_picker = changes_panel.get_scope_picker()
     expect(scope_picker).to_be_visible()
-    expect(scope_picker).to_contain_text("All")
+    expect(changes_panel.get_scope_all()).to_have_attribute("data-state", "on")
 
 
 @user_story("to use the expand toggle for distraction-free diff review")
 def test_expand_toggle_expands_and_collapses(sculptor_instance_: SculptorInstance) -> None:
     """The expand toggle should expand the diff to fill the layout area."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    _enable_review_all_via_settings(page)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, write_file("hello.py", "print('hello')\n"))
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_FILE_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
-
-    task_page.activate_changes_panel()
-    task_page.click_review_all()
+    _open_file_diff_from_changes(task_page)
 
     diff_panel = task_page.get_diff_panel()
     expand_toggle = diff_panel.get_expand_toggle()

@@ -16,7 +16,6 @@ import {
   isDefaultFastModeAtom,
   isEntityMentionsEnabledAtom,
   isPiAgentEnabledAtom,
-  isReviewAllEnabledAtom,
   isRichMarkdownRenderingEnabledAtom,
   isSmoothStreamingUserPreferenceAtom,
   userEmailAtom,
@@ -71,7 +70,6 @@ export const SettingsPage = (): ReactElement => {
   const configuredDefaultModel = useAtomValue(configuredDefaultModelAtom);
   const userEmail = useAtomValue(userEmailAtom);
   const isAlwaysInterruptAndSend = useAtomValue(isAlwaysInterruptAndSendAtom);
-  const isReviewAllEnabled = useAtomValue(isReviewAllEnabledAtom);
   const isPiAgentEnabled = useAtomValue(isPiAgentEnabledAtom);
   const visibleSections = SETTINGS_SECTIONS;
   // The mobile Select binds value={activeSection}, so its options must always
@@ -309,16 +307,6 @@ export const SettingsPage = (): ReactElement => {
                       onCheckedChange={(checked) =>
                         handleSettingChange(UserConfigField.IS_SMOOTH_STREAMING_ENABLED, checked)
                       }
-                    />
-                  </SettingRow>
-                  <SettingRow
-                    title="Review All"
-                    description="Show the Review All combined diff view in the File Browser."
-                  >
-                    <Switch
-                      checked={isReviewAllEnabled}
-                      onCheckedChange={(checked) => handleSettingChange(UserConfigField.ENABLE_REVIEW_ALL, checked)}
-                      data-testid={ElementIds.SETTINGS_ENABLE_REVIEW_ALL_TOGGLE}
                     />
                   </SettingRow>
                   <SettingRow

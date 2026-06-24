@@ -10,8 +10,6 @@ from sculpt.formatting import cli_error
 from sculpt.formatting import handle_connection_error
 
 STRATEGY_MAPPING = {
-    "clone": WorkspaceInitializationStrategy.CLONE,
-    "in-place": WorkspaceInitializationStrategy.IN_PLACE,
     "worktree": WorkspaceInitializationStrategy.WORKTREE,
 }
 
@@ -52,7 +50,6 @@ def resolve_requested_branch_name(
             client=client,
             project_id=project_id,
             workspace_name=workspace_name or "",
-            mode=strategy,
         )
     except httpx.ConnectError:
         handle_connection_error(json_output)

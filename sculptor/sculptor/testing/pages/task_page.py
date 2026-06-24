@@ -143,12 +143,6 @@ class PlaywrightTaskPage(PlaywrightProjectLayoutPage):
         """Get the commit button in the changes panel."""
         return self._page.get_by_test_id(ElementIDs.CHANGES_COMMIT_BUTTON)
 
-    def click_review_all(self) -> None:
-        """Click the Review All button in the changes panel."""
-        review_all_btn = self._page.get_by_test_id(ElementIDs.CHANGES_REVIEW_ALL_BTN)
-        expect(review_all_btn).to_be_visible()
-        review_all_btn.click()
-
     def activate_actions_panel(self) -> None:
         """Ensure the actions panel is visible by clicking its tab icon if needed."""
         actions_panel = self._page.get_by_test_id(ElementIDs.ACTIONS_PANEL)

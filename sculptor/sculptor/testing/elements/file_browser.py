@@ -50,9 +50,6 @@ class PlaywrightFileBrowserElement(PlaywrightIntegrationTestElement):
     def get_status_indicators(self) -> Locator:
         return self.get_by_test_id(ElementIDs.FILE_BROWSER_TREE_ROW_STATUS)
 
-    def get_review_all_button(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.CHANGES_REVIEW_ALL_BTN)
-
 
 def get_file_browser_panel(page: Page) -> PlaywrightFileBrowserElement:
     locator = page.get_by_test_id(ElementIDs.FILE_BROWSER_PANEL)

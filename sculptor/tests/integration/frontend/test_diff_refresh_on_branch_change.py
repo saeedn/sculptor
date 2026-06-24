@@ -10,17 +10,12 @@ from pathlib import Path
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
 from sculptor.testing.elements.file_tree import get_changes_tree
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-
-_WRITE_FILE_PROMPT = """\
-fake_claude:write_file `{
-  "file_path": "hello.py",
-  "content": "print('hello')\\n"
-}`"""
 
 
 def _get_workspace_working_dir(sculptor_instance: SculptorInstance) -> Path:
@@ -42,7 +37,7 @@ def test_diff_refreshes_when_current_branch_changes(sculptor_instance_: Sculptor
     Steps:
     1. Agent writes hello.py — it appears in the Uncommitted changes tree.
     2. *Outside* the agent (directly on the filesystem), commit hello.py and
-       check out a new branch at origin/main so the workspace has zero diff.
+       check out a new branch at the fork point so the workspace has zero diff.
     3. The branch polling manager detects the branch change within 3 seconds
        and pushes a WebSocket update.  The frontend should detect this, clear
        stale diff data, and refetch — making hello.py disappear from Changes.
@@ -52,16 +47,19 @@ def test_diff_refreshes_when_current_branch_changes(sculptor_instance_: Sculptor
     detecting the branch change via the ``workspaceBranchAtomFamily`` atom.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Step 1: Create workspace (clone mode — the test relies on `origin/main`
-    # being available in the workspace's checkout, which only exists in
-    # clones) and have the agent write a file.
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_FILE_PROMPT, mode="CLONE")
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    # Step 1: Create the workspace and have the agent write a file. Wait for the
+    # write to land so the changes tree is populated before we inspect it.
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, write_file("hello.py", "print('hello')\n"))
 
-    # Open the Changes panel and verify hello.py is listed.
-    task_page.activate_changes_panel()
+    # Open the Changes panel (Uncommitted scope) and verify hello.py is listed.
+    task_page.activate_changes_panel(scope="uncommitted")
+    # Force a fresh diff fetch: on a freshly-created workspace the initial
+    # files-changed signal can land before the frontend's diff subscription is
+    # ready, leaving the changes tree empty until an explicit refetch.
+    task_page.get_file_browser().get_refresh_button().click()
     changes_tree = get_changes_tree(page)
     expect(changes_tree).to_be_visible()
     hello_row = changes_tree.get_tree_rows().filter(has_text="hello.py")
@@ -89,8 +87,12 @@ def test_diff_refreshes_when_current_branch_changes(sculptor_instance_: Sculptor
         check=True,
         capture_output=True,
     )
+    # Check out a new branch at the fork point (HEAD~1, the commit before
+    # hello.py was committed) so the workspace has zero diff vs the target
+    # branch again. Worktree-mode workspaces have no `origin/main` ref to
+    # target, so we use the parent commit, which is the target fork point.
     subprocess.run(
-        ["git", "checkout", "-b", "fresh-from-main", "origin/main"],
+        ["git", "checkout", "-b", "fresh-from-main", "HEAD~1"],
         cwd=workspace_dir,
         check=True,
         capture_output=True,

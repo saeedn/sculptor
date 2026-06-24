@@ -15,17 +15,11 @@ bar must disappear once no file is open. Before the fix it stayed visible.
 from playwright.sync_api import Route
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-
-# A single file write so the workspace has an uncommitted diff to open.
-_WRITE_FILE_PROMPT = """\
-fake_claude:write_file `{
-  "file_path": "hello.py",
-  "content": "print('hello')\\n"
-}`"""
 
 _DIFF_URL_GLOB = "**/workspaces/*/diff*"
 
@@ -33,10 +27,12 @@ _DIFF_URL_GLOB = "**/workspaces/*/diff*"
 @user_story("to not see the diff loading bar when no file is open")
 def test_diff_loading_bar_hidden_when_no_file_open(sculptor_instance_: SculptorInstance) -> None:
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_FILE_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    # A single file write so the workspace has an uncommitted diff to open. Wait
+    # for it to land before inspecting the changes tree.
+    send_fake_agent_command_and_wait(agents_dir, write_file("hello.py", "print('hello')\n"))
 
     # Open the Changes tab (Uncommitted scope) and open hello.py in the diff viewer.
     task_page.activate_file_browser()
@@ -44,6 +40,9 @@ def test_diff_loading_bar_hidden_when_no_file_open(sculptor_instance_: SculptorI
     changes_tab = file_browser.get_tab_changes()
     expect(changes_tab).to_be_visible()
     changes_tab.click()
+    # Force a fresh diff fetch (cold-start: the initial files-changed signal can
+    # land before the frontend's diff subscription is ready).
+    file_browser.get_refresh_button().click()
 
     changes_panel = task_page.get_changes_panel()
     changes_panel.get_scope_uncommitted().click()

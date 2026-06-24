@@ -18,21 +18,11 @@ Both should work for a worktree workspace created from a local-only repo
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import select_model_by_name
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.elements.task_starter import FAKE_CLAUDE_MODEL_NAME
-from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
-from sculptor.testing.pages.task_page import PlaywrightTaskPage
-from sculptor.testing.playwright_utils import navigate_to_add_workspace_page
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-
-_WRITE_FILE_PROMPT = """\
-fake_claude:write_file `{
-  "file_path": "hello.py",
-  "content": "print('hello')\\n"
-}`"""
 
 
 @user_story("to see uncommitted changes and the All tab on a worktree workspace from a local-only repo")
@@ -48,23 +38,10 @@ def test_worktree_on_local_only_repo_shows_all_tab_and_uncommitted_changes(
     Worktree mode is the default; no mode-selector interaction needed.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    navigate_to_add_workspace_page(page)
-    add_workspace_page = PlaywrightAddWorkspacePage(page=page)
-    add_workspace_page.get_workspace_name_input().fill("Local only worktree")
-
-    # Branch-name input auto-fills; just wait for it to settle.
-    branch_input = add_workspace_page.get_branch_name_input()
-    expect(branch_input).to_be_visible()
-    expect(branch_input).not_to_have_value("")
-
-    add_workspace_page.submit_and_wait_for_chat_panel()
-
-    task_page = PlaywrightTaskPage(page=page)
-    chat_panel = task_page.get_chat_panel()
-    select_model_by_name(chat_panel=chat_panel, model_name=FAKE_CLAUDE_MODEL_NAME)
-    send_chat_message(chat_panel=chat_panel, message=_WRITE_FILE_PROMPT)
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir, workspace_name="Local only worktree")
+    send_fake_agent_command(agents_dir, write_file("hello.py", "print('hello')\n"))
 
     task_page.activate_changes_panel(scope="uncommitted")
 

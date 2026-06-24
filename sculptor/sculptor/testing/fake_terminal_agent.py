@@ -39,6 +39,7 @@ end-to-end example every REWRITE task copies.
 
 import json
 import shutil
+import time
 from pathlib import Path
 
 from playwright.sync_api import Page
@@ -130,7 +131,16 @@ def register_fake_terminal_agent(
     registration.
     """
     terminal_agents_dir.mkdir(parents=True, exist_ok=True)
-    commands_dir_for(terminal_agents_dir, registration_id).mkdir(parents=True, exist_ok=True)
+    # Start each registration with an empty commands directory. Under a shared
+    # SculptorInstance, the prior test's workspace+agent (and its runner) are
+    # deleted in _pre_test before this runs, but the commands dir persists — so
+    # clear stale command/done/sentinel files. Otherwise the fresh runner would
+    # re-execute every prior command (re-creating commits etc.) and the
+    # name-ordered index would keep climbing across tests.
+    commands_dir = commands_dir_for(terminal_agents_dir, registration_id)
+    if commands_dir.is_dir():
+        shutil.rmtree(commands_dir)
+    commands_dir.mkdir(parents=True, exist_ok=True)
 
     runner_dest = terminal_agents_dir / _runner_filename(registration_id)
     shutil.copyfile(fake_terminal_agent_runner.__file__, runner_dest)
@@ -178,6 +188,42 @@ def send_fake_agent_command(
     tmp_path.write_text(json.dumps(command))
     tmp_path.rename(final_path)
     return final_path
+
+
+def wait_for_command_done(command_path: Path, *, timeout_seconds: float = 60.0) -> None:
+    """Block until the runner has finished executing the command at ``command_path``.
+
+    The runner writes ``<command_path>.done`` once it finishes a command.
+    ``send_fake_agent_command`` returns immediately (before the side effect has
+    been applied), so a test that reads workspace state right after sending a
+    mutation — e.g. the all-files Browse tree, or the Uncommitted scope picker,
+    which only renders once changes exist — must wait for this marker first.
+    """
+    done_marker = command_path.with_suffix(command_path.suffix + ".done")
+    deadline = time.monotonic() + timeout_seconds
+    while time.monotonic() < deadline:
+        if done_marker.exists():
+            return
+        time.sleep(0.05)
+    raise AssertionError(f"Command {command_path} did not complete within {timeout_seconds}s")
+
+
+def send_fake_agent_command_and_wait(
+    terminal_agents_dir: Path,
+    command: dict,
+    *,
+    registration_id: str = DEFAULT_REGISTRATION_ID,
+    timeout_seconds: float = 60.0,
+) -> Path:
+    """Send a command and block until the runner has finished executing it.
+
+    Convenience wrapper combining ``send_fake_agent_command`` and
+    ``wait_for_command_done`` for tests that must observe the side effect's
+    result deterministically.
+    """
+    command_path = send_fake_agent_command(terminal_agents_dir, command, registration_id=registration_id)
+    wait_for_command_done(command_path, timeout_seconds=timeout_seconds)
+    return command_path
 
 
 def release_fake_agent_wait(

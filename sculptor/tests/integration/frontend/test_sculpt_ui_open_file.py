@@ -23,7 +23,6 @@ from playwright.sync_api import Page
 from playwright.sync_api import expect
 
 from sculptor.testing.elements.diff_panel import get_diff_panel_from_page
-from sculptor.testing.elements.file_browser import get_file_browser_panel
 from sculptor.testing.playwright_utils import request_with_retry
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -260,12 +259,6 @@ def test_combined_tab_remains_when_open_file_arrives(
 ) -> None:
     page = sculptor_instance_.page
     with _workspace_and_file(page) as (workspace_id, file_path):
-        # Open Review All to surface the combined-diff tab if the button is exposed.
-        file_browser = get_file_browser_panel(page)
-        review_all_btn = file_browser.get_review_all_button()
-        if review_all_btn.is_visible():
-            review_all_btn.click()
-
         exit_code, _stdout, stderr = _run_sculpt_ui_open_file(
             sculptor_instance_, path=file_path, workspace_id=workspace_id, mode="file"
         )

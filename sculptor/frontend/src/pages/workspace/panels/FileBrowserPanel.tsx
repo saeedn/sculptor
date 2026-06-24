@@ -1,17 +1,14 @@
 import { Button, Flex } from "@radix-ui/themes";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { Layers } from "lucide-react";
 import type { CSSProperties, ReactElement } from "react";
 import { useCallback, useMemo } from "react";
 
 import { ElementIds } from "~/api";
 import { useTimedLatch } from "~/common/Hooks.ts";
 import { useWorkspacePageParams } from "~/common/NavigateUtils.ts";
-import { isReviewAllEnabledAtom } from "~/common/state/atoms/userConfig.ts";
 import { useWorkspaceCommits } from "~/common/state/hooks/useWorkspaceCommits.ts";
 import type { FileBrowserTab } from "~/components/panels/atoms.ts";
 import { activeFileBrowserTabAtomFamily } from "~/components/panels/atoms.ts";
-import { openCombinedDiffTabAtom } from "~/pages/workspace/components/diffPanel/atoms.ts";
 
 import { fileBrowserStateAtomFamily, setSearchAtom, toggleViewModeAtom } from "./fileBrowser/atoms.ts";
 import { ChangesTabContent } from "./fileBrowser/ChangesTabContent.tsx";
@@ -41,18 +38,15 @@ export const FileBrowserPanel = (): ReactElement | null => {
   const { workspaceID } = useWorkspacePageParams();
   const setSearch = useSetAtom(setSearchAtom);
   const toggleViewMode = useSetAtom(toggleViewModeAtom);
-  const openCombinedDiffTab = useSetAtom(openCombinedDiffTabAtom);
   const fileBrowserState = useAtomValue(fileBrowserStateAtomFamily(workspaceID ?? ""));
   const { tree, isPending, isFetching, isGenerating, refetch } = useFileTree(workspaceID ?? "", "vs-target-branch");
   const isSpinning = useTimedLatch(isFetching || isGenerating, SPIN_MIN_HOLD_MS);
 
-  const isReviewAllEnabled = useAtomValue(isReviewAllEnabledAtom);
   const [activeTab, setActiveTab] = useAtom(activeFileBrowserTabAtomFamily(workspaceID ?? ""));
   const allChangesStatusMap = useFileStatusMap(workspaceID ?? "", "vs-target-branch");
   const changesCount = allChangesStatusMap.size;
   const { data: commits } = useWorkspaceCommits(workspaceID ?? "");
   const commitCount = commits?.commits.length ?? 0;
-  const hasChangesToReview = changesCount > 0 || commitCount > 0;
 
   const { viewMode, searchQuery, searchOpen: isSearchOpen } = fileBrowserState;
 
@@ -93,12 +87,6 @@ export const FileBrowserPanel = (): ReactElement | null => {
   const handleTabChange = (tab: FileBrowserTab): void => {
     setActiveTab(tab);
   };
-
-  const handleReviewAll = useCallback((): void => {
-    if (workspaceID) {
-      openCombinedDiffTab({ workspaceId: workspaceID, defaultScope: "vs-target-branch" });
-    }
-  }, [workspaceID, openCombinedDiffTab]);
 
   if (!workspaceID) {
     return null;
@@ -160,19 +148,6 @@ export const FileBrowserPanel = (): ReactElement | null => {
           </Button>
         ))}
         <span style={{ flex: 1 }} />
-        {isReviewAllEnabled && hasChangesToReview && (
-          <Button
-            variant="ghost"
-            size="1"
-            color="gray"
-            className={styles.reviewAllButton}
-            onClick={handleReviewAll}
-            data-testid={ElementIds.CHANGES_REVIEW_ALL_BTN}
-          >
-            <Layers size={12} />
-            <span className={styles.reviewAllLabel}>Review all</span>
-          </Button>
-        )}
       </Flex>
       {/* All tabs stay mounted so switching doesn't trigger data refetches. */}
       <div style={activeTab === "all" ? VISIBLE_STYLE : HIDDEN_STYLE}>{renderAllTab()}</div>

@@ -9,53 +9,45 @@ The test setup creates a feature branch with a committed file and an additional
 uncommitted edit so that committed-vs-uncommitted changes are distinct.
 """
 
+from pathlib import Path
+
+from playwright.sync_api import Page
 from playwright.sync_api import expect
 
 from sculptor.constants import ElementIDs
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import edit_file
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
+from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
-# Setup: create a feature branch, write "hello" to myapp.py and commit, then
-# edit it to "goodbye" without committing.
-#
-# Expected diffs:
-#   Uncommitted (HEAD -> working tree):  "hello" -> "goodbye"
-#   All (merge-base -> working tree):    entire file "goodbye" is new (addition)
-#   Browse:                              plain file view, no diff
-_COMMIT_THEN_EDIT_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "myapp.py",
-        "content": "print('hello')\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add myapp.py'"
-      }
-    },
-    {
-      "command": "edit_file",
-      "args": {
-        "file_path": "myapp.py",
-        "old_string": "print('hello')",
-        "new_string": "print('goodbye')"
-      }
-    }
-  ]
-}`"""
+
+def _start_commit_then_edit(page: Page, agents_dir: Path) -> PlaywrightTaskPage:
+    """Create a feature branch, write "hello" to myapp.py and commit, then edit
+    it to "goodbye" without committing.
+
+    Expected diffs:
+      Uncommitted (HEAD -> working tree):  "hello" -> "goodbye"
+      All (merge-base -> working tree):    entire file "goodbye" is new (addition)
+      Browse:                              plain file view, no diff
+    """
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("myapp.py", "print('hello')\n"),
+                bash("git add -A && git commit -m 'Add myapp.py'"),
+                edit_file("myapp.py", "print('hello')", "print('goodbye')"),
+            ]
+        ),
+    )
+    return task_page
 
 
 @user_story("to see plain file contents when clicking a file in the Browse tab")
@@ -63,10 +55,9 @@ def test_browse_tab_opens_file_view(sculptor_instance_: SculptorInstance) -> Non
     """Clicking a file in the Browse tab should open a read-only file preview,
     not a diff view."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_COMMIT_THEN_EDIT_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page = _start_commit_then_edit(page, agents_dir)
 
     task_page.activate_file_browser()
     file_browser = task_page.get_file_browser()
@@ -98,10 +89,9 @@ def test_uncommitted_scope_shows_head_vs_working_tree_diff(sculptor_instance_: S
     """Clicking a file in the Changes tab with Uncommitted scope should show
     only the HEAD-to-working-tree diff (hello -> goodbye)."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_COMMIT_THEN_EDIT_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page = _start_commit_then_edit(page, agents_dir)
 
     task_page.activate_file_browser()
     file_browser = task_page.get_file_browser()
@@ -150,10 +140,9 @@ def test_all_scope_shows_merge_base_vs_working_tree_diff(sculptor_instance_: Scu
     merge-base-to-working-tree diff (the entire file as a new addition
     with the current working tree content)."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_COMMIT_THEN_EDIT_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page = _start_commit_then_edit(page, agents_dir)
 
     task_page.activate_file_browser()
     file_browser = task_page.get_file_browser()
@@ -195,10 +184,9 @@ def test_same_file_opens_separate_tabs_per_scope(sculptor_instance_: SculptorIns
     """Opening the same file from Uncommitted and All scopes should create two
     separate diff tabs, each showing the appropriate diff."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_COMMIT_THEN_EDIT_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page = _start_commit_then_edit(page, agents_dir)
 
     task_page.activate_file_browser()
     file_browser = task_page.get_file_browser()
@@ -232,47 +220,6 @@ def test_same_file_opens_separate_tabs_per_scope(sculptor_instance_: SculptorIns
     expect(app_tabs).to_have_count(2)
 
 
-# Setup: multi-line file with a unique marker on line 11. Line 7 is edited so
-# the hunk covers lines 4–10 (3 context lines on each side). Lines 11+ lie
-# outside the hunk and are rendered as Pierre expansion lines.  When the
-# frontend strips the trailing '\n' from the diff string, Pierre concatenates
-# the last hunk line (line 10) directly with expansion line 11, causing Shiki
-# to treat them as a single line.  Every subsequent line number is then off
-# by one.
-_LINE_NUMBER_REGRESSION_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "multiline.py",
-        "content": "line_01\\nline_02\\nline_03\\nline_04\\nline_05\\nline_06\\nline_07\\nline_08\\nline_09\\nline_10\\nafter_hunk_line_eleven\\nline_12\\nline_13\\nline_14\\nline_15\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add multiline.py'"
-      }
-    },
-    {
-      "command": "edit_file",
-      "args": {
-        "file_path": "multiline.py",
-        "old_string": "line_07",
-        "new_string": "line_07_edited"
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see correct line numbers for expansion lines beyond the last diff hunk")
 def test_diff_view_shows_correct_line_numbers(sculptor_instance_: SculptorInstance) -> None:
     """Lines that appear after the last hunk's 3-context-line window are
@@ -282,10 +229,30 @@ def test_diff_view_shows_correct_line_numbers(sculptor_instance_: SculptorInstan
     line.  Shiki then treated the two as one line, shifting all subsequent line
     numbers by one.  After the fix, every line must carry the correct number."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_LINE_NUMBER_REGRESSION_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    # Setup: multi-line file with a unique marker on line 11. Line 7 is edited so
+    # the hunk covers lines 4–10 (3 context lines on each side). Lines 11+ lie
+    # outside the hunk and are rendered as Pierre expansion lines.  When the
+    # frontend strips the trailing '\n' from the diff string, Pierre concatenates
+    # the last hunk line (line 10) directly with expansion line 11, causing Shiki
+    # to treat them as a single line.  Every subsequent line number is then off
+    # by one.
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file(
+                    "multiline.py",
+                    "line_01\nline_02\nline_03\nline_04\nline_05\nline_06\nline_07\nline_08\nline_09\nline_10\nafter_hunk_line_eleven\nline_12\nline_13\nline_14\nline_15\n",
+                ),
+                bash("git add -A && git commit -m 'Add multiline.py'"),
+                edit_file("multiline.py", "line_07", "line_07_edited"),
+            ]
+        ),
+    )
 
     task_page.activate_file_browser()
     file_browser = task_page.get_file_browser()
@@ -358,44 +325,27 @@ def test_diff_view_shows_correct_line_numbers(sculptor_instance_: SculptorInstan
     )
 
 
-# Setup: committed-only file. Create feature branch, write and commit a file,
-# no further edits. This file only appears in the All scope (not Uncommitted).
-_COMMITTED_ONLY_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "committed.py",
-        "content": "x = 42\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add committed.py'"
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see committed-only files in All scope but not in Uncommitted scope")
 def test_committed_file_visible_in_all_scope_only(sculptor_instance_: SculptorInstance) -> None:
     """A file that has been committed with no further edits should appear in the
     All scope (it's new relative to the target branch) but not in the
     Uncommitted scope (no working tree changes)."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_COMMITTED_ONLY_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    # Setup: committed-only file. Create feature branch, write and commit a file,
+    # no further edits. This file only appears in the All scope (not Uncommitted).
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("committed.py", "x = 42\n"),
+                bash("git add -A && git commit -m 'Add committed.py'"),
+            ]
+        ),
+    )
 
     task_page.activate_file_browser()
     file_browser = task_page.get_file_browser()

@@ -7,16 +7,11 @@ Tests verify that:
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-
-_WRITE_FILE_PROMPT = """\
-fake_claude:write_file `{
-  "file_path": "hello.py",
-  "content": "print('hello')\\n"
-}`"""
 
 
 @user_story("to see that the All scope button is enabled when a target branch is auto-resolved")
@@ -24,10 +19,10 @@ def test_all_scope_enabled_with_auto_resolved_target_branch(sculptor_instance_: 
     """The test repo has a 'main' branch, so clone workspaces resolve
     target_branch to 'origin/main'. The All scope button should be enabled."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_FILE_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(agents_dir, write_file("hello.py", "print('hello')\n"))
 
     task_page.activate_changes_panel()
 
@@ -43,10 +38,10 @@ def test_switching_to_all_scope_shows_target_branch_diff(sculptor_instance_: Scu
     """Switching to All scope should show the target-branch diff content
     (the uncommitted file as a new addition relative to the target branch)."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_FILE_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(agents_dir, write_file("hello.py", "print('hello')\n"))
 
     task_page.activate_changes_panel()
 

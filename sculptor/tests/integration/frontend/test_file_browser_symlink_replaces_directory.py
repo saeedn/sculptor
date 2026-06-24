@@ -25,38 +25,12 @@ of the deleted children.
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-
-# Step 1: create and commit a directory containing two files. They become the
-#         deleted entries in the diff after step 2.
-# Step 2: delete the directory, replace it with a symlink at the same path
-#         (``mydir`` now points at the existing ``stuff.txt``), and stage the
-#         result so the symlink is tracked. ``git ls-files`` will then return
-#         ``mydir`` as a regular file and ``git diff HEAD`` will show
-#         ``D mydir/foo.md`` and ``D mydir/bar.md`` alongside ``A mydir``.
-#         This is the exact data shape that confuses ``addDeletedFileToTree``:
-#         the file list has ``mydir`` as a file at the same path that the
-#         deleted-files synthesizer wants to materialize as a directory.
-_REPRO_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "mkdir -p mydir && printf 'one\\n' > mydir/foo.md && printf 'two\\n' > mydir/bar.md && git add -A && git commit -m 'Add mydir with files'"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "rm -rf mydir && ln -s stuff.txt mydir && git add -A"
-      }
-    }
-  ]
-}`"""
 
 
 @user_story("to see a clean Changes tab when a directory has been replaced by a symlink")
@@ -71,10 +45,31 @@ def test_directory_replaced_by_symlink_no_duplicate_row(sculptor_instance_: Scul
     ``key={node.path}``, and the user sees overlapping rows.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_REPRO_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+
+    # Step 1: create and commit a directory containing two files. They become
+    #         the deleted entries in the diff after step 2.
+    # Step 2: delete the directory, replace it with a symlink at the same path
+    #         (``mydir`` now points at the existing ``stuff.txt``), and stage
+    #         the result so the symlink is tracked. ``git ls-files`` will then
+    #         return ``mydir`` as a regular file and ``git diff HEAD`` will show
+    #         ``D mydir/foo.md`` and ``D mydir/bar.md`` alongside ``A mydir``.
+    #         This is the exact data shape that confuses ``addDeletedFileToTree``:
+    #         the file list has ``mydir`` as a file at the same path that the
+    #         deleted-files synthesizer wants to materialize as a directory.
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash(
+                    "mkdir -p mydir && printf 'one\\n' > mydir/foo.md && printf 'two\\n' > mydir/bar.md && git add -A && git commit -m 'Add mydir with files'"
+                ),
+                bash("rm -rf mydir && ln -s stuff.txt mydir && git add -A"),
+            ]
+        ),
+    )
 
     # The bug lives in the Changes tab tree. Use the uncommitted scope: the
     # commit in step 1 is HEAD, the symlink in step 2 is the working tree, so

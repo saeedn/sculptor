@@ -8,29 +8,6 @@ import { UserConfigField } from "~/api";
 import { dependenciesStatusAtom } from "~/common/state/atoms/dependenciesStatus";
 import { useManagedDependency } from "~/common/useManagedDependency";
 
-const { mockInstallDependency, mockGetDependenciesStatus } = vi.hoisted(() => ({
-  mockInstallDependency: vi.fn(),
-  mockGetDependenciesStatus: vi.fn(),
-}));
-
-vi.mock("~/api", async (importOriginal) => {
-  const original = await importOriginal();
-  return {
-    ...(original as object),
-    installDependency: mockInstallDependency,
-    getDependenciesStatus: mockGetDependenciesStatus,
-  };
-});
-
-// The poll loop has its own tests (usePollingInterval.test.ts); stub it so these
-// tests stay timer-free and assert only the hook's own state handling.
-vi.mock("~/common/usePollingInterval", () => ({
-  usePollingInterval: (): { startPolling: () => void; stopPolling: () => void } => ({
-    startPolling: vi.fn(),
-    stopPolling: vi.fn(),
-  }),
-}));
-
 const makeInfo = (overrides: Partial<DependencyInfo>): DependencyInfo => ({ installed: false, ...overrides });
 
 const makeStatus = (overrides: Partial<DependenciesStatus>): DependenciesStatus => ({
@@ -51,7 +28,6 @@ describe("useManagedDependency", () => {
   beforeEach(() => {
     store = createStore();
     vi.clearAllMocks();
-    mockGetDependenciesStatus.mockResolvedValue({ data: makeStatus({}) });
   });
 
   it("treats an installed, in-range managed binary as up to date and suppresses a stale error", () => {
@@ -129,12 +105,11 @@ describe("useManagedDependency", () => {
     expect(onSettingChange).toHaveBeenCalledWith(UserConfigField.DEPENDENCY_PATHS, { pi: "CUSTOM" });
   });
 
-  it("handleInstall requests the install for the given tool and reports an immediate failure", async () => {
+  it("handleInstall no longer installs and reports that the user must provide the binary on PATH", async () => {
     store.set(
       dependenciesStatusAtom,
       makeStatus({ claude: makeInfo({ installed: false, mode: "MANAGED", isVersionInRange: false }) }),
     );
-    mockInstallDependency.mockResolvedValue({ data: { success: false, error: "no network" } });
 
     const { result } = renderHook(() => useManagedDependency({ tool: "CLAUDE", onSettingChange }), { wrapper });
 
@@ -142,11 +117,7 @@ describe("useManagedDependency", () => {
       await result.current.handleInstall();
     });
 
-    // The install endpoint opens no request transaction, so it never acks on the
-    // unified stream; skipWsAck avoids a spurious 10s timeout while the background
-    // install (polled below) is still running.
-    expect(mockInstallDependency).toHaveBeenCalledWith({ query: { tool: "CLAUDE" }, meta: { skipWsAck: true } });
     expect(result.current.isInstalling).toBe(false);
-    expect(result.current.effectiveInstallError).toBe("no network");
+    expect(result.current.effectiveInstallError).toContain("PATH");
   });
 });

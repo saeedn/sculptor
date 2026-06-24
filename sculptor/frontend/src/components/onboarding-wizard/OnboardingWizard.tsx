@@ -9,7 +9,6 @@ import { ValidationError } from "~/common/Errors.ts";
 import { TitleBar } from "~/components/TitleBar";
 
 import { AddRepoStep } from "./AddRepoStep.tsx";
-import { InstallationStep } from "./InstallationStep.tsx";
 import styles from "./OnboardingWizard.module.scss";
 import { StepIndicator } from "./StepIndicator.tsx";
 import { WelcomeStep } from "./WelcomeStep.tsx";
@@ -17,13 +16,12 @@ import { WelcomeStep } from "./WelcomeStep.tsx";
 // eslint-disable-next-line react-refresh/only-export-components -- enum-style const shared with non-component code
 export const OnboardingStep = {
   EMAIL: "EMAIL",
-  INSTALLATION: "INSTALLATION",
   ADD_REPO: "ADD_REPO",
 } as const;
 
 export type OnboardingStep = (typeof OnboardingStep)[keyof typeof OnboardingStep];
 
-const STEP_ORDER: Array<OnboardingStep> = [OnboardingStep.EMAIL, OnboardingStep.INSTALLATION, OnboardingStep.ADD_REPO];
+const STEP_ORDER: Array<OnboardingStep> = [OnboardingStep.EMAIL, OnboardingStep.ADD_REPO];
 const STEP_COUNT = STEP_ORDER.length;
 
 type OnboardingWizardProps = {
@@ -81,7 +79,7 @@ export const OnboardingWizard = ({ initialStep, onComplete }: OnboardingWizardPr
       setFullName(fullName);
       setDidOptInToMarketing(didOptInToMarketing);
       setIsTelemetryEnabled(isTelemetryEnabled);
-      goToStep(OnboardingStep.INSTALLATION);
+      await handleInstallationComplete();
     } catch (err) {
       let errorMessage = "Failed to save email";
       if (err instanceof ValidationError) {
@@ -106,7 +104,7 @@ export const OnboardingWizard = ({ initialStep, onComplete }: OnboardingWizardPr
       });
 
       setIsTelemetryEnabled(isTelemetryEnabled);
-      goToStep(OnboardingStep.INSTALLATION);
+      await handleInstallationComplete();
     } catch (err) {
       let errorMessage = "Failed to continue without an account";
       if (err instanceof HTTPException) {
@@ -190,10 +188,6 @@ export const OnboardingWizard = ({ initialStep, onComplete }: OnboardingWizardPr
           initialIsTelemetryEnabled={isTelemetryEnabled}
         />
       );
-    }
-
-    if (currentStep === OnboardingStep.INSTALLATION) {
-      return <InstallationStep onComplete={handleInstallationComplete} isLoading={isLoading} error={error} />;
     }
 
     return <AddRepoStep onComplete={handleAddRepoComplete} isLoading={isLoading} error={error} />;

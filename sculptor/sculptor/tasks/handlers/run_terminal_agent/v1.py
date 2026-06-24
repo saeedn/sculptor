@@ -16,6 +16,7 @@ next connection.
 from __future__ import annotations
 
 import datetime
+import shutil
 from typing import Any
 from typing import Callable
 from typing import cast
@@ -38,7 +39,6 @@ from sculptor.interfaces.agents.agent import EnvironmentReleasedRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentTypes
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.services.data_model_service.data_types import DataModelTransaction
-from sculptor.services.dependency_management_service import Dependency
 from sculptor.services.task_service.data_types import ServiceCollectionForTask
 from sculptor.services.task_service.errors import UserPausedTaskError
 from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
@@ -160,7 +160,9 @@ def run_terminal_agent_task_v1(
                         settings=settings,
                         shutdown_event=shutdown_event,
                         on_started=on_started,
-                        claude_binary_path=environment.get_tool_binary_path(Dependency.CLAUDE),
+                        # PATH-only resolution; the bundled registration falls
+                        # back to bare `claude` (see SCULPT_CLAUDE_BIN below).
+                        claude_binary_path=shutil.which("claude"),
                     )
                 finally:
                     with services.data_model_service.open_task_transaction() as transaction:

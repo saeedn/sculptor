@@ -89,7 +89,6 @@ from sculptor.interfaces.agents.agent import is_terminal_agent_config
 from sculptor.interfaces.agents.artifacts import ArtifactType
 from sculptor.interfaces.agents.artifacts import DiffArtifact
 from sculptor.interfaces.agents.artifacts import TaskListArtifact
-from sculptor.interfaces.environments.agent_execution_environment import Dependency
 from sculptor.interfaces.environments.base import ARTIFACTS_DIRECTORY
 from sculptor.interfaces.environments.base import STATE_DIRECTORY
 from sculptor.interfaces.environments.base import TASKS_SUBDIRECTORY
@@ -102,7 +101,6 @@ from sculptor.primitives.ids import create_user_id
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.data_model_service.data_types import TaskAndDataModelTransaction
-from sculptor.services.dependency_management_service import InstallResult
 from sculptor.services.git_repo_service.default_implementation import LocalReadOnlyGitRepo
 from sculptor.services.git_repo_service.default_implementation import LocalWritableGitRepo
 from sculptor.services.git_repo_service.error_types import GitRepoError
@@ -172,8 +170,6 @@ from sculptor.web.data_types import AgentDiagnosticsResponse
 from sculptor.web.data_types import AgentTypeName
 from sculptor.web.data_types import AnswerQuestionRequest
 from sculptor.web.data_types import ArtifactDataResponse
-from sculptor.web.data_types import AuthResult
-from sculptor.web.data_types import AuthStartResult
 from sculptor.web.data_types import BatchUpdateOpenStateRequest
 from sculptor.web.data_types import BranchExistsResponse
 from sculptor.web.data_types import BtwRequest
@@ -186,7 +182,6 @@ from sculptor.web.data_types import CreateAgentRequest
 from sculptor.web.data_types import CreateInitialCommitRequest
 from sculptor.web.data_types import CreateWorkspaceRequestV2
 from sculptor.web.data_types import CurrentBranchInfo
-from sculptor.web.data_types import DependenciesStatus
 from sculptor.web.data_types import DirectoryEntry
 from sculptor.web.data_types import DiscardFileRequest
 from sculptor.web.data_types import EmailConfigRequest
@@ -216,7 +211,6 @@ from sculptor.web.data_types import SignalEventRequest
 from sculptor.web.data_types import SkillInfo
 from sculptor.web.data_types import SkipAccountSetupRequest
 from sculptor.web.data_types import StartTaskRequest
-from sculptor.web.data_types import SubmitAuthCodeRequest
 from sculptor.web.data_types import TerminalInputRequest
 from sculptor.web.data_types import UpdateUserConfigRequest
 from sculptor.web.data_types import UpdateWorkspaceRequest
@@ -2797,71 +2791,6 @@ def skip_account_setup(
     set_user_config_instance(user_config)
 
     return get_logged_in_or_anonymous_telemetry_info()
-
-
-@router.get("/api/v1/config/dependencies")
-def get_dependencies_status(
-    request: Request, user_session: UserSession = Depends(get_user_session)
-) -> DependenciesStatus:
-    """Check if required dependencies are installed."""
-    services = get_services_from_request_or_websocket(request)
-    service = services.dependency_management_service
-    ds = service.get_status()
-
-    return ds
-
-
-@router.post("/api/v1/dependencies/install")
-def install_dependency(
-    request: Request,
-    tool: str = "CLAUDE",
-    user_session: UserSession = Depends(get_user_session),
-) -> InstallResult:
-    """Trigger installation of a managed dependency binary."""
-    try:
-        dependency = Dependency(tool)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Unknown tool: {tool}") from e
-
-    services = get_services_from_request_or_websocket(request)
-    return services.dependency_management_service.install_managed(dependency)
-
-
-@router.post("/api/v1/dependencies/auth")
-def start_dependency_auth(
-    request: Request,
-    tool: str = "CLAUDE",
-    user_session: UserSession = Depends(get_user_session),
-) -> AuthStartResult:
-    """Begin interactive dependency authentication and return the sign-in URL.
-
-    The CLI keeps running, waiting for the code the user pastes back via
-    POST /api/v1/dependencies/auth/code. On a machine with a usable local
-    browser the flow self-completes and the response has ``success=True``.
-    """
-    try:
-        dependency = Dependency(tool)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Unknown tool: {tool}") from e
-
-    services = get_services_from_request_or_websocket(request)
-    return services.dependency_management_service.start_auth_login(dependency)
-
-
-@router.post("/api/v1/dependencies/auth/code")
-def submit_dependency_auth_code(
-    body: SubmitAuthCodeRequest,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> AuthResult:
-    """Submit the code the user pasted from the sign-in page to finish authentication."""
-    try:
-        dependency = Dependency(body.tool)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Unknown tool: {body.tool}")
-
-    services = get_services_from_request_or_websocket(request)
-    return services.dependency_management_service.submit_auth_code(dependency, body.code)
 
 
 @router.post("/api/v1/config/complete")

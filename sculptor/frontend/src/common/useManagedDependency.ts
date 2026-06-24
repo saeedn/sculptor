@@ -1,10 +1,9 @@
-import { useAtomValue, useSetAtom } from "jotai";
+import { useAtomValue } from "jotai";
 import { useCallback, useEffect, useState } from "react";
 
 import type { DependenciesStatus, DependencyInfo, InstallProgress } from "~/api";
-import { getDependenciesStatus, installDependency, UserConfigField } from "~/api";
+import { UserConfigField } from "~/api";
 import { dependenciesStatusAtom } from "~/common/state/atoms/dependenciesStatus";
-import { usePollingInterval } from "~/common/usePollingInterval";
 
 type ManagedDependencyTool = "CLAUDE" | "PI";
 
@@ -62,7 +61,6 @@ export const useManagedDependency = ({
 }: UseManagedDependencyParams): UseManagedDependencyResult => {
   const configKey = DEPENDENCY_CONFIG_KEY[tool];
   const dependenciesStatus = useAtomValue(dependenciesStatusAtom);
-  const setDependenciesStatus = useSetAtom(dependenciesStatusAtom);
   const info = selectInfo(dependenciesStatus, tool);
   const mode = info?.mode ?? "MANAGED";
 
@@ -96,53 +94,13 @@ export const useManagedDependency = ({
 
   const [isInstalling, setIsInstalling] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
-  const { startPolling, stopPolling } = usePollingInterval();
 
+  // Managed installation has been removed — Sculptor no longer installs or
+  // manages binaries; the user provides `claude`/`git` on PATH. The action is
+  // kept (settings still render) but reports that installation is unsupported.
   const handleInstall = useCallback(async (): Promise<void> => {
-    setIsInstalling(true);
-    setInstallError(null);
-    try {
-      // The install endpoint is fire-and-forget and opens no request transaction, so it
-      // never acks on the unified stream; skipWsAck avoids a spurious 10s timeout while
-      // the (possibly slow) download runs — completion is tracked by the poll below.
-      const response = await installDependency({ query: { tool }, meta: { skipWsAck: true } });
-      const result = response.data;
-      if (!result?.success) {
-        setInstallError(result?.error ?? "Installation failed");
-        setIsInstalling(false);
-      }
-      // Poll for status until the backend confirms install completed. The WebSocket
-      // push from notify_observers() is not always reliable, so poll as a fallback.
-      startPolling(async () => {
-        try {
-          const { data: deps } = await getDependenciesStatus({ meta: { skipWsAck: true } });
-          if (deps) {
-            setDependenciesStatus(deps);
-          }
-
-          const depInfo = selectInfo(deps, tool);
-          // A failed download surfaces install_error while leaving the stale binary
-          // in place, so stop polling and let the error render rather than spinning
-          // forever.
-          if (depInfo?.installError) {
-            stopPolling();
-            setIsInstalling(false);
-            return;
-          }
-
-          if (depInfo?.installed && !depInfo?.installProgress) {
-            stopPolling();
-            setIsInstalling(false);
-          }
-        } catch {
-          // Continue polling on error
-        }
-      });
-    } catch (error) {
-      setInstallError(error instanceof Error ? error.message : "Installation failed");
-      setIsInstalling(false);
-    }
-  }, [tool, setDependenciesStatus, startPolling, stopPolling]);
+    setInstallError("Sculptor no longer installs binaries — install it yourself and ensure it is on your PATH.");
+  }, []);
 
   // In CUSTOM mode the path field reflects the resolved binary path, so it shows the
   // active path rather than the raw "MANAGED"/"CUSTOM" mode keyword stored in config.

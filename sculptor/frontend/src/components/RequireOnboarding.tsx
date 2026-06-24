@@ -32,17 +32,13 @@ export const RequireOnboarding = ({ children }: RequireOnboardingProps): ReactEl
           setIsOnboardingComplete(true);
         } else if (!hasUserConfig) {
           // New user: start from the beginning. A legacy user with an email
-          // but no recorded consent resumes at installation; completing
+          // but no recorded consent resumes at the repo step; completing
           // onboarding backfills the consent.
-          setCurrentOnboardingStep(configStatus.hasEmail ? OnboardingStep.INSTALLATION : OnboardingStep.EMAIL);
-          setIsOnboardingComplete(false);
-        } else if (!configStatus.hasProject) {
-          // Returning user: config exists but no project (e.g. deleted last repo).
-          setCurrentOnboardingStep(OnboardingStep.ADD_REPO);
+          setCurrentOnboardingStep(configStatus.hasEmail ? OnboardingStep.ADD_REPO : OnboardingStep.EMAIL);
           setIsOnboardingComplete(false);
         } else {
-          // Returning user: config exists but deps aren't passing.
-          setCurrentOnboardingStep(OnboardingStep.INSTALLATION);
+          // Returning user: config exists but no project (e.g. deleted last repo).
+          setCurrentOnboardingStep(OnboardingStep.ADD_REPO);
           setIsOnboardingComplete(false);
         }
       } catch (error) {

@@ -31,7 +31,7 @@ vi.mock("~/common/state/atoms/userConfig.ts", () => ({
   appThemeAtom: { __label: "appTheme" },
 }));
 
-vi.mock("~/common/state/atoms/themeBuilder.ts", () => ({
+vi.mock("~/common/state/atoms/theme.ts", () => ({
   themeCodeThemeAtom: { __label: "themeCode" },
 }));
 

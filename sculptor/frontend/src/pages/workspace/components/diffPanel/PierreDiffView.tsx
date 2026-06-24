@@ -6,7 +6,7 @@ import type { ErrorInfo, ReactElement, ReactNode, RefObject } from "react";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { ElementIds } from "~/api";
-import { themeCodeThemeAtom } from "~/common/state/atoms/themeBuilder.ts";
+import { themeCodeThemeAtom } from "~/common/state/atoms/theme.ts";
 import { getShikiThemes } from "~/common/theme/shikiThemes.ts";
 
 import { splitDiffColumnRatioAtom } from "./atoms.ts";

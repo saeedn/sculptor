@@ -1,7 +1,7 @@
 import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_THEME_BUILDER_SETTINGS, themeBuilderSettingsAtom } from "../../../common/state/atoms/themeBuilder.ts";
+import { DEFAULT_THEME_SETTINGS, themeSettingsAtom } from "../../../common/state/atoms/theme.ts";
 import { chatToolDensityAtom } from "../../../pages/workspace/components/chat-alpha/atoms.ts";
 import { buildChatCommands } from "../builtinCommands/chat.ts";
 import { buildHelpCommands } from "../builtinCommands/help.ts";
@@ -92,7 +92,7 @@ const runPerform = (cmd: Command, ctx: PaletteContext = ROOT_CTX): void => {
 
 beforeEach(() => {
   // Reset the theme atom to a known state so tests don't bleed into each other.
-  getDefaultStore().set(themeBuilderSettingsAtom, { ...DEFAULT_THEME_BUILDER_SETTINGS });
+  getDefaultStore().set(themeSettingsAtom, { ...DEFAULT_THEME_SETTINGS });
 });
 
 afterEach(() => {
@@ -445,7 +445,7 @@ describe("buildThemeCommands", () => {
   });
 
   it("theme.toggle flips light -> dark when the current appearance is light", () => {
-    getDefaultStore().set(themeBuilderSettingsAtom, (prev) => ({ ...prev, appearance: "light" }));
+    getDefaultStore().set(themeSettingsAtom, (prev) => ({ ...prev, appearance: "light" }));
     const runtime = makeRuntime();
     const cmd = buildThemeCommands(runtime).find((c) => c.id === "theme.toggle")!;
     runPerform(cmd);
@@ -453,7 +453,7 @@ describe("buildThemeCommands", () => {
   });
 
   it("theme.toggle flips dark -> light when the current appearance is dark", () => {
-    getDefaultStore().set(themeBuilderSettingsAtom, (prev) => ({ ...prev, appearance: "dark" }));
+    getDefaultStore().set(themeSettingsAtom, (prev) => ({ ...prev, appearance: "dark" }));
     const runtime = makeRuntime();
     const cmd = buildThemeCommands(runtime).find((c) => c.id === "theme.toggle")!;
     runPerform(cmd);

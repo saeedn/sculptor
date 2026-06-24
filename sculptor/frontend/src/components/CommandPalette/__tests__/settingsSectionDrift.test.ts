@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { UserConfig } from "~/api";
 import { SETTINGS_SECTIONS, SettingsSection } from "~/pages/settings/sections.ts";
 
-import { DEFAULT_THEME_BUILDER_SETTINGS, themeBuilderSettingsAtom } from "../../../common/state/atoms/themeBuilder.ts";
+import { DEFAULT_THEME_SETTINGS, themeSettingsAtom } from "../../../common/state/atoms/theme.ts";
 import { userConfigAtom } from "../../../common/state/atoms/userConfig.ts";
 import { buildSettingsCommands } from "../builtinCommands/settings.ts";
 import type { CommandRuntime } from "../runtime.ts";
@@ -51,7 +51,7 @@ describe("Settings section drift", () => {
   });
 
   it("every section in SETTINGS_SECTIONS has a corresponding palette command", () => {
-    getDefaultStore().set(themeBuilderSettingsAtom, { ...DEFAULT_THEME_BUILDER_SETTINGS });
+    getDefaultStore().set(themeSettingsAtom, { ...DEFAULT_THEME_SETTINGS });
     const cmds = buildSettingsCommands(makeRuntime());
     const cmdIds = new Set(cmds.map((c) => c.id));
     for (const section of SETTINGS_SECTIONS) {

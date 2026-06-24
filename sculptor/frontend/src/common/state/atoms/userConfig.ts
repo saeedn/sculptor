@@ -5,7 +5,7 @@ import { isLlmModel } from "~/common/Guards.ts";
 
 import type { CiBabysitterConfig, CustomActionsConfig, UserConfig } from "../../../api";
 import { LlmModel } from "../../../api";
-import { themeBuilderSettingsAtom } from "./themeBuilder";
+import { themeAppearanceAtom } from "./theme";
 
 /**
  * PRIMARY ATOM: Global UserConfig State
@@ -29,11 +29,12 @@ export const userConfigAtom = atom<UserConfig | null>(null);
  * need for manual subscription management and ensures consistent behavior.
  */
 
-// Theme setting — derives from the theme builder (localStorage) so that the
-// Radix <Theme> appearance and all consumers (e.g. diff panel CodeMirror)
-// stay in sync.  The server-side userConfig.appTheme field is no longer used.
+// Theme setting — derives from the persisted theme settings (localStorage) so
+// that the Radix <Theme> appearance and all consumers (e.g. diff panel
+// CodeMirror) stay in sync. The server-side userConfig.appTheme field is no
+// longer used.
 export const appThemeAtom = atom<"light" | "dark" | "system">((get) => {
-  return get(themeBuilderSettingsAtom).appearance;
+  return get(themeAppearanceAtom);
 });
 
 // Experimental settings

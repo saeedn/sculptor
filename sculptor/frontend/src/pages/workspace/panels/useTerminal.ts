@@ -12,7 +12,7 @@ import { baseUrl } from "~/apiClient.ts";
 import { getSessionToken, SESSION_TOKEN_HEADER_NAME } from "~/common/Auth.ts";
 import { keybindingsMapAtom } from "~/common/keybindings/atoms.ts";
 import { shouldHandleKeybinding } from "~/common/ShortcutUtils.ts";
-import { useThemeAccentColor, useThemeGrayColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeAccentColor, useThemeGrayColor } from "~/common/state/hooks/useTheme.ts";
 import { getColorScale, resolveGrayColor } from "~/common/theme/radixColorHexMap.ts";
 import { useResolvedTheme } from "~/common/Utils.ts";
 import { commandActionsAtom } from "~/components/CommandPalette/commandActions.ts";

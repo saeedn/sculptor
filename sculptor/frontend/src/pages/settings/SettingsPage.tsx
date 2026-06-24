@@ -5,7 +5,7 @@ import { Monitor, Moon, Sun } from "lucide-react";
 import { type ReactElement, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import { themeBuilderSettingsAtom } from "~/common/state/atoms/themeBuilder.ts";
+import { themeSettingsAtom } from "~/common/state/atoms/theme.ts";
 import { ModelSelectOptions } from "~/components/ModelSelectOptions.tsx";
 
 import { ElementIds, UserConfigField } from "../../api";
@@ -44,7 +44,6 @@ import { PluginsSettingsSection } from "./components/PluginsSettingsSection.tsx"
 import { ReposSection } from "./components/ReposSection.tsx";
 import { SettingRow } from "./components/SettingRow.tsx";
 import { SettingsSectionLayout } from "./components/SettingsSection.tsx";
-import { ThemeBuilderSection } from "./components/ThemeBuilderSection.tsx";
 import { SETTINGS_SECTIONS, SettingsSection, type SettingsSectionId } from "./sections.ts";
 import styles from "./SettingsPage.module.scss";
 
@@ -74,7 +73,7 @@ export const SettingsPage = (): ReactElement => {
       setActiveSection(sectionParam as SettingsSection);
     }
   }, [searchParams, setActiveSection]);
-  const [themeSettings, setThemeSettings] = useAtom(themeBuilderSettingsAtom);
+  const [themeSettings, setThemeSettings] = useAtom(themeSettingsAtom);
   const configuredDefaultModel = useAtomValue(configuredDefaultModelAtom);
   const userEmail = useAtomValue(userEmailAtom);
   const isAlwaysInterruptAndSend = useAtomValue(isAlwaysInterruptAndSendAtom);
@@ -282,7 +281,6 @@ export const SettingsPage = (): ReactElement => {
                   />
                 </SettingsSectionLayout>
               )}
-              {activeSection === SettingsSection.THEME_BUILDER && <ThemeBuilderSection />}
               {activeSection === SettingsSection.REPOSITORIES && <ReposSection setToast={setToast} />}
               {activeSection === SettingsSection.ACTIONS && <ActionsSettingsSection setToast={setToast} />}
               {activeSection === SettingsSection.GIT && <GitSettingsSection onSettingChange={handleSettingChange} />}

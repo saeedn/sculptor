@@ -9,7 +9,7 @@ import { useImbueNavigate } from "../../common/NavigateUtils.ts";
 import { isDismissibleOverlayOpen } from "../../common/overlayUtils.ts";
 import { shouldHandleKeybinding } from "../../common/ShortcutUtils.ts";
 import { chatSearchFocusRequestAtom, chatSearchVisibleAtom } from "../../common/state/atoms/chatSearch.ts";
-import { themeBuilderSettingsAtom } from "../../common/state/atoms/themeBuilder.ts";
+import { themeSettingsAtom } from "../../common/state/atoms/theme.ts";
 import { useDevPanel } from "../../common/state/hooks/useDevPanel.ts";
 import { useHelpDialog } from "../../common/state/hooks/useHelpDialog.ts";
 import { useOpenSettings } from "../../common/state/hooks/useOpenSettings.ts";
@@ -38,7 +38,7 @@ export const usePageLayoutKeyboardShortcuts = (): void => {
   const { toggle: toggleBottomPanel } = useSideToggle("bottom");
   const { toggle: toggleRightPanel } = useSideToggle("right");
   const resolvedTheme = useResolvedTheme();
-  const setThemeSettings = useSetAtom(themeBuilderSettingsAtom);
+  const setThemeSettings = useSetAtom(themeSettingsAtom);
   const setChatToolDensity = useSetAtom(chatToolDensityAtom);
 
   const isChatSearchVisible = useAtomValue(chatSearchVisibleAtom);

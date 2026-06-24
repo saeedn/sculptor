@@ -162,9 +162,6 @@ class PlaywrightProjectLayoutPage(PlaywrightIntegrationTestPage):
     def get_bottom_bar(self) -> Locator:
         return self.get_by_test_id(ElementIDs.BOTTOM_BAR)
 
-    def get_component_gallery_tab(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.COMPONENT_GALLERY_TAB)
-
     def get_settings_page_locator(self) -> Locator:
         return self.get_by_test_id(ElementIDs.SETTINGS_PAGE)
 

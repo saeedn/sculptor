@@ -18,7 +18,7 @@ import {
 import { useInterruptAgent } from "~/common/state/hooks/useInterruptAgent.ts";
 import { useTaskDetailWithDefaults } from "~/common/state/hooks/useTaskDetail.ts";
 import { useTaskSupportsInterruption } from "~/common/state/hooks/useTaskHelpers.ts";
-import { useThemeSuccessColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeSuccessColor } from "~/common/state/hooks/useTheme.ts";
 import { Toast } from "~/components/Toast.tsx";
 import { useCapabilityGate } from "~/components/useCapabilityGate.ts";
 

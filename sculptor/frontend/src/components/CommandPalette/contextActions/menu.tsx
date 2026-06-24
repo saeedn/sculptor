@@ -5,7 +5,7 @@ import { Fragment } from "react";
 
 import { ElementIds, type ExternalApp, type Workspace } from "../../../api";
 import { getOpenWithItems } from "../../../common/openInApp/items.tsx";
-import type { AccentColor } from "../../../common/state/atoms/themeBuilder";
+import type { AccentColor } from "../../../common/state/atoms/theme";
 import { useWorkspaceBranch } from "../../../common/state/hooks/useWorkspaceBranch.ts";
 import type { Agent, AgentAction, ContextActionShared, WorkspaceAction } from "./types.ts";
 

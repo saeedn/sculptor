@@ -186,10 +186,10 @@ def delete_all_workspaces_via_ui(page: Page) -> None:
             f"Could not delete all workspace tabs after {_MAX_WORKSPACE_DELETE_ITERATIONS} iterations ({remaining} remaining)"
         )
 
-    # Close any leftover pseudo-tabs (Settings, Component Gallery, Open Workspace)
-    # that a previous test may have opened.  These persist in localStorage and
-    # can interfere with navigation expectations in subsequent tests.
-    for tab_test_id in (ElementIDs.SETTINGS_TAB, ElementIDs.COMPONENT_GALLERY_TAB):
+    # Close any leftover pseudo-tabs (Settings, Open Workspace) that a previous
+    # test may have opened.  These persist in localStorage and can interfere
+    # with navigation expectations in subsequent tests.
+    for tab_test_id in (ElementIDs.SETTINGS_TAB,):
         tab = page.get_by_test_id(tab_test_id)
         if tab.is_visible():
             tab.hover()

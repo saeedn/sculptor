@@ -1,15 +1,14 @@
 import { useAtomValue } from "jotai";
 
-import type { AccentColor, GrayColor, ThemeBuilderSettings } from "../atoms/themeBuilder";
+import type { AccentColor, GrayColor } from "../atoms/theme";
 import {
   themeAccentColorAtom,
   themeAppearanceAtom,
-  themeBuilderSettingsAtom,
   themeDangerColorAtom,
   themeGrayColorAtom,
   themeSuccessColorAtom,
   themeWarningColorAtom,
-} from "../atoms/themeBuilder";
+} from "../atoms/theme";
 
 export const useThemeDangerColor = (): AccentColor => {
   return useAtomValue(themeDangerColorAtom);
@@ -33,8 +32,4 @@ export const useThemeGrayColor = (): GrayColor => {
 
 export const useThemeAppearance = (): "light" | "dark" | "system" => {
   return useAtomValue(themeAppearanceAtom);
-};
-
-export const useThemeBuilderSettings = (): ThemeBuilderSettings => {
-  return useAtomValue(themeBuilderSettingsAtom);
 };

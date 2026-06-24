@@ -4,7 +4,7 @@ import { useState } from "react";
 
 import { restoreWorkspaceAgent } from "~/api";
 import { ElementIds } from "~/api";
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 import { useIsWorkspaceDeleted } from "~/common/state/hooks/useWorkspace.ts";
 import { Toast, type ToastContent, ToastType } from "~/components/Toast.tsx";
 

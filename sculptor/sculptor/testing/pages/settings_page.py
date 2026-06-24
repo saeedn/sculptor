@@ -16,7 +16,6 @@ from sculptor.testing.elements.settings_pi import PlaywrightPiSettingsElement
 from sculptor.testing.elements.settings_plugins import PlaywrightPluginsSettingsElement
 from sculptor.testing.elements.settings_privacy import PlaywrightPrivacySettingsElement
 from sculptor.testing.elements.settings_repositories import PlaywrightRepositoriesSettingsElement
-from sculptor.testing.elements.settings_theme_builder import PlaywrightThemeBuilderSettingsElement
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
 
 
@@ -106,11 +105,6 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
         self._get_experimental_nav().click()
         return PlaywrightExperimentalSettingsElement(locator=self._get_settings_content(), page=self._page)
 
-    def click_on_theme_builder(self) -> PlaywrightThemeBuilderSettingsElement:
-        """Navigate to Theme Builder settings and return the section element."""
-        self._get_theme_builder_nav().click()
-        return PlaywrightThemeBuilderSettingsElement(locator=self._get_settings_content(), page=self._page)
-
     def _get_settings_content(self) -> Locator:
         """Get the main settings page container."""
         return self.get_by_test_id(ElementIDs.SETTINGS_CONTENT)
@@ -174,7 +168,3 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
     def _get_dependencies_nav(self) -> Locator:
         """Get the Dependencies navigation item."""
         return self.get_by_test_id(ElementIDs.SETTINGS_NAV_DEPENDENCIES)
-
-    def _get_theme_builder_nav(self) -> Locator:
-        """Get the Theme Builder navigation item."""
-        return self.get_by_test_id(ElementIDs.SETTINGS_NAV_THEME_BUILDER)

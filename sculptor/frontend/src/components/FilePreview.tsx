@@ -3,7 +3,7 @@ import { FileIcon, FileWarningIcon, XIcon } from "lucide-react";
 import type { ReactElement } from "react";
 
 import { ElementIds } from "~/api";
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 import { mergeClasses, optional } from "~/common/Utils.ts";
 
 import { CopyImageContextMenu } from "./CopyImageContextMenu.tsx";

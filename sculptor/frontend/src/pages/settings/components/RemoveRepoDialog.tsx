@@ -1,7 +1,7 @@
 import { Box, Button, Dialog, Flex, Spinner, Text } from "@radix-ui/themes";
 import type { ReactElement } from "react";
 
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 
 import { ElementIds } from "../../../api";
 import styles from "./RemoveRepoDialog.module.scss";

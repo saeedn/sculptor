@@ -6,7 +6,7 @@ import type { UserConfigField } from "../../api";
 import { CHAT_INPUT_ELEMENT_ID } from "../../common/Constants.ts";
 import { useImbueNavigate } from "../../common/NavigateUtils.ts";
 import { chatSearchFocusRequestAtom, chatSearchVisibleAtom } from "../../common/state/atoms/chatSearch.ts";
-import { themeBuilderSettingsAtom } from "../../common/state/atoms/themeBuilder.ts";
+import { themeSettingsAtom } from "../../common/state/atoms/theme.ts";
 import { openWorkspaceTabAtom } from "../../common/state/atoms/workspaces.ts";
 import { useDevPanel } from "../../common/state/hooks/useDevPanel.ts";
 import { useHelpDialog } from "../../common/state/hooks/useHelpDialog.ts";
@@ -75,7 +75,7 @@ export const useCommandRuntime = (): CommandRuntime => {
   const { toggle: toggleRightPanel } = useSideToggle("right");
   const { togglePanel } = usePanelActions();
 
-  const setThemeSettings = useSetAtom(themeBuilderSettingsAtom);
+  const setThemeSettings = useSetAtom(themeSettingsAtom);
   const setChatSearchVisible = useSetAtom(chatSearchVisibleAtom);
   const setChatSearchFocus = useSetAtom(chatSearchFocusRequestAtom);
   const openWorkspaceTab = useSetAtom(openWorkspaceTabAtom);

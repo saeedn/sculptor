@@ -3,7 +3,7 @@ import { createStore, Provider } from "jotai";
 import type { ReactElement, ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_THEME_BUILDER_SETTINGS, themeBuilderSettingsAtom } from "~/common/state/atoms/themeBuilder.ts";
+import { DEFAULT_THEME_SETTINGS } from "~/common/state/atoms/theme.ts";
 
 import { ImbueTheme } from "./ThemeProvider";
 
@@ -50,23 +50,12 @@ describe("ImbueTheme", () => {
     // The .radix-themes element carries data attributes for the configured options.
     const themeRoot = container.querySelector(".radix-themes");
     expect(themeRoot).toBeInTheDocument();
-    expect(themeRoot).toHaveAttribute("data-accent-color", DEFAULT_THEME_BUILDER_SETTINGS.accentColor);
-    expect(themeRoot).toHaveAttribute("data-gray-color", DEFAULT_THEME_BUILDER_SETTINGS.grayColor);
-    expect(themeRoot).toHaveAttribute("data-radius", DEFAULT_THEME_BUILDER_SETTINGS.radius);
-    expect(themeRoot).toHaveAttribute("data-scaling", DEFAULT_THEME_BUILDER_SETTINGS.scaling);
+    expect(themeRoot).toHaveAttribute("data-accent-color", DEFAULT_THEME_SETTINGS.accentColor);
+    expect(themeRoot).toHaveAttribute("data-gray-color", DEFAULT_THEME_SETTINGS.grayColor);
   });
 
-  it("applies custom theme settings when atom is updated", () => {
+  it("resolves the light appearance from the resolved theme", () => {
     const store = createStore();
-    store.set(themeBuilderSettingsAtom, {
-      ...DEFAULT_THEME_BUILDER_SETTINGS,
-      accentColor: "blue",
-      grayColor: "slate",
-      radius: "full",
-      scaling: "110%",
-      panelBackground: "solid",
-    });
-
     const { container } = render(
       <ImbueTheme>
         <span>child</span>
@@ -74,10 +63,9 @@ describe("ImbueTheme", () => {
       { wrapper: createWrapper(store) },
     );
 
+    // useResolvedTheme is mocked to "light", so the Radix root carries the
+    // light appearance class.
     const themeRoot = container.querySelector(".radix-themes");
-    expect(themeRoot).toHaveAttribute("data-accent-color", "blue");
-    expect(themeRoot).toHaveAttribute("data-gray-color", "slate");
-    expect(themeRoot).toHaveAttribute("data-radius", "full");
-    expect(themeRoot).toHaveAttribute("data-scaling", "110%");
+    expect(themeRoot).toHaveClass("light");
   });
 });

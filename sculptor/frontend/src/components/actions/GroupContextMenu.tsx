@@ -2,7 +2,7 @@ import { ContextMenu } from "@radix-ui/themes";
 import type { ReactElement, ReactNode } from "react";
 
 import { type CustomActionGroup, ElementIds } from "~/api";
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 
 type GroupContextMenuProps = {
   group: CustomActionGroup;

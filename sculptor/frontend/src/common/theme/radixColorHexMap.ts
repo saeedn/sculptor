@@ -1,4 +1,4 @@
-import type { AccentColor, GrayColor } from "~/common/state/atoms/themeBuilder.ts";
+import type { AccentColor, GrayColor } from "~/common/state/atoms/theme.ts";
 
 /**
  * 12-step hex color scale (steps 1–12) for light and dark modes.
@@ -975,18 +975,6 @@ const AUTO_GRAY_MAP: Record<AccentColor, string> = {
   bronze: "sand",
   gray: "gray",
 } as const;
-
-/**
- * Returns the step-9 hex value for a given Radix color name and mode.
- * Step 9 is the "solid background" step — the most representative color.
- */
-export const getColorHex9 = (colorName: string, mode: "light" | "dark"): string => {
-  const scales = RADIX_COLOR_HEX_MAP[colorName];
-  if (scales === undefined) {
-    return "#000000";
-  }
-  return scales[mode][8];
-};
 
 /**
  * Returns the full 12-step hex scale for a Radix color name and mode.

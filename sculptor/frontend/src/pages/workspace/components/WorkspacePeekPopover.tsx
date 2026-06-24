@@ -12,7 +12,7 @@ import { tasksArrayAtom } from "~/common/state/atoms/tasks";
 import { workspaceBranchAtomFamily } from "~/common/state/atoms/workspaceBranch";
 import { workspaceAtomFamily } from "~/common/state/atoms/workspaces";
 import { useGitProvider } from "~/common/state/hooks/useGitProvider";
-import { useThemeDangerColor, useThemeSuccessColor, useThemeWarningColor } from "~/common/state/hooks/useThemeBuilder";
+import { useThemeDangerColor, useThemeSuccessColor, useThemeWarningColor } from "~/common/state/hooks/useTheme.ts";
 import { useWorkspaceDiff } from "~/common/state/hooks/useWorkspaceDiff";
 import { activePanelPerZoneAtom, zoneAssignmentsAtom, zoneVisibilityAtom } from "~/components/panels/atoms";
 import { activeFileBrowserTabAtomFamily } from "~/components/panels/atoms";

@@ -7,7 +7,7 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 
 import { ElementIds } from "~/api";
-import { themeCodeThemeAtom } from "~/common/state/atoms/themeBuilder.ts";
+import { themeCodeThemeAtom } from "~/common/state/atoms/theme.ts";
 import {
   appThemeAtom,
   fileBrowserLineWrappingAtom,

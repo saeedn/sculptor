@@ -3,7 +3,7 @@ import type { ReactElement } from "react";
 import { useCallback, useState } from "react";
 
 import { ElementIds } from "~/api";
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 import { AddRepoForm } from "~/components/add-repo/AddRepoForm.tsx";
 import { useAddRepo } from "~/components/add-repo/useAddRepo.tsx";
 import { useDirectoryListing } from "~/components/path-autocomplete/useDirectoryListing.ts";

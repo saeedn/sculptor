@@ -4,7 +4,7 @@ import { CheckIcon, CopyIcon } from "lucide-react";
 import type { CSSProperties, ReactElement, ReactNode } from "react";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
-import { themeCodeThemeAtom } from "~/common/state/atoms/themeBuilder.ts";
+import { themeCodeThemeAtom } from "~/common/state/atoms/theme.ts";
 import { getShikiThemes } from "~/common/theme/shikiThemes.ts";
 
 import styles from "./AlphaCodeBlock.module.scss";

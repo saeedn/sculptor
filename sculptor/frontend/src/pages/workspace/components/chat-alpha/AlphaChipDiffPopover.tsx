@@ -9,7 +9,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { ElementIds } from "~/api";
 import { isDiffToolContent } from "~/common/Guards.ts";
 import { useWorkspacePageParams } from "~/common/NavigateUtils.ts";
-import { themeCodeThemeAtom } from "~/common/state/atoms/themeBuilder.ts";
+import { themeCodeThemeAtom } from "~/common/state/atoms/theme.ts";
 import { appThemeAtom } from "~/common/state/atoms/userConfig.ts";
 import { getShikiThemes } from "~/common/theme/shikiThemes.ts";
 import { openDiffTabAtom, openFileViewTabAtom } from "~/pages/workspace/components/diffPanel/atoms.ts";

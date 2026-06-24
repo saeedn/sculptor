@@ -6,7 +6,6 @@ import {
   GitBranchIcon,
   KeyboardIcon,
   LayoutGridIcon,
-  PaintbrushIcon,
   PlayIcon,
   PuzzleIcon,
   ShieldCheckIcon,
@@ -46,7 +45,6 @@ export const SettingsSection = {
   PRIVACY: "PRIVACY",
   EXPERIMENTAL: "EXPERIMENTAL",
   ACTIONS: "ACTIONS",
-  THEME_BUILDER: "THEME_BUILDER",
 } as const;
 
 export type SettingsSectionId = (typeof SettingsSection)[keyof typeof SettingsSection];
@@ -191,13 +189,5 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
     paletteKeywords: ["custom"],
     icon: CodeIcon,
     testId: ElementIds.SETTINGS_NAV_ACTIONS,
-  },
-  {
-    id: SettingsSection.THEME_BUILDER,
-    displayName: "Theme builder",
-    paletteSubtitle: "Tweak appearance",
-    paletteKeywords: ["colors", "appearance"],
-    icon: PaintbrushIcon,
-    testId: ElementIds.SETTINGS_NAV_THEME_BUILDER,
   },
 ];

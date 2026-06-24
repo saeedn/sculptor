@@ -2,8 +2,6 @@ import { useAtomValue, useSetAtom, useStore } from "jotai";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef } from "react";
 
-import { ElementIds } from "~/api";
-
 import { agentWebviewStateAtomFamily, browserPanelStateAtomFamily } from "./atoms";
 import {
   browserViewPlacementAtomFamily,
@@ -52,9 +50,9 @@ export const BrowserViewSlot = ({ workspaceId }: { workspaceId: string }): React
     };
   }, [workspaceId, goBack, goForward, reload, navigate]);
 
-  // Apply agent-issued webview commands. Lives on the slot (not BrowserPanel)
-  // because the slot is mounted whenever the workspace is in the browser
-  // registry — even if the user has a different panel tab active. Seq dedupe
+  // Apply agent-issued webview commands. Lives on the slot because the slot is
+  // mounted whenever the workspace is in the browser registry — even if the
+  // user has a different panel tab active. Seq dedupe
   // is persisted in the same atom as the command itself so a command queued
   // before the slot first mounts still fires exactly once when the slot
   // comes up, and so the value survives BrowserViewSlot remounts.
@@ -106,9 +104,6 @@ export const BrowserViewSlot = ({ workspaceId }: { workspaceId: string }): React
         }
       : { display: "none" };
 
-  // Only the focused workspace's slot carries the BROWSER_WEBVIEW test id.
-  const testId = isFocused ? ElementIds.BROWSER_WEBVIEW : undefined;
-
   return (
     <webview
       ref={webviewRef}
@@ -118,7 +113,6 @@ export const BrowserViewSlot = ({ workspaceId }: { workspaceId: string }): React
       allowpopups
       src={initialSrc}
       style={style}
-      data-testid={testId}
       data-workspace-id={workspaceId}
     />
   );

@@ -11,9 +11,7 @@ from sculptor.testing.elements.settings_env_vars import PlaywrightEnvVarsSetting
 from sculptor.testing.elements.settings_experimental import PlaywrightExperimentalSettingsElement
 from sculptor.testing.elements.settings_git import PlaywrightGitSettingsElement
 from sculptor.testing.elements.settings_keybindings import PlaywrightKeybindingsSettingsElement
-from sculptor.testing.elements.settings_panels import PlaywrightPanelsSettingsElement
 from sculptor.testing.elements.settings_pi import PlaywrightPiSettingsElement
-from sculptor.testing.elements.settings_plugins import PlaywrightPluginsSettingsElement
 from sculptor.testing.elements.settings_privacy import PlaywrightPrivacySettingsElement
 from sculptor.testing.elements.settings_repositories import PlaywrightRepositoriesSettingsElement
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
@@ -51,24 +49,10 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
         self._get_keybindings_nav().click()
         return PlaywrightKeybindingsSettingsElement(locator=self._get_settings_content(), page=self._page)
 
-    def click_on_panels(self) -> PlaywrightPanelsSettingsElement:
-        """Navigate to Panels settings and return the section element."""
-        self._get_panels_nav().click()
-        return PlaywrightPanelsSettingsElement(locator=self._get_settings_content(), page=self._page)
-
     def click_on_pi(self) -> PlaywrightPiSettingsElement:
         """Navigate to Pi (experimental) settings and return the section element."""
         self._get_pi_nav().click()
         return PlaywrightPiSettingsElement(locator=self._get_settings_content(), page=self._page)
-
-    def click_on_plugins(self) -> PlaywrightPluginsSettingsElement:
-        """Navigate to Plugins settings and return the section element.
-
-        The Plugins nav item is gated on the experimental frontend-plugins flag,
-        so this only works on an instance with that flag enabled.
-        """
-        self.get_plugins_nav().click()
-        return PlaywrightPluginsSettingsElement(locator=self._get_settings_content(), page=self._page)
 
     def click_on_privacy(self) -> PlaywrightPrivacySettingsElement:
         """Navigate to Privacy settings and return the section element."""
@@ -120,18 +104,6 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
     def _get_keybindings_nav(self) -> Locator:
         """Get the Keybindings navigation item."""
         return self.get_by_test_id(ElementIDs.SETTINGS_NAV_KEYBINDINGS)
-
-    def _get_panels_nav(self) -> Locator:
-        """Get the Panels navigation item."""
-        return self.get_by_test_id(ElementIDs.SETTINGS_NAV_PANELS)
-
-    def get_plugins_nav(self) -> Locator:
-        """Get the Plugins navigation item.
-
-        The Plugins section is gated on the experimental frontend-plugins
-        flag, so this locator is expected to be absent unless that flag is on.
-        """
-        return self.get_by_test_id(ElementIDs.SETTINGS_NAV_PLUGINS)
 
     def _get_pi_nav(self) -> Locator:
         """Get the Pi (experimental) navigation item."""

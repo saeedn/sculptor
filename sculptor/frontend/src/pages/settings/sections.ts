@@ -6,7 +6,6 @@ import {
   GitBranchIcon,
   KeyboardIcon,
   PlayIcon,
-  PuzzleIcon,
   ShieldCheckIcon,
   ShieldIcon,
   TerminalIcon,
@@ -32,7 +31,6 @@ export const SettingsSection = {
   GENERAL: "GENERAL",
   AGENT: "AGENT",
   KEYBINDINGS: "KEYBINDINGS",
-  PLUGINS: "PLUGINS",
   DEPENDENCIES: "DEPENDENCIES",
   PI: "PI",
   REPOSITORIES: "REPOSITORIES",
@@ -87,18 +85,6 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
     paletteKeywords: ["shortcuts", "hotkeys"],
     icon: KeyboardIcon,
     testId: ElementIds.SETTINGS_NAV_KEYBINDINGS,
-  },
-  // Visibility of the Plugins section is gated on the experimental
-  // frontend-plugins flag at both consumers of this array (the Settings
-  // sidebar in SettingsPage and the Cmd+K palette builder) — with the flag
-  // off it appears in neither.
-  {
-    id: SettingsSection.PLUGINS,
-    displayName: "Plugins",
-    paletteSubtitle: "Installed plugins and their settings",
-    paletteKeywords: ["extensions", "addons"],
-    icon: PuzzleIcon,
-    testId: ElementIds.SETTINGS_NAV_PLUGINS,
   },
   {
     id: SettingsSection.DEPENDENCIES,

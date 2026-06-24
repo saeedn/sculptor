@@ -14,8 +14,6 @@ const PANEL_ICON_TEST_IDS: Partial<Record<PanelId, ElementIds>> = {
   files: ElementIds.PANEL_ICON_FILES,
   actions: ElementIds.PANEL_ICON_ACTIONS,
   terminal: ElementIds.PANEL_ICON_TERMINAL,
-  notes: ElementIds.PANEL_ICON_NOTES,
-  browser: ElementIds.PANEL_ICON_BROWSER,
   skills: ElementIds.PANEL_ICON_SKILLS,
 };
 

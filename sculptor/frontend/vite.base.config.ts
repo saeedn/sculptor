@@ -19,9 +19,6 @@ import path from "node:path";
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, loadEnv, type Plugin, type UserConfig, type UserConfigExport } from "vite";
 
-import { bundledPlugins } from "./vite-plugins/bundled-plugins.ts";
-import { pluginRuntimeStubs } from "./vite-plugins/plugin-runtime-stubs.ts";
-
 /**
  * Exclude ``@xterm/xterm`` from the bundle and serve it as a standalone
  * ES module that the browser loads directly.
@@ -77,12 +74,7 @@ export function externalizeXterm(root: string): Plugin {
 }
 
 /** Plugins shared by the web and Electron-renderer builds. */
-export const sharedPlugins = (root: string): Array<Plugin> => [
-  externalizeXterm(root),
-  pluginRuntimeStubs(),
-  bundledPlugins(),
-  react(),
-];
+export const sharedPlugins = (root: string): Array<Plugin> => [externalizeXterm(root), react()];
 
 /** Module-path alias (`~` -> src) shared by both builds. */
 export const sharedResolve = (root: string): { alias: Record<string, string> } => ({

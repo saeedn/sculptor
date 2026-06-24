@@ -16,7 +16,6 @@ import {
   isCloneWorkspacesEnabledAtom,
   isDefaultFastModeAtom,
   isEntityMentionsEnabledAtom,
-  isFrontendPluginsEnabledAtom,
   isInPlaceWorkspacesEnabledAtom,
   isPiAgentEnabledAtom,
   isReviewAllEnabledAtom,
@@ -38,7 +37,6 @@ import { FileBrowserSettingsSection } from "./components/FileBrowserSettingsSect
 import { GitSettingsSection } from "./components/GitSettingsSection.tsx";
 import { KeybindingsSection } from "./components/KeybindingsSection.tsx";
 import { PiSettingsSection } from "./components/PiSettingsSection.tsx";
-import { PluginsSettingsSection } from "./components/PluginsSettingsSection.tsx";
 import { ReposSection } from "./components/ReposSection.tsx";
 import { SettingRow } from "./components/SettingRow.tsx";
 import { SettingsSectionLayout } from "./components/SettingsSection.tsx";
@@ -79,13 +77,10 @@ export const SettingsPage = (): ReactElement => {
   const isCloneWorkspacesEnabled = useAtomValue(isCloneWorkspacesEnabledAtom);
   const isReviewAllEnabled = useAtomValue(isReviewAllEnabledAtom);
   const isPiAgentEnabled = useAtomValue(isPiAgentEnabledAtom);
-  const isFrontendPluginsEnabled = useAtomValue(isFrontendPluginsEnabledAtom);
-  // The Plugins section only shows once the experimental flag is on; the
-  // page itself stays reachable via ?section=PLUGINS for plugin development.
-  const visibleSections = SETTINGS_SECTIONS.filter((s) => s.id !== SettingsSection.PLUGINS || isFrontendPluginsEnabled);
+  const visibleSections = SETTINGS_SECTIONS;
   // The mobile Select binds value={activeSection}, so its options must always
-  // include the active section — even one normally hidden (e.g. deep-linked to
-  // ?section=PLUGINS with the flag off) — or the trigger renders blank.
+  // include the active section — even one normally hidden — or the trigger
+  // renders blank.
   const mobileSections = SETTINGS_SECTIONS.filter((s) => visibleSections.includes(s) || s.id === activeSection);
   const isEntityMentionsEnabled = useAtomValue(isEntityMentionsEnabledAtom);
   const isRichMarkdownRenderingEnabled = useAtomValue(isRichMarkdownRenderingEnabledAtom);
@@ -264,7 +259,6 @@ export const SettingsPage = (): ReactElement => {
               {activeSection === SettingsSection.KEYBINDINGS && (
                 <KeybindingsSection onSettingChange={handleSettingChange} />
               )}
-              {activeSection === SettingsSection.PLUGINS && <PluginsSettingsSection />}
               {activeSection === SettingsSection.PRIVACY && (
                 <SettingsSectionLayout description="Your email address.">
                   <AccountFieldRow
@@ -387,18 +381,6 @@ export const SettingsPage = (): ReactElement => {
                       checked={isPiAgentEnabled}
                       onCheckedChange={(checked) => handleSettingChange(UserConfigField.ENABLE_PI_AGENT, checked)}
                       data-testid={ElementIds.SETTINGS_ENABLE_PI_AGENT_TOGGLE}
-                    />
-                  </SettingRow>
-                  <SettingRow
-                    title="Frontend plugins"
-                    description="Load runtime frontend plugins and show the Plugins settings section. Enabling applies immediately; disabling takes effect after an app reload."
-                  >
-                    <Switch
-                      checked={isFrontendPluginsEnabled}
-                      onCheckedChange={(checked) =>
-                        handleSettingChange(UserConfigField.ENABLE_FRONTEND_PLUGINS, checked)
-                      }
-                      data-testid={ElementIds.SETTINGS_ENABLE_FRONTEND_PLUGINS_TOGGLE}
                     />
                   </SettingRow>
                 </SettingsSectionLayout>

@@ -40,7 +40,7 @@ export const PanelRegistryProvider = ({
   const hasInitialized = useRef(false);
 
   // useHydrateAtoms only fires on the first render. Keep the registry in sync
-  // when the panels prop changes (e.g. an experimental panel is toggled on/off).
+  // when the panels prop changes.
   useEffect(() => {
     setPanelRegistry(panels);
   }, [panels, setPanelRegistry]);
@@ -61,8 +61,8 @@ export const PanelRegistryProvider = ({
   }, [defaultLayout, zoneAssignments, setZoneAssignments, setActivePanelPerZone, setZoneVisibility, setZoneOrder]);
 
   // Reconcile the persisted layout against the currently-registered panels.
-  // Runs whenever the panels prop changes (e.g. an experimental panel toggle),
-  // so newly-added panels get a zone and removed panels are cleaned up.
+  // Runs whenever the panels prop changes, so newly-added panels get a zone
+  // and removed panels are cleaned up.
   useEffect(() => {
     if (Object.keys(zoneAssignments).length === 0) return;
 
@@ -81,9 +81,8 @@ export const PanelRegistryProvider = ({
     const newAssignments = { ...zoneAssignments };
     const newOrder = { ...zoneOrder };
 
-    // Remove panels that are no longer registered (e.g. deleted features or
-    // an experimental panel toggled off). Clean them from active-panel and
-    // zone-order so zones don't render empty.
+    // Remove panels that are no longer registered (e.g. deleted features).
+    // Clean them from active-panel and zone-order so zones don't render empty.
     if (stalePanelIds.length > 0) {
       const staleSet = new Set(stalePanelIds);
       for (const id of stalePanelIds) {
@@ -116,8 +115,8 @@ export const PanelRegistryProvider = ({
       }
     }
 
-    // Add panels that were registered after the user last saved (either a new
-    // panel shipped in a release, or an experimental panel toggled on).
+    // Add panels that were registered after the user last saved (e.g. a new
+    // panel shipped in a release).
     for (const panel of missingPanels) {
       const zone = defaultLayout?.zoneAssignments[panel.id] ?? panel.defaultZone;
       newAssignments[panel.id] = zone;

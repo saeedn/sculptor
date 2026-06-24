@@ -16,7 +16,6 @@ from sculptor.foundation.async_monkey_patches_test import explode_on_error  # no
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.fixtures import empty_temp_git_repo
 from sculptor.foundation.fixtures import initial_commit_repo
-from sculptor.testing.browser_panel_fixture_server import browser_panel_fixture_server_  # noqa: F401
 from sculptor.testing.port_manager import PortManager
 from sculptor.utils.logs import setup_default_test_logging
 from sculptor.utils.shutdown import GLOBAL_SHUTDOWN_EVENT
@@ -24,7 +23,7 @@ from sculptor.web.middleware import shutdown_event
 
 # It is important that these fixtures are imported, so that tests in subdirectories have access to them.
 # This line is necessary to prevent the formatter from deleting the import statements
-EXPLICITLY_IMPORTED_FIXTURES = (empty_temp_git_repo, initial_commit_repo, browser_panel_fixture_server_)
+EXPLICITLY_IMPORTED_FIXTURES = (empty_temp_git_repo, initial_commit_repo)
 
 
 # Session budget: fail remaining tests when time runs out so pytest exits

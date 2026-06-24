@@ -1,8 +1,8 @@
 /**
  * Describes what the backend environment supports.
  *
- * Rather than sprinkling `isCustomCommandMode` checks everywhere, components
- * query individual capability flags so the UI adapts to the environment.
+ * Components query individual capability flags so the UI adapts to the
+ * environment.
  *
  * Capabilities are set once during configureClient() (before React mounts)
  * and never change for the lifetime of the session.

@@ -1,7 +1,6 @@
 import { execSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as readline from "node:readline";
 import { pathToFileURL } from "node:url";
 
 import { randomBytes } from "crypto";
@@ -32,13 +31,10 @@ import {
   CAPTURE_SCREENSHOT_CHANNEL_NAME,
   GET_APP_VERSION_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
-  GET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
   GET_FILE_DATA_CHANNEL_NAME,
-  IS_CUSTOM_COMMAND_MODE_CHANNEL_NAME,
   SAVE_FILE_CHANNEL_NAME,
   SELECT_PROJECT_DIRECTORY_CHANNEL_NAME,
-  SET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME,
   ZOOM_COMMAND_CHANNEL_NAME,
 } from "./constants";
 import { createDevIcon } from "./devIcon";
@@ -150,16 +146,11 @@ let isQuitting = false;
 // destroys a transient window before the main window exists. Destroying it would
 // otherwise fire window-all-closed and quit the app mid-startup (see the handler).
 let isMigrating = false;
-let isInCustomCommandMode = false;
-let customCommandBackendUrl: string | null = null;
-// Resolved once customCommandBackendUrl is set (or immediately if not in custom command mode).
+// Resolved once the local backend URL is known (always the local port now).
 let resolveBackendUrl: ((url: string | null) => void) | null = null;
 const backendUrlReady: Promise<string | null> = new Promise((resolve) => {
   resolveBackendUrl = resolve;
 });
-let restartCount = 0;
-const MAX_RESTARTS = 3;
-const RESTART_BASE_DELAY_MS = 2000;
 
 const MAX_STDERR_BUFFER_SIZE = 10 * 1024 * 1024; // 10 MB
 const MAX_BYTE_PER_CHARACTER = 4; // at worst characters are 4 bytes in JS
@@ -229,9 +220,6 @@ const store = new Store({
       width: WINDOW_WIDTH,
       height: WINDOW_HEIGHT,
     },
-    updateChannel: "STABLE",
-    customBackendCommand: "",
-    backendReadinessTimeout: 60,
   },
 });
 
@@ -253,40 +241,6 @@ const sendBackendState = (state: AnyBackendStatus): void => {
 // and the gutter repaint together (no jitter).
 const sendZoomCommand = (command: ZoomCommand): void => {
   window?.webContents.send(ZOOM_COMMAND_CHANNEL_NAME, command);
-};
-
-const URL_PATTERN = /https?:\/\/[^\s]+:\d+/;
-
-const parseUrlFromStdout = (stdout: NodeJS.ReadableStream, timeoutMs: number): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const collectedLines: Array<string> = [];
-    const rl = readline.createInterface({ input: stdout });
-
-    const timer = setTimeout(() => {
-      reject(
-        new Error(`No backend URL found in stdout within ${timeoutMs / 1000}s. Output:\n${collectedLines.join("\n")}`),
-      );
-      rl.close();
-    }, timeoutMs);
-
-    rl.on("line", (line) => {
-      const match = line.match(URL_PATTERN);
-
-      if (match) {
-        clearTimeout(timer);
-        resolve(match[0]);
-        rl.close();
-      } else {
-        collectedLines.push(line);
-        logger.info(`[custom-command stdout] ${line}`);
-      }
-    });
-
-    rl.on("close", () => {
-      clearTimeout(timer);
-      reject(new Error(`stdout closed before a backend URL was found. Output:\n${collectedLines.join("\n")}`));
-    });
-  });
 };
 
 // Wait for backend to be ready by polling the health endpoint
@@ -373,39 +327,6 @@ const setupProcessHandlers = (proc: ReturnType<typeof spawn>): void => {
       return;
     }
 
-    if (isInCustomCommandMode && restartCount < MAX_RESTARTS) {
-      logger.warn(
-        `[main] custom command exited code=${code} signal=${signal}, stderr: ${stderrBuffer.trim().slice(-500) || "(empty)"}`,
-      );
-      restartCustomCommand().catch((err) => {
-        logger.error("[main] restart failed:", err);
-        sendBackendState({
-          status: "error",
-          payload: {
-            message: `Backend restart failed: ${(err as Error).message}`,
-            stack: (err as Error).stack,
-          },
-        });
-      });
-
-      return;
-    }
-
-    if (isInCustomCommandMode && restartCount >= MAX_RESTARTS) {
-      logger.error(
-        `[main] custom command failed after ${MAX_RESTARTS} attempts, last exit code=${code} signal=${signal}, stderr: ${stderrBuffer.trim().slice(-500) || "(empty)"}`,
-      );
-      sendBackendState({
-        status: "error",
-        payload: {
-          message: `Backend could not be started after ${MAX_RESTARTS} attempts`,
-          stack: stderrBuffer.trim().slice(-500),
-        },
-      });
-
-      return;
-    }
-
     logger.warn(`[main] backend exited code=${code} signal=${signal}`);
     const exitMessage = signal ? `Backend killed with signal ${signal}` : `Backend exited with code ${code}`;
     sendBackendState({
@@ -418,95 +339,6 @@ const setupProcessHandlers = (proc: ReturnType<typeof spawn>): void => {
       },
     });
   });
-};
-
-const spawnCustomCommand = (customCommand: string): void => {
-  const shellPath = getShellPath();
-
-  logger.info(`[main] spawning custom backend command: ${customCommand}`);
-
-  const updateChannel = store.get("updateChannel", "STABLE") as string;
-  const sculptorChannel = updateChannel === "STABLE" ? "slim" : "slim-rc";
-
-  pythonBackgroundProcess = spawn("sh", ["-c", customCommand], {
-    stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      SESSION_TOKEN: SESSION_TOKEN,
-      SCULPTOR_VERSION: app.getVersion(),
-      SCULPTOR_CHANNEL: sculptorChannel,
-      PATH: shellPath,
-    },
-    detached: true,
-  });
-
-  setupProcessHandlers(pythonBackgroundProcess);
-};
-
-const restartCustomCommand = async (): Promise<void> => {
-  restartCount++;
-  const delay = restartCount * RESTART_BASE_DELAY_MS;
-
-  logger.info(`[main] restarting custom command (attempt ${restartCount}/${MAX_RESTARTS}), delay ${delay}ms`);
-  sendBackendState({
-    status: "loading",
-    payload: { message: `Backend exited unexpectedly. Restarting (attempt ${restartCount}/${MAX_RESTARTS})...` },
-  });
-
-  await sleep(delay);
-
-  if (isQuitting) {
-    return;
-  }
-
-  const customCommand = process.env.SCULPTOR_CUSTOM_BACKEND_CMD || (store.get("customBackendCommand", "") as string);
-
-  if (!customCommand) {
-    sendBackendState({
-      status: "error",
-      payload: { message: "Custom backend command is empty, cannot restart", stack: "" },
-    });
-
-    return;
-  }
-
-  stderrBuffer = "";
-  spawnCustomCommand(customCommand);
-
-  const readinessTimeoutSec = store.get("backendReadinessTimeout", 60) as number;
-  const readinessTimeoutMs = readinessTimeoutSec * 1000;
-
-  try {
-    customCommandBackendUrl = await parseUrlFromStdout(pythonBackgroundProcess!.stdout!, readinessTimeoutMs);
-    resolveBackendUrl?.(customCommandBackendUrl);
-    logger.info(`[main] parsed backend URL from restarted command: ${customCommandBackendUrl}`);
-
-    pythonBackgroundProcess!.stdout?.on("data", (data) => {
-      try {
-        process.stdout.write(data);
-      } catch {
-        // Swallow
-      }
-    });
-  } catch (err) {
-    logger.error("[main] failed to parse URL from restarted command:", err);
-    sendBackendState({
-      status: "error",
-      payload: {
-        message: `Custom command did not output a backend URL: ${(err as Error).message}`,
-        stack: (err as Error).stack,
-      },
-    });
-
-    return;
-  }
-
-  const isRunning = await waitForBackend(customCommandBackendUrl, undefined, readinessTimeoutMs);
-
-  if (isRunning && !isQuitting) {
-    restartCount = 0;
-    sendBackendState({ status: "running", payload: { message: "Backend is running." } });
-  }
 };
 
 // Where to launch the sidecar from in DEV vs PROD
@@ -1040,27 +872,6 @@ app.whenReady().then(async () => {
     return SESSION_TOKEN;
   });
 
-  ipcMain.handle(GET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME, () => {
-    return {
-      customBackendCommand: store.get("customBackendCommand") as string,
-      backendReadinessTimeout: store.get("backendReadinessTimeout") as number,
-    };
-  });
-
-  ipcMain.handle(
-    SET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME,
-    (_event, settings: { customBackendCommand?: string; backendReadinessTimeout?: number }) => {
-      if (settings.customBackendCommand !== undefined) {
-        store.set("customBackendCommand", settings.customBackendCommand);
-      }
-
-      if (settings.backendReadinessTimeout !== undefined) {
-        store.set("backendReadinessTimeout", settings.backendReadinessTimeout);
-      }
-    },
-  );
-
-  ipcMain.handle(IS_CUSTOM_COMMAND_MODE_CHANNEL_NAME, () => isInCustomCommandMode);
   ipcMain.handle(GET_DEV_INFO_CHANNEL_NAME, () => getDevInfo());
   ipcMain.handle(GET_APP_VERSION_CHANNEL_NAME, () => app.getVersion());
   ipcMain.handle("get-backend-url", () => backendUrlReady);
@@ -1155,104 +966,52 @@ app.whenReady().then(async () => {
 
   const startTime = performance.now();
 
-  let shouldStartBackend = !IS_DEVELOPMENT || process.env.START_BACKEND_IN_DEV;
+  const shouldStartBackend = !IS_DEVELOPMENT || process.env.START_BACKEND_IN_DEV;
   logger.info(
     `[main] backend startup: ${shouldStartBackend} (IS_DEV=${IS_DEVELOPMENT}, START_BACKEND_IN_DEV=${process.env.START_BACKEND_IN_DEV})`,
   );
 
-  // In dev mode, SCULPTOR_CUSTOM_BACKEND_CMD env var overrides the store setting
-  // and forces backend startup (since the custom command IS the backend)
-  if (process.env.SCULPTOR_CUSTOM_BACKEND_CMD && !shouldStartBackend) {
-    shouldStartBackend = true;
-    logger.info("[main] SCULPTOR_CUSTOM_BACKEND_CMD set - forcing backend startup in dev mode");
-  }
+  // The backend URL is always the local port now (custom-command backends are
+  // gone), so the get-backend-url IPC resolves immediately.
+  resolveBackendUrl?.(null);
 
   if (shouldStartBackend) {
-    const customCommand = process.env.SCULPTOR_CUSTOM_BACKEND_CMD || (store.get("customBackendCommand", "") as string);
-
     sendBackendState({ status: "loading", payload: { message: "Waiting for backend..." } });
 
-    if (customCommand) {
-      // Custom command mode: spawn user's command and parse URL from stdout
-      isInCustomCommandMode = true;
-      spawnCustomCommand(customCommand);
-      // Note: resolveBackendUrl is called after parseUrlFromStdout succeeds
+    // Spawn the packaged backend binary locally.
+    const shellPath = getShellPath();
+    logger.info("[main] Using PATH:", shellPath);
 
-      const readinessTimeoutSec = store.get("backendReadinessTimeout", 60) as number;
-      const readinessTimeoutMs = readinessTimeoutSec * 1000;
+    const { cmd, args } = await getBackendCommand();
+    logger.info("[main] spawning backend without initial project:", cmd, args.join(" "));
 
+    pythonBackgroundProcess = spawn(cmd, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        PATH: shellPath,
+        SESSION_TOKEN: SESSION_TOKEN,
+      },
+      detached: true,
+    });
+
+    pythonBackgroundProcess.stdout?.on("data", (data) => {
       try {
-        customCommandBackendUrl = await parseUrlFromStdout(pythonBackgroundProcess!.stdout!, readinessTimeoutMs);
-        resolveBackendUrl?.(customCommandBackendUrl);
-        logger.info(`[main] parsed backend URL from custom command: ${customCommandBackendUrl}`);
-
-        // After URL is found, pipe remaining stdout through
-        pythonBackgroundProcess!.stdout?.on("data", (data) => {
-          try {
-            process.stdout.write(data);
-          } catch {
-            // Swallow
-          }
-        });
-      } catch (err) {
-        resolveBackendUrl?.(null);
-        logger.error("[main] failed to parse URL from custom command:", err);
-        sendBackendState({
-          status: "error",
-          payload: {
-            message: `Custom command did not output a backend URL: ${(err as Error).message}`,
-            stack: (err as Error).stack,
-          },
-        });
+        process.stdout.write(data);
+      } catch {
+        // Swallow — can fail if the app has crashed
       }
-    } else {
-      // Default mode: not a custom command, resolve immediately
-      resolveBackendUrl?.(null);
+    });
 
-      // Default mode: spawn the packaged backend binary
-      const shellPath = getShellPath();
-      logger.info("[main] Using PATH:", shellPath);
-
-      const { cmd, args } = await getBackendCommand();
-      logger.info("[main] spawning backend without initial project:", cmd, args.join(" "));
-
-      pythonBackgroundProcess = spawn(cmd, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-        env: {
-          ...process.env,
-          PATH: shellPath,
-          SESSION_TOKEN: SESSION_TOKEN,
-        },
-        detached: true,
-      });
-
-      pythonBackgroundProcess.stdout?.on("data", (data) => {
-        try {
-          process.stdout.write(data);
-        } catch {
-          // Swallow — can fail if the app has crashed
-        }
-      });
-
-      setupProcessHandlers(pythonBackgroundProcess);
-    }
+    setupProcessHandlers(pythonBackgroundProcess);
 
     logger.info("[main] backend process started, waiting for it to be ready...");
   } else {
-    resolveBackendUrl?.(null);
     logger.info("[main] skipping starting the python backend (it should already be running)");
   }
 
-  // Determine which URL to poll for health
-  let isRunning: boolean;
-
-  if (isInCustomCommandMode && customCommandBackendUrl) {
-    const readinessTimeoutSec = store.get("backendReadinessTimeout", 60) as number;
-    isRunning = await waitForBackend(customCommandBackendUrl, undefined, readinessTimeoutSec * 1000);
-  } else {
-    // In client_only mode, still try to connect to backend (which should be running remotely)
-    isRunning = await waitForBackend(await PORT);
-  }
+  // Poll the local backend health endpoint.
+  const isRunning = await waitForBackend(await PORT);
 
   if (isRunning && !isQuitting) {
     restartCount = 0;
@@ -1263,8 +1022,7 @@ app.whenReady().then(async () => {
     }
 
     if (isTracingEnabled()) {
-      const backendBaseUrl =
-        isInCustomCommandMode && customCommandBackendUrl ? customCommandBackendUrl : `http://127.0.0.1:${await PORT}`;
+      const backendBaseUrl = `http://127.0.0.1:${await PORT}`;
       setBackendUrlForTracing(backendBaseUrl);
       traceMark("electron.backend_ready");
     }
@@ -1302,7 +1060,7 @@ const cleanupBackendProcess = async (): Promise<void> => {
       // take far longer than the default budget — without the extension the
       // SIGKILL fires while viztracer is still loading and the trace file is
       // never written.
-      const baseGracePeriodMs = isInCustomCommandMode ? 15000 : 32000;
+      const baseGracePeriodMs = 32000;
       const gracePeriodMs = tracingTeardownGracePeriodMs(baseGracePeriodMs);
       await killProcessAndWait(pythonBackgroundProcess, gracePeriodMs);
     }

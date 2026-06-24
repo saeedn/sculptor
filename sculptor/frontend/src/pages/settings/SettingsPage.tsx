@@ -32,7 +32,6 @@ import type { ToastContent } from "../../components/Toast.tsx";
 import { Toast, ToastType } from "../../components/Toast.tsx";
 import { AccountFieldRow } from "./components/AccountFieldRow.tsx";
 import { ActionsSettingsSection } from "./components/ActionsSettingsSection.tsx";
-import { CustomBackendSection } from "./components/AdvancedSection.tsx";
 import { CIBabysitterSettingsSection } from "./components/CIBabysitterSettingsSection.tsx";
 import { DependenciesSettingsSection } from "./components/DependenciesSettingsSection.tsx";
 import { EnvironmentVariablesSection } from "./components/EnvironmentVariablesSection.tsx";
@@ -421,7 +420,6 @@ export const SettingsPage = (): ReactElement => {
                       data-testid={ElementIds.SETTINGS_ENABLE_FRONTEND_PLUGINS_TOGGLE}
                     />
                   </SettingRow>
-                  <CustomBackendSection setToast={setToast} />
                 </SettingsSectionLayout>
               )}
             </Flex>

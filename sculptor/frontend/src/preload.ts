@@ -9,18 +9,15 @@ import {
   CAPTURE_SCREENSHOT_CHANNEL_NAME,
   GET_APP_VERSION_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
-  GET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
   GET_FILE_DATA_CHANNEL_NAME,
-  IS_CUSTOM_COMMAND_MODE_CHANNEL_NAME,
   SAVE_FILE_CHANNEL_NAME,
   SELECT_PROJECT_DIRECTORY_CHANNEL_NAME,
-  SET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME,
   TEST_BROWSER_WEBVIEW_EXECUTE_CHANNEL_NAME,
   TEST_READ_CLIPBOARD_PNG_CHANNEL_NAME,
   ZOOM_COMMAND_CHANNEL_NAME,
 } from "./electron/constants.ts";
-import type { AnyBackendStatus, CustomBackendSettings, SculptorDevInfo } from "./shared/types.ts";
+import type { AnyBackendStatus, SculptorDevInfo } from "./shared/types.ts";
 
 const isInPytest = !!process.env.PYTEST_CURRENT_TEST;
 
@@ -57,12 +54,6 @@ contextBridge.exposeInMainWorld("sculptor", {
   saveFile: (fileData: ArrayBuffer, filename: string): Promise<string> =>
     ipcRenderer.invoke(SAVE_FILE_CHANNEL_NAME, fileData, filename),
   getFileData: (filePath: string): Promise<string> => ipcRenderer.invoke(GET_FILE_DATA_CHANNEL_NAME, filePath),
-  // Custom backend settings
-  getCustomBackendSettings: (): Promise<CustomBackendSettings> =>
-    ipcRenderer.invoke(GET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME),
-  setCustomBackendSettings: (settings: Partial<CustomBackendSettings>): Promise<void> =>
-    ipcRenderer.invoke(SET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME, settings),
-  isCustomCommandMode: (): Promise<boolean> => ipcRenderer.invoke(IS_CUSTOM_COMMAND_MODE_CHANNEL_NAME),
   getBackendUrl: (): Promise<string | null> => ipcRenderer.invoke("get-backend-url"),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke(GET_APP_VERSION_CHANNEL_NAME),
   // Screenshot capture for feedback reports

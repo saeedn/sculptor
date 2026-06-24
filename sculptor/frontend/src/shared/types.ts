@@ -17,11 +17,6 @@ export type BackendStatus<T extends keyof BackendStatusPayloads = keyof BackendS
 
 export type AnyBackendStatus = BackendStatus<keyof BackendStatusPayloads>;
 
-export type CustomBackendSettings = {
-  customBackendCommand: string;
-  backendReadinessTimeout: number;
-};
-
 // Dev-mode metadata exposed by the Electron main process via the
 // GET_DEV_INFO IPC channel. Resolves to null in packaged builds. The
 // `iconDataUrl` is the same NativeImage used for the dock icon serialized
@@ -44,10 +39,6 @@ export type SculptorElectronAPI = {
   // File storage operations
   saveFile: (fileData: ArrayBuffer, filename: string) => Promise<string>;
   getFileData: (filePath: string) => Promise<string>;
-  // Custom backend settings
-  getCustomBackendSettings: () => Promise<CustomBackendSettings>;
-  setCustomBackendSettings: (settings: Partial<CustomBackendSettings>) => Promise<void>;
-  isCustomCommandMode: () => Promise<boolean>;
   getBackendUrl: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
   // Screenshot capture for feedback reports

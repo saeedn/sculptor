@@ -58,22 +58,7 @@ export const BackendStatusBoundary = (props: PropsWithChildren<BackendStatusBoun
   const setHealthCheckData = useSetAtom(healthCheckDataAtom);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const [isCustomCommandMode, setIsCustomCommandMode] = useState(false);
   const [isShutdownStalled, setIsShutdownStalled] = useState(false);
-
-  useEffect(() => {
-    window.sculptor
-      ?.isCustomCommandMode?.()
-      .then(setIsCustomCommandMode)
-      .catch(() => {});
-  }, []);
-
-  const [isCustomBackendCleared, setIsCustomBackendCleared] = useState(false);
-
-  const handleClearCustomBackend = useCallback(async () => {
-    await window.sculptor?.setCustomBackendSettings?.({ customBackendCommand: "" });
-    setIsCustomBackendCleared(true);
-  }, []);
 
   const { setIsBackendAPIReady } = props;
   const maybeSetBackendStatus = useCallback(
@@ -321,8 +306,6 @@ export const BackendStatusBoundary = (props: PropsWithChildren<BackendStatusBoun
         <ErrorPage
           headerText="Oops! That is embarrassing. An unexpected error has occurred. Try restarting the app or contacting us if the problem persists."
           errorMessage={errorMessage}
-          onClearCustomBackend={isCustomCommandMode ? handleClearCustomBackend : undefined}
-          isCustomBackendCleared={isCustomBackendCleared}
         />
       </>
     );

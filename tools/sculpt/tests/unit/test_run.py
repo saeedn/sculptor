@@ -41,7 +41,7 @@ def _mock_initialize_project(
 def _workspace_response_dict(
     object_id: str = "ws_newrun123",
     project_id: str = "prj_test123",
-    strategy: str = "CLONE",
+    strategy: str = "WORKTREE",
 ) -> dict[str, Any]:
     return {
         "objectId": object_id,
@@ -161,23 +161,6 @@ class TestRun:
         assert data["workspace_id"] == "ws_newrun123"
         assert data["agent_id"] == "tsk_abc123def456"
         assert data["prompt"] == "Fix the bug"
-
-    @respx.mock
-    def test_run_with_strategy(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_initialize_project()
-        respx.post("http://localhost:5050/api/v1/workspaces").mock(
-            return_value=Response(200, json=_workspace_response_dict(strategy="IN_PLACE"))
-        )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_newrun123/agents").mock(
-            return_value=Response(200, json=_task_response_dict())
-        )
-
-        result = runner.invoke(
-            app, ["run", "Fix the bug", "--repo", "/tmp/test", "--strategy", "in-place"]
-        )
-
-        assert result.exit_code == 0
 
     @respx.mock
     def test_run_with_worktree_strategy_and_branch_name(self, runner: CliRunner) -> None:

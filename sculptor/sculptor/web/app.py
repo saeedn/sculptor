@@ -1648,6 +1648,27 @@ def _get_workspace_or_404(
 # matching the frontend's ``registered:<id>`` StoredAgentType form.
 _REGISTERED_AGENT_TYPE_PREFIX = "registered:"
 
+# The bundled Claude Code terminal-agent registration installed on first run
+# (see ``terminal_agent_registry/bundled.py``). It is the default harness a
+# new agent uses when the user has made no explicit choice.
+_BUNDLED_CLAUDE_REGISTRATION_ID = "claude-code"
+
+
+def _default_new_agent_type(*, has_prompt: bool) -> tuple[AgentTypeName, str | None]:
+    """The harness a create with no usable choice falls back to.
+
+    A prompt-ful create must be a chat agent (terminal agents have no chat
+    stream to deliver the prompt to), so it always falls back to Claude. A
+    prompt-less create defaults to the bundled ``claude-code`` registered
+    terminal agent when it is installed, and to a plain terminal otherwise, so
+    creation never throws on a missing registration.
+    """
+    if has_prompt:
+        return AgentTypeName.CLAUDE, None
+    if get_registration(_BUNDLED_CLAUDE_REGISTRATION_ID) is not None:
+        return AgentTypeName.REGISTERED, _BUNDLED_CLAUDE_REGISTRATION_ID
+    return AgentTypeName.TERMINAL, None
+
 
 def _encode_stored_agent_type(agent_type: AgentTypeName, registration_id: str | None) -> str:
     """Encode an agent type as a StoredAgentType string for ``UserConfig``."""
@@ -1676,20 +1697,21 @@ def _resolve_most_recently_used_agent_type(*, has_prompt: bool) -> tuple[AgentTy
     and apply the same fallbacks so the app and the sculpt CLI agree — a stored
     Pi is unusable once the pi agent is disabled, a stored registered agent may
     have been unregistered, and a prompt-ful create is always a chat agent (so a
-    terminal harness falls back to Claude). Defaults to Claude when unset.
+    terminal harness falls back to Claude). Defaults to the bundled ``claude-code``
+    registered terminal agent (or a plain terminal if it is absent) when unset.
     """
     config = get_user_config_instance()
     stored = config.last_used_agent_type
     decoded = _decode_stored_agent_type(stored) if stored else None
     if decoded is None:
-        return AgentTypeName.CLAUDE, None
+        return _default_new_agent_type(has_prompt=has_prompt)
     agent_type, registration_id = decoded
     if agent_type == AgentTypeName.PI and not config.enable_pi_agent:
-        return AgentTypeName.CLAUDE, None
+        return _default_new_agent_type(has_prompt=has_prompt)
     if agent_type == AgentTypeName.REGISTERED and (
         registration_id is None or get_registration(registration_id) is None
     ):
-        return AgentTypeName.CLAUDE, None
+        return _default_new_agent_type(has_prompt=has_prompt)
     if has_prompt and agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED):
         return AgentTypeName.CLAUDE, None
     return agent_type, registration_id

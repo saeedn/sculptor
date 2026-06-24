@@ -821,10 +821,11 @@ def test_agent_create_harness_records_and_reuses_mru_via_cli(sculptor_instance_:
     assert exit_code == 0, f"workspace create failed: {output}"
     ws_id = json.loads(output)["id"]
 
-    # With no --harness and no prior choice, the server defaults to Claude.
+    # With no --harness and no prior choice, the server defaults to the bundled
+    # "claude-code" registered terminal agent, whose display name is "Claude CLI".
     exit_code, output = _run_sculpt(sculptor_instance_, ["agent", "create", "--workspace", ws_id])
     assert exit_code == 0, f"agent create failed: {output}"
-    assert json.loads(output)["title"].startswith("Claude"), output
+    assert json.loads(output)["title"].startswith("Claude CLI"), output
 
     # An explicit --harness creates that type and records it as the new default.
     exit_code, output = _run_sculpt(
@@ -833,7 +834,7 @@ def test_agent_create_harness_records_and_reuses_mru_via_cli(sculptor_instance_:
     assert exit_code == 0, f"agent create --harness Terminal failed: {output}"
     assert json.loads(output)["title"].startswith("Terminal"), output
 
-    # A subsequent bare create reuses the recorded harness (Terminal), not Claude.
+    # A subsequent bare create reuses the recorded harness (Terminal), not the default.
     exit_code, output = _run_sculpt(sculptor_instance_, ["agent", "create", "--workspace", ws_id])
     assert exit_code == 0, f"agent create failed: {output}"
     assert json.loads(output)["title"].startswith("Terminal"), output

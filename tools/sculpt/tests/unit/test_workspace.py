@@ -67,7 +67,7 @@ def _workspace_response_dict(
     object_id: str = "ws_test123",
     project_id: str = "prj_test123",
     description: str = "Test workspace",
-    strategy: str = "CLONE",
+    strategy: str = "WORKTREE",
     source_branch: str | None = "main",
     target_branch: str | None = None,
     requested_branch_name: str | None = None,
@@ -97,7 +97,7 @@ def _recent_workspace_dict(
         "objectId": object_id,
         "projectId": project_id,
         "description": description,
-        "initializationStrategy": "CLONE",
+        "initializationStrategy": "WORKTREE",
         "sourceBranch": "main",
         "isDeleted": False,
         "createdAt": "2024-01-15T10:30:00Z",
@@ -138,21 +138,7 @@ class TestWorkspaceCreate:
         data = json.loads(result.stdout)
         assert data["id"] == "ws_test123"
         assert data["repo_id"] == "prj_test123"
-        assert data["strategy"] == "CLONE"
-
-    @respx.mock
-    def test_create_in_place_strategy(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_initialize_project()
-        respx.post("http://localhost:5050/api/v1/workspaces").mock(
-            return_value=Response(200, json=_workspace_response_dict(strategy="IN_PLACE"))
-        )
-
-        result = runner.invoke(
-            app, ["workspace", "create", "--repo", "/tmp/test", "--strategy", "in-place"]
-        )
-
-        assert result.exit_code == 0
+        assert data["strategy"] == "WORKTREE"
 
     @respx.mock
     def test_create_worktree_strategy_with_branch_name(self, runner: CliRunner) -> None:

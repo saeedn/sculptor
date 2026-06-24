@@ -816,7 +816,10 @@ def test_create_agent_sends_intro_message_for_first_agent(
 
     response = client.post(
         f"/api/v1/workspaces/{workspace.object_id}/agents",
-        json=model_dump(CreateAgentRequest(model=LLMModel.CLAUDE_4_SONNET), is_camel_case=True),
+        json=model_dump(
+            CreateAgentRequest(model=LLMModel.CLAUDE_4_SONNET, agent_type=AgentTypeName.CLAUDE),
+            is_camel_case=True,
+        ),
     )
     assert response.status_code == 200
     agent_id = response.json()["id"]
@@ -1028,7 +1031,7 @@ def test_create_terminal_agent_stamps_terminal_config_and_names_terminal_n(
     assert task.input_data.agent_config.object_type == "TerminalAgentConfig"
 
     # Numbering is independent per prefix: a chat agent is "Claude 1".
-    chat = _post_agent(client, workspace, {})
+    chat = _post_agent(client, workspace, {"agentType": "claude"})
     assert chat.status_code == 200, chat.text
     assert chat.json()["title"] == "Claude 1"
 
@@ -1105,12 +1108,15 @@ def test_create_agent_records_explicit_type_as_mru(
     assert user_config_module.get_user_config_instance().last_used_agent_type == "terminal"
 
 
-def test_create_agent_without_type_defaults_to_claude_when_mru_unset(
+def test_create_agent_without_type_defaults_to_bundled_claude_code_when_mru_unset(
     client: TestClient,
     test_services: CompleteServiceCollection,
     test_project: Project,
     isolated_user_config: None,
+    registrations_dir: Path,
 ) -> None:
+    """A prompt-less create with no MRU defaults to the bundled claude-code agent."""
+    (registrations_dir / "claude-code.toml").write_text('display_name = "Claude CLI"\nlaunch_command = "claude"\n')
     _set_user_config_with()  # no MRU
     user_session = authenticate_anonymous(test_services, RequestID())
     with user_session.open_transaction(test_services) as transaction:
@@ -1118,16 +1124,38 @@ def test_create_agent_without_type_defaults_to_claude_when_mru_unset(
 
     response = _post_agent(client, workspace, {})
     assert response.status_code == 200, response.text
-    assert isinstance(_agent_config_for_created(response, test_services), ClaudeCodeSDKAgentConfig)
+    config = _agent_config_for_created(response, test_services)
+    assert isinstance(config, RegisteredTerminalAgentConfig)
+    assert config.registration_id == "claude-code"
 
 
-def test_create_agent_pi_mru_falls_back_to_claude_when_pi_disabled(
+def test_create_agent_without_type_falls_back_to_terminal_when_bundled_absent(
     client: TestClient,
     test_services: CompleteServiceCollection,
     test_project: Project,
     isolated_user_config: None,
+    registrations_dir: Path,
+) -> None:
+    """With no MRU and no bundled registration, creation falls back to a plain terminal (never throws)."""
+    _set_user_config_with()  # no MRU; registrations_dir is empty
+    user_session = authenticate_anonymous(test_services, RequestID())
+    with user_session.open_transaction(test_services) as transaction:
+        workspace = _create_workspace(transaction, test_services, test_project)
+
+    response = _post_agent(client, workspace, {})
+    assert response.status_code == 200, response.text
+    assert isinstance(_agent_config_for_created(response, test_services), TerminalAgentConfig)
+
+
+def test_create_agent_pi_mru_falls_back_to_bundled_when_pi_disabled(
+    client: TestClient,
+    test_services: CompleteServiceCollection,
+    test_project: Project,
+    isolated_user_config: None,
+    registrations_dir: Path,
 ) -> None:
     """A stored Pi harness is unusable once the pi agent is disabled."""
+    (registrations_dir / "claude-code.toml").write_text('display_name = "Claude CLI"\nlaunch_command = "claude"\n')
     _set_user_config_with(last_used_agent_type="pi", enable_pi_agent=False)
     user_session = authenticate_anonymous(test_services, RequestID())
     with user_session.open_transaction(test_services) as transaction:
@@ -1135,7 +1163,9 @@ def test_create_agent_pi_mru_falls_back_to_claude_when_pi_disabled(
 
     response = _post_agent(client, workspace, {})
     assert response.status_code == 200, response.text
-    assert isinstance(_agent_config_for_created(response, test_services), ClaudeCodeSDKAgentConfig)
+    config = _agent_config_for_created(response, test_services)
+    assert isinstance(config, RegisteredTerminalAgentConfig)
+    assert config.registration_id == "claude-code"
 
 
 def test_start_task_terminal_mru_falls_back_to_claude_for_prompt(
@@ -1193,7 +1223,7 @@ def test_first_claude_agent_still_gets_intro_message(
     with user_session.open_transaction(test_services) as transaction:
         workspace = _create_workspace(transaction, test_services, test_project)
 
-    response = _post_agent(client, workspace, {})
+    response = _post_agent(client, workspace, {"agentType": "claude"})
     assert response.status_code == 200, response.text
     task_id = TaskID(response.json()["id"])
 

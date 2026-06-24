@@ -4,7 +4,8 @@ Mirrors the harness chooser the UI shows: the built-in Claude, Pi, and
 Terminal types plus any registered terminal agents (for example
 "Claude CLI"). When no harness is requested the CLI sends nothing and lets
 the server apply the user's most-recently-used choice from the Sculptor
-app, so ``sculpt`` keeps no harness state of its own.
+app — falling back to the bundled ``claude-code`` terminal agent when there
+is none — so ``sculpt`` keeps no harness state of its own.
 """
 
 from collections.abc import Sequence

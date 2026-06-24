@@ -306,7 +306,7 @@ def _make_workspace_response(
     object_id: str,
     project_id: str = "prj_test123",
     description: str = "Test",
-    initialization_strategy: str = "CLONE",
+    initialization_strategy: str = "WORKTREE",
     source_branch: str = "main",
     is_deleted: bool = False,
     created_at: str = "2024-01-15T10:30:00Z",

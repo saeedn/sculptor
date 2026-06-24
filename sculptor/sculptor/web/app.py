@@ -44,7 +44,6 @@ from loguru import logger
 from pydantic import ValidationError
 
 from sculptor import version
-from sculptor.agents.default.claude_code_sdk.btw_process_manager import NoBtwSessionAvailable
 from sculptor.agents.harness_registry import get_harness_for_config
 from sculptor.common.plugin import get_plugin_dirs
 from sculptor.config.settings import SculptorSettings
@@ -72,11 +71,9 @@ from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.subprocess_utils import ProcessSetupError
 from sculptor.interfaces.agents.agent import AgentConfigTypes
 from sculptor.interfaces.agents.agent import AgentMessageID
-from sculptor.interfaces.agents.agent import ClaudeCodeSDKAgentConfig
 from sculptor.interfaces.agents.agent import ClearContextUserMessage
 from sculptor.interfaces.agents.agent import InterruptProcessUserMessage
 from sculptor.interfaces.agents.agent import PersistentRequestCompleteAgentMessage
-from sculptor.interfaces.agents.agent import PiAgentConfig
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.interfaces.agents.agent import RemoveQueuedMessageUserMessage
 from sculptor.interfaces.agents.agent import RequestFailureAgentMessage
@@ -130,9 +127,6 @@ from sculptor.services.workspace_service.branch_naming import resolve_pattern
 from sculptor.services.workspace_service.branch_naming import slugify_workspace_name
 from sculptor.services.workspace_service.default_implementation import DefaultWorkspaceService
 from sculptor.services.workspace_service.environment_manager.env_file_parser import parse_env_file
-from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
-    LocalAgentExecutionEnvironment,
-)
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     create_terminal_for_environment,
 )
@@ -172,7 +166,6 @@ from sculptor.web.data_types import AnswerQuestionRequest
 from sculptor.web.data_types import ArtifactDataResponse
 from sculptor.web.data_types import BatchUpdateOpenStateRequest
 from sculptor.web.data_types import BranchExistsResponse
-from sculptor.web.data_types import BtwRequest
 from sculptor.web.data_types import CommitDiffResponse
 from sculptor.web.data_types import CommitFileInfo
 from sculptor.web.data_types import CommitHistoryResponse
@@ -229,7 +222,6 @@ from sculptor.web.derived import CodingAgentTaskView
 from sculptor.web.derived import TaskInterface
 from sculptor.web.derived import TaskViewTypes
 from sculptor.web.derived import create_initial_task_view
-from sculptor.web.message_conversion import convert_agent_messages_to_task_update
 from sculptor.web.middleware import App
 from sculptor.web.middleware import DecoratedAPIRouter
 from sculptor.web.middleware import add_logging_context
@@ -539,18 +531,23 @@ def start_task(
                 )
                 logger.debug("Created workspace {} for task {}", workspace.object_id, task_id)
 
-            # Prompt-ful creation is always a chat agent — terminal agents have
-            # no chat stream to deliver the prompt to. Reject only an EXPLICIT
-            # terminal type; an omitted type resolves to the user's MRU, where a
-            # terminal default falls back to Claude.
+            # Reject an EXPLICIT terminal/registered type with an initial prompt:
+            # the prompt-ful create path delivers a chat message, which a terminal
+            # agent has no stream to consume. An OMITTED type still resolves to the
+            # user's MRU (defaulting to the bundled registered terminal agent) and
+            # proceeds — only an explicit request is rejected here. The resolver
+            # supplies the registration_id for a registered default; StartTaskRequest
+            # has no registration_id of its own.
             if task_request.agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED):
                 raise HTTPException(status_code=422, detail="terminal agents do not take an initial prompt")
-            resolved_agent_type, _ = _resolve_requested_agent_type(task_request.agent_type, None, has_prompt=True)
-            agent_config = _agent_config_for_request(resolved_agent_type, None)
+            resolved_agent_type, resolved_registration_id = _resolve_requested_agent_type(
+                task_request.agent_type, None, has_prompt=True
+            )
+            agent_config = _agent_config_for_request(resolved_agent_type, resolved_registration_id)
             if task_request.agent_type is not None:
-                _record_most_recently_used_agent_type(resolved_agent_type, None)
+                _record_most_recently_used_agent_type(resolved_agent_type, resolved_registration_id)
 
-            # Auto-assign a type-derived name ("Claude N" / "Pi N") when no
+            # Auto-assign a type-derived name (e.g. "Terminal N") when no
             # explicit name is provided.
             if not task_name:
                 workspace_tasks = _get_tasks_for_workspace(workspace, transaction)
@@ -1657,14 +1654,12 @@ _BUNDLED_CLAUDE_REGISTRATION_ID = "claude-code"
 def _default_new_agent_type(*, has_prompt: bool) -> tuple[AgentTypeName, str | None]:
     """The harness a create with no usable choice falls back to.
 
-    A prompt-ful create must be a chat agent (terminal agents have no chat
-    stream to deliver the prompt to), so it always falls back to Claude. A
-    prompt-less create defaults to the bundled ``claude-code`` registered
-    terminal agent when it is installed, and to a plain terminal otherwise, so
-    creation never throws on a missing registration.
+    With the rich chat backends removed there is only one default for both the
+    prompt-ful and prompt-less paths: the bundled ``claude-code`` registered
+    terminal agent when it is installed, and a plain terminal otherwise (so
+    creation never throws on a missing registration). ``has_prompt`` is retained
+    for call-site symmetry but no longer changes the result.
     """
-    if has_prompt:
-        return AgentTypeName.CLAUDE, None
     if get_registration(_BUNDLED_CLAUDE_REGISTRATION_ID) is not None:
         return AgentTypeName.REGISTERED, _BUNDLED_CLAUDE_REGISTRATION_ID
     return AgentTypeName.TERMINAL, None
@@ -1695,10 +1690,9 @@ def _resolve_most_recently_used_agent_type(*, has_prompt: bool) -> tuple[AgentTy
 
     Mirrors the app's "+" button default: decode ``UserConfig.last_used_agent_type``
     and apply the same fallbacks so the app and the sculpt CLI agree — a stored
-    Pi is unusable once the pi agent is disabled, a stored registered agent may
-    have been unregistered, and a prompt-ful create is always a chat agent (so a
-    terminal harness falls back to Claude). Defaults to the bundled ``claude-code``
-    registered terminal agent (or a plain terminal if it is absent) when unset.
+    registered agent may have been unregistered. Defaults to the bundled
+    ``claude-code`` registered terminal agent (or a plain terminal if it is
+    absent) when unset. ``has_prompt`` is retained for call-site symmetry.
     """
     config = get_user_config_instance()
     stored = config.last_used_agent_type
@@ -1706,14 +1700,10 @@ def _resolve_most_recently_used_agent_type(*, has_prompt: bool) -> tuple[AgentTy
     if decoded is None:
         return _default_new_agent_type(has_prompt=has_prompt)
     agent_type, registration_id = decoded
-    if agent_type == AgentTypeName.PI and not config.enable_pi_agent:
-        return _default_new_agent_type(has_prompt=has_prompt)
     if agent_type == AgentTypeName.REGISTERED and (
         registration_id is None or get_registration(registration_id) is None
     ):
         return _default_new_agent_type(has_prompt=has_prompt)
-    if has_prompt and agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED):
-        return AgentTypeName.CLAUDE, None
     return agent_type, registration_id
 
 
@@ -1778,9 +1768,7 @@ def _agent_config_for_request(
             resume_command_template=registration.resume_command_template,
             accepts_automated_prompts=registration.accepts_automated_prompts,
         )
-    if agent_type == AgentTypeName.PI:
-        return PiAgentConfig()
-    return ClaudeCodeSDKAgentConfig()
+    raise HTTPException(status_code=422, detail=f"Unsupported agent type: {agent_type}")
 
 
 def _get_tasks_for_workspace(
@@ -1819,20 +1807,16 @@ def _validate_agent_in_workspace(
 
 
 def _default_agent_name_prefix(agent_config: AgentConfigTypes) -> str:
-    """The default-name prefix for an agent's type ("Claude 1", "Pi 2", ...).
+    """The default-name prefix for an agent's type.
 
     Registered terminal agents default-name from their registration's display
-    name; every other type names from the type itself so a tab is identifiable
+    name; a plain terminal names from the type itself so a tab is identifiable
     before (or without) a generated title.
     """
     if isinstance(agent_config, RegisteredTerminalAgentConfig):
         return agent_config.display_name
     if isinstance(agent_config, TerminalAgentConfig):
         return "Terminal"
-    if isinstance(agent_config, PiAgentConfig):
-        return "Pi"
-    if isinstance(agent_config, ClaudeCodeSDKAgentConfig):
-        return "Claude"
     return "Agent"
 
 
@@ -2318,7 +2302,6 @@ def send_workspace_agent_messages(
                 detail=[{"loc": ["body", "message"], "msg": "Message required", "type": "value_error.missing"}],
             )
 
-        saved_messages = services.task_service.get_saved_messages_for_task(task.object_id, transaction)
         assert isinstance(task.input_data, AgentTaskInputsV2), (
             f"Expected AgentTaskInputsV2 for agent message endpoint, got {type(task.input_data).__name__}"
         )
@@ -2327,14 +2310,6 @@ def send_workspace_agent_messages(
             raise HTTPException(
                 status_code=400,
                 detail="plan mode requires a harness that supports the interactive backchannel",
-            )
-        task_state = convert_agent_messages_to_task_update(
-            saved_messages, task_id=task.object_id, completed_message_by_id={}, harness=harness
-        )
-        if task_state.pending_user_question is not None:
-            raise HTTPException(
-                status_code=409,
-                detail="Cannot send a message while the agent is waiting for a response to AskUserQuestion.",
             )
 
         message_id = AgentMessageID()
@@ -2515,66 +2490,6 @@ def set_workspace_agent_model(
         raise HTTPException(status_code=400, detail=detail)
 
 
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/btw")
-def btw_agent(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    btw_request: BtwRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> Response:
-    """Run a single forked `/btw` Haiku turn that streams back via the unified WS."""
-    if not btw_request.question.strip():
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["body", "question"], "msg": "Question required", "type": "value_error.missing"}],
-        )
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-        environment = services.task_service.get_task_environment(task.object_id, transaction)
-        saved_messages = services.task_service.get_saved_messages_for_task(task.object_id, transaction)
-
-    if environment is None:
-        raise HTTPException(status_code=409, detail={"reason": "no_session_yet"})
-
-    agent_environment = LocalAgentExecutionEnvironment(
-        environment=environment,
-        task_id=task.object_id,
-        dependency_management_service=services.dependency_management_service,
-    )
-    # Main-agent fake-claude detection: if the most recent user-authored chat
-    # message picked a fake-claude model, fork using FakeClaude instead of the
-    # real binary so integration tests exercise the /btw path end-to-end.
-    latest_model: LLMModel | None = None
-    is_main_agent_started = False
-    for saved in reversed(saved_messages):
-        if isinstance(saved, ChatInputUserMessage):
-            is_main_agent_started = True
-            latest_model = saved.model_name
-            break
-    if latest_model is None and isinstance(task.input_data, AgentTaskInputsV2):
-        latest_model = task.input_data.default_model
-    is_fake_claude = latest_model in (LLMModel.FAKE_CLAUDE, LLMModel.FAKE_CLAUDE_2)
-
-    try:
-        services.btw_service.run_btw_for_task(
-            environment=agent_environment,
-            task_id=task.object_id,
-            workspace_id=WorkspaceID(workspace_id),
-            question=btw_request.question,
-            request_id=btw_request.request_id,
-            is_fake_claude=is_fake_claude,
-            is_main_agent_started=is_main_agent_started,
-        )
-    except NoBtwSessionAvailable as exc:
-        raise HTTPException(status_code=409, detail={"reason": "no_session_yet"}) from exc
-
-    return Response(status_code=202)
-
-
 @router.get("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/artifacts/{artifact_name}")
 def get_workspace_agent_artifact(
     workspace_id: str,
@@ -2711,16 +2626,12 @@ def get_config_status(
             has_dependencies_passing=False,
         )
 
-    services = get_services_from_request_or_websocket(request)
-    dep_status = services.dependency_management_service.get_status()
-    deps_passing = (
-        dep_status.git.installed and dep_status.claude.installed and dep_status.claude.is_version_in_range is not False
-    )
+    deps_passing = shutil.which("git") is not None and shutil.which("claude") is not None
     return ConfigStatusResponse(
         has_email=bool(user_config.user_email) and check_is_user_email_field_valid(user_config),
         has_privacy_consent=user_config.is_privacy_policy_consented,
         has_project=has_project,
-        has_dependencies_passing=bool(deps_passing),
+        has_dependencies_passing=deps_passing,
     )
 
 
@@ -2865,14 +2776,6 @@ def update_user_config(
 
     save_config(new_user_config, get_config_path())
     set_user_config_instance(new_user_config)
-
-    # Push updated dependencies status when dependency paths change so the
-    # frontend atom reflects the new mode immediately.
-    new_dep = new_user_config.dependency_paths
-    old_dep = old_user_config.dependency_paths if old_user_config else None
-    if new_dep != old_dep:
-        services = get_services_from_request_or_websocket(request)
-        services.dependency_management_service.get_status()
 
     return new_user_config
 
@@ -3288,9 +3191,7 @@ async def stream_everything_websocket(
                 shutdown_event=shutdown_event,
                 services=services,
                 concurrency_group=stream_concurrency_group,
-                dependency_management_service=services.dependency_management_service,
                 pr_polling_service=services.pr_polling_service,
-                btw_service=services.btw_service,
             ),
             websocket,
             stream_concurrency_group.shutdown_event,
@@ -3892,8 +3793,6 @@ def get_health_check(request: Request) -> HealthCheckResponse:
     with services.data_model_service.open_task_transaction() as transaction:
         active_task_count = len(transaction.get_active_tasks())
 
-    dependencies_status = services.dependency_management_service.get_status()
-
     return HealthCheckResponse(
         version=str(version.__version__),
         git_sha=str(version.__git_sha__),
@@ -3910,7 +3809,6 @@ def get_health_check(request: Request) -> HealthCheckResponse:
         install_path=str(get_install_path()),
         ci_job_id=version.ci_job_id,
         ci_ref=version.ci_ref,
-        dependencies_status=dependencies_status,
     )
 
 

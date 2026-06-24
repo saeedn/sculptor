@@ -20,8 +20,6 @@ from queue import Queue
 from loguru import logger
 from pydantic import PrivateAttr
 
-from sculptor.config.user_config import BabysitterAgentClaude
-from sculptor.config.user_config import BabysitterAgentPi
 from sculptor.config.user_config import BabysitterAgentRegistered
 from sculptor.config.user_config import UserConfig
 from sculptor.database.models import AgentTaskInputsV2
@@ -30,13 +28,9 @@ from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.interfaces.agents.agent import ClaudeCodeSDKAgentConfig
-from sculptor.interfaces.agents.agent import PiAgentConfig
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
-from sculptor.interfaces.agents.agent import is_terminal_agent_config
 from sculptor.primitives.constants import ANONYMOUS_USER_REFERENCE
-from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import WorkspaceID
@@ -50,9 +44,6 @@ from sculptor.services.git_repo_service.api import GitRepoService
 from sculptor.services.task_service.api import TaskService
 from sculptor.services.terminal_agent_registry.registry import get_registration
 from sculptor.services.user_config.user_config import get_user_config_instance
-from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import EffortLevel
-from sculptor.state.messages import LLMModel
 from sculptor.state.messages import Message
 from sculptor.web.data_types import StreamingUpdateSourceTypes
 from sculptor.web.derived import PrStatusInfo
@@ -67,7 +58,11 @@ _CONSUMER_QUEUE_TIMEOUT_SECONDS = 1.0
 # Persistent disabled reasons surfaced when the MRU is a terminal that can't
 # receive automated prompts, or when a pinned harness is no longer available.
 # Defined here so the proactive status surfacing and the tests use identical copy.
-_DISABLED_REASON_MRU_NON_DRIVEABLE = "Your most-recent agent is a terminal that can't receive automated prompts, so the CI Babysitter can't act here. Pick a specific agent in CI Babysitter settings, or use a chat or prompt-enabled terminal agent."
+_DISABLED_REASON_MRU_NON_DRIVEABLE = "Your most-recent agent is a terminal that can't receive automated prompts, so the CI Babysitter can't act here. Pick a specific agent in CI Babysitter settings, or use a prompt-enabled terminal agent."
+
+# The bundled terminal agent registration the babysitter falls back to when a
+# workspace has no driveable most-recently-used agent.
+_BUNDLED_REGISTRATION_ID = "claude-code"
 _DISABLED_REASON_PINNED_UNAVAILABLE = (
     "The CI Babysitter's selected agent is no longer available. Choose another in CI Babysitter settings."
 )
@@ -82,13 +77,6 @@ _TRANSIENT_REASON_UNREACHABLE = "Couldn't reach the terminal agent's prompt; wil
 # unit tests run fast.
 _TERMINAL_READINESS_BACKSTOP_SECONDS = 30.0
 _TERMINAL_READINESS_POLL_SECONDS = 0.5
-
-
-@dataclass(frozen=True)
-class ChatAgent:
-    """Resolution result: drive a chat agent via the message queue."""
-
-    config: ClaudeCodeSDKAgentConfig | PiAgentConfig
 
 
 @dataclass(frozen=True)
@@ -111,7 +99,7 @@ class Disabled:
     transient: bool = False
 
 
-ResolvedBabysitterAgent = ChatAgent | DriveableTerminal | Disabled
+ResolvedBabysitterAgent = DriveableTerminal | Disabled
 
 
 def _driveable_terminal_from_registration(registration_id: str) -> DriveableTerminal | None:
@@ -134,15 +122,6 @@ def _driveable_terminal_from_registration(registration_id: str) -> DriveableTerm
             accepts_automated_prompts=registration.accepts_automated_prompts,
         )
     )
-
-
-def _model_from_config_or_fallback(config: UserConfig) -> LLMModel:
-    if config.default_llm:
-        try:
-            return LLMModel(config.default_llm)
-        except ValueError:
-            logger.debug("Invalid default_llm {!r} in user config; using fallback", config.default_llm)
-    return LLMModel.CLAUDE_4_OPUS_200K
 
 
 class CIBabysitterWorkspaceStateView(SerializableModel):
@@ -371,52 +350,45 @@ class CIBabysitterCoordinator(Service):
         if task_id is None:
             return
 
-        if isinstance(resolved, DriveableTerminal):
-            # Offload the PTY drive to a worker so the single-threaded consumer
-            # loop stays responsive to every other workspace's PR updates (the
-            # readiness wait can block for seconds).
-            with self._lock:
-                if state.is_terminal_drive_in_progress:
-                    # Coalesce onto the in-flight worker rather than racing a
-                    # second one. That worker writes the prompt it was handed at
-                    # its own dispatch, so a different transition's prompt
-                    # arriving mid-drive is dropped for this cycle — but it is
-                    # not lost: this branch returns before marking the
-                    # transition dispatched, so the next poll re-dispatches it
-                    # once the in-progress flag clears. Don't bump bookkeeping
-                    # for the coalesced attempt.
-                    logger.info(
-                        "CIBabysitterCoordinator: terminal drive already in progress for workspace={}, coalescing",
-                        state.workspace_id,
-                    )
-                    return
-                state.is_terminal_drive_in_progress = True
-            try:
-                self.concurrency_group.start_new_thread(
-                    target=self._run_terminal_drive,
-                    args=(state, task_id, prompt_text, config),
-                    name="ci-babysitter-terminal-drive",
-                )
-            except Exception as exc:
-                # The worker normally clears the in-progress flag in its finally;
-                # if the spawn itself fails the worker never runs, so clear it
-                # here to avoid latching the guard on and parking the workspace.
-                # Skip the retry bump — no drive was attempted; the next failure
-                # retries cleanly.
-                with self._lock:
-                    state.is_terminal_drive_in_progress = False
-                logger.error(
-                    "CIBabysitterCoordinator: failed to start terminal drive for workspace={}: {}",
+        # Offload the PTY drive to a worker so the single-threaded consumer
+        # loop stays responsive to every other workspace's PR updates (the
+        # readiness wait can block for seconds).
+        with self._lock:
+            if state.is_terminal_drive_in_progress:
+                # Coalesce onto the in-flight worker rather than racing a
+                # second one. That worker writes the prompt it was handed at
+                # its own dispatch, so a different transition's prompt
+                # arriving mid-drive is dropped for this cycle — but it is
+                # not lost: this branch returns before marking the
+                # transition dispatched, so the next poll re-dispatches it
+                # once the in-progress flag clears. Don't bump bookkeeping
+                # for the coalesced attempt.
+                logger.info(
+                    "CIBabysitterCoordinator: terminal drive already in progress for workspace={}, coalescing",
                     state.workspace_id,
-                    exc,
                 )
                 return
-        else:
-            with self._data_model_service.open_transaction(RequestID()) as transaction:
-                task = self._task_service.get_task(task_id, transaction)
-            if task is None:
-                return
-            self.deliver_prompt_to_agent(task, prompt_text, config)
+            state.is_terminal_drive_in_progress = True
+        try:
+            self.concurrency_group.start_new_thread(
+                target=self._run_terminal_drive,
+                args=(state, task_id, prompt_text, config),
+                name="ci-babysitter-terminal-drive",
+            )
+        except Exception as exc:
+            # The worker normally clears the in-progress flag in its finally;
+            # if the spawn itself fails the worker never runs, so clear it
+            # here to avoid latching the guard on and parking the workspace.
+            # Skip the retry bump — no drive was attempted; the next failure
+            # retries cleanly.
+            with self._lock:
+                state.is_terminal_drive_in_progress = False
+            logger.error(
+                "CIBabysitterCoordinator: failed to start terminal drive for workspace={}: {}",
+                state.workspace_id,
+                exc,
+            )
+            return
 
         with self._lock:
             # The attempt counts against retry_cap whether or not the terminal
@@ -494,21 +466,14 @@ class CIBabysitterCoordinator(Service):
         config: UserConfig,
         transaction: DataModelTransaction,
     ) -> ResolvedBabysitterAgent:
-        """Decide which agent the babysitter drives for this workspace.
+        """Decide which registered terminal agent the babysitter drives.
 
-        Either a pinned harness (Claude / Pi / a specific registered terminal)
-        or the workspace's single most-recently-used agent type. MRU never skips
-        the most-recent agent to reach an older one.
+        Either a pinned registered terminal agent or the workspace's single
+        most-recently-used agent type. MRU never skips the most-recent agent to
+        reach an older one. When the workspace has no driveable MRU, fall back to
+        the bundled ``claude-code`` registration so the babysitter can still act.
         """
         choice = config.ci_babysitter.agent
-        if isinstance(choice, BabysitterAgentClaude):
-            return ChatAgent(ClaudeCodeSDKAgentConfig())
-        if isinstance(choice, BabysitterAgentPi):
-            # A pinned Pi while Pi is disabled goes Disabled — no silent
-            # fallback. This differs from an MRU Pi, which falls back to Claude.
-            if config.enable_pi_agent:
-                return ChatAgent(PiAgentConfig())
-            return Disabled(_DISABLED_REASON_PINNED_UNAVAILABLE)
         if isinstance(choice, BabysitterAgentRegistered):
             driveable = _driveable_terminal_from_registration(choice.registration_id)
             if driveable is not None:
@@ -516,22 +481,18 @@ class CIBabysitterCoordinator(Service):
             return Disabled(_DISABLED_REASON_PINNED_UNAVAILABLE)
 
         # MRU: take the single most-recent non-babysitter task; do NOT iterate
-        # past it — skipping a terminal MRU to reach an older chat agent is
-        # exactly the tool-switch this feature removes.
+        # past it — skipping a terminal MRU to reach an older agent is exactly
+        # the tool-switch this feature removes.
         tasks = self._workspace_agent_tasks_most_recent_first(workspace_id, project_id, transaction)
         if not tasks:
-            return ChatAgent(ClaudeCodeSDKAgentConfig())  # no prior agent → Claude
+            # No prior agent → drive the bundled registration.
+            driveable = _driveable_terminal_from_registration(_BUNDLED_REGISTRATION_ID)
+            if driveable is not None:
+                return driveable
+            return Disabled(_DISABLED_REASON_MRU_NON_DRIVEABLE)
         input_data = tasks[0].input_data
         assert isinstance(input_data, AgentTaskInputsV2)
         agent_config = input_data.agent_config
-        if isinstance(agent_config, ClaudeCodeSDKAgentConfig):
-            return ChatAgent(ClaudeCodeSDKAgentConfig())
-        if isinstance(agent_config, PiAgentConfig):
-            # MRU is a best-effort inherit: an MRU Pi while Pi is disabled should
-            # not brick the babysitter — fall back to Claude.
-            if config.enable_pi_agent:
-                return ChatAgent(PiAgentConfig())
-            return ChatAgent(ClaudeCodeSDKAgentConfig())
         if isinstance(agent_config, RegisteredTerminalAgentConfig):
             # Re-resolve against the live registration: the task's stamped
             # accepts_automated_prompts may be stale.
@@ -545,33 +506,17 @@ class CIBabysitterCoordinator(Service):
     def deliver_prompt_to_agent(self, task: Task, prompt_text: str, config: UserConfig) -> TerminalDeliveryResult:
         """The single delivery seam: how a prompt physically reaches the agent.
 
-        Dispatches on the task's own agent config. Chat agents receive a queued
-        ChatInputUserMessage (today's flow, verbatim); registered terminal agents
-        get a guarded PTY write via the shared deliver_prompt_to_terminal_agent
-        helper.
+        Registered terminal agents get a guarded PTY write via the shared
+        deliver_prompt_to_terminal_agent helper. Called from the terminal-drive
+        worker so it never blocks the consumer loop, and only after the worker's
+        readiness wait confirms the program is at its prompt.
         """
         input_data = task.input_data
         assert isinstance(input_data, AgentTaskInputsV2)
-        if isinstance(input_data.agent_config, RegisteredTerminalAgentConfig):
-            # Single guarded write. Called from the terminal-drive worker so it
-            # never blocks the consumer loop, and only after the worker's
-            # readiness wait confirms the program is at its prompt.
-            return deliver_prompt_to_terminal_agent(task, prompt_text, submit=True, task_service=self._task_service)
-        with self._data_model_service.open_transaction(RequestID()) as transaction:
-            model = self._select_model_for_task(task.object_id, config, transaction)
-            message = ChatInputUserMessage(
-                text=prompt_text,
-                message_id=AgentMessageID(),
-                model_name=model,
-                fast_mode=config.default_fast_mode,
-                effort=EffortLevel(config.default_effort_level),
-            )
-            self._task_service.create_message(message, task.object_id, transaction)
-        return TerminalDeliveryResult.DELIVERED
+        assert isinstance(input_data.agent_config, RegisteredTerminalAgentConfig)
+        return deliver_prompt_to_terminal_agent(task, prompt_text, submit=True, task_service=self._task_service)
 
-    def _ensure_babysitter_task(
-        self, state: CIBabysitterState, resolved: ChatAgent | DriveableTerminal
-    ) -> TaskID | None:
+    def _ensure_babysitter_task(self, state: CIBabysitterState, resolved: DriveableTerminal) -> TaskID | None:
         with self._lock:
             existing_task_id = state.babysitter_task_id
         if existing_task_id is None:
@@ -620,13 +565,12 @@ class CIBabysitterCoordinator(Service):
     def _create_babysitter_task(
         self,
         state: CIBabysitterState,
-        agent_config: ClaudeCodeSDKAgentConfig | PiAgentConfig | RegisteredTerminalAgentConfig,
+        agent_config: RegisteredTerminalAgentConfig,
     ) -> TaskID | None:
         # v1 limitation: babysitter tasks are created under
         # ANONYMOUS_USER_REFERENCE. Sculptor is currently single-user
         # desktop where this matches the auth fallback; multi-user
         # support would need to inject the active user reference here.
-        config = get_user_config_instance()
         with self._data_model_service.open_transaction(RequestID()) as transaction:
             workspace = transaction.get_workspace(state.workspace_id)
             if workspace is None or workspace.is_deleted:
@@ -636,11 +580,6 @@ class CIBabysitterCoordinator(Service):
             if project is None or project.is_deleted:
                 logger.debug("Cannot create babysitter task: project {} missing", workspace.project_id)
                 return None
-            # Inherit the model from the workspace's most recent existing agent so the
-            # babysitter matches the user's last-chosen model (and uses FakeClaude in
-            # tests where the parent agent does). Falls back to default_llm only when
-            # the workspace has no prior agent.
-            model = self._select_model_for_workspace(state.workspace_id, workspace.project_id, config, transaction)
             with self._git_repo_service.open_local_user_git_repo_for_read(project) as repo:
                 initial_commit_hash = repo.get_current_commit_hash()
             task = Task(
@@ -653,7 +592,6 @@ class CIBabysitterCoordinator(Service):
                     agent_config=agent_config,
                     git_hash=initial_commit_hash,
                     system_prompt=project.default_system_prompt,
-                    default_model=model,
                 ),
                 current_state=AgentTaskStateV2(
                     title=_BABYSITTER_TITLE,
@@ -662,14 +600,6 @@ class CIBabysitterCoordinator(Service):
             )
             inserted = self._task_service.create_task(task, transaction)
         return inserted.object_id
-
-    def _select_model_for_task(
-        self, task_id: TaskID, config: UserConfig, transaction: DataModelTransaction
-    ) -> LLMModel:
-        task = self._task_service.get_task(task_id, transaction)
-        if task is not None and isinstance(task.input_data, AgentTaskInputsV2) and task.input_data.default_model:
-            return task.input_data.default_model
-        return _model_from_config_or_fallback(config)
 
     def _workspace_agent_tasks(
         self,
@@ -712,43 +642,6 @@ class CIBabysitterCoordinator(Service):
             if not (isinstance(task.current_state, AgentTaskStateV2) and task.current_state.title == _BABYSITTER_TITLE)
         ]
         return sorted(non_babysitter_tasks, key=lambda t: t.created_at, reverse=True)
-
-    def _select_model_for_workspace(
-        self,
-        workspace_id: WorkspaceID,
-        project_id: ProjectID,
-        config: UserConfig,
-        transaction: DataModelTransaction,
-    ) -> LLMModel:
-        # Most-recent-first; pick the first task that yields a usable model.
-        # Task input_data.default_model is None when the agent was created in
-        # waiting state and the model was first selected via a chat message;
-        # in that case fall back to the model_name of the most recent
-        # ChatInputUserMessage on that task.
-        for task in self._workspace_agent_tasks_most_recent_first(workspace_id, project_id, transaction):
-            input_data = task.input_data
-            assert isinstance(input_data, AgentTaskInputsV2)
-            # Terminal agents have no model concept — skip them explicitly so
-            # an older chat agent's model wins.
-            if is_terminal_agent_config(input_data.agent_config):
-                continue
-            if input_data.default_model is not None:
-                return input_data.default_model
-            inherited = self._latest_chat_model_for_task(task.object_id, transaction)
-            if inherited is not None:
-                return inherited
-        return _model_from_config_or_fallback(config)
-
-    def _latest_chat_model_for_task(self, task_id: TaskID, transaction: DataModelTransaction) -> LLMModel | None:
-        try:
-            messages = self._task_service.get_saved_messages_for_task(task_id, transaction)
-        except Exception as exc:
-            logger.debug("Could not load messages for task {} for model inheritance: {}", task_id, exc)
-            return None
-        for message in reversed(messages):
-            if isinstance(message, ChatInputUserMessage) and message.model_name is not None:
-                return message.model_name
-        return None
 
     def _lookup_workspace_project_id(self, workspace_id: WorkspaceID) -> ProjectID | None:
         with self._data_model_service.open_transaction(RequestID()) as transaction:

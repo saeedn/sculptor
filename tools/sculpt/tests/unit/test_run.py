@@ -396,24 +396,6 @@ _CLAUDE_CLI_REGISTRATION = {
 
 class TestRunHarness:
     @respx.mock
-    def test_run_with_harness_pi_sends_pi_agent_type(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_initialize_project()
-        _mock_preview_branch_name()
-        respx.post("http://localhost:5050/api/v1/workspaces").mock(
-            return_value=Response(200, json=_workspace_response_dict())
-        )
-        agent_route = respx.post("http://localhost:5050/api/v1/workspaces/ws_newrun123/agents").mock(
-            return_value=Response(200, json=_task_response_dict())
-        )
-
-        result = runner.invoke(app, ["run", "Fix the bug", "--repo", "/tmp/test", "--harness", "Pi"])
-
-        assert result.exit_code == 0, result.output + (result.stderr or "")
-        body = json.loads(agent_route.calls.last.request.content)
-        assert body["agentType"] == "pi"
-
-    @respx.mock
     def test_run_without_harness_omits_agent_type(self, runner: CliRunner) -> None:
         _mock_session()
         _mock_initialize_project()

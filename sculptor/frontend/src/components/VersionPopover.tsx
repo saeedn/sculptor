@@ -93,17 +93,6 @@ export const VersionPopover = (): ReactElement => {
             <InfoRow label="Data Directory" value={healthCheckData?.dataDirectory} />
             <InfoRow label="Install Mode" value={healthCheckData?.installMode} />
             <InfoRow label="Install Path" value={healthCheckData?.installPath} />
-            <InfoRow
-              label="Claude CLI"
-              value={healthCheckData?.dependenciesStatus?.claude?.version ?? undefined}
-              testId="claude-cli-version-popover"
-            />
-            <InfoRow label="Claude Path" value={healthCheckData?.dependenciesStatus?.claude?.path ?? undefined} />
-            <InfoRow
-              label="Claude Mode"
-              value={healthCheckData?.dependenciesStatus?.claude?.mode ?? undefined}
-              testId="claude-cli-mode-popover"
-            />
           </Flex>
           <Text size="2" weight="medium" mt="1">
             Dev Tools

@@ -15,7 +15,6 @@ from sculptor.interfaces.agents.agent import is_terminal_agent_config
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.task_service.data_types import ServiceCollectionForTask
 from sculptor.tasks.handlers.noop.v1 import run_noop_task_v1
-from sculptor.tasks.handlers.run_agent.v1 import run_agent_task_v1
 from sculptor.tasks.handlers.run_terminal_agent.v1 import run_terminal_agent_task_v1
 
 
@@ -37,11 +36,12 @@ def run_task(
     data = task.input_data
     match data:
         case AgentTaskInputsV2():
-            if is_terminal_agent_config(data.agent_config):
-                return run_terminal_agent_task_v1(
-                    data, task, services, task_deadline, settings, concurrency_group, shutdown_event, on_started
-                )
-            return run_agent_task_v1(
+            # Terminal agents are the only surviving agent backend; the dispatch
+            # guard stays explicit even though it is now trivially true.
+            assert is_terminal_agent_config(data.agent_config), (
+                f"Only terminal agent configs are supported; got {type(data.agent_config).__name__}"
+            )
+            return run_terminal_agent_task_v1(
                 data, task, services, task_deadline, settings, concurrency_group, shutdown_event, on_started
             )
         case NoOpTaskInputsV1():

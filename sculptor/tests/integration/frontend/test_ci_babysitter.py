@@ -22,9 +22,9 @@ from pathlib import Path
 from playwright.sync_api import expect
 
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
-from sculptor.testing.elements.alpha_chat_view import get_alpha_chat_view
 from sculptor.testing.elements.pr_popover import PlaywrightPrPopoverElement
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
+from sculptor.testing.elements.terminal import get_xterm_buffer_text
 from sculptor.testing.elements.terminal import wait_for_xterm_substring
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
 from sculptor.testing.playwright_utils import full_spa_reload
@@ -62,9 +62,11 @@ def _write_registration(
 
 _MERGED_MODE_STABLE_WAIT_MS = 25_000
 # Time to wait between baseline-recording poll and the next state-changing
-# poll. The polling service uses a 10s minimum interval in tests; 12s is a
-# safe lower bound that still keeps the test snappy.
-_BASELINE_POLL_SETTLE_MS = 12_000
+# poll. The polling service uses a 10s minimum interval in tests; under the
+# full-suite parallel (xdist) load the fresh-instance workspace registration +
+# first poll can slip past a tighter window, so the bump would land as the
+# baseline and no transition would fire. 20s gives the baseline poll headroom.
+_BASELINE_POLL_SETTLE_MS = 20_000
 
 _FAKE_GITLAB_REMOTE = "https://gitlab.com/test-org/test-repo.git"
 
@@ -201,106 +203,155 @@ def _bump_pipeline_id_after_baseline(page, pipeline_id_file: Path, new_id: str) 
     pipeline_id_file.write_text(new_id)
 
 
+def _make_registered_agent_mru(page, agent_tabs: PlaywrightAgentTabBarElement, registration_id: str) -> None:
+    """Open the agent-type menu, launch the registered driveable agent, and wait
+    for its terminal program to reach its prompt — making it the workspace's
+    most-recently-used (driveable) agent so the babysitter resolves to it.
+    """
+    agent_tabs.open_agent_type_menu()
+    registered_item = agent_tabs.get_agent_type_menu_item_registered(registration_id)
+    expect(registered_item).to_be_visible()
+    registered_item.click()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
+    # The program is at its prompt. A generous timeout absorbs the env-acquire +
+    # PTY-spawn latency under parallel test load.
+    wait_for_xterm_substring(page, "IDLE-DONE", timeout_ms=60_000)
+
+
 @user_story("to have Sculptor's CI Babysitter automatically investigate a failed pipeline")
 def test_scenario_1_failed_pipeline_creates_babysitter(sculptor_instance_: SculptorInstance, tmp_path: Path) -> None:
     """When CI fails on an MR opened from a workspace, the coordinator spawns
-    a 'CI Babysitter' agent tab and delivers the configured prompt verbatim.
+    a 'CI Babysitter' terminal tab and writes the configured prompt to its PTY.
     """
     state_file = tmp_path / "glab_state"
     pipeline_id_file = tmp_path / "pipeline_id"
     state_file.write_text("failed")
     pipeline_id_file.write_text("100")
 
-    _enable_babysitter(sculptor_instance_)
-    _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
-    _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
+    registration = _write_registration(
+        sculptor_instance_, "babysit-prompts", "Babysit Prompts", accepts_automated_prompts=True
+    )
+    try:
+        _enable_babysitter(sculptor_instance_)
+        _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
+        _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
 
-    start_task_and_wait_for_ready(sculptor_instance_.page, "say hello")
-    _bump_pipeline_id_after_baseline(sculptor_instance_.page, pipeline_id_file, "101")
+        page = sculptor_instance_.page
+        start_task_and_wait_for_ready(page)
 
-    agent_tabs = PlaywrightAgentTabBarElement(sculptor_instance_.page)
-    babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
-    expect(babysitter_tab.first).to_be_visible(timeout=60_000)
+        agent_tabs = PlaywrightAgentTabBarElement(page)
+        _make_registered_agent_mru(page, agent_tabs, "babysit-prompts")
 
-    babysitter_tab.first.click()
-    alpha_chat = get_alpha_chat_view(sculptor_instance_.page)
-    pipeline_prompt_messages = alpha_chat.get_messages().filter(has_text=_PIPELINE_PROMPT_FRAGMENT)
-    expect(pipeline_prompt_messages.first).to_be_visible()
+        _bump_pipeline_id_after_baseline(page, pipeline_id_file, "101")
+
+        babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
+        expect(babysitter_tab.first).to_be_visible(timeout=90_000)
+        babysitter_tab.first.click()
+        expect(get_agent_terminal_panel(page)).to_be_visible()
+        wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline", timeout_ms=90_000)
+    finally:
+        registration.unlink(missing_ok=True)
 
 
 @user_story("to retain babysitter history after the MR is merged, with no further automated prompts")
 def test_scenario_7_merged_mr_retires_babysitter(sculptor_instance_: SculptorInstance, tmp_path: Path) -> None:
     """Once an MR is merged, the coordinator stops sending prompts but
-    the babysitter task and its conversation history remain.
+    the babysitter task and its terminal history remain.
     """
     state_file = tmp_path / "glab_state"
     pipeline_id_file = tmp_path / "pipeline_id"
     state_file.write_text("failed")
     pipeline_id_file.write_text("100")
 
-    _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
-    _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
-    _enable_babysitter(sculptor_instance_)
+    registration = _write_registration(
+        sculptor_instance_, "babysit-prompts", "Babysit Prompts", accepts_automated_prompts=True
+    )
+    try:
+        _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
+        _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
+        _enable_babysitter(sculptor_instance_)
 
-    start_task_and_wait_for_ready(sculptor_instance_.page, "say hello")
-    _bump_pipeline_id_after_baseline(sculptor_instance_.page, pipeline_id_file, "101")
+        page = sculptor_instance_.page
+        start_task_and_wait_for_ready(page)
 
-    agent_tabs = PlaywrightAgentTabBarElement(sculptor_instance_.page)
-    babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
-    expect(babysitter_tab.first).to_be_visible(timeout=60_000)
-    babysitter_tab.first.click()
+        agent_tabs = PlaywrightAgentTabBarElement(page)
+        _make_registered_agent_mru(page, agent_tabs, "babysit-prompts")
 
-    alpha_chat = get_alpha_chat_view(sculptor_instance_.page)
-    pipeline_prompts = alpha_chat.get_messages().filter(has_text=_PIPELINE_PROMPT_FRAGMENT)
-    expect(pipeline_prompts).to_have_count(1)
+        _bump_pipeline_id_after_baseline(page, pipeline_id_file, "101")
 
-    state_file.write_text("merged")
-    sculptor_instance_.page.wait_for_timeout(_MERGED_MODE_STABLE_WAIT_MS)
-    expect(pipeline_prompts).to_have_count(1)
+        babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
+        expect(babysitter_tab.first).to_be_visible(timeout=90_000)
+        babysitter_tab.first.click()
+        expect(get_agent_terminal_panel(page)).to_be_visible()
+        # The failure delivers exactly one prompt to the babysitter's PTY.
+        wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline", timeout_ms=90_000)
 
-    expect(babysitter_tab.first).to_be_visible()
+        state_file.write_text("merged")
+        page.wait_for_timeout(_MERGED_MODE_STABLE_WAIT_MS)
+
+        # No second prompt is delivered after merge: the PTY buffer still shows
+        # exactly one occurrence of the prompt fragment, and the tab remains.
+        buffer = get_xterm_buffer_text(page)
+        assert buffer.count("RECEIVED:Investigate") == 1, (
+            f"expected exactly one delivered prompt after merge, buffer was:\n{buffer}"
+        )
+        expect(babysitter_tab.first).to_be_visible()
+    finally:
+        registration.unlink(missing_ok=True)
 
 
 @user_story("to silence the CI Babysitter for an MR while still seeing the babysitter tab")
 def test_scenario_4_pause_toggle_prevents_prompt(sculptor_instance_: SculptorInstance, tmp_path: Path) -> None:
-    """Toggling pause in the PR popover stops the coordinator from sending
-    further prompts to the babysitter for this MR. Unpausing resumes
-    listening but does not retro-fire for the existing red state.
+    """Pausing in the PR popover BEFORE a pipeline failure stops the coordinator
+    from delivering any prompt to the babysitter for this MR.
     """
     state_file = tmp_path / "glab_state"
     pipeline_id_file = tmp_path / "pipeline_id"
     state_file.write_text("failed")
     pipeline_id_file.write_text("100")
 
-    _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
-    _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
-    _enable_babysitter(sculptor_instance_)
+    registration = _write_registration(
+        sculptor_instance_, "babysit-prompts", "Babysit Prompts", accepts_automated_prompts=True
+    )
+    try:
+        _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
+        _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
+        _enable_babysitter(sculptor_instance_)
 
-    start_task_and_wait_for_ready(sculptor_instance_.page, "say hello")
-    _bump_pipeline_id_after_baseline(sculptor_instance_.page, pipeline_id_file, "101")
+        page = sculptor_instance_.page
+        start_task_and_wait_for_ready(page)
 
-    agent_tabs = PlaywrightAgentTabBarElement(sculptor_instance_.page)
-    babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
-    expect(babysitter_tab.first).to_be_visible(timeout=60_000)
+        agent_tabs = PlaywrightAgentTabBarElement(page)
+        _make_registered_agent_mru(page, agent_tabs, "babysit-prompts")
 
-    pr_popover = PlaywrightPrPopoverElement(sculptor_instance_.page)
-    pr_chevron = pr_popover.get_chevron()
-    expect(pr_chevron).to_be_visible(timeout=60_000)
-    pr_chevron.click()
+        # Pause the babysitter BEFORE bumping the pipeline id, so no prompt is
+        # ever delivered for the failure.
+        pr_popover = PlaywrightPrPopoverElement(page)
+        pr_chevron = pr_popover.get_chevron()
+        expect(pr_chevron).to_be_visible(timeout=60_000)
+        pr_chevron.click()
 
-    pause_toggle = pr_popover.get_babysitter_pause_toggle()
-    expect(pause_toggle).to_be_visible()
-    pause_toggle.click()
-    sculptor_instance_.page.keyboard.press("Escape")
+        pause_toggle = pr_popover.get_babysitter_pause_toggle()
+        expect(pause_toggle).to_be_visible()
+        pause_toggle.click()
+        page.keyboard.press("Escape")
 
-    babysitter_tab.first.click()
-    alpha_chat = get_alpha_chat_view(sculptor_instance_.page)
-    pipeline_prompts = alpha_chat.get_messages().filter(has_text=_PIPELINE_PROMPT_FRAGMENT)
-    expect(pipeline_prompts).to_have_count(1)
+        _bump_pipeline_id_after_baseline(page, pipeline_id_file, "101")
+        page.wait_for_timeout(_MERGED_MODE_STABLE_WAIT_MS)
 
-    pipeline_id_file.write_text("102")
-    sculptor_instance_.page.wait_for_timeout(_MERGED_MODE_STABLE_WAIT_MS)
-    expect(pipeline_prompts).to_have_count(1)
+        # No prompt is delivered while paused. If the babysitter tab spawned at
+        # all, its PTY never shows the prompt fragment; if it never spawned, the
+        # currently-focused (registered) agent's PTY likewise never shows it.
+        babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
+        if babysitter_tab.count() > 0:
+            babysitter_tab.first.click()
+            expect(get_agent_terminal_panel(page)).to_be_visible()
+        buffer = get_xterm_buffer_text(page)
+        assert "RECEIVED:Investigate" not in buffer, (
+            f"expected no prompt delivered while paused, buffer was:\n{buffer}"
+        )
+    finally:
+        registration.unlink(missing_ok=True)
 
 
 @user_story("to have the CI Babysitter drive my terminal agent to fix a failed pipeline")
@@ -341,10 +392,10 @@ def test_babysitter_drives_registered_terminal_agent(sculptor_instance_: Sculpto
         # The babysitter spawns its own "CI Babysitter" terminal task (distinct
         # from the user's tab) and writes the fix-CI prompt to its PTY.
         babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
-        expect(babysitter_tab.first).to_be_visible(timeout=60_000)
+        expect(babysitter_tab.first).to_be_visible(timeout=90_000)
         babysitter_tab.first.click()
         expect(get_agent_terminal_panel(page)).to_be_visible()
-        wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline")
+        wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline", timeout_ms=90_000)
     finally:
         registration.unlink(missing_ok=True)
 
@@ -390,8 +441,8 @@ def test_plain_terminal_mru_shows_disabled_reason(sculptor_instance_: SculptorIn
 
 @user_story("to pick which agent the CI Babysitter uses, limited to ones that accept automated prompts")
 def test_settings_selector_lists_only_driveable_harnesses(sculptor_instance_: SculptorInstance) -> None:
-    """The 'Babysitter agent' selector lists MRU + Claude + opt-in registered
-    terminal agents, and excludes non-opt-in registrations and plain terminals.
+    """The 'Babysitter agent' selector lists MRU + opt-in registered terminal
+    agents, and excludes non-opt-in registrations and plain terminals.
     """
     opt_in = _write_registration(sculptor_instance_, "agent-opt-in", "Opt In Agent", accepts_automated_prompts=True)
     no_opt_in = _write_registration(
@@ -405,7 +456,6 @@ def test_settings_selector_lists_only_driveable_harnesses(sculptor_instance_: Sc
         ci_section.open_agent_select()
 
         expect(ci_section.get_agent_option("Most recently used")).to_be_visible()
-        expect(ci_section.get_agent_option("Claude")).to_be_visible()
         expect(ci_section.get_agent_option("Opt In Agent")).to_be_visible()
         # Non-opt-in registration and plain terminals are never selectable.
         expect(ci_section.get_agent_option("No Opt In Agent")).to_have_count(0)
@@ -433,58 +483,69 @@ def test_restart_reuses_existing_babysitter_tab(
     state_file.write_text("failed")
     pipeline_id_file.write_text("100")
 
-    # First launch: a failed pipeline spawns the one-and-only babysitter tab and
-    # delivers the configured prompt to it.
-    with sculptor_instance_factory_.spawn_instance() as instance:
-        _enable_babysitter(instance)
-        _install_state_driven_glab(instance, state_file, pipeline_id_file)
-        _set_remote(instance, _FAKE_GITLAB_REMOTE)
+    registration: Path | None = None
+    try:
+        # First launch: a failed pipeline spawns the one-and-only babysitter tab
+        # and delivers the configured prompt to its PTY.
+        with sculptor_instance_factory_.spawn_instance() as instance:
+            registration = _write_registration(
+                instance, "babysit-prompts", "Babysit Prompts", accepts_automated_prompts=True
+            )
+            _enable_babysitter(instance)
+            _install_state_driven_glab(instance, state_file, pipeline_id_file)
+            _set_remote(instance, _FAKE_GITLAB_REMOTE)
 
-        start_task_and_wait_for_ready(instance.page, "say hello")
-        _bump_pipeline_id_after_baseline(instance.page, pipeline_id_file, "101")
+            page = instance.page
+            start_task_and_wait_for_ready(page)
 
-        agent_tabs = PlaywrightAgentTabBarElement(instance.page)
-        babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
-        expect(babysitter_tab).to_have_count(1, timeout=60_000)
-        babysitter_tab.first.click()
-        alpha_chat = get_alpha_chat_view(instance.page)
-        pipeline_prompts = alpha_chat.get_messages().filter(has_text=_PIPELINE_PROMPT_FRAGMENT)
-        expect(pipeline_prompts).to_have_count(1)
+            agent_tabs = PlaywrightAgentTabBarElement(page)
+            _make_registered_agent_mru(page, agent_tabs, "babysit-prompts")
 
-    # Restart against the same database, then drive another CI failure. The
-    # coordinator's in-memory babysitter_task_id is gone after the restart, so
-    # it must re-discover the persisted babysitter task rather than create a new
-    # one.
-    with sculptor_instance_factory_.spawn_instance() as instance:
-        layout = PlaywrightProjectLayoutPage(page=instance.page)
-        workspace_tab = layout.get_workspace_tabs().first
-        expect(workspace_tab).to_be_visible()
-        workspace_tab.click()
+            _bump_pipeline_id_after_baseline(page, pipeline_id_file, "101")
 
-        agent_tabs = PlaywrightAgentTabBarElement(instance.page)
-        babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
-        expect(babysitter_tab).to_have_count(1)
-        babysitter_tab.first.click()
-        alpha_chat = get_alpha_chat_view(instance.page)
-        pipeline_prompts = alpha_chat.get_messages().filter(has_text=_PIPELINE_PROMPT_FRAGMENT)
-        expect(pipeline_prompts).to_have_count(1)
+            babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
+            expect(babysitter_tab).to_have_count(1, timeout=90_000)
+            babysitter_tab.first.click()
+            expect(get_agent_terminal_panel(page)).to_be_visible()
+            wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline", timeout_ms=90_000)
 
-        # Re-establish the post-restart baseline poll (still at id=101), then
-        # bump so a fresh PIPELINE_FAILED transition fires. With the fix this is
-        # delivered to the existing babysitter tab (its prompt count goes to 2)
-        # and there is still exactly one tab. With the bug a duplicate
-        # 'CI Babysitter' tab is created instead.
-        _bump_pipeline_id_after_baseline(instance.page, pipeline_id_file, "102")
+        # Restart against the same database, then drive another CI failure. The
+        # coordinator's in-memory babysitter_task_id is gone after the restart,
+        # so it must re-discover the persisted babysitter task rather than create
+        # a new one.
+        with sculptor_instance_factory_.spawn_instance() as instance:
+            page = instance.page
+            layout = PlaywrightProjectLayoutPage(page=page)
+            workspace_tab = layout.get_workspace_tabs().first
+            expect(workspace_tab).to_be_visible()
+            workspace_tab.click()
 
-        expect(pipeline_prompts).to_have_count(2, timeout=60_000)
-        expect(agent_tabs.get_agent_tab_by_name("CI Babysitter")).to_have_count(1)
+            agent_tabs = PlaywrightAgentTabBarElement(page)
+            babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
+            expect(babysitter_tab).to_have_count(1)
+
+            # Re-establish the post-restart baseline poll (still at id=101), then
+            # bump so a fresh PIPELINE_FAILED transition fires. With the fix this
+            # is delivered to the existing babysitter tab and there is still
+            # exactly one tab. With the bug a duplicate 'CI Babysitter' tab is
+            # created instead.
+            _bump_pipeline_id_after_baseline(page, pipeline_id_file, "102")
+
+            expect(agent_tabs.get_agent_tab_by_name("CI Babysitter")).to_have_count(1, timeout=90_000)
+            babysitter_tab.first.click()
+            expect(get_agent_terminal_panel(page)).to_be_visible()
+            wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline", timeout_ms=90_000)
+            expect(agent_tabs.get_agent_tab_by_name("CI Babysitter")).to_have_count(1)
+    finally:
+        if registration is not None:
+            registration.unlink(missing_ok=True)
 
 
 @user_story("to have the CI Babysitter automatically resolve a merge conflict on a GitHub PR")
 def test_github_pr_merge_conflict_creates_babysitter(sculptor_instance_: SculptorInstance) -> None:
     """When a GitHub PR opened from a workspace has a merge conflict, the
-    coordinator spawns a 'CI Babysitter' agent tab and delivers the configured
-    merge-conflict prompt -- at parity with GitLab MR conflict handling.
+    coordinator spawns a 'CI Babysitter' terminal tab and writes the configured
+    merge-conflict prompt to its PTY -- at parity with GitLab MR conflict handling.
 
     Regression for SCU-1529: the GitHub PR status path never surfaced
     has_conflicts (the `gh api graphql` query didn't request `mergeable`, and
@@ -493,17 +554,28 @@ def test_github_pr_merge_conflict_creates_babysitter(sculptor_instance_: Sculpto
     surfaces on the first poll, so -- unlike the pipeline-failure scenarios --
     no baseline bump is needed.
     """
-    _enable_babysitter(sculptor_instance_)
-    _install_fake_gh(sculptor_instance_.fake_bin_dir, _FAKE_GH_CONFLICTING_PR_SCRIPT)
-    _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
+    registration = _write_registration(
+        sculptor_instance_, "babysit-prompts", "Babysit Prompts", accepts_automated_prompts=True
+    )
+    try:
+        _enable_babysitter(sculptor_instance_)
+        _install_fake_gh(sculptor_instance_.fake_bin_dir, _FAKE_GH_CONFLICTING_PR_SCRIPT)
+        _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
 
-    start_task_and_wait_for_ready(sculptor_instance_.page, "say hello")
+        page = sculptor_instance_.page
+        start_task_and_wait_for_ready(page)
 
-    agent_tabs = PlaywrightAgentTabBarElement(sculptor_instance_.page)
-    babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
-    expect(babysitter_tab.first).to_be_visible(timeout=60_000)
+        agent_tabs = PlaywrightAgentTabBarElement(page)
+        _make_registered_agent_mru(page, agent_tabs, "babysit-prompts")
 
-    babysitter_tab.first.click()
-    alpha_chat = get_alpha_chat_view(sculptor_instance_.page)
-    conflict_prompt_messages = alpha_chat.get_messages().filter(has_text=_MERGE_CONFLICT_PROMPT_FRAGMENT)
-    expect(conflict_prompt_messages.first).to_be_visible()
+        babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
+        expect(babysitter_tab.first).to_be_visible(timeout=90_000)
+        babysitter_tab.first.click()
+        expect(get_agent_terminal_panel(page)).to_be_visible()
+        # The program echoes the whole prompt on one line as `RECEIVED:<prompt>`;
+        # the merge-conflict fragment sits mid-prompt ("This MR has a merge
+        # conflict ..."), so assert the fragment appears on a RECEIVED line
+        # rather than immediately after the `RECEIVED:` prefix.
+        wait_for_xterm_substring(page, f"RECEIVED:This MR has a {_MERGE_CONFLICT_PROMPT_FRAGMENT}", timeout_ms=90_000)
+    finally:
+        registration.unlink(missing_ok=True)

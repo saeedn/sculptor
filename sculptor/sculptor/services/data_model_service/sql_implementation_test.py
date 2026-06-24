@@ -47,7 +47,7 @@ from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches_test import expect_exact_logged_errors
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.interfaces.agents.agent import HelloAgentConfig
+from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import ObjectID
 from sculptor.primitives.ids import ObjectSnapshotID
@@ -106,7 +106,7 @@ def get_simple_agent_task(
         object_id=TaskID(),
         max_seconds=30,
         input_data=AgentTaskInputsV2(
-            agent_config=HelloAgentConfig(),
+            agent_config=TerminalAgentConfig(),
             git_hash="HEAD",
             system_prompt=None,
         ),

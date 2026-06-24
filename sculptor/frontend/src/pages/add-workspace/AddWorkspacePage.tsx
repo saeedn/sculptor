@@ -5,7 +5,6 @@ import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import type { LlmModel } from "../../api";
 import {
   createWorkspaceAgent,
   createWorkspaceV2,
@@ -24,7 +23,7 @@ import {
   type StoredAgentType,
 } from "../../common/state/atoms/agentTabs.ts";
 import { projectsArrayAtom, updateProjectsAtom } from "../../common/state/atoms/projects.ts";
-import { defaultModelAtom, isPiAgentEnabledAtom, userConfigAtom } from "../../common/state/atoms/userConfig.ts";
+import { userConfigAtom } from "../../common/state/atoms/userConfig.ts";
 import {
   clearDraftCreatingAtom,
   convertNewWorkspaceToTabAtom,
@@ -52,8 +51,6 @@ export const AddWorkspacePage = (): ReactElement => {
     throw new Error("AddWorkspacePage requires a draftId route parameter");
   }
   const { navigateToAgent } = useImbueNavigate();
-  const isPiAgentEnabled = useAtomValue(isPiAgentEnabledAtom);
-  const defaultModelPreference = useAtomValue(defaultModelAtom);
   const convertNewWorkspaceToTab = useSetAtom(convertNewWorkspaceToTabAtom);
   const markDraftCreating = useSetAtom(markDraftCreatingAtom);
   const clearDraftCreating = useSetAtom(clearDraftCreatingAtom);
@@ -77,7 +74,7 @@ export const AddWorkspacePage = (): ReactElement => {
   // The form opens preset to the shared last-used type (the same MRU the tab
   // bar's + button reads) — a deliberate mount-time snapshot the user can
   // change freely; the MRU is written back only when a workspace is actually
-  // created. A stored "pi" is unusable when pi-agent is off.
+  // created.
   const lastUsedAgentType = useAtomValue(lastUsedAgentTypeAtom);
   const setUserConfig = useSetAtom(userConfigAtom);
   // Optimistically reflect the chosen harness in the shared config (the same
@@ -89,9 +86,7 @@ export const AddWorkspacePage = (): ReactElement => {
     },
     [setUserConfig],
   );
-  const [agentTypeValue, setAgentTypeValue] = useState<string>(
-    lastUsedAgentType === "pi" && !isPiAgentEnabled ? "claude" : lastUsedAgentType,
-  );
+  const [agentTypeValue, setAgentTypeValue] = useState<string>(lastUsedAgentType);
   const { registrations, refetch: refreshRegistrations } = useTerminalAgentRegistrations();
   const { agentType, registrationId } = parseStoredAgentType(agentTypeValue as StoredAgentType);
   const [workspaceNameDraft, setWorkspaceNameDraft] = useDraftTabName(draftId);
@@ -264,25 +259,23 @@ export const AddWorkspacePage = (): ReactElement => {
       setBranchNameOverride(null);
 
       // If the remembered registered agent's registration is no longer present
-      // (deleted since it was picked), fall back to Claude rather than leaving
-      // the just-created workspace with a failed, agentless first-agent create.
+      // (deleted since it was picked), fall back to a plain terminal rather
+      // than leaving the just-created workspace with a failed, agentless
+      // first-agent create.
       const isMissingRegistration =
         agentType === "registered" && !registrations.some((r) => r.registrationId === registrationId);
-      const effectiveAgentType = isMissingRegistration ? "claude" : agentType;
+      const effectiveAgentType = isMissingRegistration ? "terminal" : agentType;
       const effectiveRegistrationId = isMissingRegistration ? undefined : registrationId;
       const effectiveAgentTypeValue: StoredAgentType = isMissingRegistration
-        ? "claude"
+        ? "terminal"
         : (agentTypeValue as StoredAgentType);
 
-      // Create first agent (no prompt in the simplified form). Only Claude
-      // consumes a creation-time model: terminal/registered agents have no
-      // model concept, and pi selects from its own catalog in-task, so it
-      // starts on pi's default rather than a Claude model it would ignore.
-      const shouldSendCreationModel = effectiveAgentType === "claude";
+      // Create first agent (no prompt in the simplified form). The built-in
+      // terminal/registered agents have no creation-time model concept, so no
+      // model is sent.
       const agentResponse = await createWorkspaceAgent({
         path: { workspace_id: workspaceId },
         body: {
-          model: shouldSendCreationModel ? (defaultModelPreference as LlmModel) : undefined,
           agentType: effectiveAgentType,
           registrationId: effectiveRegistrationId,
         },
@@ -334,7 +327,6 @@ export const AddWorkspacePage = (): ReactElement => {
     sourceBranch,
     workspaceName,
     effectiveBranchName,
-    defaultModelPreference,
     navigateToAgent,
     setWorkspaceNameDraft,
     setSelectedProjectId,
@@ -425,9 +417,8 @@ export const AddWorkspacePage = (): ReactElement => {
             )}
 
             {/* First-agent type selector — the same per-agent choice as the
-                tab bar's + menu. Only the pi option is gated behind the
-                experimental pi-agent flag; Claude, Terminal, and any
-                registered terminal agents are available to everyone. */}
+                tab bar's + menu: a plain Terminal agent or any registered
+                terminal agent. */}
             <Select.Root
               size="1"
               value={agentTypeValue}
@@ -452,14 +443,6 @@ export const AddWorkspacePage = (): ReactElement => {
                 </Flex>
               </Select.Trigger>
               <Select.Content position="popper" side="bottom" sideOffset={5}>
-                <Select.Item value="claude" data-testid={ElementIds.AGENT_TYPE_OPTION_CLAUDE}>
-                  {AGENT_TYPE_LABELS.claude}
-                </Select.Item>
-                {isPiAgentEnabled && (
-                  <Select.Item value="pi" data-testid={ElementIds.AGENT_TYPE_OPTION_PI}>
-                    {AGENT_TYPE_LABELS.pi}
-                  </Select.Item>
-                )}
                 <Select.Item value="terminal" data-testid={ElementIds.AGENT_TYPE_OPTION_TERMINAL}>
                   {AGENT_TYPE_LABELS.terminal}
                 </Select.Item>

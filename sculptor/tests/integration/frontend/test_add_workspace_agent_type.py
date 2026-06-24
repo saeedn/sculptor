@@ -11,7 +11,6 @@ from playwright.sync_api import expect
 from sculptor.constants import ElementIDs
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
 from sculptor.testing.elements.terminal import expect_terminal_panel_replaces_chat
-from sculptor.testing.elements.user_config import disable_pi_agent
 from sculptor.testing.playwright_utils import navigate_to_add_workspace_page
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -25,7 +24,6 @@ def test_agent_type_select_visible_with_claude_default(
     page = sculptor_instance_.page
 
     # The picker is no longer flag-gated — visible for everyone.
-    disable_pi_agent(page)
     navigate_to_add_workspace_page(page)
     picker = page.get_by_test_id(ElementIDs.ADD_WORKSPACE_AGENT_TYPE_SELECT)
     expect(picker).to_be_visible()

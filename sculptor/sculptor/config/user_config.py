@@ -1,4 +1,3 @@
-import os
 from enum import StrEnum
 from typing import Annotated
 from typing import Any
@@ -36,50 +35,6 @@ class PrivacySettings(SerializableModel):
     is_session_recording_enabled: bool = Field(False, description="Whether to enable session recording")
 
 
-class DependencyPaths(SerializableModel):
-    """Configuration for dependency binary resolution.
-
-    The ``claude`` field is a unified mode + path value:
-      - ``"MANAGED"`` (default): Sculptor manages the Claude CLI binary.
-      - An absolute path (e.g. ``"/usr/local/bin/claude"``): used directly.
-      - A bare command name (e.g. ``"claude"``): resolved via the system PATH.
-
-    The default for ``claude`` can be overridden via the
-    ``SCULPTOR_CLAUDE_BINARY_DEFAULT_OVERRIDE`` environment variable.  When the
-    user explicitly configures a value in Settings, it is persisted to the config
-    file and takes precedence over the environment variable.
-
-    The ``git`` field is an optional override path; when ``None``, git is
-    resolved from the system PATH.
-
-    The ``pi`` field is a unified mode + path value mirroring ``claude``:
-      - ``"MANAGED"`` (default): Sculptor downloads and version-pins the pi CLI.
-      - ``"CUSTOM"``, an absolute path, or a bare command name: a user-provided
-        binary, resolved via the system PATH.
-
-    There is no migration validator for ``pi``: a previously persisted bare
-    ``"pi"`` (the old default) is preserved and resolves via PATH (i.e. treated
-    as CUSTOM), so existing setups keep working after the default flips to
-    ``"MANAGED"``.
-    """
-
-    git: str | None = None
-    claude: str = Field(default_factory=lambda: os.environ.get("SCULPTOR_CLAUDE_BINARY_DEFAULT_OVERRIDE", "MANAGED"))
-    pi: str = "MANAGED"
-
-
-class PiConfig(SerializableModel):
-    """Configuration for the pi agent harness.
-
-    Pi reads its API key from the user's process environment at launch.
-    ``api_key_env_var_names`` lists the environment variable names whose
-    values are injected into the pi subprocess via the existing ``Secret``
-    machinery — the values themselves are never persisted in config.
-    """
-
-    api_key_env_var_names: tuple[str, ...] = ("ANTHROPIC_API_KEY",)
-
-
 class PanelLayoutConfig(SerializableModel):
     """Panel layout preferences for the workspace page."""
 
@@ -96,20 +51,6 @@ class BabysitterAgentMRU(SerializableModel):
     object_type: str = "mru"
 
 
-class BabysitterAgentClaude(SerializableModel):
-    """Always use a Claude chat agent, regardless of the workspace MRU."""
-
-    object_type: str = "claude"
-
-
-class BabysitterAgentPi(SerializableModel):
-    """Always use a Pi chat agent. Only valid when the pi agent is enabled;
-    that validity is enforced by the resolver, not this model.
-    """
-
-    object_type: str = "pi"
-
-
 class BabysitterAgentRegistered(SerializableModel):
     """Always drive a specific registered terminal agent, by registration id."""
 
@@ -122,10 +63,7 @@ class BabysitterAgentRegistered(SerializableModel):
 # harness kind and any registration_id are explicit and validated, and so
 # serialized configs keep round-tripping by their stable discriminator.
 BabysitterAgentChoice = Annotated[
-    Annotated[BabysitterAgentMRU, Tag("mru")]
-    | Annotated[BabysitterAgentClaude, Tag("claude")]
-    | Annotated[BabysitterAgentPi, Tag("pi")]
-    | Annotated[BabysitterAgentRegistered, Tag("registered")],
+    Annotated[BabysitterAgentMRU, Tag("mru")] | Annotated[BabysitterAgentRegistered, Tag("registered")],
     build_discriminator(),
 ]
 
@@ -153,7 +91,7 @@ class CIBabysitterConfig(SerializableModel):
     )
     agent: BabysitterAgentChoice = Field(
         default_factory=BabysitterAgentMRU,
-        description="Which agent the CI Babysitter uses: most-recently-used (the default — inherits the workspace's most recent driveable agent type), or a pinned harness (Claude, Pi, or a specific registered terminal agent).",
+        description="Which agent the CI Babysitter uses: most-recently-used (the default — inherits the workspace's most recent driveable agent type), or a pinned, specific registered terminal agent.",
     )
 
 
@@ -252,14 +190,6 @@ class UserConfig(SerializableModel):
         default_factory=CIBabysitterConfig,
         description="Configuration for the CI Babysitter — watches MRs and prompts an agent to fix pipeline failures and merge conflicts.",
     )
-    dependency_paths: DependencyPaths = Field(
-        default_factory=DependencyPaths,
-        description="Configuration for dependency binary resolution",
-    )
-    pi: PiConfig = Field(
-        default_factory=PiConfig,
-        description="Configuration for the pi agent harness",
-    )
     env_var_override_enabled: bool = Field(
         default=False,
         description="When True, .sculptor/.env values override pre-existing environment variables",
@@ -284,10 +214,6 @@ class UserConfig(SerializableModel):
         default=False,
         description="When enabled, .md and .markdown files in the read-only file preview can be shown as rendered markdown via the eye toggle. Off by default while we iterate on the renderer.",
     )
-    enable_pi_agent: bool = Field(
-        default=False,
-        description="When enabled, the agent-type menus offer the experimental pi agent. Off by default. Gates only the creation entry point — an existing pi agent keeps running regardless.",
-    )
     default_fast_mode: bool = Field(
         default=False,
         description="When enabled, new agents default to fast mode",
@@ -301,48 +227,12 @@ class UserConfig(SerializableModel):
         default=None,
         description=(
             "Most recently used agent type (harness) for new agents, stored as a"
-            + " StoredAgentType string: 'claude', 'pi', 'terminal', or"
-            + " 'registered:<registration_id>'. Shared by the app's '+' button and the"
-            + " sculpt CLI so both create the same harness by default. If None, new"
-            + " agents default to Claude."
+            + " StoredAgentType string: 'terminal' or 'registered:<registration_id>'."
+            + " Shared by the app's '+' button and the sculpt CLI so both create the"
+            + " same harness by default. If None, new agents default to the bundled"
+            + " 'claude-code' registered terminal agent."
         ),
     )
-
-    @model_validator(mode="before")
-    @classmethod
-    def _migrate_claude_binary_mode(cls, data: Any) -> Any:
-        """Migrate old claude_binary_mode + dependency_paths.claude into unified dependency_paths.claude.
-
-        Old format had:
-          - claude_binary_mode: "MANAGED" | "PATH" | "CUSTOM"
-          - dependency_paths.claude: optional custom path (used when mode was CUSTOM)
-
-        New format uses dependency_paths.claude as a unified value:
-          - "MANAGED" for managed mode, "claude" (bare command) for PATH mode,
-            or an absolute path for custom.
-        """
-        if not isinstance(data, dict):
-            return data
-        for mode_key, paths_key in (
-            ("claude_binary_mode", "dependency_paths"),
-            ("claudeBinaryMode", "dependencyPaths"),
-        ):
-            old_mode = data.pop(mode_key, None)
-            if old_mode is None:
-                continue
-            paths = data.get(paths_key)
-            if paths is None:
-                paths = {}
-                data[paths_key] = paths
-            if isinstance(paths, dict):
-                claude_key = "claude"
-                if old_mode == "CUSTOM" and paths.get(claude_key):
-                    pass  # custom path already set in dependency_paths.claude
-                elif old_mode == "PATH":
-                    paths[claude_key] = "claude"  # bare command, resolved via system PATH
-                else:
-                    paths[claude_key] = old_mode
-        return data
 
     @model_validator(mode="before")
     @classmethod

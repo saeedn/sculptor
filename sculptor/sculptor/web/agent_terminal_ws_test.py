@@ -19,7 +19,6 @@ from sculptor.database.models import AgentTaskStateV2
 from sculptor.database.models import Project
 from sculptor.database.models import Task
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
-from sculptor.interfaces.agents.agent import ClaudeCodeSDKAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import RequestID
@@ -43,7 +42,7 @@ pytestmark = pytest.mark.skipif(sys.platform == "win32", reason="POSIX-only")
 def _create_task(
     services: CompleteServiceCollection,
     project: Project,
-    agent_config: TerminalAgentConfig | ClaudeCodeSDKAgentConfig,
+    agent_config: TerminalAgentConfig,
 ) -> Task:
     user_session = authenticate_anonymous(services, RequestID())
     task = Task(
@@ -77,15 +76,6 @@ def test_agent_terminal_ws_4404_for_malformed_id(client: TestClient) -> None:
 
 def test_agent_terminal_ws_4404_for_unknown_agent(client: TestClient) -> None:
     _expect_4404(client, f"/api/v1/agents/{TaskID()}/terminal/ws")
-
-
-def test_agent_terminal_ws_4404_for_chat_agent(
-    client: TestClient,
-    test_already_started_services: CompleteServiceCollection,
-    test_project: Project,
-) -> None:
-    task = _create_task(test_already_started_services, test_project, ClaudeCodeSDKAgentConfig())
-    _expect_4404(client, f"/api/v1/agents/{task.object_id}/terminal/ws")
 
 
 def test_agent_terminal_ws_4404_when_handler_not_running(

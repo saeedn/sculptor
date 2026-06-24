@@ -20,13 +20,11 @@ from sculptor.foundation.processes.local_process import RunningProcess
 from sculptor.foundation.secrets_utils import Secret
 from sculptor.foundation.subprocess_utils import FinishedProcess
 from sculptor.interfaces.environments.agent_execution_environment import AgentExecutionEnvironment
-from sculptor.interfaces.environments.agent_execution_environment import Dependency
 from sculptor.interfaces.environments.base import ARTIFACTS_DIRECTORY
 from sculptor.interfaces.environments.base import Environment
 from sculptor.interfaces.environments.base import STATE_DIRECTORY
 from sculptor.interfaces.environments.base import TASKS_SUBDIRECTORY
 from sculptor.primitives.ids import TaskID
-from sculptor.services.dependency_management_service import DependencyManagementService
 
 if TYPE_CHECKING:
     from _typeshed import OpenBinaryModeReading
@@ -48,22 +46,15 @@ class LocalAgentExecutionEnvironment(AgentExecutionEnvironment):
     All other operations are delegated directly to the underlying environment.
     """
 
-    def __init__(
-        self,
-        environment: Environment,
-        task_id: TaskID,
-        dependency_management_service: DependencyManagementService,
-    ) -> None:
+    def __init__(self, environment: Environment, task_id: TaskID) -> None:
         """Initialize the agent execution environment wrapper.
 
         Args:
             environment: The underlying Environment to wrap.
             task_id: The task ID for namespacing state and artifacts.
-            dependency_management_service: Service for resolving tool binary paths.
         """
         self._environment = environment
         self._task_id = task_id
-        self._dependency_management_service = dependency_management_service
 
         # Create task-specific directories on initialization
         self._ensure_task_directories_exist()
@@ -224,10 +215,6 @@ class LocalAgentExecutionEnvironment(AgentExecutionEnvironment):
             is_checked_after=is_checked_after,
             on_output=on_output,
         )
-
-    def get_tool_binary_path(self, tool: Dependency) -> str | None:
-        """Resolve the path to a tool binary."""
-        return self._dependency_management_service.resolve_binary_path(tool)
 
     def get_system_prompt(self) -> str | None:
         """Get the environment-specific system prompt content."""

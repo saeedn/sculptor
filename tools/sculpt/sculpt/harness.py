@@ -1,11 +1,11 @@
 """Harness (agent-type) selection for ``sculpt agent create``.
 
-Mirrors the harness chooser the UI shows: the built-in Claude, Pi, and
-Terminal types plus any registered terminal agents (for example
-"Claude CLI"). When no harness is requested the CLI sends nothing and lets
-the server apply the user's most-recently-used choice from the Sculptor
-app — falling back to the bundled ``claude-code`` terminal agent when there
-is none — so ``sculpt`` keeps no harness state of its own.
+Mirrors the harness chooser the UI shows: the built-in Terminal type plus
+any registered terminal agents (for example "Claude CLI"). When no harness is
+requested the CLI sends nothing and lets the server apply the user's
+most-recently-used choice from the Sculptor app — falling back to the bundled
+``claude-code`` terminal agent when there is none — so ``sculpt`` keeps no
+harness state of its own.
 """
 
 from collections.abc import Sequence
@@ -18,8 +18,6 @@ from sculpt.client.models.terminal_agent_registration import TerminalAgentRegist
 # Display labels for the built-in harnesses, mirroring the frontend's
 # AGENT_TYPE_LABELS so the CLI offers the same names the UI does.
 BUILTIN_HARNESS_LABELS: dict[AgentTypeName, str] = {
-    AgentTypeName.CLAUDE: "Claude",
-    AgentTypeName.PI: "Pi",
     AgentTypeName.TERMINAL: "Terminal",
 }
 
@@ -35,7 +33,7 @@ class HarnessSelection(BaseModel):
 
 
 def resolve_builtin_harness(name: str) -> HarnessSelection | None:
-    """Resolve a built-in harness name (Claude, Pi, Terminal), or None.
+    """Resolve a built-in harness name (Terminal), or None.
 
     Matching is case-insensitive. Registered terminal agents are not
     resolved here because they require the server's registration list.

@@ -6,14 +6,16 @@ directory and prepend it to PATH so the stubs are found before real binaries.
 
 import os
 import shutil
-import sys
 from enum import StrEnum
 from pathlib import Path
 
 import pytest
 
-from sculptor.services.dependency_management_service import CLAUDE_VERSION_RANGE
-from sculptor.services.dependency_management_service import PI_VERSION_RANGE
+# The recommended Claude CLI version the default stub reports so the PATH-based
+# resolution check passes. Inlined (was sourced from the removed
+# dependency-management service) — kept current with the bundled registration's
+# expectations.
+CLAUDE_INSTALLED_STUB_VERSION = "2.1.170"
 
 # Session-level opt-out for the default claude stub install. When set, all
 # call sites of ``install_default_claude_stub`` skip the stub write and
@@ -23,19 +25,14 @@ from sculptor.services.dependency_management_service import PI_VERSION_RANGE
 # session by a conftest fixture and never reset.
 _default_claude_stub_disabled_for_session: bool = False
 
-# Session-level opt-out for the default pi stub install. Mirrors the claude
-# variant — set by the real_pi conftest so tests resolve the real ``pi``
-# binary on PATH instead of the stub.
-_default_pi_stub_disabled_for_session: bool = False
-
 
 def disable_default_claude_stub_for_session() -> None:
     """Skip default claude stub installs for the rest of this pytest session.
 
     After this is called, ``install_default_claude_stub`` does not write a
     stub binary and returns the absolute path to the real ``claude`` on
-    PATH instead. The shared instance fixture pins this path into
-    ``DependencyPaths.claude``, so the agent invokes the real CLI.
+    PATH instead, which the test harness puts on PATH so the agent invokes
+    the real CLI.
 
     Intended for ``real_claude`` tests; do not call from regular integration
     tests, which rely on the stub for hermetic version/auth behavior.
@@ -57,34 +54,6 @@ def _resolve_real_claude_for_real_claude_tests() -> Path:
             + "Install it with `npm install -g @anthropic-ai/claude-code`."
         )
     return Path(found).resolve()
-
-
-def disable_default_pi_stub_for_session() -> None:
-    """Skip default pi stub installs for the rest of this pytest session.
-
-    After this is called, ``install_default_pi_stub`` does not write a
-    stub binary and returns the absolute path to the pinned ``pi`` in the
-    workspace venv instead. Intended for ``real_pi`` tests; do not call from
-    regular integration tests.
-    """
-    global _default_pi_stub_disabled_for_session
-    _default_pi_stub_disabled_for_session = True
-
-
-def _resolve_real_pi_for_real_pi_tests() -> Path:
-    """Return the path to the pinned ``pi`` binary in the workspace venv.
-
-    Resolves ``<sys.prefix>/bin/pi`` (planted by ``just install-pi``) rather
-    than searching PATH, so an unrelated ``pi`` on PATH cannot shadow the
-    version-pinned build the real_pi suite requires.
-    """
-    venv_pi = Path(sys.prefix) / "bin" / "pi"
-    if not venv_pi.exists():
-        raise RuntimeError(
-            f"real_pi tests require the pinned `pi` binary at {venv_pi} but it was not found. "
-            + "Install it with `just install-pi`."
-        )
-    return venv_pi.resolve()
 
 
 class DependencyState(StrEnum):
@@ -118,7 +87,6 @@ echo "claude: command not found" >&2
 exit 127
 """
 
-CLAUDE_INSTALLED_STUB_VERSION = CLAUDE_VERSION_RANGE.recommended_version
 CLAUDE_INSTALLED_STUB = f"""#!/bin/bash
 case "$1" in
     --version|-v)
@@ -237,34 +205,12 @@ case "$1" in
 esac
 """
 
-PI_NOT_INSTALLED_STUB = """#!/bin/bash
-echo "pi: command not found" >&2
-exit 127
-"""
-
-PI_INSTALLED_STUB_VERSION = PI_VERSION_RANGE.recommended_version
-# WHY: real pi emits --version to stderr, not stdout; the stub mirrors that.
-PI_INSTALLED_STUB = f"""#!/bin/bash
-case "$1" in
-    --version|-v)
-        echo "pi {PI_INSTALLED_STUB_VERSION}" >&2
-        exit 0
-        ;;
-    *)
-        echo '{{"type":"error","error":{{"type":"stub_error","message":"Pi stub: not a real installation"}}}}' >&2
-        exit 1
-        ;;
-esac
-"""
-
 DEPENDENCY_STUB_SCRIPTS: dict[tuple[str, DependencyState], str] = {
     ("git", DependencyState.NOT_INSTALLED): GIT_NOT_INSTALLED_STUB,
     ("claude", DependencyState.NOT_INSTALLED): CLAUDE_NOT_INSTALLED_STUB,
     ("claude", DependencyState.INSTALLED_STUB): CLAUDE_INSTALLED_STUB,
     ("claude", DependencyState.INSTALLED_NOT_AUTHENTICATED): CLAUDE_INSTALLED_NOT_AUTHENTICATED_STUB,
     ("claude", DependencyState.INSTALLED_NEEDS_PASTE_CODE): CLAUDE_INSTALLED_NEEDS_PASTE_CODE_STUB,
-    ("pi", DependencyState.NOT_INSTALLED): PI_NOT_INSTALLED_STUB,
-    ("pi", DependencyState.INSTALLED_STUB): PI_INSTALLED_STUB,
 }
 
 # Pytest marker for stubbing dependencies in tests.
@@ -280,38 +226,19 @@ DEFAULT_CLAUDE_STUB_STATE: DependencyState = DependencyState.INSTALLED_STUB
 def install_default_claude_stub(fake_bin_dir: Path) -> Path:
     """Install the default claude stub into ``fake_bin_dir``.
 
-    Returns the absolute path to the stub script so callers can wire it into
-    the user config via ``DependencyPaths(claude=...)`` — using an absolute
-    path avoids PATH-ordering races when PTY-spawned subprocesses mutate PATH.
+    Returns the absolute path to the stub script. The harness puts
+    ``fake_bin_dir`` on PATH, so the stub shadows any real ``claude`` —
+    using an absolute path avoids PATH-ordering races when PTY-spawned
+    subprocesses mutate PATH.
 
     When ``disable_default_claude_stub_for_session`` has been called (real_claude
     suite), the stub write is skipped and the absolute path to the real
-    ``claude`` on PATH is returned instead. Callers do not need to know which
-    mode they are in; they just pin whatever path comes back into the user
-    config.
+    ``claude`` on PATH is returned instead.
     """
     if _default_claude_stub_disabled_for_session:
         return _resolve_real_claude_for_real_claude_tests()
     create_disabled_dependency_stub(fake_bin_dir, "claude", DEFAULT_CLAUDE_STUB_STATE)
     return fake_bin_dir / "claude"
-
-
-DEFAULT_PI_STUB_STATE: DependencyState = DependencyState.INSTALLED_STUB
-
-
-def install_default_pi_stub(fake_bin_dir: Path) -> Path:
-    """Install the default pi stub into ``fake_bin_dir``.
-
-    Returns the absolute path to the stub script so callers can wire it
-    into the user config via ``DependencyPaths(pi=...)``. When
-    ``disable_default_pi_stub_for_session`` has been called (real_pi
-    suite), the stub write is skipped and the absolute path to the pinned
-    ``pi`` in the workspace venv is returned instead.
-    """
-    if _default_pi_stub_disabled_for_session:
-        return _resolve_real_pi_for_real_pi_tests()
-    create_disabled_dependency_stub(fake_bin_dir, "pi", DEFAULT_PI_STUB_STATE)
-    return fake_bin_dir / "pi"
 
 
 def iter_stub_dependency_markers(request: pytest.FixtureRequest) -> list[tuple[str, DependencyState]]:

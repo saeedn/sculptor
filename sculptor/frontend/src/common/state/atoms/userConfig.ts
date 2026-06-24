@@ -188,11 +188,6 @@ export const isRichMarkdownRenderingEnabledAtom = atom<boolean>(
   (get) => get(userConfigAtom)?.enableRichMarkdownRendering ?? false,
 );
 
-// Pi agent (experimental — off by default). Gates only whether the pi option
-// is offered in the agent-type pickers (the + button menu and the
-// new-workspace form); an already-created pi agent keeps running regardless.
-export const isPiAgentEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.enablePiAgent ?? false);
-
 // Agent defaults
 export const isDefaultFastModeAtom = atom<boolean>((get) => get(userConfigAtom)?.defaultFastMode ?? false);
 

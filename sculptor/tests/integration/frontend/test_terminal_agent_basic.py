@@ -13,12 +13,12 @@ from playwright.sync_api import expect
 
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
 from sculptor.testing.elements.file_tree import get_changes_tree
-from sculptor.testing.elements.terminal import expect_chat_replaces_terminal_panel
 from sculptor.testing.elements.terminal import expect_terminal_panel_replaces_chat
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.elements.terminal import get_agent_terminal_textarea
 from sculptor.testing.elements.terminal import get_xterm_buffer_text
 from sculptor.testing.elements.terminal import run_command_in_agent_terminal
+from sculptor.testing.elements.terminal import wait_for_xterm_buffer_nonempty
 from sculptor.testing.elements.terminal import wait_for_xterm_substring
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -31,27 +31,32 @@ def _create_terminal_agent(agent_tab_bar: PlaywrightAgentTabBarElement) -> None:
 
 
 def _wait_for_terminal_ready(page: Page) -> None:
-    """Wait until the agent terminal's xterm is mounted and the shell is up.
+    """Wait until the agent terminal's xterm is mounted, connected, and the
+    shell prompt has rendered.
 
-    The backend PTY may still be spawning when the panel mounts (the
-    WebSocket retries 4404 closes every 2s), so give the prompt a moment
-    after the textarea attaches.
+    The backend PTY may still be spawning when the panel mounts (the WebSocket
+    retries 4404 closes every 2s). Waiting for the buffer to render output
+    (``wait_for_xterm_buffer_nonempty``) adapts to however long the connection
+    takes instead of guessing a fixed window — without it, a command typed
+    before the PTY connects has its keystrokes dropped.
     """
     expect(get_agent_terminal_textarea(page)).to_be_attached()
-    page.wait_for_timeout(3_000)
+    wait_for_xterm_buffer_nonempty(page)
+    # The shell prompt has rendered; give xterm a beat to settle focus handling
+    # before the first synthetic keystrokes (which it can otherwise drop).
+    page.wait_for_timeout(500)
 
 
-@user_story("to use a plain terminal agent alongside chat agents")
+@user_story("to use a plain terminal agent")
 def test_terminal_agent_basic(sculptor_instance_: SculptorInstance) -> None:
-    """Create a Terminal agent, use the shell, see diffs refresh, switch tabs."""
+    """Create a Terminal agent, use the shell, see diffs refresh, and switch
+    between two terminal agents (reconnecting with scrollback replay)."""
     page = sculptor_instance_.page
-    task_page = start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Terminal Agent WS")
+    # The helper creates a plain "Terminal 1" first agent.
+    task_page = start_task_and_wait_for_ready(page, workspace_name="Terminal Agent WS")
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(1)
-
-    _create_terminal_agent(agent_tab_bar)
-    expect(agent_tabs).to_have_count(2)
     terminal_tab = agent_tab_bar.get_agent_tab_by_name("Terminal 1").first
     expect(terminal_tab).to_be_visible()
 
@@ -75,11 +80,15 @@ def test_terminal_agent_basic(sculptor_instance_: SculptorInstance) -> None:
     # agents never derive running/waiting from chat state.
     expect(terminal_tab).to_have_attribute("data-dot-status", re.compile(r"^(read|unread)$"))
 
-    # Tab switching: the Claude tab still has its chat; switching back to the
-    # terminal reconnects with the scrollback replay (the PTY survived the
-    # WebSocket disconnect).
-    agent_tabs.first.click()
-    expect_chat_replaces_terminal_panel(page)
+    # Add a second terminal agent, then switch back: the first terminal
+    # reconnects with its scrollback replay (the PTY survived the WebSocket
+    # disconnect during the tab switch).
+    _create_terminal_agent(agent_tab_bar)
+    expect(agent_tabs).to_have_count(2)
+    second_tab = agent_tab_bar.get_agent_tab_by_name("Terminal 2").first
+    expect(second_tab).to_be_visible()
+    _wait_for_terminal_ready(page)
+
     terminal_tab.click()
     expect(get_agent_terminal_panel(page)).to_be_visible()
     wait_for_xterm_substring(page, "hello-sculptor")
@@ -87,11 +96,14 @@ def test_terminal_agent_basic(sculptor_instance_: SculptorInstance) -> None:
 
 @user_story("to manage terminal agent tabs like any other agent tab")
 def test_terminal_agent_tab_rename_and_delete(sculptor_instance_: SculptorInstance) -> None:
-    """Terminal agent tabs rename and delete exactly like chat-agent tabs."""
+    """Terminal agent tabs rename and delete exactly like any agent tab."""
     page = sculptor_instance_.page
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Terminal Tab WS")
+    # The helper creates a plain "Terminal 1" first agent; add a second so a
+    # delete still leaves one tab behind.
+    start_task_and_wait_for_ready(page, workspace_name="Terminal Tab WS")
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
     agent_tabs = agent_tab_bar.get_agent_tabs()
+    expect(agent_tabs).to_have_count(1)
 
     _create_terminal_agent(agent_tab_bar)
     expect(agent_tabs).to_have_count(2)
@@ -129,10 +141,10 @@ def test_terminal_agent_tabs_do_not_leak_content(sculptor_instance_: SculptorIns
     any cross-tab text is frontend mixing.
     """
     page = sculptor_instance_.page
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Terminal Leak WS")
+    # The helper creates a plain "Terminal 1" first agent.
+    start_task_and_wait_for_ready(page, workspace_name="Terminal Leak WS")
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
 
-    _create_terminal_agent(agent_tab_bar)
     first_tab = agent_tab_bar.get_agent_tab_by_name("Terminal 1").first
     expect(first_tab).to_be_visible()
     _wait_for_terminal_ready(page)

@@ -5,8 +5,6 @@ import { openFileFromUiEventAtom } from "~/pages/workspace/components/diffPanel/
 import { agentWebviewStateAtomFamily } from "~/pages/workspace/panels/browser/atoms.ts";
 
 import type { StreamingUpdate } from "../../../api";
-import { handleBtwUpdateAtom } from "../atoms/btwPopup";
-import { dependenciesStatusAtom } from "../atoms/dependenciesStatus";
 import { notificationsAtom } from "../atoms/notifications";
 import { updateProjectsAtom } from "../atoms/projects";
 import { updatePrStatusAtom } from "../atoms/prStatus";
@@ -48,8 +46,6 @@ export const useUnifiedStream = (): void => {
   const updateWorkspaceTargetBranches = useSetAtom(updateWorkspaceTargetBranchesAtom);
   const updateWorkspaceSetupStatus = useSetAtom(updateWorkspaceSetupStatusAtom);
   const appendSetupOutputChunk = useSetAtom(appendSetupOutputChunkAtom);
-  const setDependenciesStatus = useSetAtom(dependenciesStatusAtom);
-  const handleBtwUpdate = useSetAtom(handleBtwUpdateAtom);
   const openFileFromUiEvent = useSetAtom(openFileFromUiEventAtom);
   const store = useStore();
 
@@ -165,11 +161,6 @@ export const useUnifiedStream = (): void => {
         });
       }
 
-      // Handle dependencies status updates
-      if (data.dependenciesStatus) {
-        setDependenciesStatus(data.dependenciesStatus);
-      }
-
       // Handle PR status updates
       if (data.prStatusByWorkspaceId && Object.keys(data.prStatusByWorkspaceId).length > 0) {
         Object.entries(data.prStatusByWorkspaceId).forEach(([workspaceId, prStatus]) => {
@@ -180,16 +171,6 @@ export const useUnifiedStream = (): void => {
       // Handle finished request IDs
       if (data.finishedRequestIds && data.finishedRequestIds.length > 0) {
         acknowledgeRequests(data.finishedRequestIds);
-      }
-
-      // Handle /btw side-chat streaming updates
-      if (data.btwUpdate) {
-        handleBtwUpdate({
-          requestId: data.btwUpdate.requestId,
-          state: data.btwUpdate.state,
-          answer: data.btwUpdate.answer,
-          errorMessage: data.btwUpdate.errorMessage ?? null,
-        });
       }
 
       // Handle ui open-file events (sculpt ui open-file)
@@ -223,8 +204,6 @@ export const useUnifiedStream = (): void => {
       updateWorkspaceTargetBranches,
       updateWorkspaceSetupStatus,
       appendSetupOutputChunk,
-      setDependenciesStatus,
-      handleBtwUpdate,
       openFileFromUiEvent,
       store,
     ],

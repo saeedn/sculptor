@@ -16,6 +16,7 @@ from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.elements.terminal import get_agent_terminal_textarea
 from sculptor.testing.elements.terminal import get_xterm_buffer_text
 from sculptor.testing.elements.terminal import run_command_in_agent_terminal
+from sculptor.testing.elements.terminal import wait_for_xterm_buffer_nonempty
 from sculptor.testing.elements.terminal import wait_for_xterm_substring
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
@@ -145,12 +146,14 @@ def test_plain_terminal_agent_gets_fresh_shell_after_restart(
     pre-restart scrollback gone (expected per spec)."""
     with sculptor_instance_factory_.spawn_instance() as instance:
         page = instance.page
-        start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Fresh Shell WS")
-        agent_tab_bar = PlaywrightAgentTabBarElement(page)
-        agent_tab_bar.open_agent_type_menu()
-        agent_tab_bar.get_agent_type_menu_item_terminal().click()
+        # The helper creates a plain "Terminal 1" first agent (a bare shell).
+        start_task_and_wait_for_ready(page, workspace_name="Fresh Shell WS")
         expect(get_agent_terminal_panel(page)).to_be_visible()
         expect(get_agent_terminal_textarea(page)).to_be_attached()
+        wait_for_xterm_buffer_nonempty(page)
+        # A freshly-mounted xterm on a cold (factory-spawned) instance keeps
+        # dropping keystrokes until the PTY is fully connected; settle before
+        # typing so the command is not silently dropped.
         page.wait_for_timeout(3_000)
         run_command_in_agent_terminal(page, "echo marker-before-restart")
         wait_for_xterm_substring(page, "marker-before-restart")
@@ -168,6 +171,10 @@ def test_plain_terminal_agent_gets_fresh_shell_after_restart(
         terminal_tab.click()
         expect(get_agent_terminal_panel(page)).to_be_visible()
         expect(get_agent_terminal_textarea(page)).to_be_attached()
+        wait_for_xterm_buffer_nonempty(page)
+        # A freshly-mounted xterm on a cold (factory-spawned) instance keeps
+        # dropping keystrokes until the PTY is fully connected; settle before
+        # typing so the command is not silently dropped.
         page.wait_for_timeout(3_000)
 
         # Fresh, usable shell; pre-restart scrollback is gone.

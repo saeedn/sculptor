@@ -29,7 +29,7 @@ import {
 } from "~/common/state/atoms/agentTabs.ts";
 import { debugViewAtomFamily } from "~/common/state/atoms/alphaScroll.ts";
 import { pendingAgentTitlesAtom, tasksArrayAtom, updateTasksAtom } from "~/common/state/atoms/tasks.ts";
-import { isPiAgentEnabledAtom, userConfigAtom } from "~/common/state/atoms/userConfig.ts";
+import { userConfigAtom } from "~/common/state/atoms/userConfig.ts";
 import { useOptimisticTaskDelete } from "~/common/state/hooks/useOptimisticTaskDelete.ts";
 import { useTerminalAgentRegistrations } from "~/common/state/hooks/useTerminalAgentRegistrations.ts";
 import { useRegisterCommandAction } from "~/components/CommandPalette/commandActions.ts";
@@ -240,11 +240,8 @@ export const AgentTabs = (): ReactElement | null => {
     },
     [setUserConfig],
   );
-  const isPiAgentEnabled = useAtomValue(isPiAgentEnabledAtom);
   const { registrations, refetch: refreshRegistrations } = useTerminalAgentRegistrations();
-  // A stored "pi" is unusable once pi-agent is turned off — fall back to Claude.
-  const defaultAgentType: StoredAgentType =
-    lastUsedAgentType === "pi" && !isPiAgentEnabled ? "claude" : lastUsedAgentType;
+  const defaultAgentType: StoredAgentType = lastUsedAgentType;
 
   const handleCreateAgent = useCallback(
     async (requestedType?: AgentTypeName, requestedRegistrationId?: string): Promise<void> => {
@@ -279,15 +276,16 @@ export const AgentTabs = (): ReactElement | null => {
           });
         } catch (error) {
           // A remembered registered agent's registration can be deleted out
-          // from under the stored default — only that case retries as Claude.
-          // Other failures (e.g. a transient error creating a plain terminal
-          // or pi agent) propagate rather than silently substituting a
-          // different agent type than the user's default.
+          // from under the stored default — only that case retries as a plain
+          // terminal (always available). Other failures (e.g. a transient
+          // error creating a plain terminal agent) propagate rather than
+          // silently substituting a different agent type than the user's
+          // default.
           if (requestedType === undefined && agentType === "registered") {
-            setLastUsedAgentType("claude");
+            setLastUsedAgentType("terminal");
             response = await createWorkspaceAgent({
               path: { workspace_id: workspaceID },
-              body: { model, agentType: "claude" },
+              body: { model, agentType: "terminal" },
             });
           } else {
             throw error;
@@ -548,22 +546,6 @@ export const AgentTabs = (): ReactElement | null => {
                 click creates. Selecting an item still creates an agent (the
                 check is an indicator, not a toggle). */}
             <DropdownMenu.Content data-testid={ElementIds.AGENT_TYPE_MENU}>
-              <DropdownMenu.CheckboxItem
-                checked={defaultAgentType === "claude"}
-                data-testid={ElementIds.AGENT_TYPE_MENU_ITEM_CLAUDE}
-                onSelect={() => void handleCreateAgent("claude")}
-              >
-                {AGENT_TYPE_LABELS.claude}
-              </DropdownMenu.CheckboxItem>
-              {isPiAgentEnabled && (
-                <DropdownMenu.CheckboxItem
-                  checked={defaultAgentType === "pi"}
-                  data-testid={ElementIds.AGENT_TYPE_MENU_ITEM_PI}
-                  onSelect={() => void handleCreateAgent("pi")}
-                >
-                  {AGENT_TYPE_LABELS.pi}
-                </DropdownMenu.CheckboxItem>
-              )}
               <DropdownMenu.CheckboxItem
                 checked={defaultAgentType === "terminal"}
                 data-testid={ElementIds.AGENT_TYPE_MENU_ITEM_TERMINAL}

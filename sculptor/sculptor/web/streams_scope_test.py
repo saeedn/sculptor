@@ -9,7 +9,7 @@ from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.database.models import Workspace
 from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
-from sculptor.interfaces.agents.agent import ClaudeCodeSDKAgentConfig
+from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.primitives.ids import OrganizationReference
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
@@ -43,10 +43,8 @@ _EXPECTED_STREAMING_UPDATE_FIELDS: frozenset[str] = frozenset(
         "workspace_target_branches_by_workspace_id",
         "pr_status_by_workspace_id",
         "finished_request_ids",
-        "dependencies_status",
         "workspace_setup_status_by_workspace_id",
         "workspace_setup_output_by_workspace_id",
-        "btw_update",
         "ui_open_file_by_workspace_id",
         "ui_webview_command_by_workspace_id",
     }
@@ -124,7 +122,7 @@ def _make_task(*, project_id: ProjectID, workspace_id: WorkspaceID) -> Task:
         organization_reference=OrganizationReference("test-org"),
         project_id=project_id,
         input_data=AgentTaskInputsV2(
-            agent_config=ClaudeCodeSDKAgentConfig(),
+            agent_config=TerminalAgentConfig(),
             git_hash="abc123",
             system_prompt=None,
         ),
@@ -180,7 +178,6 @@ def _build_synthetic_update() -> tuple[
         workspace_branch_by_workspace_id={workspace_a1: None, workspace_a2: None, workspace_b1: None},
         pr_status_by_workspace_id={workspace_a1: None, workspace_a2: None, workspace_b1: None},
         finished_request_ids=(RequestID(),),
-        dependencies_status=None,
     )
     return update, project_a, project_b, workspace_a1, workspace_a2, workspace_b1, task_a1, task_a2, task_b1
 
@@ -207,7 +204,6 @@ def test_project_for_scope_project() -> None:
     assert set(result.workspace_branch_by_workspace_id.keys()) == {workspace_a1, workspace_a2}
     assert set(result.pr_status_by_workspace_id.keys()) == {workspace_a1, workspace_a2}
     assert result.finished_request_ids == ()
-    assert result.dependencies_status is None
     assert result.user_update == UserUpdate()
 
 
@@ -220,7 +216,6 @@ def test_project_for_scope_workspace() -> None:
     assert set(result.pr_status_by_workspace_id.keys()) == {workspace_a1}
     assert workspace_a2 not in result.workspace_branch_by_workspace_id
     assert result.finished_request_ids == ()
-    assert result.dependencies_status is None
     assert result.user_update == UserUpdate()
 
 
@@ -235,7 +230,6 @@ def test_project_for_scope_agent() -> None:
     assert result.workspace_branch_by_workspace_id == {}
     assert result.pr_status_by_workspace_id == {}
     assert result.finished_request_ids == ()
-    assert result.dependencies_status is None
     assert result.user_update == UserUpdate()
 
 
@@ -337,7 +331,7 @@ def test_close_on_delete_fires_for_scope_agent() -> None:
         organization_reference=OrganizationReference("test-org"),
         project_id=project_id,
         input_data=AgentTaskInputsV2(
-            agent_config=ClaudeCodeSDKAgentConfig(),
+            agent_config=TerminalAgentConfig(),
             git_hash="abc",
             system_prompt=None,
         ),

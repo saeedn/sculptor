@@ -225,20 +225,6 @@ class TestAgentCreate:
 
 class TestAgentCreateHarness:
     @respx.mock
-    def test_create_with_harness_pi_sends_pi_agent_type(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123")
-        route = respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
-            return_value=Response(200, json=_task_response_dict())
-        )
-
-        result = runner.invoke(app, ["agent", "create", "-w", "ws_test123", "--harness", "Pi"])
-
-        assert result.exit_code == 0
-        body = json.loads(route.calls.last.request.content)
-        assert body["agentType"] == "pi"
-
-    @respx.mock
     def test_create_with_harness_terminal_sends_terminal_agent_type(self, runner: CliRunner) -> None:
         _mock_session()
         _mock_workspaces("ws_test123")
@@ -294,7 +280,6 @@ class TestAgentCreateHarness:
         result = runner.invoke(app, ["agent", "create", "-w", "ws_test123", "--harness", "Bogus"])
 
         assert result.exit_code == 1
-        assert "Claude" in result.stderr
         assert "Terminal" in result.stderr
 
     @respx.mock

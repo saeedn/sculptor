@@ -1,6 +1,6 @@
 import type { Editor as TipTapEditor } from "@tiptap/react";
 
-export type PseudoSkillName = "clear" | "copy" | "btw";
+export type PseudoSkillName = "clear" | "copy";
 
 export type ArgMode = "none" | "required";
 
@@ -11,7 +11,6 @@ export const PSEUDO_SKILLS: ReadonlyArray<{
 }> = [
   { name: "clear", description: "Clear conversation context", argMode: "none" },
   { name: "copy", description: "Copy the last response to clipboard", argMode: "none" },
-  { name: "btw", description: "Ask a read-only side question", argMode: "required" },
 ];
 
 const PSEUDO_SKILL_NAMES: Set<string> = new Set(PSEUDO_SKILLS.map((s) => s.name));

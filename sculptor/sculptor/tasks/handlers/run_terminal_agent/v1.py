@@ -44,9 +44,9 @@ from sculptor.services.task_service.errors import UserPausedTaskError
 from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
     LocalAgentExecutionEnvironment,
 )
-from sculptor.tasks.handlers.run_agent.setup import load_initial_task_state
-from sculptor.tasks.handlers.run_agent.v1 import on_exception
 from sculptor.tasks.handlers.run_terminal_agent.diff_refresh import PeriodicDiffRefresher
+from sculptor.tasks.handlers.run_terminal_agent.runner_support import load_initial_task_state
+from sculptor.tasks.handlers.run_terminal_agent.runner_support import on_exception
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import AgentTerminalConfig
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import create_agent_terminal
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import reap_stale_shell

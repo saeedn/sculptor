@@ -55,57 +55,7 @@ describe("parsePseudoSkillCommand", () => {
     });
   });
 
-  describe("plain-text arg-required commands (/btw)", () => {
-    it("captures the argument text", () => {
-      expect(parsePseudoSkillCommand(emptyEditor(), "/btw why did you pick X?")).toEqual({
-        name: "btw",
-        args: "why did you pick X?",
-      });
-    });
-
-    it("returns empty args for bare /btw", () => {
-      expect(parsePseudoSkillCommand(emptyEditor(), "/btw")).toEqual({ name: "btw", args: "" });
-    });
-
-    it("returns empty args for whitespace-only /btw", () => {
-      expect(parsePseudoSkillCommand(emptyEditor(), "/btw   ")).toEqual({ name: "btw", args: "" });
-    });
-
-    it("accepts a tab separator", () => {
-      expect(parsePseudoSkillCommand(emptyEditor(), "/btw\thello")).toEqual({ name: "btw", args: "hello" });
-    });
-
-    it("preserves inner and trailing whitespace", () => {
-      expect(parsePseudoSkillCommand(emptyEditor(), "/btw   hello  ")).toEqual({ name: "btw", args: "hello" });
-    });
-
-    it("rejects /btw followed by non-whitespace", () => {
-      expect(parsePseudoSkillCommand(emptyEditor(), "/btwfoo")).toBeNull();
-    });
-
-    it("rejects /btw2", () => {
-      expect(parsePseudoSkillCommand(emptyEditor(), "/btw2")).toBeNull();
-    });
-
-    it("rejects /btw not at the start", () => {
-      expect(parsePseudoSkillCommand(emptyEditor(), "hello /btw world")).toBeNull();
-    });
-  });
-
   describe("TipTap mention-node path", () => {
-    it("recognizes a bare /btw mention", () => {
-      const editor = fakeEditor([{ type: { name: "mention" }, attrs: { id: "/btw", mentionSuggestionChar: "/" } }]);
-      expect(parsePseudoSkillCommand(editor, "")).toEqual({ name: "btw", args: "" });
-    });
-
-    it("concatenates trailing text nodes as args", () => {
-      const editor = fakeEditor([
-        { type: { name: "mention" }, attrs: { id: "/btw", mentionSuggestionChar: "/" } },
-        { type: { name: "text" }, text: " why?" },
-      ]);
-      expect(parsePseudoSkillCommand(editor, "")).toEqual({ name: "btw", args: "why?" });
-    });
-
     it("accepts argless /clear with the trailing space TipTap autocomplete inserts", () => {
       // Selecting `/clear` from the slash-menu autocomplete adds a trailing
       // space after the mention node.
@@ -144,10 +94,6 @@ describe("parsePseudoSkillCommand", () => {
   });
 
   describe("case sensitivity", () => {
-    it("rejects uppercase /BTW", () => {
-      expect(parsePseudoSkillCommand(emptyEditor(), "/BTW hello")).toBeNull();
-    });
-
     it("rejects mixed-case /Clear", () => {
       expect(parsePseudoSkillCommand(emptyEditor(), "/Clear")).toBeNull();
     });

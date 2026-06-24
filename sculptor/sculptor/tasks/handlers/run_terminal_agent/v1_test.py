@@ -198,7 +198,6 @@ def test_outer_handler_emits_acquired_and_released_messages(
     agent_env = LocalAgentExecutionEnvironment(
         environment=environment,
         task_id=terminal_task.object_id,
-        dependency_management_service=services.dependency_management_service,
     )
 
     @contextmanager
@@ -243,10 +242,7 @@ def test_run_task_dispatches_terminal_config_to_terminal_handler(
     test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     shutdown_event = threading.Event()
-    with (
-        patch("sculptor.tasks.api.run_terminal_agent_task_v1", return_value=None) as terminal_handler,
-        patch("sculptor.tasks.api.run_agent_task_v1", return_value=None) as chat_handler,
-    ):
+    with patch("sculptor.tasks.api.run_terminal_agent_task_v1", return_value=None) as terminal_handler:
         run_task(
             terminal_task,
             services,
@@ -257,7 +253,6 @@ def test_run_task_dispatches_terminal_config_to_terminal_handler(
             None,
         )
     terminal_handler.assert_called_once()
-    chat_handler.assert_not_called()
 
 
 def test_launch_command_for_start_selects_per_config() -> None:

@@ -2544,35 +2544,6 @@
     "input_data": {
       "AgentTaskInputsV2": {
         "$defs": {
-          "ClaudeCodeSDKAgentConfig": {
-            "additionalProperties": true,
-            "properties": {
-              "objectType": {
-                "default": "ClaudeCodeSDKAgentConfig",
-                "title": "Objecttype",
-                "type": "string"
-              }
-            },
-            "title": "ClaudeCodeSDKAgentConfig",
-            "type": "object"
-          },
-          "HelloAgentConfig": {
-            "additionalProperties": true,
-            "properties": {
-              "command": {
-                "default": "echo",
-                "title": "Command",
-                "type": "string"
-              },
-              "objectType": {
-                "default": "HelloAgentConfig",
-                "title": "Objecttype",
-                "type": "string"
-              }
-            },
-            "title": "HelloAgentConfig",
-            "type": "object"
-          },
           "LLMModel": {
             "enum": [
               "CLAUDE-4-OPUS",
@@ -2590,18 +2561,6 @@
             ],
             "title": "LLMModel",
             "type": "string"
-          },
-          "PiAgentConfig": {
-            "additionalProperties": true,
-            "properties": {
-              "objectType": {
-                "default": "PiAgentConfig",
-                "title": "Objecttype",
-                "type": "string"
-              }
-            },
-            "title": "PiAgentConfig",
-            "type": "object"
           },
           "RegisteredTerminalAgentConfig": {
             "additionalProperties": true,
@@ -2668,15 +2627,6 @@
         "properties": {
           "agentConfig": {
             "oneOf": [
-              {
-                "$ref": "#/$defs/HelloAgentConfig"
-              },
-              {
-                "$ref": "#/$defs/ClaudeCodeSDKAgentConfig"
-              },
-              {
-                "$ref": "#/$defs/PiAgentConfig"
-              },
               {
                 "$ref": "#/$defs/TerminalAgentConfig"
               },

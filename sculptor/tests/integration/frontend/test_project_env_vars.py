@@ -159,8 +159,10 @@ def test_terminal_picks_up_newly_added_env_var(sculptor_instance_: SculptorInsta
     global_env_file.write_text("SCTEST_LATE_TERMINAL_VAR=terminal_loaded_after\n")
 
     get_add_terminal_button(page).click()
+    # Two workspace bottom-terminal tabs now exist (a global "Terminal input"
+    # count would also include the agent terminal's textarea, so assert on the
+    # bottom-terminal tab count instead).
     expect(get_terminal_tabs(page)).to_have_count(2)
-    expect(page.get_by_label("Terminal input")).to_have_count(2)
 
     run_command_in_active_terminal(page, 'echo "TERM_LATE_CHECK:${SCTEST_LATE_TERMINAL_VAR:-MISSING}"')
     wait_for_xterm_substring(page, "TERM_LATE_CHECK:terminal_loaded_after")

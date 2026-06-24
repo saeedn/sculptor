@@ -22,8 +22,6 @@ export type StoredAgentType = AgentTypeName | `registered:${string}`;
  * tab bar's + menu, the new-workspace select) so the surfaces can't drift.
  * Registered terminal agents label from their registration's display name. */
 export const AGENT_TYPE_LABELS: Record<Exclude<AgentTypeName, "registered">, string> = {
-  claude: "Claude",
-  pi: "pi",
   terminal: "Terminal",
 };
 
@@ -42,13 +40,22 @@ export const parseStoredAgentType = (
     ? { agentType: "registered", registrationId: value.slice(REGISTERED_AGENT_TYPE_PREFIX.length) }
     : { agentType: value as AgentTypeName, registrationId: undefined };
 
+/** The id of the bundled Claude CLI registered terminal agent. Mirrors the
+ * backend's `_BUNDLED_CLAUDE_REGISTRATION_ID`: a prompt-less create with no
+ * MRU defaults to this registered agent (falling back to a plain terminal if
+ * the registration is absent). */
+export const BUNDLED_CLAUDE_REGISTRATION_ID = "claude-code";
+
 /** The most-recently-used agent type, the default a plain `+` click (or a
  * bare `sculpt agent create`) creates.
  *
  * Read-only and backed by the server-side `UserConfig.lastUsedAgentType`, so
- * the app's "+" button and the sculpt CLI share one default. Defaults to
- * Claude when unset. Write through `useUserConfig().updateConfig({
- * lastUsedAgentType })`, which optimistically updates `userConfigAtom`. */
+ * the app's "+" button and the sculpt CLI share one default. Defaults to the
+ * bundled Claude CLI registered agent when unset, matching the backend. Write
+ * through `useUserConfig().updateConfig({ lastUsedAgentType })`, which
+ * optimistically updates `userConfigAtom`. */
 export const lastUsedAgentTypeAtom = atom<StoredAgentType>(
-  (get) => (get(userConfigAtom)?.lastUsedAgentType as StoredAgentType | null) ?? "claude",
+  (get) =>
+    (get(userConfigAtom)?.lastUsedAgentType as StoredAgentType | null) ??
+    encodeRegisteredAgentType(BUNDLED_CLAUDE_REGISTRATION_ID),
 );

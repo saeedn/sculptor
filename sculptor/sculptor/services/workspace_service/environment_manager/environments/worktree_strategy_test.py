@@ -190,14 +190,16 @@ def test_remove_worktree_delete_if_safe_unmerged_branch_preserves(
         capture_output=True,
     )
 
-    with expect_exact_logged_errors(["{}: {}"]):
-        remove_worktree(
-            user_repo_path=user_repo,
-            destination=destination,
-            branch_name="feat/x",
-            deletion_policy="delete_if_safe",
-            concurrency_group=test_root_concurrency_group,
-        )
+    # Refusing to delete an unmerged branch under delete_if_safe is a tolerated
+    # outcome (the worktree is still removed, the branch preserved), so it logs
+    # at WARNING — no ERROR is expected.
+    remove_worktree(
+        user_repo_path=user_repo,
+        destination=destination,
+        branch_name="feat/x",
+        deletion_policy="delete_if_safe",
+        concurrency_group=test_root_concurrency_group,
+    )
 
     assert not destination.exists()
     assert _branch_exists(user_repo, "feat/x")

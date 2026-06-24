@@ -57,7 +57,6 @@ from sculptor.services.data_model_service.api import TaskDataModelService
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.data_model_service.data_types import TaskAndDataModelTransaction
 from sculptor.services.data_model_service.sql_implementation import SQLTransaction
-from sculptor.services.dependency_management_service import DependencyManagementService
 from sculptor.services.git_repo_service.api import GitRepoService
 from sculptor.services.project_service.api import ProjectService
 from sculptor.services.task_service.api import TaskMessageContainer
@@ -85,7 +84,6 @@ class BaseTaskService(TaskService, ABC):
 
     settings: SculptorSettings
     data_model_service: TaskDataModelService
-    dependency_management_service: DependencyManagementService
     git_repo_service: GitRepoService
     project_service: ProjectService
     workspace_service: WorkspaceService
@@ -628,7 +626,6 @@ class BaseTaskService(TaskService, ABC):
             settings=self.settings,
             task_service=self,
             data_model_service=self.data_model_service,
-            dependency_management_service=self.dependency_management_service,
             git_repo_service=self.git_repo_service,
             project_service=self.project_service,
             workspace_service=self.workspace_service,

@@ -23,10 +23,6 @@ from tenacity import wait_fixed
 from sculptor.constants import ElementIDs
 from sculptor.foundation.async_monkey_patches import log_exception
 from sculptor.state.messages import LLMModel
-from sculptor.testing.elements.base import type_into_tiptap
-from sculptor.testing.elements.chat_panel import select_model_by_name
-from sculptor.testing.elements.task_starter import FAKE_CLAUDE_MODEL_NAME
-from sculptor.testing.elements.user_config import enable_pi_agent
 from sculptor.testing.pages.settings_page import PlaywrightSettingsPage
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 
@@ -242,41 +238,33 @@ def start_task_and_wait_for_ready(
     sculptor_page: Page,
     prompt: str = "",
     wait_for_agent_to_finish: bool = True,
-    model_name: str | None = FAKE_CLAUDE_MODEL_NAME,
+    model_name: str | None = None,
     workspace_name: str | None = None,
     agent_type: str | None = None,
 ) -> PlaywrightTaskPage:
-    """Create a workspace and agent through the Add Workspace UI.
+    """Create a workspace with a plain terminal first agent through the Add
+    Workspace UI, and wait for its terminal panel to be ready.
 
     Navigates to the Add Workspace form by clicking the "+" button in the
-    workspace tabs bar, fills in the workspace name, clicks submit,
-    then waits for the agent chat page to appear.  If the Add Workspace form
-    is already showing (e.g. no workspaces exist yet), skips the "+" click.
+    workspace tabs bar, fills in the workspace name, selects the Terminal agent
+    type, submits, and waits for the agent terminal panel to appear. If the Add
+    Workspace form is already showing (e.g. no workspaces exist yet), the "+"
+    click is skipped.
 
-    The Add Workspace page no longer has a model selector, so the model
-    is switched on the chat panel once the workspace is ready.
+    This is the surviving universal test vehicle: a plain terminal agent is a
+    bare shell that always launches in CI with no real ``claude`` binary and no
+    chat backend. Tests that need to *drive* an agent (run bash, write files,
+    emit lifecycle signals) should use the fake terminal agent harness
+    (``sculptor.testing.fake_terminal_agent``) instead.
 
-    When *prompt* is provided, it is sent as the first chat message after the
-    workspace is created (the Add Workspace page has no prompt input).
-
-    When *prompt* is empty the agent is created in a waiting state and
-    ``wait_for_agent_to_finish`` is ignored.
-
-    Defaults to the Fake Claude model, which returns deterministic responses
-    without LLM calls.  Tests that need a real agent should pass an explicit model name.
-    Pass ``model_name=None`` to skip model selection entirely — useful for tests
-    that only need the workspace UI shell and do not exercise the agent (e.g. in
-    packaged-release runs where Fake Claude is gated off).
+    ``prompt``, ``wait_for_agent_to_finish``, and ``model_name`` are accepted for
+    backward compatibility but are no-ops: terminal agents have no chat stream,
+    model selector, or initial prompt. A non-empty ``prompt`` is ignored.
 
     Workspaces are always created in WORKTREE mode (the only supported mode).
     """
-    if agent_type not in (None, "claude", "pi", "terminal"):
-        raise ValueError(f"unsupported agent_type: {agent_type!r}; expected None, 'claude', 'pi', or 'terminal'")
-    # Only the pi *option* is gated behind the experimental pi-agent flag
-    # (the agent-type select itself is always visible) — enable the flag
-    # before navigating so the option is present.
-    if agent_type == "pi":
-        enable_pi_agent(sculptor_page)
+    if agent_type not in (None, "terminal"):
+        raise ValueError(f"unsupported agent_type: {agent_type!r}; expected None or 'terminal'")
 
     navigate_to_add_workspace_page(sculptor_page)
 
@@ -289,16 +277,10 @@ def start_task_and_wait_for_ready(
     workspace_name_input = sculptor_page.get_by_test_id(ElementIDs.WORKSPACE_NAME_INPUT)
     workspace_name_input.fill(workspace_name)
 
-    # When an agent type is requested, drive the first-agent type select
-    # before submitting. Defaults to Claude (the form default) when omitted.
-    if agent_type is not None:
-        sculptor_page.get_by_test_id(ElementIDs.ADD_WORKSPACE_AGENT_TYPE_SELECT).click()
-        option_id = {
-            "claude": ElementIDs.AGENT_TYPE_OPTION_CLAUDE,
-            "pi": ElementIDs.AGENT_TYPE_OPTION_PI,
-            "terminal": ElementIDs.AGENT_TYPE_OPTION_TERMINAL,
-        }[agent_type]
-        sculptor_page.get_by_test_id(option_id).click()
+    # Always create a plain terminal first agent — the only surviving agent type
+    # that launches without a real binary or chat backend.
+    sculptor_page.get_by_test_id(ElementIDs.ADD_WORKSPACE_AGENT_TYPE_SELECT).click()
+    sculptor_page.get_by_test_id(ElementIDs.AGENT_TYPE_OPTION_TERMINAL).click()
 
     # Wait for the submit button to be enabled — repo info loaded, AND the
     # worktree-mode branch-name preview has populated the input (the page
@@ -309,66 +291,11 @@ def start_task_and_wait_for_ready(
     # Click create workspace
     submit_button.click()
 
-    # A terminal first agent has no chat surface — wait for the terminal
-    # panel instead and skip the chat-panel/model/prompt steps entirely.
-    if agent_type == "terminal":
-        terminal_panel_locator = sculptor_page.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
-        expect(terminal_panel_locator).to_be_visible(timeout=60_000)
-        return PlaywrightTaskPage(page=sculptor_page)
-
-    # Wait for the chat panel to appear (indicates we navigated to the agent page).
+    # A terminal first agent has no chat surface — wait for the terminal panel.
     # On contended CI runners the workspace clone + environment setup can take >30s.
-    chat_panel_locator = sculptor_page.get_by_test_id(ElementIDs.CHAT_PANEL)
-    expect(chat_panel_locator).to_be_visible(timeout=60_000)
-
-    task_page = PlaywrightTaskPage(page=sculptor_page)
-    chat_panel = task_page.get_chat_panel()
-
-    # Switch the agent to the requested model on the chat panel, since the
-    # Add Workspace form no longer offers a model selector.  The model-selector
-    # click steals focus from the chat input, so restore it afterwards — tests
-    # that assert post-creation focus rely on this.
-    if model_name is not None:
-        select_model_by_name(chat_panel=chat_panel, model_name=model_name)
-    chat_input = chat_panel.get_chat_input()
-    chat_input.focus()
-
-    if prompt:
-        # Send the prompt as the first chat message
-        type_into_tiptap(sculptor_page, chat_input, prompt)
-        send_button = chat_panel.get_send_button()
-        expect(send_button).to_be_enabled()
-        send_button.click()
-        # Wait for either terminal state: editor cleared (success) or send
-        # button advertising `data-last-send-error` (failure). Racing them
-        # lets a failed send fail loudly instead of timing out on the
-        # empty-text assertion below.
-        sculptor_page.wait_for_function(
-            """({ inputTestId, btnTestId }) => {
-              const btn = document.querySelector(`[data-testid="${btnTestId}"]`);
-              if (btn && btn.hasAttribute('data-last-send-error')) return true;
-              const input = document.querySelector(`[data-testid="${inputTestId}"]`);
-              return !!input && (input.textContent ?? '').trim() === '';
-            }""",
-            arg={"inputTestId": ElementIDs.CHAT_INPUT, "btnTestId": ElementIDs.SEND_BUTTON},
-            timeout=30_000,
-        )
-        send_error = send_button.get_attribute("data-last-send-error")
-        if send_error is not None:
-            raise AssertionError(f"send failed: {send_error}")
-        expect(chat_input).to_have_text("")
-
-        if wait_for_agent_to_finish:
-            # Wait for the assistant's first reply to be attached (count >= 2).
-            # This is a positive signal of agent activity that works in both
-            # chat views and tolerates prompts that produce more than one
-            # assistant message (e.g. auto_compact flows).  Without it, the
-            # not_to_be_visible check below can pass trivially during the gap
-            # between send-click and the activity indicator rendering.
-            expect(chat_panel.get_messages().nth(1), "agent reply to appear").to_be_attached()
-            expect(chat_panel.get_thinking_indicator(), "to finish outputting data").not_to_be_visible()
-
-    return task_page
+    terminal_panel_locator = sculptor_page.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
+    expect(terminal_panel_locator).to_be_visible(timeout=60_000)
+    return PlaywrightTaskPage(page=sculptor_page)
 
 
 def navigate_to_frontend(page: Page, url: str, retry_seconds: float = 60) -> Page:

@@ -138,8 +138,6 @@ def test_convert_includes_ui_open_file() -> None:
     update = _convert_to_streaming_update(
         all_data=all_data,
         task_views_by_task_id={},
-        task_update_state_by_task_id={},
-        processed_message_by_task_id={},
         settings=_empty_settings(),
     )
 
@@ -155,8 +153,6 @@ def test_convert_ui_open_file_last_write_wins_for_same_workspace() -> None:
     update = _convert_to_streaming_update(
         all_data=all_data,
         task_views_by_task_id={},
-        task_update_state_by_task_id={},
-        processed_message_by_task_id={},
         settings=_empty_settings(),
     )
 
@@ -173,8 +169,6 @@ def test_convert_ui_open_file_keeps_distinct_workspaces() -> None:
     update = _convert_to_streaming_update(
         all_data=all_data,
         task_views_by_task_id={},
-        task_update_state_by_task_id={},
-        processed_message_by_task_id={},
         settings=_empty_settings(),
     )
 

@@ -10,7 +10,6 @@ import {
   ciBabysitterPipelineFailedPromptAtom,
   ciBabysitterRetryCapAtom,
   isCiBabysitterEnabledAtom,
-  isPiAgentEnabledAtom,
 } from "../../../common/state/atoms/userConfig.ts";
 import { useTerminalAgentRegistrations } from "../../../common/state/hooks/useTerminalAgentRegistrations.ts";
 import { SettingRow } from "./SettingRow.tsx";
@@ -29,9 +28,6 @@ const agentChoiceToSelectValue = (agent: BabysitterAgentChoice | null): string =
     return `${REGISTERED_VALUE_PREFIX}${agent.registrationId}`;
   }
 
-  if (objectType === "claude" || objectType === "pi") {
-    return objectType;
-  }
   return "mru";
 };
 
@@ -57,7 +53,6 @@ export const CIBabysitterSettingsSection = ({ onSettingChange }: CIBabysitterSet
   const pipelineFailedPrompt = useAtomValue(ciBabysitterPipelineFailedPromptAtom);
   const mergeConflictPrompt = useAtomValue(ciBabysitterMergeConflictPromptAtom);
   const agent = useAtomValue(ciBabysitterAgentAtom);
-  const isPiEnabled = useAtomValue(isPiAgentEnabledAtom);
   const { registrations, refetch } = useTerminalAgentRegistrations();
 
   const [retryCapValue, setRetryCapValue] = useState(String(retryCap));
@@ -125,8 +120,6 @@ export const CIBabysitterSettingsSection = ({ onSettingChange }: CIBabysitterSet
           <Select.Trigger variant="soft" data-testid={ElementIds.SETTINGS_CI_BABYSITTER_AGENT_SELECT} />
           <Select.Content>
             <Select.Item value="mru">Most recently used</Select.Item>
-            <Select.Item value="claude">Claude</Select.Item>
-            {isPiEnabled && <Select.Item value="pi">Pi</Select.Item>}
             {driveableRegistrations.map((registration) => (
               <Select.Item
                 key={registration.registrationId}

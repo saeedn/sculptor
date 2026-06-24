@@ -10,7 +10,6 @@ from sculptor.database.models import AgentTaskInputsV2
 from sculptor.database.models import AgentTaskStateV2
 from sculptor.database.models import Project
 from sculptor.database.models import Task
-from sculptor.interfaces.agents.agent import ClaudeCodeSDKAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
@@ -29,7 +28,7 @@ from sculptor.web.auth import authenticate_anonymous
 def _create_task(
     services: CompleteServiceCollection,
     project: Project,
-    agent_config: TerminalAgentConfig | ClaudeCodeSDKAgentConfig,
+    agent_config: TerminalAgentConfig,
     title: str | None = None,
 ) -> Task:
     user_session = authenticate_anonymous(services, RequestID())
@@ -197,15 +196,12 @@ def test_unknown_event_is_ignored_with_204(
     assert not any(isinstance(m, TerminalAgentSignalRunnerMessage) for m in _live_messages(services, task.object_id))
 
 
-def test_signal_rejects_chat_and_deleted_and_unknown_agents(
+def test_signal_rejects_deleted_and_unknown_agents(
     client: TestClient,
     test_already_started_services: CompleteServiceCollection,
     test_project: Project,
 ) -> None:
     services = test_already_started_services
-
-    chat_task = _create_task(services, test_project, ClaudeCodeSDKAgentConfig())
-    assert _post_signal(client, chat_task, {"event": "busy"}).status_code == 404
 
     deleted_task = _create_task(services, test_project, TerminalAgentConfig())
     _mark_task_deleted(services, deleted_task.object_id)

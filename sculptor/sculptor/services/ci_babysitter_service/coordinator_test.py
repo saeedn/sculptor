@@ -21,9 +21,7 @@ from typing import cast
 import pytest
 from pydantic import PrivateAttr
 
-from sculptor.config.user_config import BabysitterAgentClaude
 from sculptor.config.user_config import BabysitterAgentMRU
-from sculptor.config.user_config import BabysitterAgentPi
 from sculptor.config.user_config import BabysitterAgentRegistered
 from sculptor.config.user_config import CIBabysitterConfig
 from sculptor.config.user_config import UserConfig
@@ -36,10 +34,8 @@ from sculptor.database.models import Workspace
 from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches_test import expect_at_least_logged_errors
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
-from sculptor.interfaces.agents.agent import ClaudeCodeSDKAgentConfig
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
 from sculptor.interfaces.agents.agent import MessageTypes
-from sculptor.interfaces.agents.agent import PiAgentConfig
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
@@ -53,7 +49,6 @@ from sculptor.primitives.ids import UserReference
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.services.ci_babysitter_service import coordinator as coordinator_module
 from sculptor.services.ci_babysitter_service.coordinator import CIBabysitterCoordinator
-from sculptor.services.ci_babysitter_service.coordinator import ChatAgent
 from sculptor.services.ci_babysitter_service.coordinator import Disabled
 from sculptor.services.ci_babysitter_service.coordinator import DriveableTerminal
 from sculptor.services.ci_babysitter_service.transitions import Transition
@@ -64,8 +59,6 @@ from sculptor.services.git_repo_service.git_repos import ReadOnlyGitRepo
 from sculptor.services.task_service.api import TaskService
 from sculptor.services.terminal_agent_registry.registry import TerminalAgentRegistration
 from sculptor.services.workspace_service.api import WorkspaceService
-from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import LLMModel
 from sculptor.state.messages import Message
 from sculptor.web.derived import PrStatusInfo
 from sculptor.web.pr_polling_service import PrPollingService
@@ -351,7 +344,6 @@ def _ready_terminal_messages() -> list[Message]:
 class _FakeTaskService(_StubTaskService):
     _env: _FakeEnv = PrivateAttr()
     _create_task_calls: list[Task] = PrivateAttr(default_factory=list)
-    _create_message_calls: list[tuple[ChatInputUserMessage, TaskID]] = PrivateAttr(default_factory=list)
     _delete_task_calls: list[TaskID] = PrivateAttr(default_factory=list)
     # Messages the terminal-readiness subscription is seeded with. Defaults to an
     # already-at-prompt program so terminal-drive tests deliver; the never-ready
@@ -370,10 +362,6 @@ class _FakeTaskService(_StubTaskService):
         return self._create_task_calls
 
     @property
-    def create_message_calls(self) -> list[tuple[ChatInputUserMessage, TaskID]]:
-        return self._create_message_calls
-
-    @property
     def delete_task_calls(self) -> list[TaskID]:
         return self._delete_task_calls
 
@@ -382,11 +370,6 @@ class _FakeTaskService(_StubTaskService):
         self._create_task_calls.append(task)
         self._env.tasks_by_id[task.object_id] = task
         return task
-
-    def create_message(self, message: MessageTypes, task_id: TaskID, transaction: DataModelTransaction) -> None:
-        del transaction
-        assert isinstance(message, ChatInputUserMessage)
-        self._create_message_calls.append((message, task_id))
 
     def get_task(self, task_id: TaskID, transaction: DataModelTransaction) -> Task | None:
         del transaction
@@ -527,49 +510,91 @@ def patch_user_config(monkeypatch: pytest.MonkeyPatch) -> _ConfigSlot:
     return slot
 
 
+@pytest.fixture
+def delivered_prompts(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, bool]]:
+    """Patch terminal-agent resolution and delivery for the dispatch scenarios.
+
+    Resolution now drives only registered terminal agents, so the default MRU
+    (no prior task) falls back to the bundled ``claude-code`` registration. We
+    make that registration opt-in and record every PTY write here; the dispatch
+    scenarios assert on this list (the prompt is delivered on a worker thread,
+    so callers must let the drive settle with ``_wait_for_drives_to_settle``).
+    """
+    delivered: list[tuple[str, bool]] = []
+
+    def _fake_deliver(task: Task, text: str, *, submit: bool, task_service: Any) -> Any:
+        del task, task_service
+        delivered.append((text, submit))
+        return coordinator_module.TerminalDeliveryResult.DELIVERED
+
+    monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: _opt_in_registration(_id))
+    monkeypatch.setattr(coordinator_module, "deliver_prompt_to_terminal_agent", _fake_deliver)
+    return delivered
+
+
+def _wait_for_drives_to_settle(coordinator: CIBabysitterCoordinator, workspace_id: WorkspaceID) -> None:
+    """Block until the workspace's terminal-drive worker thread has finished.
+
+    Dispatch counts the attempt synchronously but offloads the PTY write to a
+    worker; tests that assert on the delivered prompt must wait for that worker.
+    """
+    state = coordinator._state.get(workspace_id)
+    if state is None:
+        return
+    _wait_until(lambda: not state.is_terminal_drive_in_progress)
+
+
 def test_scenario_1_happy_path(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1))
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
     assert len(task_service.create_task_calls) == 1
     first_task = task_service.create_task_calls[0]
     assert isinstance(first_task.current_state, AgentTaskStateV2)
     assert first_task.current_state.title == "CI Babysitter"
-    assert len(task_service.create_message_calls) == 1
-    sent_message, _ = task_service.create_message_calls[0]
-    assert sent_message.text == "FAILED_PROMPT"
+    assert delivered_prompts == [("FAILED_PROMPT", True)]
     state = coordinator._state[env.workspace_id]
     assert state.retry_count == 1
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="passed", pipeline_id=1))
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
-    assert len(task_service.create_message_calls) == 1
+    assert delivered_prompts == [("FAILED_PROMPT", True)]
     state = coordinator._state[env.workspace_id]
     assert state.retry_count == 0
 
 
 def test_scenario_2_merge_conflict(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
 
     coordinator._handle_status(_make_status(env.workspace_id, has_conflicts=True))
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
     assert len(task_service.create_task_calls) == 1
-    assert len(task_service.create_message_calls) == 1
-    sent_message, _ = task_service.create_message_calls[0]
-    assert sent_message.text == "CONFLICT_PROMPT"
+    assert delivered_prompts == [("CONFLICT_PROMPT", True)]
     state = coordinator._state[env.workspace_id]
     assert state.retry_count == 1
 
 
 def test_merge_conflict_present_at_first_observation_is_surfaced(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     """SCU-1361: a conflict already present the first time the coordinator
     observes the MR (no clean baseline poll first) must still dispatch a
@@ -585,10 +610,9 @@ def test_merge_conflict_present_at_first_observation_is_surfaced(
     coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
 
     coordinator._handle_status(_make_status(env.workspace_id, pr_state="open", has_conflicts=True))
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
-    assert len(task_service.create_message_calls) == 1
-    sent_message, _ = task_service.create_message_calls[0]
-    assert sent_message.text == "CONFLICT_PROMPT"
+    assert delivered_prompts == [("CONFLICT_PROMPT", True)]
     state = coordinator._state[env.workspace_id]
     assert state.retry_count == 1
     assert state.last_dispatched_merge_conflict is True
@@ -596,25 +620,30 @@ def test_merge_conflict_present_at_first_observation_is_surfaced(
     # A subsequent poll with the conflict still present must NOT re-prompt:
     # the dispatch dedup holds for the rest of the process lifetime.
     coordinator._handle_status(_make_status(env.workspace_id, pr_state="open", has_conflicts=True))
-    assert len(task_service.create_message_calls) == 1
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert delivered_prompts == [("CONFLICT_PROMPT", True)]
     assert state.retry_count == 1
 
 
 def test_scenario_3_retry_cap(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
 
-    coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1))
-    coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=2))
-    coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=3))
-    assert len(task_service.create_message_calls) == 3
+    for pipeline_id in (1, 2, 3):
+        coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=pipeline_id))
+        _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 3
     state = coordinator._state[env.workspace_id]
     assert state.retry_count == 3
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=4))
-    assert len(task_service.create_message_calls) == 3
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 3
     assert state.retry_count == 3
     assert task_service.delete_task_calls == []
 
@@ -622,47 +651,62 @@ def test_scenario_3_retry_cap(
     assert state.retry_count == 0
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=5))
-    assert len(task_service.create_message_calls) == 4
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 4
     assert state.retry_count == 1
 
 
 def test_scenario_4_pause_prevents_prompt(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
 
     coordinator.set_paused(env.workspace_id, True)
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1))
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
-    assert task_service.create_message_calls == []
+    assert delivered_prompts == []
     assert task_service.create_task_calls == []
     state = coordinator._state[env.workspace_id]
     assert state.retry_count == 0
 
 
-def test_scenario_5_mid_turn_queueing_reuses_task(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+def test_scenario_5_subsequent_failure_reuses_task(
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1))
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
     assert len(task_service.create_task_calls) == 1
-    first_task_id = task_service.create_message_calls[0][1]
+    first_task_id = task_service.create_task_calls[0].object_id
 
+    # A merge conflict on the same pipeline is a distinct transition; it must
+    # drive a second prompt on the *same* babysitter task, not a new one.
     coordinator._handle_status(
         _make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1, has_conflicts=True)
     )
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
     assert len(task_service.create_task_calls) == 1
-    assert len(task_service.create_message_calls) == 2
-    assert task_service.create_message_calls[1][1] == first_task_id
+    assert task_service.create_task_calls[0].object_id == first_task_id
+    assert delivered_prompts == [("FAILED_PROMPT", True), ("CONFLICT_PROMPT", True)]
     assert task_service.delete_task_calls == []
 
 
 def test_restart_reuses_persisted_babysitter_task(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    test_root_concurrency_group: ConcurrencyGroup,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """After a restart (fresh in-memory state) a CI failure re-adopts the
     workspace's persisted babysitter task instead of creating a duplicate.
@@ -673,58 +717,81 @@ def test_restart_reuses_persisted_babysitter_task(
     coordinator's _state is empty, exactly as it is right after a restart.
     """
     existing_babysitter = _make_agent_task(
-        env, ClaudeCodeSDKAgentConfig(), "2026-01-01T00:00:00", title="CI Babysitter"
+        env, _driveable_terminal_config(), "2026-01-01T00:00:00", title="CI Babysitter"
     )
     env.tasks.append(existing_babysitter)
     env.tasks_by_id[existing_babysitter.object_id] = existing_babysitter
 
+    monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: _opt_in_registration(_id))
+    driven_task_ids: list[TaskID] = []
+
+    def _fake_deliver(task: Task, text: str, *, submit: bool, task_service: Any) -> Any:
+        del text, submit, task_service
+        driven_task_ids.append(task.object_id)
+        return coordinator_module.TerminalDeliveryResult.DELIVERED
+
+    monkeypatch.setattr(coordinator_module, "deliver_prompt_to_terminal_agent", _fake_deliver)
+
     coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1))
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
-    # No new task is created; the prompt is delivered to the persisted babysitter.
+    # No new task is created; the prompt is driven on the persisted babysitter.
     assert task_service.create_task_calls == []
-    assert len(task_service.create_message_calls) == 1
-    assert task_service.create_message_calls[0][1] == existing_babysitter.object_id
+    assert driven_task_ids == [existing_babysitter.object_id]
 
 
 def test_scenario_6_human_push_non_interference(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1))
-    initial_messages = len(task_service.create_message_calls)
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    initial_prompts = len(delivered_prompts)
     initial_tasks = len(task_service.create_task_calls)
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="running", pipeline_id=2))
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
-    assert len(task_service.create_message_calls) == initial_messages
+    assert len(delivered_prompts) == initial_prompts
     assert len(task_service.create_task_calls) == initial_tasks
 
 
 def test_scenario_7_mr_merged_retires(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1))
-    assert len(task_service.create_message_calls) == 1
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 1
 
     coordinator._handle_status(_make_status(env.workspace_id, pr_state="merged"))
     state = coordinator._state[env.workspace_id]
     assert state.retired is True
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=2))
-    assert len(task_service.create_message_calls) == 1
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 1
     assert task_service.delete_task_calls == []
 
 
 def test_same_cycle_merge_and_failed_suppresses_prompt(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     """If MR_MERGED arrives in the same diff as PIPELINE_FAILED, retire wins.
 
@@ -738,67 +805,81 @@ def test_same_cycle_merge_and_failed_suppresses_prompt(
     coordinator._handle_status(
         _make_status(env.workspace_id, pr_state="merged", pipeline_status="failed", pipeline_id=1)
     )
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
     assert task_service.create_task_calls == []
-    assert task_service.create_message_calls == []
+    assert delivered_prompts == []
     state = coordinator._state[env.workspace_id]
     assert state.retired is True
     assert state.retry_count == 0
 
 
 def test_scenario_8_feature_disabled(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     patch_user_config.config = _make_user_config(enabled=False)
     coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
 
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1))
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
     assert task_service.create_task_calls == []
-    assert task_service.create_message_calls == []
+    assert delivered_prompts == []
 
 
 def test_transient_pr_state_none_does_not_clobber_prev_status(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     """A transient pr_state="none" gap (e.g. detached HEAD mid-rebase)
     must not overwrite prev_status. If it did, the next poll that re-finds
     the MR would look like a fresh False→True merge_conflict transition
     and dispatch a duplicate prompt.
     """
-    coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
+    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
 
     # 1. Conflict appears → babysitter prompted.
     coordinator._handle_status(_make_status(env.workspace_id, pr_state="open", has_conflicts=True))
-    assert len(task_service.create_message_calls) == 1
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 1
 
     # 2. Branch flips: MR can't be matched → polling emits pr_state="none".
     coordinator._handle_status(_make_status(env.workspace_id, pr_state="none", has_conflicts=None))
 
     # 3. Branch back: MR re-found, conflict still present.
     coordinator._handle_status(_make_status(env.workspace_id, pr_state="open", has_conflicts=True))
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
 
     # The prompt MUST NOT have been resent.
-    assert len(task_service.create_message_calls) == 1
+    assert len(delivered_prompts) == 1
 
 
 def test_merge_conflict_dispatch_dedupes_until_resolved(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     """Even if the classifier emits a duplicate MERGE_CONFLICT
     (e.g. because the polling service stream was reset), the dispatch
     layer must suppress the duplicate until the conflict is observed
     as resolved (has_conflicts=False).
     """
-    coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
+    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
     state = coordinator._state[env.workspace_id]
 
     # 1. Conflict appears → first prompt.
     coordinator._handle_status(_make_status(env.workspace_id, pr_state="open", has_conflicts=True))
-    assert len(task_service.create_message_calls) == 1
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 1
     assert state.last_dispatched_merge_conflict is True
 
     # 2. Force a re-dispatch by directly calling _dispatch_prompt with
@@ -806,7 +887,8 @@ def test_merge_conflict_dispatch_dedupes_until_resolved(
     #    again. The dispatch dedup must suppress.
     new = _make_status(env.workspace_id, pr_state="open", has_conflicts=True)
     coordinator._dispatch_prompt(state, Transition.MERGE_CONFLICT, new)
-    assert len(task_service.create_message_calls) == 1
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 1
 
     # 3. Conflict resolved → re-arm the dedup.
     coordinator._handle_status(_make_status(env.workspace_id, pr_state="open", has_conflicts=False))
@@ -814,38 +896,45 @@ def test_merge_conflict_dispatch_dedupes_until_resolved(
 
     # 4. New conflict → fresh prompt is allowed.
     coordinator._handle_status(_make_status(env.workspace_id, pr_state="open", has_conflicts=True))
-    assert len(task_service.create_message_calls) == 2
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 2
 
 
 def test_pipeline_failed_dispatch_dedupes_per_pipeline_id(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    delivered_prompts: list[tuple[str, bool]],
+    test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     """A second dispatch attempt for the same pipeline_id is suppressed.
     A new pipeline_id (next push) re-arms the dedup.
     """
-    coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
+    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
     _seed_baseline(coordinator, env.workspace_id)
     state = coordinator._state[env.workspace_id]
 
     # 1. Pipeline 1 fails → first prompt.
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1))
-    assert len(task_service.create_message_calls) == 1
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 1
     assert state.last_dispatched_pipeline_failed_id == 1
 
     # 2. Force re-dispatch attempt for the same pipeline_id → suppressed.
     new = _make_status(env.workspace_id, pipeline_status="failed", pipeline_id=1)
     coordinator._dispatch_prompt(state, Transition.PIPELINE_FAILED, new)
-    assert len(task_service.create_message_calls) == 1
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 1
 
     # 3. New pipeline id (next push) → fresh prompt allowed.
     coordinator._handle_status(_make_status(env.workspace_id, pipeline_status="failed", pipeline_id=2))
-    assert len(task_service.create_message_calls) == 2
+    _wait_for_drives_to_settle(coordinator, env.workspace_id)
+    assert len(delivered_prompts) == 2
     assert state.last_dispatched_pipeline_failed_id == 2
 
 
 # Agent resolution for babysitter tasks: _resolve_babysitter_agent maps the
 # user's setting (MRU or a pinned harness) + the workspace's most-recent agent
-# to a ChatAgent / DriveableTerminal / Disabled result.
+# to a DriveableTerminal / Disabled result.
 
 
 class _TasksTransaction(_FakeTransaction):
@@ -864,7 +953,6 @@ def _make_agent_task(
     env: _FakeEnv,
     agent_config: Any,
     created_at: str,
-    default_model: LLMModel | None = None,
     title: str = "Agent",
 ) -> Task:
     return Task(
@@ -876,19 +964,27 @@ def _make_agent_task(
         input_data=AgentTaskInputsV2(
             agent_config=agent_config,
             git_hash="abc123",
-            default_model=default_model,
         ),
         current_state=AgentTaskStateV2(workspace_id=env.workspace_id, title=title),
     )
 
 
-def _make_config_with_agent(agent: Any, enable_pi_agent: bool = False) -> UserConfig:
+def _driveable_terminal_config(registration_id: str = "claude-code") -> RegisteredTerminalAgentConfig:
+    """A registered-terminal config stamped opt-in to automated prompts."""
+    return RegisteredTerminalAgentConfig(
+        registration_id=registration_id,
+        display_name="Claude Code",
+        launch_command="claude",
+        accepts_automated_prompts=True,
+    )
+
+
+def _make_config_with_agent(agent: Any) -> UserConfig:
     return UserConfig(
         user_email="test@example.com",
         user_id="u",
         organization_id="o",
         instance_id="i",
-        enable_pi_agent=enable_pi_agent,
         ci_babysitter=CIBabysitterConfig(enabled=True, agent=agent),
     )
 
@@ -917,50 +1013,12 @@ def _resolve(coordinator: CIBabysitterCoordinator, env: _FakeEnv, config: UserCo
     )
 
 
-def test_mru_most_recent_claude_resolves_chat_claude(
-    env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup
-) -> None:
-    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
-    tasks = [_make_agent_task(env, ClaudeCodeSDKAgentConfig(), "2026-01-01T00:00:00")]
-    result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentMRU()), tasks)
-    assert isinstance(result, ChatAgent)
-    assert isinstance(result.config, ClaudeCodeSDKAgentConfig)
-
-
-def test_mru_most_recent_pi_resolves_pi_when_enabled(
-    env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup
-) -> None:
-    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
-    tasks = [_make_agent_task(env, PiAgentConfig(), "2026-01-01T00:00:00")]
-    result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentMRU(), enable_pi_agent=True), tasks)
-    assert isinstance(result, ChatAgent)
-    assert isinstance(result.config, PiAgentConfig)
-
-
-def test_mru_most_recent_pi_falls_back_to_claude_when_pi_disabled(
-    env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup
-) -> None:
-    # MRU is best-effort: an MRU Pi while Pi is disabled must not brick the
-    # babysitter — fall back to Claude (unlike a *pinned* Pi, which goes Disabled).
-    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
-    tasks = [_make_agent_task(env, PiAgentConfig(), "2026-01-01T00:00:00")]
-    result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentMRU(), enable_pi_agent=False), tasks)
-    assert isinstance(result, ChatAgent)
-    assert isinstance(result.config, ClaudeCodeSDKAgentConfig)
-
-
 def test_mru_most_recent_driveable_terminal_resolves_driveable(
     env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
     monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: _opt_in_registration(_id))
-    terminal_config = RegisteredTerminalAgentConfig(
-        registration_id="claude-code",
-        display_name="Claude Code",
-        launch_command="claude",
-        accepts_automated_prompts=True,
-    )
-    tasks = [_make_agent_task(env, terminal_config, "2026-01-01T00:00:00")]
+    tasks = [_make_agent_task(env, _driveable_terminal_config(), "2026-01-01T00:00:00")]
     result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentMRU()), tasks)
     assert isinstance(result, DriveableTerminal)
     assert result.config.registration_id == "claude-code"
@@ -984,62 +1042,51 @@ def test_mru_most_recent_registered_with_revoked_opt_in_is_disabled(
     # The task's stamped opt-in may be stale; the live registration revoked it.
     coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
     monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: _revoked_registration(_id))
-    terminal_config = RegisteredTerminalAgentConfig(
-        registration_id="claude-code",
-        display_name="Claude Code",
-        launch_command="claude",
-        accepts_automated_prompts=True,
-    )
-    tasks = [_make_agent_task(env, terminal_config, "2026-01-01T00:00:00")]
+    tasks = [_make_agent_task(env, _driveable_terminal_config(), "2026-01-01T00:00:00")]
     result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentMRU()), tasks)
     assert isinstance(result, Disabled)
     assert result.reason == coordinator_module._DISABLED_REASON_MRU_NON_DRIVEABLE
 
 
-def test_mru_no_prior_task_resolves_chat_claude(env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup) -> None:
-    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
-    result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentMRU()), [])
-    assert isinstance(result, ChatAgent)
-    assert isinstance(result.config, ClaudeCodeSDKAgentConfig)
-
-
-def test_mru_does_not_skip_terminal_to_reach_older_chat(
-    env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup
+def test_mru_no_prior_task_resolves_bundled_terminal(
+    env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    # Most-recent is a plain terminal, older is Claude. The resolver must NOT
-    # skip the terminal to reach the older chat agent — it goes Disabled.
+    # No prior agent in the workspace → fall back to the bundled "claude-code"
+    # registration so the babysitter can still drive a terminal.
     coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
+    monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: _opt_in_registration(_id))
+    result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentMRU()), [])
+    assert isinstance(result, DriveableTerminal)
+    assert result.config.registration_id == "claude-code"
+
+
+def test_mru_no_prior_task_is_disabled_when_bundled_registration_missing(
+    env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # No prior agent and the bundled "claude-code" registration is gone → the
+    # babysitter is inert with the MRU-non-driveable reason.
+    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
+    monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: None)
+    result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentMRU()), [])
+    assert isinstance(result, Disabled)
+    assert result.reason == coordinator_module._DISABLED_REASON_MRU_NON_DRIVEABLE
+
+
+def test_mru_does_not_skip_terminal_to_reach_older_driveable(
+    env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Most-recent is a plain (non-driveable) terminal, older is a driveable
+    # registered terminal. The resolver must NOT skip the most-recent terminal to
+    # reach the older driveable one — it goes Disabled.
+    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
+    monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: _opt_in_registration(_id))
     tasks = [
-        _make_agent_task(env, ClaudeCodeSDKAgentConfig(), "2026-01-01T00:00:00"),
+        _make_agent_task(env, _driveable_terminal_config(), "2026-01-01T00:00:00"),
         _make_agent_task(env, TerminalAgentConfig(), "2026-01-02T00:00:00"),
     ]
     result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentMRU()), tasks)
     assert isinstance(result, Disabled)
     assert result.reason == coordinator_module._DISABLED_REASON_MRU_NON_DRIVEABLE
-
-
-def test_pinned_claude_resolves_chat_claude(env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup) -> None:
-    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
-    # A most-recent Pi must be ignored when Claude is pinned.
-    tasks = [_make_agent_task(env, PiAgentConfig(), "2026-01-01T00:00:00")]
-    result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentClaude()), tasks)
-    assert isinstance(result, ChatAgent)
-    assert isinstance(result.config, ClaudeCodeSDKAgentConfig)
-
-
-def test_pinned_pi_resolves_pi_when_enabled(env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup) -> None:
-    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
-    result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentPi(), enable_pi_agent=True), [])
-    assert isinstance(result, ChatAgent)
-    assert isinstance(result.config, PiAgentConfig)
-
-
-def test_pinned_pi_is_disabled_when_pi_disabled(env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup) -> None:
-    # A *pinned* Pi while Pi is disabled goes Disabled — no silent fallback.
-    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
-    result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentPi(), enable_pi_agent=False), [])
-    assert isinstance(result, Disabled)
-    assert result.reason == coordinator_module._DISABLED_REASON_PINNED_UNAVAILABLE
 
 
 def test_pinned_registered_available_resolves_driveable(
@@ -1068,14 +1115,8 @@ def test_deliver_prompt_to_agent_writes_to_terminal_via_helper(
     env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # The seam dispatches a registered-terminal task through the Task 1.1 helper.
-    coordinator, task_service = _build_coordinator(env, test_root_concurrency_group)
-    terminal_config = RegisteredTerminalAgentConfig(
-        registration_id="claude-code",
-        display_name="Claude Code",
-        launch_command="claude",
-        accepts_automated_prompts=True,
-    )
-    task = _make_agent_task(env, terminal_config, "2026-01-01T00:00:00")
+    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
+    task = _make_agent_task(env, _driveable_terminal_config(), "2026-01-01T00:00:00")
     calls: list[tuple[TaskID, str, bool]] = []
 
     def _fake_deliver(received_task: Task, text: str, *, submit: bool, task_service: Any) -> Any:
@@ -1088,8 +1129,6 @@ def test_deliver_prompt_to_agent_writes_to_terminal_via_helper(
 
     assert result is coordinator_module.TerminalDeliveryResult.DELIVERED
     assert calls == [(task.object_id, "fix the pipeline", True)]
-    # No chat message was queued for the terminal path.
-    assert task_service.create_message_calls == []
 
 
 # Terminal-drive worker: the babysitter offloads a registered-terminal drive to
@@ -1147,9 +1186,8 @@ def test_terminal_drive_worker_delivers_and_clears_transient_reason(
     assert calls == [("FAILED_PROMPT", True)]
     assert state.transient_disabled_reason is None
     assert state.retry_count == 1
-    # A terminal task was created and driven via the PTY, not a chat message.
+    # A terminal task was created and driven via the PTY.
     assert len(task_service.create_task_calls) == 1
-    assert task_service.create_message_calls == []
 
 
 def test_terminal_drive_failure_sets_transient_reason_and_counts_retry(
@@ -1405,23 +1443,6 @@ def test_transient_reason_clears_on_pipeline_passed(
     assert state.transient_disabled_reason is None
 
 
-def test_select_model_for_workspace_skips_terminal_agents(
-    env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup
-) -> None:
-    coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
-    # The terminal task is most recent and even carries a default_model (it
-    # never does in production — this proves the skip is explicit); the older
-    # chat task's model must win.
-    tasks = [
-        _make_agent_task(env, ClaudeCodeSDKAgentConfig(), "2026-01-01T00:00:00", default_model=LLMModel.CLAUDE_4_OPUS),
-        _make_agent_task(env, TerminalAgentConfig(), "2026-01-02T00:00:00", default_model=LLMModel.CLAUDE_4_SONNET),
-    ]
-    model = coordinator._select_model_for_workspace(
-        env.workspace_id, env.project_id, _make_user_config(), _TasksTransaction(env, tasks)
-    )
-    assert model == LLMModel.CLAUDE_4_OPUS
-
-
 # get_state_snapshot proactively recomputes the persistent disabled-reason on
 # every read and surfaces the stored transient reason.
 
@@ -1441,8 +1462,12 @@ def test_snapshot_surfaces_persistent_reason_for_plain_terminal_mru(
 
 
 def test_snapshot_reason_self_heals_when_mru_becomes_driveable(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    test_root_concurrency_group: ConcurrencyGroup,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: _opt_in_registration(_id))
     coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
     coordinator.set_paused(env.workspace_id, False)
     env.tasks = [_make_agent_task(env, TerminalAgentConfig(), "2026-01-01T00:00:00")]
@@ -1450,17 +1475,24 @@ def test_snapshot_reason_self_heals_when_mru_becomes_driveable(
     assert before is not None
     assert before.disabled_reason is not None
 
-    # The user opens a Claude chat agent — the reason is recomputed, not stored.
-    env.tasks = [_make_agent_task(env, ClaudeCodeSDKAgentConfig(), "2026-01-02T00:00:00")]
+    # The user opens a driveable registered terminal — the reason is recomputed,
+    # not stored, so it clears.
+    env.tasks = [_make_agent_task(env, _driveable_terminal_config(), "2026-01-02T00:00:00")]
     after = coordinator.get_state_snapshot(env.workspace_id)
     assert after is not None
     assert after.disabled_reason is None
 
 
 def test_snapshot_surfaces_pinned_unavailable_reason(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    test_root_concurrency_group: ConcurrencyGroup,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    patch_user_config.config = _make_config_with_agent(BabysitterAgentPi(), enable_pi_agent=False)
+    # A pinned registered agent whose registration is gone surfaces the
+    # pinned-unavailable reason.
+    patch_user_config.config = _make_config_with_agent(BabysitterAgentRegistered(registration_id="gone"))
+    monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: None)
     coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
     coordinator.set_paused(env.workspace_id, False)
 
@@ -1495,12 +1527,16 @@ def test_snapshot_surfaces_transient_reason_for_driveable_terminal(
     assert snapshot.disabled_reason_is_transient is True
 
 
-def test_snapshot_has_no_reason_for_healthy_chat_mru(
-    env: _FakeEnv, patch_user_config: _ConfigSlot, test_root_concurrency_group: ConcurrencyGroup
+def test_snapshot_has_no_reason_for_healthy_driveable_mru(
+    env: _FakeEnv,
+    patch_user_config: _ConfigSlot,
+    test_root_concurrency_group: ConcurrencyGroup,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: _opt_in_registration(_id))
     coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
     coordinator.set_paused(env.workspace_id, False)
-    env.tasks = [_make_agent_task(env, ClaudeCodeSDKAgentConfig(), "2026-01-01T00:00:00")]
+    env.tasks = [_make_agent_task(env, _driveable_terminal_config(), "2026-01-01T00:00:00")]
 
     snapshot = coordinator.get_state_snapshot(env.workspace_id)
     assert snapshot is not None

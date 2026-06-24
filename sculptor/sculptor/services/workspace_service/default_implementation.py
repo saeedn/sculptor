@@ -43,7 +43,6 @@ from sculptor.services.data_model_service.api import DataModelService
 from sculptor.services.data_model_service.api import TaskDataModelService
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.data_model_service.data_types import WorkspaceFieldUpdate
-from sculptor.services.dependency_management_service import DependencyManagementService
 from sculptor.services.git_repo_service.git_commands import run_git_command_local
 from sculptor.services.git_repo_service.git_errors import GitCommandFailure
 from sculptor.services.project_service.api import ProjectService
@@ -106,7 +105,6 @@ class DefaultWorkspaceService(WorkspaceService):
     """
 
     data_model_service: DataModelService
-    dependency_management_service: DependencyManagementService
     environment_manager: EnvironmentManager
     project_service: ProjectService
     workspace_sync_dir: Path
@@ -200,7 +198,6 @@ class DefaultWorkspaceService(WorkspaceService):
         settings: SculptorSettings,
         data_model_service: DataModelService,
         project_service: ProjectService,
-        dependency_management_service: DependencyManagementService,
     ) -> Self:
         """Build a DefaultWorkspaceService with its internal EnvironmentManager."""
         environment_manager = DefaultEnvironmentManager(
@@ -209,7 +206,6 @@ class DefaultWorkspaceService(WorkspaceService):
         return cls(
             concurrency_group=concurrency_group.make_concurrency_group("workspace_service"),
             data_model_service=data_model_service,
-            dependency_management_service=dependency_management_service,
             environment_manager=environment_manager,
             project_service=project_service,
             workspace_sync_dir=settings.workspace_sync_path,
@@ -669,9 +665,7 @@ class DefaultWorkspaceService(WorkspaceService):
         )
 
         # Wrap the environment in AgentExecutionEnvironment for per-task namespacing
-        agent_environment = LocalAgentExecutionEnvironment(
-            environment, task_id, dependency_management_service=self.dependency_management_service
-        )
+        agent_environment = LocalAgentExecutionEnvironment(environment, task_id)
         logger.debug(
             "Created AgentExecutionEnvironment for task {} with state_path={}",
             task_id,

@@ -15,7 +15,6 @@ import {
   isAlwaysInterruptAndSendAtom,
   isDefaultFastModeAtom,
   isEntityMentionsEnabledAtom,
-  isPiAgentEnabledAtom,
   isRichMarkdownRenderingEnabledAtom,
   isSmoothStreamingUserPreferenceAtom,
   userEmailAtom,
@@ -28,12 +27,10 @@ import { Toast, ToastType } from "../../components/Toast.tsx";
 import { AccountFieldRow } from "./components/AccountFieldRow.tsx";
 import { ActionsSettingsSection } from "./components/ActionsSettingsSection.tsx";
 import { CIBabysitterSettingsSection } from "./components/CIBabysitterSettingsSection.tsx";
-import { DependenciesSettingsSection } from "./components/DependenciesSettingsSection.tsx";
 import { EnvironmentVariablesSection } from "./components/EnvironmentVariablesSection.tsx";
 import { FileBrowserSettingsSection } from "./components/FileBrowserSettingsSection.tsx";
 import { GitSettingsSection } from "./components/GitSettingsSection.tsx";
 import { KeybindingsSection } from "./components/KeybindingsSection.tsx";
-import { PiSettingsSection } from "./components/PiSettingsSection.tsx";
 import { ReposSection } from "./components/ReposSection.tsx";
 import { SettingRow } from "./components/SettingRow.tsx";
 import { SettingsSectionLayout } from "./components/SettingsSection.tsx";
@@ -70,7 +67,6 @@ export const SettingsPage = (): ReactElement => {
   const configuredDefaultModel = useAtomValue(configuredDefaultModelAtom);
   const userEmail = useAtomValue(userEmailAtom);
   const isAlwaysInterruptAndSend = useAtomValue(isAlwaysInterruptAndSendAtom);
-  const isPiAgentEnabled = useAtomValue(isPiAgentEnabledAtom);
   const visibleSections = SETTINGS_SECTIONS;
   // The mobile Select binds value={activeSection}, so its options must always
   // include the active section — even one normally hidden — or the trigger
@@ -241,15 +237,6 @@ export const SettingsPage = (): ReactElement => {
                   </SettingRow>
                 </SettingsSectionLayout>
               )}
-              {activeSection === SettingsSection.DEPENDENCIES && (
-                <DependenciesSettingsSection onSettingChange={handleSettingChange} />
-              )}
-              {activeSection === SettingsSection.PI && (
-                <PiSettingsSection
-                  onSettingChange={handleSettingChange}
-                  onNavigateToExperimental={() => setActiveSection(SettingsSection.EXPERIMENTAL)}
-                />
-              )}
               {activeSection === SettingsSection.KEYBINDINGS && (
                 <KeybindingsSection onSettingChange={handleSettingChange} />
               )}
@@ -331,16 +318,6 @@ export const SettingsPage = (): ReactElement => {
                         handleSettingChange(UserConfigField.ENABLE_RICH_MARKDOWN_RENDERING, checked)
                       }
                       data-testid={ElementIds.SETTINGS_ENABLE_RICH_MARKDOWN_RENDERING_TOGGLE}
-                    />
-                  </SettingRow>
-                  <SettingRow
-                    title="Pi agent"
-                    description="Offer the experimental pi agent as a choice when creating new agents."
-                  >
-                    <Switch
-                      checked={isPiAgentEnabled}
-                      onCheckedChange={(checked) => handleSettingChange(UserConfigField.ENABLE_PI_AGENT, checked)}
-                      data-testid={ElementIds.SETTINGS_ENABLE_PI_AGENT_TOGGLE}
                     />
                   </SettingRow>
                 </SettingsSectionLayout>

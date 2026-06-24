@@ -379,6 +379,16 @@ export const useTerminal = ({
 
     let isCleanedUp = false;
 
+    // Track the focused terminal for integration tests. Both the agent terminal
+    // and the workspace bottom terminal can be mounted at once, so `__xterm`
+    // follows whichever the user last interacted with (focusin bubbles from the
+    // xterm helper-textarea to this container). Reads `xtermRef` at call time so
+    // it works regardless of when the xterm instance is created.
+    const handleFocusIn = (): void => {
+      window.__xterm = xtermRef.current ?? undefined;
+    };
+    container.addEventListener("focusin", handleFocusIn);
+
     const initXterm = (): void => {
       if (isCleanedUp) return;
 
@@ -465,6 +475,7 @@ export const useTerminal = ({
 
     return (): void => {
       isCleanedUp = true;
+      container.removeEventListener("focusin", handleFocusIn);
       setIsXtermReady(false);
       xtermRef.current?.dispose();
       xtermRef.current = null;
@@ -647,9 +658,17 @@ export const useTerminal = ({
 
   // Re-fit when this terminal becomes visible (container dimensions may have changed).
   // Also expose __xterm for integration tests only when this terminal is the active one.
+  const isAgentTerminal = terminalPath.includes("/agents/");
   useEffect(() => {
     if (isVisible) {
       window.__xterm = xtermRef.current ?? undefined;
+      // Unambiguous per-surface handle so a test can target the agent terminal
+      // or the workspace bottom terminal directly even when both are mounted.
+      if (isAgentTerminal) {
+        window.__terminal_agent_xterm = xtermRef.current ?? undefined;
+      } else {
+        window.__terminal_panel_xterm = xtermRef.current ?? undefined;
+      }
 
       const shouldFocus = hasBeenVisibleRef.current;
       hasBeenVisibleRef.current = true;
@@ -669,8 +688,16 @@ export const useTerminal = ({
       if (window.__xterm === xtermRef.current) {
         delete window.__xterm;
       }
+
+      if (isAgentTerminal && window.__terminal_agent_xterm === xtermRef.current) {
+        delete window.__terminal_agent_xterm;
+      }
+
+      if (!isAgentTerminal && window.__terminal_panel_xterm === xtermRef.current) {
+        delete window.__terminal_panel_xterm;
+      }
     };
-  }, [isVisible, handleResize]);
+  }, [isVisible, handleResize, isAgentTerminal]);
 
   // Mirrors the `interrupt_agent` pattern in ChatInput.tsx — we read the
   // resolved binding from the keybindings registry and attach a window-level

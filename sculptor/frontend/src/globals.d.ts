@@ -14,8 +14,15 @@ declare global {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface Window {
     sculptor?: SculptorElectronAPI;
-    /** Exposed by the active TerminalInstance for integration tests. */
+    /** The most-recently-focused terminal's xterm, for integration tests.
+     * Both the agent terminal and the workspace bottom terminal can be mounted
+     * at once, so this tracks whichever the user last interacted with. Prefer
+     * the unambiguous per-surface handles below when the test targets one. */
     __xterm?: XTerm;
+    /** The agent terminal panel's xterm (terminal-agent PTY), for tests. */
+    __terminal_agent_xterm?: XTerm;
+    /** The workspace bottom terminal panel's xterm, for tests. */
+    __terminal_panel_xterm?: XTerm;
     /** Populated by the Browser panel after webview did-attach, for integration tests. */
     __BROWSER_PANEL_TEST__?: { webContentsId: number };
     /** Inlined by the backend's static-HTML serve path when --trace-to is set.

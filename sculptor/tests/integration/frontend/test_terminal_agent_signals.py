@@ -34,11 +34,10 @@ def _post_signal_from_terminal(page: Page, subcommand: str) -> None:
 @user_story("to see a terminal agent's tab reflect the signals its program posts")
 def test_terminal_agent_signals_drive_tab_status_dot(sculptor_instance_: SculptorInstance) -> None:
     page = sculptor_instance_.page
-    task_page = start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Terminal Signals WS")
+    # The helper creates a plain "Terminal 1" first agent (a bare shell).
+    task_page = start_task_and_wait_for_ready(page, workspace_name="Terminal Signals WS")
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
 
-    agent_tab_bar.open_agent_type_menu()
-    agent_tab_bar.get_agent_type_menu_item_terminal().click()
     terminal_tab = agent_tab_bar.get_agent_tab_by_name("Terminal 1").first
     expect(terminal_tab).to_be_visible()
     expect(get_agent_terminal_panel(page)).to_be_visible()

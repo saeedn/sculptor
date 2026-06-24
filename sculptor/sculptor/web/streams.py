@@ -1,5 +1,4 @@
 import time
-from collections import defaultdict
 from contextlib import ExitStack
 from functools import partial
 from pathlib import Path
@@ -15,7 +14,6 @@ from loguru import logger
 from pydantic import Field
 from typeid.errors import TypeIDException
 
-from sculptor.agents.harness_registry import get_harness_for_config
 from sculptor.config.settings import SculptorSettings
 from sculptor.database.models import AgentTaskInputsV2
 from sculptor.database.models import AgentTaskStateV2
@@ -30,26 +28,20 @@ from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.interfaces.environments.base import STATE_DIRECTORY
-from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import TypeIDPrefixMismatchError
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
-from sculptor.services.btw_service.api import BtwService
 from sculptor.services.data_model_service.api import CompletedTransaction
-from sculptor.services.dependency_management_service import DependencyManagementService
 from sculptor.services.task_service.api import TaskMessageContainer
 from sculptor.services.workspace_service.default_implementation import DefaultWorkspaceService
 from sculptor.services.workspace_service.setup_command_runner import SetupCommandRunner
 from sculptor.services.workspace_service.setup_command_runner import SetupOutputChunk
 from sculptor.services.workspace_service.setup_command_runner import SetupStateChanged
 from sculptor.services.workspace_service.setup_command_runner import TRUNCATION_MARKER
-from sculptor.state.chat_state import ChatMessage
 from sculptor.state.messages import Message
 from sculptor.web.auth import UserSession
-from sculptor.web.data_types import BtwUpdate
-from sculptor.web.data_types import DependenciesStatus
 from sculptor.web.data_types import OpenFileUiAction
 from sculptor.web.data_types import StreamingUpdateSourceTypes
 from sculptor.web.data_types import UserUpdateSourceTypes
@@ -64,7 +56,6 @@ from sculptor.web.derived import UserUpdate
 from sculptor.web.derived import WorkspaceBranchInfo
 from sculptor.web.derived import WorkspaceTargetBranchesInfo
 from sculptor.web.derived import create_initial_task_view
-from sculptor.web.message_conversion import convert_agent_messages_to_task_update
 from sculptor.web.pr_polling_service import PrPollingService
 from sculptor.web.repo_polling_manager import manage_workspace_branch_polling
 from sculptor.web.ui_actions import add_subscriber as add_ui_action_subscriber
@@ -328,12 +319,10 @@ class StreamingUpdate(SerializableModel):
     )
     pr_status_by_workspace_id: dict[WorkspaceID, PrStatusInfo | None] = Field(default_factory=dict)
     finished_request_ids: tuple[RequestID, ...] = ()
-    dependencies_status: DependenciesStatus | None = None
     workspace_setup_status_by_workspace_id: dict[WorkspaceID, WorkspaceSetupStatus] = Field(default_factory=dict)
     workspace_setup_output_by_workspace_id: dict[WorkspaceID, list[WorkspaceSetupOutputChunk]] = Field(
         default_factory=dict
     )
-    btw_update: BtwUpdate | None = None
     ui_open_file_by_workspace_id: dict[WorkspaceID, OpenFileUiAction] = Field(default_factory=dict)
     ui_webview_command_by_workspace_id: dict[WorkspaceID, WebviewCommandUiAction] = Field(default_factory=dict)
 
@@ -433,14 +422,12 @@ def project_for_scope(
         ),
         pr_status_by_workspace_id=_narrow_by_workspace_id(update.pr_status_by_workspace_id, proj.scoped_workspace_ids),
         finished_request_ids=(),
-        dependencies_status=None,
         workspace_setup_status_by_workspace_id=_narrow_by_workspace_id(
             update.workspace_setup_status_by_workspace_id, proj.scoped_workspace_ids
         ),
         workspace_setup_output_by_workspace_id=_narrow_by_workspace_id(
             update.workspace_setup_output_by_workspace_id, proj.scoped_workspace_ids
         ),
-        btw_update=None,
         ui_open_file_by_workspace_id=_narrow_by_workspace_id(
             update.ui_open_file_by_workspace_id, proj.scoped_workspace_ids
         ),
@@ -456,9 +443,7 @@ def stream_everything(
     services: CompleteServiceCollection,
     concurrency_group: ConcurrencyGroup,
     scope: Scope = ScopeAll(),
-    dependency_management_service: DependencyManagementService | None = None,
     pr_polling_service: PrPollingService | None = None,
-    btw_service: BtwService | None = None,
 ) -> Generator[StreamingUpdate | None, None, None]:
     """Emit unified task/user updates for a user."""
     logger.debug("stream_everything scope: {}", scope)
@@ -481,10 +466,9 @@ def stream_everything(
     # - polling_enabled: whether to attach the polling managers at all.
     #   False only for ScopeAgent — project_for_scope drops every workspace-
     #   and project-keyed field for that scope anyway, so polling is pure waste.
-    # - attach_full_user_observers: gates the dependency-status observer
-    #   AND the dependency_status entry in the initial dump. True only for
-    #   ScopeAll, since project_for_scope drops user_update / dependencies_status
-    #   for narrower scopes (no client will ever see them).
+    # - attach_full_user_observers: gates the full user-changes observer. True
+    #   only for ScopeAll, since project_for_scope drops user_update for narrower
+    #   scopes (no client will ever see them).
     # - attach_user_changes_for_close_on_delete: also attaches
     #   data_model_service.observe_user_changes, but solely to feed
     #   entity-deletion events into the close-on-delete check.
@@ -521,14 +505,10 @@ def stream_everything(
     else:
         assert_never(scope)
     pr_polling_service_for_notify = pr_polling_service if polling_enabled else None
-    register_dependency_observer = attach_full_user_observers and dependency_management_service is not None
     register_pr_observer = polling_enabled and pr_polling_service is not None
 
     with task_subscription_cm as updates_queue:
         updates_queue_loosely_typed = cast(Queue[StreamingUpdateSourceTypes], updates_queue)
-        if register_dependency_observer:
-            assert dependency_management_service is not None
-            dependency_management_service.add_observer_queue(updates_queue_loosely_typed)
         setup_runner = _resolve_setup_runner(services)
         setup_state_observer = partial(_forward_setup_state_changed, updates_queue_loosely_typed)
         setup_output_observer = partial(_forward_setup_output_chunk, updates_queue_loosely_typed)
@@ -538,8 +518,6 @@ def stream_everything(
         if register_pr_observer:
             assert pr_polling_service is not None
             pr_polling_service.add_observer(updates_queue_loosely_typed)
-        if btw_service is not None:
-            btw_service.add_observer_queue(updates_queue_loosely_typed)
         add_ui_action_subscriber(updates_queue_loosely_typed.put_nowait)
         try:
             with ExitStack() as stack:
@@ -563,9 +541,7 @@ def stream_everything(
                         )
                     )
                 # Initialize state tracking
-                completed_message_by_task_id: dict[TaskID, dict[AgentMessageID, ChatMessage]] = {}
                 task_views_by_task_id: dict[TaskID, CodingAgentTaskView] = {}
-                task_update_state_by_task_id: dict[TaskID, TaskUpdate] = {}
                 pr_poll_last_branch: dict[WorkspaceID, str] = {}
 
                 # Yield the initial state dump
@@ -575,8 +551,6 @@ def stream_everything(
                     is_blocking_allowed=False,
                 )
                 initial_data.append(services.settings)
-                if attach_full_user_observers and dependency_management_service is not None:
-                    initial_data.append(dependency_management_service.get_status())
                 if setup_runner is not None:
                     for state, snapshot_chunk in _snapshot_setup_state(services, setup_runner):
                         initial_data.append(state)
@@ -587,8 +561,6 @@ def stream_everything(
                     initial_update = _convert_to_streaming_update(
                         all_data=cast(list[StreamingUpdateSourceTypes | None], initial_data),
                         task_views_by_task_id=task_views_by_task_id,
-                        task_update_state_by_task_id=task_update_state_by_task_id,
-                        processed_message_by_task_id=completed_message_by_task_id,
                         settings=services.settings,
                     )
 
@@ -600,10 +572,6 @@ def stream_everything(
                     workspace_branch_manager.initialize()
                     workspace_branch_manager.update_pollers_based_on_stream(initial_data)
                 _notify_pr_polling_service(pr_polling_service_for_notify, initial_data, pr_poll_last_branch)
-
-                # Track last-yielded dependencies status so we only send deltas.
-                # The service pushes unconditionally; we filter here per-connection.
-                last_yielded_deps_status: DependenciesStatus | None = initial_update.dependencies_status
 
                 # Now continuously yield incremental updates
                 while not combined_event.is_set():
@@ -638,15 +606,8 @@ def stream_everything(
                         incremental_update = _convert_to_streaming_update(
                             all_data=loosely_typed_new_data,
                             task_views_by_task_id=task_views_by_task_id,
-                            task_update_state_by_task_id=task_update_state_by_task_id,
-                            processed_message_by_task_id=completed_message_by_task_id,
                             settings=services.settings,
                         )
-                        # Suppress duplicate dependencies status pushes
-                        if incremental_update.dependencies_status == last_yielded_deps_status:
-                            incremental_update = incremental_update.model_copy(update={"dependencies_status": None})
-                        else:
-                            last_yielded_deps_status = incremental_update.dependencies_status
                         yield project_for_scope(incremental_update, scope, frozenset(project_workspace_ids))
 
                     if _scope_subscribed_entity_was_deleted(scope, new_data):
@@ -656,13 +617,8 @@ def stream_everything(
             if setup_runner is not None:
                 setup_runner.remove_state_observer(setup_state_observer)
                 setup_runner.remove_output_observer(setup_output_observer)
-            if register_dependency_observer:
-                assert dependency_management_service is not None
-                dependency_management_service.remove_observer_queue(updates_queue_loosely_typed)
             if pr_polling_service is not None:
                 pr_polling_service.remove_observer(updates_queue_loosely_typed)
-            if btw_service is not None:
-                btw_service.remove_observer_queue(updates_queue_loosely_typed)
             remove_ui_action_subscriber(updates_queue_loosely_typed.put_nowait)
 
 
@@ -757,28 +713,23 @@ def _notify_pr_polling_service(
 def _convert_to_streaming_update(
     all_data: list[StreamingUpdateSourceTypes | None],
     task_views_by_task_id: dict[TaskID, CodingAgentTaskView],
-    task_update_state_by_task_id: dict[TaskID, TaskUpdate],
-    processed_message_by_task_id: dict[TaskID, dict[AgentMessageID, ChatMessage]],
     settings: SculptorSettings,
 ) -> StreamingUpdate:
     """Converts a list of source updates into a StreamingUpdate.
 
     This function processes new data and returns an incremental update containing only changes from this batch.
-    It maintains internal state in the passed-in dicts for tracking purposes.
+    It maintains internal state in the passed-in `task_views_by_task_id` dict for tracking purposes.
     """
     changed_task_ids: set[TaskID] = set()
     finished_request_ids: list[RequestID] = []
     user_update_sources: list[UserUpdateSourceTypes] = []
     updated_workspace_branch_by_workspace_id: dict[WorkspaceID, WorkspaceBranchInfo | None] = {}
     updated_workspace_target_branches_by_workspace_id: dict[WorkspaceID, WorkspaceTargetBranchesInfo | None] = {}
-    latest_dependencies_status: DependenciesStatus | None = None
     updated_workspace_setup_status_by_workspace_id: dict[WorkspaceID, WorkspaceSetupStatus] = {}
     updated_workspace_setup_output_by_workspace_id: dict[WorkspaceID, list[WorkspaceSetupOutputChunk]] = {}
     updated_pr_status_by_workspace_id: dict[WorkspaceID, PrStatusInfo | None] = {}
-    latest_btw_update: BtwUpdate | None = None
     updated_ui_open_file_by_workspace_id: dict[WorkspaceID, OpenFileUiAction] = {}
     updated_ui_webview_command_by_workspace_id: dict[WorkspaceID, WebviewCommandUiAction] = {}
-    messages_by_task: dict[TaskID, list[Message]] = defaultdict(list)
 
     for model in all_data:
         if model is None:
@@ -788,7 +739,6 @@ def _convert_to_streaming_update(
                 container=model,
                 changed_task_ids=changed_task_ids,
                 task_views_by_task_id=task_views_by_task_id,
-                messages_by_task=messages_by_task,
                 settings=settings,
             )
 
@@ -808,9 +758,6 @@ def _convert_to_streaming_update(
         elif isinstance(model, WorkspaceTargetBranchesInfo):
             updated_workspace_target_branches_by_workspace_id[model.workspace_id] = model
 
-        elif isinstance(model, DependenciesStatus):
-            latest_dependencies_status = model
-
         elif isinstance(model, WorkspaceSetupStatus):
             updated_workspace_setup_status_by_workspace_id[model.workspace_id] = model
 
@@ -823,9 +770,6 @@ def _convert_to_streaming_update(
         elif isinstance(model, PrStatusInfoCleared):
             updated_pr_status_by_workspace_id[model.workspace_id] = None
 
-        elif isinstance(model, BtwUpdate):
-            latest_btw_update = model
-
         elif isinstance(model, OpenFileUiAction):
             updated_ui_open_file_by_workspace_id[model.workspace_id] = model
 
@@ -837,33 +781,22 @@ def _convert_to_streaming_update(
         else:
             assert_never(model)
 
-    _apply_message_updates_to_task_state(
-        messages_by_task=messages_by_task,
-        task_update_state_by_task_id=task_update_state_by_task_id,
-        processed_message_by_task_id=processed_message_by_task_id,
-        task_views_by_task_id=task_views_by_task_id,
-    )
-
-    updated_task_views_by_task_id, updated_task_update_by_task_id = _extract_changed_tasks(
+    updated_task_views_by_task_id = _extract_changed_task_views(
         changed_task_ids=changed_task_ids,
         task_views_by_task_id=task_views_by_task_id,
-        task_update_state_by_task_id=task_update_state_by_task_id,
     )
 
     user_update = _convert_to_user_update(all_data=cast(list[UserUpdateSourceTypes | None], user_update_sources))
 
     return StreamingUpdate(
         task_views_by_task_id=updated_task_views_by_task_id,
-        task_update_by_task_id=updated_task_update_by_task_id,
         user_update=user_update,
         workspace_branch_by_workspace_id=updated_workspace_branch_by_workspace_id,
         workspace_target_branches_by_workspace_id=updated_workspace_target_branches_by_workspace_id,
         pr_status_by_workspace_id=updated_pr_status_by_workspace_id,
         finished_request_ids=tuple(finished_request_ids),
-        dependencies_status=latest_dependencies_status,
         workspace_setup_status_by_workspace_id=updated_workspace_setup_status_by_workspace_id,
         workspace_setup_output_by_workspace_id=updated_workspace_setup_output_by_workspace_id,
-        btw_update=latest_btw_update,
         ui_open_file_by_workspace_id=updated_ui_open_file_by_workspace_id,
         ui_webview_command_by_workspace_id=updated_ui_webview_command_by_workspace_id,
     )
@@ -913,7 +846,6 @@ def _process_task_message_container(
     container: TaskMessageContainer,
     changed_task_ids: set[TaskID],
     task_views_by_task_id: dict[TaskID, CodingAgentTaskView],
-    messages_by_task: dict[TaskID, list[Message]],
     settings: SculptorSettings,
 ) -> None:
     for task in container.tasks:
@@ -933,7 +865,6 @@ def _process_task_message_container(
         changed_task_ids.add(task_id)
         if task_id in task_views_by_task_id and isinstance(message, Message):
             task_views_by_task_id[task_id].add_message(message)
-        messages_by_task[task_id].append(message)
 
 
 def _process_completed_transaction(
@@ -946,50 +877,18 @@ def _process_completed_transaction(
     user_update_sources.append(transaction)
 
 
-def _apply_message_updates_to_task_state(
-    messages_by_task: dict[TaskID, list[Message]],
-    task_update_state_by_task_id: dict[TaskID, TaskUpdate],
-    processed_message_by_task_id: dict[TaskID, dict[AgentMessageID, ChatMessage]],
-    task_views_by_task_id: dict[TaskID, CodingAgentTaskView],
-) -> None:
-    for task_id, messages in messages_by_task.items():
-        # `messages_by_task` carries every task's messages (agent and not), but
-        # `task_views_by_task_id` only carries AgentTaskInputsV2 tasks. Non-agent
-        # tasks have no harness to resolve.
-        task_view = task_views_by_task_id.get(task_id)
-        if task_view is None:
-            continue
-        if task_id not in processed_message_by_task_id:
-            processed_message_by_task_id[task_id] = {}
-
-        harness = get_harness_for_config(task_view.task_input.agent_config)
-        current_task_update = task_update_state_by_task_id.get(task_id)
-        new_task_update = convert_agent_messages_to_task_update(
-            new_messages=messages,
-            task_id=task_id,
-            completed_message_by_id=processed_message_by_task_id[task_id],
-            harness=harness,
-            current_state=current_task_update,
-        )
-        task_update_state_by_task_id[task_id] = new_task_update
-
-
-def _extract_changed_tasks(
+def _extract_changed_task_views(
     changed_task_ids: set[TaskID],
     task_views_by_task_id: dict[TaskID, CodingAgentTaskView],
-    task_update_state_by_task_id: dict[TaskID, TaskUpdate],
-) -> tuple[dict[TaskID, CodingAgentTaskView], dict[TaskID, TaskUpdate]]:
-    """Extract only the changed tasks from full state to create an incremental update."""
+) -> dict[TaskID, CodingAgentTaskView]:
+    """Extract only the changed task views from full state to create an incremental update."""
     update_task_views_by_task_id: dict[TaskID, CodingAgentTaskView] = {}
-    update_task_update_by_task_id: dict[TaskID, TaskUpdate] = {}
 
     for task_id in changed_task_ids:
         if task_id in task_views_by_task_id:
             update_task_views_by_task_id[task_id] = task_views_by_task_id[task_id]
-        if task_id in task_update_state_by_task_id:
-            update_task_update_by_task_id[task_id] = task_update_state_by_task_id[task_id]
 
-    return update_task_views_by_task_id, update_task_update_by_task_id
+    return update_task_views_by_task_id
 
 
 def _empty_update_queue(

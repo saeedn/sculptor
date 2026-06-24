@@ -5,7 +5,7 @@ from sculptor.database.models import AgentTaskInputsV2
 from sculptor.database.models import AgentTaskStateV2
 from sculptor.database.models import Task
 from sculptor.database.models import TaskID
-from sculptor.interfaces.agents.agent import ClaudeCodeSDKAgentConfig
+from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import AssistantMessageID
@@ -28,7 +28,7 @@ def _make_task_view() -> CodingAgentTaskView:
         organization_reference=OrganizationReference("test-org"),
         project_id=ProjectID(),
         input_data=AgentTaskInputsV2(
-            agent_config=ClaudeCodeSDKAgentConfig(),
+            agent_config=TerminalAgentConfig(),
             git_hash="abc123",
             system_prompt=None,
         ),

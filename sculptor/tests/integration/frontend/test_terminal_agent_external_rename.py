@@ -34,11 +34,6 @@ from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
 
-def _create_terminal_agent(agent_tab_bar: PlaywrightAgentTabBarElement) -> None:
-    agent_tab_bar.open_agent_type_menu()
-    agent_tab_bar.get_agent_type_menu_item_terminal().click()
-
-
 def _drive_terminal_to_idle(page: Page) -> None:
     """Wait until the terminal's shell is up and responsive, then idle.
 
@@ -69,17 +64,16 @@ def test_terminal_agent_external_rename_updates_tab_live(
     4. Verify the terminal tab's label updates live to the new name.
     """
     page = sculptor_instance_.page
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="External Rename WS")
+    # The helper creates a plain "Terminal 1" first agent (a bare shell).
+    start_task_and_wait_for_ready(page, workspace_name="External Rename WS")
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(1)
 
-    # Step 1: Add a terminal agent. It is created second, so it is the tab at
-    # index 1 and is labeled "Terminal 1". Drive it to idle so its startup
-    # task message can't mask the rename broadcast.
-    _create_terminal_agent(agent_tab_bar)
-    expect(agent_tabs).to_have_count(2)
-    terminal_tab = agent_tabs.nth(1)
+    # Step 1: Drive the terminal agent to idle so its startup task message can't
+    # mask the rename broadcast. Resolve the tab by index (not by name) so the
+    # locator still points at it after the rename changes its label.
+    terminal_tab = agent_tabs.first
     expect(terminal_tab).to_have_text("Terminal 1")
     _drive_terminal_to_idle(page)
 

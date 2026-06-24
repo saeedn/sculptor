@@ -5,7 +5,6 @@ execution environment. It hides lifecycle operations and provides per-task
 namespaced paths for state and artifacts.
 """
 
-from enum import auto
 from pathlib import Path
 from typing import Callable
 from typing import Mapping
@@ -19,26 +18,12 @@ from sculptor.foundation.event_utils import MutableEvent
 from sculptor.foundation.processes.local_process import RunningProcess
 from sculptor.foundation.secrets_utils import Secret
 from sculptor.foundation.subprocess_utils import FinishedProcess
-from sculptor.foundation.upper_case_str_enum import UpperCaseStrEnum
 
 if TYPE_CHECKING:
     from _typeshed import OpenBinaryModeReading
     from _typeshed import OpenBinaryModeWriting
     from _typeshed import OpenTextModeReading
     from _typeshed import OpenTextModeWriting
-
-
-class Dependency(UpperCaseStrEnum):
-    """A tool binary the environment can resolve via `get_tool_binary_path`.
-
-    Lives in the environment-interface layer so the protocol method that
-    consumes it can be typed without an interface→service dependency
-    inversion.
-    """
-
-    CLAUDE = auto()
-    GIT = auto()
-    PI = auto()
 
 
 @runtime_checkable
@@ -215,17 +200,6 @@ class AgentExecutionEnvironment(Protocol):
 
         Raises:
             ProcessError: If is_checked_after is True and the process fails.
-        """
-        ...
-
-    def get_tool_binary_path(self, tool: Dependency) -> str | None:
-        """Resolve the path to a tool binary.
-
-        Args:
-            tool: The dependency to resolve.
-
-        Returns:
-            The resolved path to the binary, or None if not found.
         """
         ...
 

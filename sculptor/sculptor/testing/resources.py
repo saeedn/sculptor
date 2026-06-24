@@ -18,7 +18,6 @@ from playwright.sync_api import Playwright
 from playwright.sync_api import expect
 from pytest_playwright.pytest_playwright import ArtifactsRecorder
 
-from sculptor.config.user_config import DependencyPaths
 from sculptor.config.user_config import UserConfig
 from sculptor.constants import ElementIDs
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
@@ -721,8 +720,6 @@ def _make_test_user_config(claude_path: str = "claude") -> UserConfig:
         is_session_recording_enabled=True,
         is_privacy_policy_consented=True,
         is_telemetry_level_set=True,
-        # Managed pi has no fake-on-PATH path, so integration tests pin pi=CUSTOM (bare "pi") to resolve the FakePi stub on PATH.
-        dependency_paths=DependencyPaths(claude=claude_path, pi="pi"),
     )
 
 
@@ -778,13 +775,11 @@ class AlreadyRunningServiceCollection(CompleteServiceCollection):
         return cls(
             settings=from_collection.settings,
             data_model_service=from_collection.data_model_service,
-            dependency_management_service=from_collection.dependency_management_service,
             workspace_service=from_collection.workspace_service,
             git_repo_service=from_collection.git_repo_service,
             task_service=from_collection.task_service,
             project_service=from_collection.project_service,
             pr_polling_service=from_collection.pr_polling_service,
-            btw_service=from_collection.btw_service,
             ci_babysitter_service=from_collection.ci_babysitter_service,
         )
 

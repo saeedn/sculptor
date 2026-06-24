@@ -1,7 +1,6 @@
 import datetime
 from enum import Enum
 from enum import StrEnum
-from enum import auto
 from pathlib import Path
 from typing import Annotated
 from typing import Any
@@ -15,11 +14,9 @@ from sculptor.config.settings import SculptorSettings
 from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import build_discriminator
-from sculptor.foundation.upper_case_str_enum import UpperCaseStrEnum
 from sculptor.interfaces.agents.artifacts import DiffArtifact
 from sculptor.interfaces.agents.artifacts import TaskListArtifact
 from sculptor.primitives.ids import ProjectID
-from sculptor.primitives.ids import TaskID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.services.task_service.api import TaskMessageContainer
@@ -42,8 +39,6 @@ class AgentTypeName(StrEnum):
     `REGISTERED` requires a `registration_id` alongside it.
     """
 
-    CLAUDE = "claude"
-    PI = "pi"
     TERMINAL = "terminal"
     REGISTERED = "registered"
 
@@ -308,11 +303,6 @@ class AnswerQuestionRequest(RequestModel):
     model: LLMModel
 
 
-class BtwRequest(RequestModel):
-    question: str
-    request_id: str
-
-
 class SetModelRequest(RequestModel):
     # The chosen ModelOption's identity. Sent only for harnesses with a backend
     # model list (pi); the pi adapter issues pi's `set_model` RPC with these.
@@ -519,7 +509,6 @@ class HealthCheckResponse(SerializableModel):
     install_path: str
     ci_job_id: str | None = None
     ci_ref: str | None = None
-    dependencies_status: "DependenciesStatus | None" = None
 
 
 class EmailConfigRequest(RequestModel):
@@ -589,93 +578,6 @@ class AgentDiagnosticsResponse(SerializableModel):
     sculptor_transcript_file_path: str | None = None
 
 
-class VersionRangeInfo(SerializableModel):
-    """Version range configuration for Claude CLI compatibility."""
-
-    min_version: str
-    max_version: str
-    recommended_version: str
-
-
-class InstallProgress(SerializableModel):
-    """Progress of an ongoing managed binary installation."""
-
-    tool: str
-    bytes_downloaded: int
-    total_bytes: int | None = None
-
-
-class BinaryMode(UpperCaseStrEnum):
-    MANAGED = auto()
-    CUSTOM = auto()
-
-
-class DependencyInfo(SerializableModel):
-    """Rich status information for a single dependency binary."""
-
-    installed: bool
-    path: str | None = None
-    version: str | None = None
-    is_override: bool = False
-    mode: BinaryMode | None = None
-    version_range: VersionRangeInfo | None = None
-    is_version_in_range: bool | None = None
-    managed_version: str | None = None
-    is_authenticated: bool | None = None
-    # Per-tool managed-install state. Carried here (rather than a single
-    # top-level field) so a Claude install and a pi install never clobber each
-    # other's progress/error.
-    install_progress: InstallProgress | None = None
-    # Reason this tool's most recent managed install/upgrade failed, if any.
-    # Surfaced so the UI can explain a failed update instead of silently showing
-    # a stale, out-of-range binary. Cleared when a new install starts or one
-    # succeeds.
-    install_error: str | None = None
-
-
-class AuthResult(SerializableModel):
-    """Result of a Claude authentication attempt."""
-
-    success: bool
-    auth_url: str | None = None
-    error: str | None = None
-
-
-class AuthStartResult(SerializableModel):
-    """Result of starting an interactive Claude authentication session.
-
-    Authentication is two steps so it works in headless/remote environments
-    (e.g. a container) where the browser-loopback flow can't reach the user's
-    browser: start returns the sign-in ``auth_url`` and leaves the CLI running,
-    waiting on stdin; the user signs in and pastes the resulting code back via
-    :class:`SubmitAuthCodeRequest`.
-
-    On a machine with a usable local browser the CLI completes the loopback flow
-    on its own and no code is needed — that case returns ``success=True`` with
-    ``needs_code=False``.
-    """
-
-    auth_url: str | None = None
-    needs_code: bool = False
-    success: bool = False
-    error: str | None = None
-
-
-class SubmitAuthCodeRequest(RequestModel):
-    """Submit the code the user pasted from the sign-in page to finish authentication."""
-
-    code: str
-    tool: str = "CLAUDE"
-
-
-class DependenciesStatus(SerializableModel):
-    """Status of required dependencies with path/version info."""
-
-    git: DependencyInfo
-    claude: DependencyInfo
-    pi: DependencyInfo
-
-
 class WorkspaceSetupStatus(SerializableModel):
     """Status snapshot for a workspace setup run."""
 
@@ -712,17 +614,6 @@ class WorkspaceSetupSnapshot(SerializableModel):
     log_truncated: bool = False
 
 
-class BtwUpdate(SerializableModel):
-    """Streaming update for a `/btw` side-chat reply."""
-
-    workspace_id: WorkspaceID
-    agent_id: TaskID
-    request_id: str
-    state: Literal["running", "done", "error", "aborted"]
-    answer: str
-    error_message: str | None = None
-
-
 class OpenFileUiAction(SerializableModel):
     workspace_id: WorkspaceID
     file_path: str
@@ -754,12 +645,10 @@ StreamingUpdateSourceTypes = (
     | UserUpdateSourceTypes
     | WorkspaceBranchInfo
     | WorkspaceTargetBranchesInfo
-    | DependenciesStatus
     | WorkspaceSetupStatus
     | WorkspaceSetupOutputChunk
     | PrStatusInfo
     | PrStatusInfoCleared
-    | BtwUpdate
     | OpenFileUiAction
     | WebviewCommandUiAction
 )

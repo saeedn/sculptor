@@ -10,6 +10,9 @@ Tests verify:
 
 from playwright.sync_api import expect
 
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
 from sculptor.testing.pages.home_page import PlaywrightHomePage
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.playwright_utils import navigate_to_home_page
@@ -186,13 +189,12 @@ def test_workspace_row_shows_current_branch_not_source_branch(
     3. Verify the workspace row shows the new (current) branch, not the source branch
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Step 1: Create a workspace. The agent checks out a new branch in the worktree.
-    start_task_and_wait_for_ready(
-        sculptor_page=page,
-        prompt='fake_claude:bash `{"command": "git checkout -b feature-xyz"}`',
-        workspace_name="Branch Display Test",
-    )
+    # Step 1: Create a terminal agent, then have it check out a new branch in the
+    # worktree (the surviving equivalent of the old FakeClaude bash prompt).
+    start_fake_terminal_agent(page, agents_dir, workspace_name="Branch Display Test")
+    send_fake_agent_command_and_wait(agents_dir, bash("git checkout -b feature-xyz"))
 
     # Step 2: Navigate to the Home page.
     navigate_to_home_page(page)

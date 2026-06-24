@@ -23,7 +23,6 @@ import { SendButton } from "~/components/SendButton.tsx";
 import { CAPABILITY_UNSUPPORTED_COPY } from "~/components/useCapabilityGate.ts";
 
 import {
-  btwAgent,
   type ChatMessage,
   ChatMessageRole,
   clearWorkspaceAgentContext,
@@ -38,7 +37,6 @@ import {
 import { CHAT_INPUT_ELEMENT_ID } from "../../../common/Constants.ts";
 import { useWorkspacePageParams } from "../../../common/NavigateUtils.ts";
 import { shouldHandleKeybinding, useModifiedEnter } from "../../../common/ShortcutUtils.ts";
-import { closeBtwPopupAtom, openBtwPopupAtom } from "../../../common/state/atoms/btwPopup.ts";
 import type { InsertSkillArg } from "../../../common/state/atoms/chatActions.ts";
 import {
   effortAtomFamily,
@@ -76,21 +74,6 @@ import { Toast, type ToastContent, ToastType } from "../../../components/Toast.t
 import { TooltipIconButton } from "../../../components/TooltipIconButton.tsx";
 import { stripHtml } from "../utils/utils.ts";
 import styles from "./ChatInput.module.scss";
-
-/**
- * Cheap predicate used to decide whether the SendButton / handleSend should
- * bypass the main-busy lock for a `/btw` draft. The authoritative parsing
- * lives in `parsePseudoSkillCommand` but that needs a TipTap editor handle;
- * this string-only version is enough for gating.
- */
-function draftIsBypassCommand(draft: string | null | undefined): boolean {
-  const trimmed = (draft ?? "").trim();
-  if (!trimmed.startsWith("/btw")) {
-    return false;
-  }
-  const rest = trimmed.slice("/btw".length);
-  return rest === "" || /^\s/.test(rest);
-}
 
 type ChatInputProps = {
   isDisabled: boolean;
@@ -222,9 +205,6 @@ export const ChatInput = ({
     setAttachedFiles([]);
   }, [editorRef, setPromptDraft, setAttachedFiles]);
 
-  const openBtwPopup = useSetAtom(openBtwPopupAtom);
-  const closeBtwPopup = useSetAtom(closeBtwPopupAtom);
-
   const executePseudoSkill = useCallback(
     async (parsed: ParsedPseudoSkillCommand): Promise<void> => {
       clearEditor();
@@ -280,37 +260,9 @@ export const ChatInput = ({
           }
           break;
         }
-
-        case "btw": {
-          const question = parsed.args.trim();
-          if (!question) {
-            setToast({ title: "Type a question after /btw", type: ToastType.DEFAULT });
-            return;
-          }
-          const requestId = crypto.randomUUID();
-          openBtwPopup({ agentId: taskID!, question, requestId });
-          try {
-            await btwAgent({
-              path: { workspace_id: workspaceID, agent_id: taskID! },
-              body: { question, requestId },
-            });
-          } catch (error) {
-            closeBtwPopup();
-            const isNoSession =
-              typeof error === "object" &&
-              error !== null &&
-              "status" in error &&
-              (error as { status?: number }).status === 409;
-            setToast({
-              title: isNoSession ? "/btw is unavailable until you've sent a message" : "Failed to run /btw",
-              type: ToastType.ERROR,
-            });
-          }
-          break;
-        }
       }
     },
-    [clearEditor, chatMessages, workspaceID, taskID, openBtwPopup, closeBtwPopup, canResetContext],
+    [clearEditor, chatMessages, workspaceID, taskID, canResetContext],
   );
 
   const sendMessage = useCallback(async (): Promise<void> => {
@@ -389,20 +341,17 @@ export const ChatInput = ({
   ]);
 
   const handleSend = useCallback(async (): Promise<void> => {
-    const isBtwDraft = draftIsBypassCommand(promptDraft);
-    if (isDisabled && !isBtwDraft) return;
+    if (isDisabled) return;
     await sendMessage();
 
     // Interrupt is a separate call because it's an ephemeral control signal
     // (InterruptProcessUserMessage), not part of the persistent chat message.
-    // /btw must never trigger the interrupt — it is dispatched to a forked
-    // side-chat subprocess and must not disturb main's flow.
-    // Other pseudo-skills (/clear, /copy) keep their existing interrupt
-    // behavior on purpose.
-    if (!isBtwDraft && isAlwaysInterruptAndSend && isAgentBusy && taskID) {
+    // Pseudo-skills (/clear, /copy) keep their existing interrupt behavior on
+    // purpose.
+    if (isAlwaysInterruptAndSend && isAgentBusy && taskID) {
       await interruptWorkspaceAgent({ path: { workspace_id: workspaceID, agent_id: taskID } });
     }
-  }, [isDisabled, promptDraft, sendMessage, isAlwaysInterruptAndSend, isAgentBusy, taskID, workspaceID]);
+  }, [isDisabled, sendMessage, isAlwaysInterruptAndSend, isAgentBusy, taskID, workspaceID]);
 
   const handleInterruptAndSend = useCallback(async (): Promise<void> => {
     if (!promptDraft?.trim() || !taskID) return;
@@ -711,7 +660,7 @@ export const ChatInput = ({
               </Flex>
               <SendButton
                 onClick={handleSend}
-                disabled={(isDisabled && !draftIsBypassCommand(promptDraft)) || !promptDraft?.trim()}
+                disabled={isDisabled || !promptDraft?.trim()}
                 tooltip={`${sendHint} to send message`}
                 ariaLabel="Send message"
                 testId={ElementIds.SEND_BUTTON}

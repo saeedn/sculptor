@@ -515,19 +515,6 @@ class AgentConfig(SerializableModel):
     object_type: str
 
 
-class HelloAgentConfig(AgentConfig):
-    object_type: str = "HelloAgentConfig"
-    command: str = "echo"
-
-
-class ClaudeCodeSDKAgentConfig(AgentConfig):
-    object_type: str = "ClaudeCodeSDKAgentConfig"
-
-
-class PiAgentConfig(AgentConfig):
-    object_type: str = "PiAgentConfig"
-
-
 class TerminalAgentConfig(AgentConfig):
     object_type: str = "TerminalAgentConfig"
 
@@ -549,10 +536,7 @@ class RegisteredTerminalAgentConfig(AgentConfig):
 
 
 AgentConfigTypes = Annotated[
-    Annotated[HelloAgentConfig, Tag("HelloAgentConfig")]
-    | Annotated[ClaudeCodeSDKAgentConfig, Tag("ClaudeCodeSDKAgentConfig")]
-    | Annotated[PiAgentConfig, Tag("PiAgentConfig")]
-    | Annotated[TerminalAgentConfig, Tag("TerminalAgentConfig")]
+    Annotated[TerminalAgentConfig, Tag("TerminalAgentConfig")]
     | Annotated[RegisteredTerminalAgentConfig, Tag("RegisteredTerminalAgentConfig")],
     build_discriminator(),
 ]

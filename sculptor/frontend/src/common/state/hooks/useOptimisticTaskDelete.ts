@@ -1,5 +1,4 @@
 import { useSetAtom } from "jotai";
-import { posthog } from "posthog-js";
 import { useCallback, useRef } from "react";
 
 import { deleteWorkspaceAgent } from "../../../api";
@@ -42,11 +41,6 @@ export const useOptimisticTaskDelete = (inputs: UseOptimisticTaskDeleteInputs): 
       }
 
       lastFailedRef.current = { taskId, taskTitle };
-
-      posthog.capture("agent.deleted", {
-        workspace_id: workspaceId,
-        agent_id: taskId,
-      });
 
       void deleteWorkspaceAgent({
         path: { workspace_id: workspaceId, agent_id: taskId },

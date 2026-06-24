@@ -56,13 +56,13 @@ from sculptor.web.data_types import SendMessageRequest
 from sculptor.web.data_types import SetModelRequest
 from sculptor.web.data_types import StartTaskRequest
 
-# Check session token enforcement on the telemetry endpoint.
+# Check session token enforcement on a sample authenticated endpoint.
 
 
 def test_endpoints_return_403_when_session_token_required_but_not_set(
     client_with_session_token_required: TestClient,
 ) -> None:
-    response = client_with_session_token_required.get("/api/v1/telemetry_info")
+    response = client_with_session_token_required.get("/api/v1/config")
     assert response.status_code == 403
 
 
@@ -70,7 +70,7 @@ def test_endpoints_return_200_when_session_token_required_and_set(
     client_with_session_token_required: TestClient,
 ) -> None:
     response = client_with_session_token_required.get(
-        "/api/v1/telemetry_info", headers={SESSION_TOKEN_HEADER_NAME: "test_token"}
+        "/api/v1/config", headers={SESSION_TOKEN_HEADER_NAME: "test_token"}
     )
     assert response.status_code == 200
 
@@ -78,7 +78,7 @@ def test_endpoints_return_200_when_session_token_required_and_set(
 def test_endpoints_return_200_when_session_token_required_and_set_via_a_get_param(
     client_with_session_token_required: TestClient,
 ) -> None:
-    response = client_with_session_token_required.get(f"/api/v1/telemetry_info?{SESSION_TOKEN_HEADER_NAME}=test_token")
+    response = client_with_session_token_required.get(f"/api/v1/config?{SESSION_TOKEN_HEADER_NAME}=test_token")
     assert response.status_code == 200
 
 
@@ -86,13 +86,13 @@ def test_endpoints_return_200_when_session_token_required_and_set_via_a_cookie(
     client_with_session_token_required: TestClient,
 ) -> None:
     response = client_with_session_token_required.get(
-        "/api/v1/telemetry_info", cookies={SESSION_TOKEN_HEADER_NAME: "test_token"}
+        "/api/v1/config", cookies={SESSION_TOKEN_HEADER_NAME: "test_token"}
     )
     assert response.status_code == 200
 
 
 def test_endpoints_return_200_when_api_secret_key_not_required_and_not_set(client: TestClient) -> None:
-    response = client.get("/api/v1/telemetry_info")
+    response = client.get("/api/v1/config")
     assert response.status_code == 200
 
 
@@ -870,40 +870,6 @@ def telemetry_test_config(tmp_path, monkeypatch) -> Generator[UserConfig, None, 
     set_user_config_instance(config)
     yield config
     set_user_config_instance(None)
-
-
-def test_set_telemetry_endpoint_disables_telemetry(client: TestClient, telemetry_test_config: UserConfig) -> None:
-    response = client.post("/api/v1/config/telemetry", json={"enabled": False})
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["isErrorReportingEnabled"] is False
-    assert body["isProductAnalyticsEnabled"] is False
-    assert body["isSessionRecordingEnabled"] is False
-    # The flip is persisted on the singleton (and written to the tmp config file).
-    assert user_config_module.get_user_config_instance().is_error_reporting_enabled is False
-    assert user_config_module.get_config_path().exists()
-
-
-def test_set_telemetry_endpoint_enables_telemetry(client: TestClient, telemetry_test_config: UserConfig) -> None:
-    set_user_config_instance(
-        model_update(telemetry_test_config, get_privacy_settings_for_telemetry(False).model_dump())
-    )
-
-    response = client.post("/api/v1/config/telemetry", json={"enabled": True})
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["isErrorReportingEnabled"] is True
-    assert body["isProductAnalyticsEnabled"] is True
-    # Session recording stays off even when telemetry is enabled.
-    assert body["isSessionRecordingEnabled"] is False
-
-
-def test_put_user_config_rejects_telemetry_flag_change(client: TestClient, telemetry_test_config: UserConfig) -> None:
-    response = client.put("/api/v1/config", json={"userConfig": {"isProductAnalyticsEnabled": False}})
-    assert response.status_code == 400, response.text
-    assert "/api/v1/config/telemetry" in response.json()["detail"]
-    # The flag is unchanged.
-    assert user_config_module.get_user_config_instance().is_product_analytics_enabled is True
 
 
 def test_put_user_config_no_op_telemetry_flag_passes_through(

@@ -549,12 +549,6 @@ class SkipAccountSetupRequest(RequestModel):
     is_telemetry_enabled: bool = True
 
 
-class SetTelemetryRequest(RequestModel):
-    """Toggle the binary telemetry consent."""
-
-    enabled: bool
-
-
 class UpdateUserConfigRequest(RequestModel):
     """Partial update for ``UserConfig``.
 

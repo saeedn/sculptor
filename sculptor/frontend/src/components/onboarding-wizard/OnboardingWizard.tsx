@@ -6,7 +6,6 @@ import { useState } from "react";
 import { completeOnboarding, getConfigStatus, saveUserEmail, skipAccountSetup } from "~/api";
 import { HTTPException } from "~/common/Errors.ts";
 import { ValidationError } from "~/common/Errors.ts";
-import { identifyAnalyticsUser, updateTelemetryConfig } from "~/common/Telemetry";
 import { TitleBar } from "~/components/TitleBar";
 
 import { AddRepoStep } from "./AddRepoStep.tsx";
@@ -61,7 +60,7 @@ export const OnboardingWizard = ({ initialStep, onComplete }: OnboardingWizardPr
       // Console output ends up in Sentry breadcrumbs (and potentially in
       // diagnostics), so never log the actual email/name.
       console.log("Saving user email. Marketing opt-in:", didOptInToMarketing);
-      const { data: updatedTelemetryInfo } = await saveUserEmail({
+      await saveUserEmail({
         body: {
           userEmail: email,
           fullName: fullName,
@@ -70,17 +69,9 @@ export const OnboardingWizard = ({ initialStep, onComplete }: OnboardingWizardPr
         },
         meta: { skipWsAck: true },
       });
-      if (updatedTelemetryInfo) {
-        // Reconciles the SDKs with the chosen consent (opts PostHog in/out,
-        // gates Sentry), so the calls below are no-ops when opted out.
-        updateTelemetryConfig(updatedTelemetryInfo);
-      }
 
-      // Identify the user in PostHog and fire the email-confirmation event.
       // The Clay webhook subscribes to this event for mailing-list signup.
-      // (Phase 2 / SCU-764 will move identification to BE; for now FE owns it.)
       if (isTelemetryEnabled) {
-        identifyAnalyticsUser(email, fullName ? { full_name: fullName } : {});
         posthog.capture("onboarding.email_confirmation", {
           did_opt_in_to_marketing: didOptInToMarketing,
         });
@@ -109,16 +100,11 @@ export const OnboardingWizard = ({ initialStep, onComplete }: OnboardingWizardPr
     setError(null);
 
     try {
-      const { data: updatedTelemetryInfo } = await skipAccountSetup({
+      await skipAccountSetup({
         body: { isTelemetryEnabled: isTelemetryEnabled },
         meta: { skipWsAck: true },
       });
-      if (updatedTelemetryInfo) {
-        updateTelemetryConfig(updatedTelemetryInfo);
-      }
 
-      // No identify and no email-confirmation event: without an account the
-      // user stays anonymous in PostHog (random distinct_id only).
       setIsTelemetryEnabled(isTelemetryEnabled);
       goToStep(OnboardingStep.INSTALLATION);
     } catch (err) {

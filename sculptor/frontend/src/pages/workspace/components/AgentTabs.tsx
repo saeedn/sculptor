@@ -1,7 +1,6 @@
 import { ContextMenu, DropdownMenu, Flex, IconButton } from "@radix-ui/themes";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { ChevronDownIcon, PlusIcon, Stethoscope } from "lucide-react";
-import { posthog } from "posthog-js";
 import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -296,12 +295,6 @@ export const AgentTabs = (): ReactElement | null => {
         }
 
         if (response.data) {
-          posthog.capture("agent.added", {
-            workspace_id: workspaceID,
-            agent_id: response.data.id,
-            model: model ?? null,
-            agent_type: agentType,
-          });
           navigateToAgent(workspaceID, response.data.id);
         }
       } catch (error) {

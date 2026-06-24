@@ -1,5 +1,4 @@
 import { useSetAtom } from "jotai";
-import { posthog } from "posthog-js";
 import { useCallback, useRef } from "react";
 
 import { deleteWorkspace } from "../../../api";
@@ -34,10 +33,6 @@ export const useOptimisticWorkspaceDelete = (
       onNavigateAfterDelete(workspaceId);
 
       lastFailedRef.current = { workspaceId, workspaceName };
-
-      posthog.capture("workspace.deleted", {
-        workspace_id: workspaceId,
-      });
 
       void deleteWorkspace({
         path: { workspace_id: workspaceId },

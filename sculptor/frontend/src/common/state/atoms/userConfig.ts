@@ -2,7 +2,6 @@ import { atom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 
 import { isLlmModel } from "~/common/Guards.ts";
-import { getTelemetryEnabled } from "~/common/Telemetry.ts";
 
 import type { CiBabysitterConfig, CustomActionsConfig, UserConfig } from "../../../api";
 import { LlmModel } from "../../../api";
@@ -73,14 +72,8 @@ export const userFullNameAtom = atom<string | undefined>((get) => get(userConfig
 export const isTelemetryEnabledAtom = atom<boolean>((get) => {
   const config = get(userConfigAtom);
   if (config == null) {
-    // Pre-handshake, mirror Telemetry.ts's runtime gate — which already
-    // honors the persisted opt-out from a previous session — so the UI never
-    // disagrees with the actual SDK gating after a restart.
-    return getTelemetryEnabled();
+    return false;
   }
-  // Must match Telemetry.ts's computeIsTelemetryEnabled: the backend
-  // normalizes mixed configs to all-off on load, and the AND keeps the same
-  // conservative bias here.
   return (config.isErrorReportingEnabled ?? false) && (config.isProductAnalyticsEnabled ?? false);
 });
 

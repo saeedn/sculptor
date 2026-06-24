@@ -41,7 +41,6 @@ from fastapi.websockets import WebSocket
 from fastapi.websockets import WebSocketDisconnect
 from loguru import logger
 from pydantic import ValidationError
-from pydantic.alias_generators import to_camel
 
 from sculptor import version
 from sculptor.agents.default.claude_code_sdk.btw_process_manager import NoBtwSessionAvailable
@@ -213,7 +212,6 @@ from sculptor.web.data_types import RenameAgentRequest
 from sculptor.web.data_types import RepoInfo
 from sculptor.web.data_types import SendMessageRequest
 from sculptor.web.data_types import SetModelRequest
-from sculptor.web.data_types import SetTelemetryRequest
 from sculptor.web.data_types import SignalEventRequest
 from sculptor.web.data_types import SkillInfo
 from sculptor.web.data_types import SkipAccountSetupRequest
@@ -2687,16 +2685,6 @@ def _prevent_action_if_out_of_free_space(services: CompleteServiceCollection) ->
         )
 
 
-@router.get("/api/v1/telemetry_info")
-def get_telemetry_info(user_session: UserSession = Depends(get_user_session)) -> telemetry.TelemetryInfo:
-    """Returns telemetry info for the current user.
-
-    If the current user has not initialized their configuration, use an
-    anonymous config.
-    """
-    return get_logged_in_or_anonymous_telemetry_info()
-
-
 def get_logged_in_or_anonymous_telemetry_info() -> telemetry.TelemetryInfo:
     """Returns telemetry info for the current user.
 
@@ -2914,15 +2902,6 @@ def get_user_config(request: Request, user_session: UserSession = Depends(get_us
     return get_user_config_instance()
 
 
-# The SDK-facing flags that POST /api/v1/config/telemetry owns. PUT
-# /api/v1/config rejects requests that would change any of them.
-_TELEMETRY_FLAGS = (
-    "is_error_reporting_enabled",
-    "is_product_analytics_enabled",
-    "is_session_recording_enabled",
-)
-
-
 @router.put("/api/v1/config")
 def update_user_config(
     update_config_request: UpdateUserConfigRequest,
@@ -2937,17 +2916,6 @@ def update_user_config(
     ``enable_in_place_workspaces`` that a different code path just changed.
     """
     old_user_config = get_user_config_instance()
-
-    for flag in _TELEMETRY_FLAGS:
-        for key in (flag, to_camel(flag)):
-            if key not in update_config_request.user_config:
-                continue
-            new_value = update_config_request.user_config[key]
-            if new_value != getattr(old_user_config, flag):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Use POST /api/v1/config/telemetry to change telemetry consent.",
-                )
 
     merged = old_user_config.model_dump(by_alias=True) if old_user_config else {}
     merged.update(update_config_request.user_config)
@@ -2964,27 +2932,6 @@ def update_user_config(
         services = get_services_from_request_or_websocket(request)
         services.dependency_management_service.get_status()
 
-    return new_user_config
-
-
-@router.post("/api/v1/config/telemetry")
-def set_telemetry(
-    set_telemetry_request: SetTelemetryRequest,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> UserConfig:
-    """Flip the binary telemetry consent.
-
-    This is the only endpoint allowed to change the underlying telemetry
-    flags; PUT /api/v1/config rejects requests that would change them.
-    """
-    old_user_config = get_user_config_instance()
-    new_user_config = model_update(
-        old_user_config,
-        get_privacy_settings_for_telemetry(set_telemetry_request.enabled).model_dump(),
-    )
-    save_config(new_user_config, get_config_path())
-    set_user_config_instance(new_user_config)
     return new_user_config
 
 

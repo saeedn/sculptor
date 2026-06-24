@@ -1,5 +1,4 @@
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { posthog } from "posthog-js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
 
 import { useImbueLocation } from "~/common/NavigateUtils.ts";
@@ -267,8 +266,6 @@ export const useRunCommand = (): ((cmd: Command, opts?: { keepOpen?: boolean }) 
       // pending if the in-flight command is OURS (so a faster sibling's
       // finally doesn't clear our spinner).
       setPending((prev) => prev ?? cmd.id);
-      let didThrow = false;
-      let didTimeOut = false;
       // Hoisted so a synchronous throw before the Promise.race still
       // clears the timer in `finally` — otherwise the timeout fires
       // 30s later on a settled race (no-op visible behavior, but a
@@ -286,7 +283,6 @@ export const useRunCommand = (): ((cmd: Command, opts?: { keepOpen?: boolean }) 
         timeoutHandle = setTimeout(() => timeoutResolve("timeout"), COMMAND_TIMEOUT_MS);
         const result = await Promise.race([performPromise.then(() => "ok" as const), timeoutPromise]);
         if (result === "timeout") {
-          didTimeOut = true;
           console.warn(
             `[command-palette] "${cmd.id}" did not complete within ${COMMAND_TIMEOUT_MS}ms; releasing pending state. The command may still complete in the background.`,
           );
@@ -295,7 +291,6 @@ export const useRunCommand = (): ((cmd: Command, opts?: { keepOpen?: boolean }) 
           // background.
         }
       } catch (err) {
-        didThrow = true;
         console.error(`[command-palette] "${cmd.id}" threw`, err);
       } finally {
         if (timeoutHandle != null) clearTimeout(timeoutHandle);
@@ -303,29 +298,6 @@ export const useRunCommand = (): ((cmd: Command, opts?: { keepOpen?: boolean }) 
       }
       const elapsed = performance.now() - start;
       console.debug(`[command-palette] ran "${cmd.id}" in ${elapsed.toFixed(1)}ms`);
-
-      // Telemetry: emit a product-analytics event for actual command runs.
-      // Page-opener commands (those that just push a sub-page) are excluded
-      // because they're navigation, not "the user ran a command" — emitting
-      // for every breadcrumb push would flood downstream dashboards with
-      // low-signal events. The `console.debug` above is developer-facing
-      // and intentionally separate from this telemetry call.
-      //
-      // Property names use snake_case to match PostHog conventions and the
-      // existing register() shape in `~/common/Telemetry.ts`. Only the
-      // command id, group, page, elapsed, and boolean flags are emitted —
-      // no PII (no titles, no search query, no workspace/agent ids).
-      if (!isPageOpener) {
-        posthog.capture("command_palette.command_run", {
-          command_id: cmd.id,
-          group: cmd.group,
-          page: ctx.page,
-          keep_open: shouldKeepOpen,
-          elapsed_ms: Math.round(elapsed),
-          timed_out: didTimeOut,
-          threw: didThrow,
-        });
-      }
 
       if (!shouldKeepOpen && !isPageOpener) {
         close();

@@ -320,7 +320,6 @@ export const BackendStatusBoundary = (props: PropsWithChildren<BackendStatusBoun
     return (
       <>
         <ErrorPage
-          isCapturingErrorWithSentry={false}
           headerText="Oops! That is embarrassing. An unexpected error has occurred. Try restarting the app or contacting us if the problem persists."
           errorMessage={errorMessage}
           onClearCustomBackend={isCustomCommandMode ? handleClearCustomBackend : undefined}

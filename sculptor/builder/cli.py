@@ -31,8 +31,6 @@ from packaging.version import InvalidVersion
 from packaging.version import Version
 
 import sculptor.foundation.git
-from sculptor import posthog_settings
-from sculptor import sentry_settings
 from sculptor.version import VersionComponent
 from sculptor.version import dev_git_sha
 from sculptor.version import is_devrelease
@@ -120,44 +118,22 @@ def version() -> None:
 @app.command("setup-build-vars")
 def setup_build_vars(environment: str) -> None:
     """Depending on the build environment, we will set up the build variables."""
-    # match environment against the known environments, and export the following variables
     release_id: str
-    frontend_dsn: str
-    frontend_posthog_token: str
     semver = pep_440_to_semver(pyproject_version())
     match environment:
         case "dev":
             release_id = f"{semver}-dev"
-            frontend_dsn = sentry_settings.SCULPTOR_DEV_FRONTEND_SENTRY_DSN
-            frontend_posthog_token = posthog_settings.SCULPTOR_DEV_FRONTEND_POSTHOG_TOKEN
         case "testing":
             release_id = f"{semver}-testing"
-            frontend_dsn = sentry_settings.SCULPTOR_TESTING_FRONTEND_SENTRY_DSN
-            frontend_posthog_token = posthog_settings.SCULPTOR_TESTING_FRONTEND_POSTHOG_TOKEN
         case "production":
             release_id = semver
-            frontend_dsn = sentry_settings.SCULPTOR_PRODUCTION_FRONTEND_SENTRY_DSN
-            frontend_posthog_token = posthog_settings.SCULPTOR_PRODUCTION_FRONTEND_POSTHOG_TOKEN
         case str():
             typer.secho("Invalid environment specified. Must be one of: dev, testing, prod.", fg=typer.colors.RED)
             raise typer.Exit(code=1)
         case _ as never:
             assert_never(never)
 
-    # A production build with an empty DSN ships an app that can't report bugs.
-    # Warn on stderr (stdout is eval'd by the caller); CI escalates this to a
-    # hard failure.
-    if environment == "production" and not frontend_dsn:
-        warning = (
-            "warning: SCULPTOR_PRODUCTION_FRONTEND_SENTRY_DSN is empty; "
-            + "this build will have frontend error reporting and Report-a-Problem disabled."
-        )
-        typer.secho(warning, fg=typer.colors.YELLOW, err=True)
-
     typer.echo(f"export SCULPTOR_SENTRY_RELEASE_ID='{release_id}'")
-    typer.echo(f"export SCULPTOR_FRONTEND_SENTRY_DSN='{frontend_dsn}'")
-    typer.echo(f"export SCULPTOR_FRONTEND_POSTHOG_TOKEN='{frontend_posthog_token}'")
-    typer.echo(f"export SCULPTOR_FRONTEND_POSTHOG_HOST='{posthog_settings.SCULPTOR_FRONTEND_POSTHOG_HOST}'")
 
 
 @app.command("cut-release")

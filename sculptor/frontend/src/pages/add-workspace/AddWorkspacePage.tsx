@@ -1,7 +1,6 @@
 import { Button, Flex, Select, Spinner, Text, Tooltip } from "@radix-ui/themes";
 import { useAtomValue, useSetAtom } from "jotai";
 import { BlocksIcon, BotIcon } from "lucide-react";
-import { posthog } from "posthog-js";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -326,17 +325,6 @@ export const AddWorkspacePage = (): ReactElement => {
       // The agent was actually created with this type — record it as the
       // shared MRU so the tab bar's plain + click creates the same type.
       setLastUsedAgentType(effectiveAgentTypeValue);
-
-      posthog.capture("workspace.created", {
-        workspace_id: workspaceId,
-        agent_id: agentResponse.data.id,
-        mode,
-        agent_type: effectiveAgentType,
-        has_workspace_name: workspaceName.trim().length > 0,
-        // Branch names are user-entered text (they can encode feature/ticket/
-        // customer names), so record only whether one was chosen.
-        has_source_branch: sourceBranch != null,
-      });
 
       navigateToAgent(workspaceId, agentResponse.data.id);
     } catch (error) {

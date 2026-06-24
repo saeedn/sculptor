@@ -4,7 +4,6 @@ import { atom } from "jotai";
 
 import type { HealthCheckResponse } from "~/api";
 import { uploadDiagnostics } from "~/api";
-import { getTelemetryEnabled } from "~/common/Telemetry.ts";
 
 import { healthCheckDataAtom } from "./backend.ts";
 import { userEmailAtom, userFullNameAtom } from "./userConfig.ts";
@@ -224,7 +223,7 @@ export const submitReportAtom: WritableAtom<null, [], Promise<void>> = atom(null
     // settle, then stop and re-arm buffering, so replays only ever upload
     // around a submitted report.
     const replay = Sentry.getReplay();
-    if (replay !== undefined && getTelemetryEnabled()) {
+    if (replay !== undefined) {
       try {
         await replay.flush();
         await replay.stop();

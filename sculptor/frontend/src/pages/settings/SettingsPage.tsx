@@ -50,7 +50,6 @@ import { PluginsSettingsSection } from "./components/PluginsSettingsSection.tsx"
 import { ReposSection } from "./components/ReposSection.tsx";
 import { SettingRow } from "./components/SettingRow.tsx";
 import { SettingsSectionLayout } from "./components/SettingsSection.tsx";
-import { TelemetryRow } from "./components/TelemetryRow.tsx";
 import { ThemeBuilderSection } from "./components/ThemeBuilderSection.tsx";
 import { SETTINGS_SECTIONS, SettingsSection, type SettingsSectionId } from "./sections.ts";
 import styles from "./SettingsPage.module.scss";
@@ -373,14 +372,13 @@ export const SettingsPage = (): ReactElement => {
               )}
               {activeSection === SettingsSection.PLUGINS && <PluginsSettingsSection />}
               {activeSection === SettingsSection.PRIVACY && (
-                <SettingsSectionLayout description="Your email and telemetry preferences.">
+                <SettingsSectionLayout description="Your email address.">
                   <AccountFieldRow
                     title="Email Address"
                     description="Email address associated with your account"
                     value={userEmail ?? ""}
                     elementId={ElementIds.SETTINGS_EMAIL_FIELD}
                   />
-                  <TelemetryRow setToast={setToast} />
                 </SettingsSectionLayout>
               )}
               {activeSection === SettingsSection.THEME_BUILDER && <ThemeBuilderSection />}

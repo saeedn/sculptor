@@ -2,7 +2,6 @@ import { Flex, IconButton, Popover, Spinner, Text, Tooltip } from "@radix-ui/the
 import { DropdownMenu } from "@radix-ui/themes";
 import { useAtomValue } from "jotai";
 import { Check, ChevronDown, ChevronUp, CopyIcon, GitMergeIcon, Info, PlusIcon, TriangleAlert } from "lucide-react";
-import { posthog } from "posthog-js";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -154,11 +153,6 @@ const CreatePrButton = ({ targetBranch, gitProvider }: CreatePrButtonProps): Rea
   const handleClick = (): void => {
     const prTerm = isGitLab ? "merge request" : "pull request";
     const message = `${prCreationPrompt}\n\nTarget the ${prTerm} against \`${targetBranch}\`.`;
-    posthog.capture("pr.create_initiated", {
-      git_provider: gitProvider,
-      // The branch name is user-entered text (it can encode feature/ticket/
-      // customer names), so it is deliberately not recorded.
-    });
     chatActions.sendMessage?.(message);
   };
 
@@ -258,10 +252,6 @@ const OpenPrButton = ({ prStatus, isDropdownOpen, gitProvider }: OpenPrButtonPro
 
   const handleOpenUrl = (): void => {
     if (prStatus.prWebUrl) {
-      posthog.capture("pr.opened_in_browser", {
-        git_provider: gitProvider,
-        pr_state: "open",
-      });
       window.open(prStatus.prWebUrl, "_blank");
     }
   };
@@ -314,10 +304,6 @@ const MergedPrButton = ({ prStatus, gitProvider }: MergedPrButtonProps): ReactEl
 
   const handleOpenUrl = (): void => {
     if (prStatus.prWebUrl) {
-      posthog.capture("pr.opened_in_browser", {
-        git_provider: gitProvider,
-        pr_state: "merged",
-      });
       window.open(prStatus.prWebUrl, "_blank");
     }
   };
@@ -472,11 +458,6 @@ const AssignPrButton = ({ prStatus, targetBranch, gitProvider, onSwitchTarget }:
   const handleCreate = (): void => {
     const prTerm = isGitLab ? "merge request" : "pull request";
     const message = `${prCreationPrompt}\n\nTarget the ${prTerm} against \`${targetBranch}\`.`;
-    posthog.capture("pr.create_initiated", {
-      git_provider: gitProvider,
-      // The branch name is user-entered text (it can encode feature/ticket/
-      // customer names), so it is deliberately not recorded.
-    });
     chatActions.sendMessage?.(message);
   };
 

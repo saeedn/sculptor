@@ -1,5 +1,11 @@
 # Sculptor Slim — Architecture
 
+> _Pinned to commit `36dbee4c29` (branch `saeed/sculptor-slim/remove-features`).
+> All file paths, line-of-code counts, and test tallies below were verified
+> against that tree. This is a point-in-time analysis; Plan/Build will rebase
+> onto `main`. As of pinning, `main` had not diverged on any structure this
+> doc relies on._
+
 ## Executive Summary
 
 This is a **removal/simplification** effort, not a feature build. The
@@ -24,7 +30,7 @@ not "disentangle two woven code paths." That makes the backend cut far
 lower-risk than the raw file counts suggest.
 
 The defining *risk* is therefore not the backend but the **test suite**:
-~131 of ~285 integration test files reference `FakeClaude`, plus a
+~133 of ~285 integration test files reference `FakeClaude`, plus a
 `real_claude/` suite (18 files) and a `real_pi/` suite (17). REQ-TEST
 mandates a deliberate per-test triage (delete vs. rewrite) and a small
 **fake registered terminal agent** to replace `FakeClaude` for the tests
@@ -143,9 +149,14 @@ Downstream of that:
   stream to convert.
 - **The sculptor MCP server** (`agents/default/claude_code_sdk/mcp_server.py`
   + `mcp_schemas.py` + `mcp_result_formatters.py`) lives *entirely inside*
-  the rich-Claude directory and is deleted with it. Its only importers are
-  within `claude_code_sdk/`, plus `state/claude_state.py` and
-  `interfaces/agents/harness.py` (also pruned). **Consequence (resolves a
+  the rich-Claude directory and is deleted with it. Every importer outside
+  `claude_code_sdk/` is itself in code already slated for deletion:
+  `state/claude_state.py` (REQ-AGENT-4), `agents/pi_agent/backchannel.py`
+  (Pi removal), and the `agents/testing/fake_claude*` modules (REQ-TEST-3).
+  So the MCP server deletes cleanly. (Note: `interfaces/agents/harness.py`
+  does **not** import the MCP modules and is **kept** — it is the surviving
+  `Harness` ABC + `HarnessCapabilities` base that `TerminalHarness`
+  subclasses.) **Consequence (resolves a
   spec Open Question):** terminal-mode `claude` is the user's vanilla CLI
   and does *not* connect to a sculptor MCP server; the workflow skills'
   Plan/AskUserQuestion steps fall back to Claude Code's **built-in**
@@ -166,11 +177,15 @@ Downstream of that:
 
 ### `sculpt` CLI agent creation (REQ-AGENT-1)
 
-`sculpt agent create` must let a caller create either a **plain terminal**
-agent or a **registered** terminal agent (selecting a registration such as
-the bundled `claude-code`) — via a `--harness` selector. There are no
-claude/pi harness options to drop (the CLI never exposed them). This keeps
-the CLI's create surface aligned with the two surviving agent configs.
+`sculpt agent create` already takes a `--harness` selector, but it currently
+accepts `Claude` / `pi` / `Terminal` / `Registered` and **defaults to
+`Claude`** when unset (server-side, `web/app.py` `agent create` handler:
+"Defaults to Claude when unset"; see `test_sculpt_cli.py::test_*harness*`).
+The slim-down must **drop the `Claude` and `pi` values**, leaving
+`Terminal` (plain) and `Registered`, and **re-point the default** at the
+bundled `claude-code` registration so a bare `sculpt agent create` launches
+`claude` (matching the in-app new-agent default — see REQ-AGENT-2/3). This
+aligns the CLI's create surface with the two surviving agent configs.
 
 ### Bundled default agent & registered-agent loading (REQ-AGENT-2/3)
 
@@ -224,7 +239,7 @@ This keeps REQ-CORE-3 behaviorally intact.
 `AlphaChatInterface` vs `AgentTerminalPanel` via
 `useTaskSupportsChatInterface`. After the cut it renders
 `AgentTerminalPanel` unconditionally. The entire `chat-alpha/` tree
-(~165 files + ~10 hooks + ~20 stories), `ChatInput.tsx` and its
+(~185 files including its hooks and stories), `ChatInput.tsx` and its
 selectors (plan-mode/effort/fast-mode/model), file-attachment UI,
 queued-message edit/undo, chat search, `@`-mentions, `AskUserQuestion` /
 `AlphaExitPlanModeBlock`, and `BtwPopup` are deleted. Shared task-state
@@ -262,11 +277,13 @@ removed. **Decision (Q&A): binary resolution is PATH-only** —
 `shutil.which("claude")` / `shutil.which("git")` with **no config
 field**; `DependencyPaths`/`BinaryMode` are deleted, not slimmed. A
 non-`PATH` install is unsupported; users fix their `PATH`. The
-install/auth HTTP routes are deleted; a single read-only status check may
-survive to back onboarding. Onboarding collapses from email→install→repo
-to a **single read-only screen** that runs `claude --version` /
-`git --version` on `PATH`, reports found/missing with an install link,
-and enters the app. The email-confirmation step (which fed analytics
+install/auth HTTP routes are deleted. Because
+`dependency_management_service.py` is removed wholesale, onboarding's check
+is backed by a **new small helper** (or a single read-only endpoint) that
+just calls `shutil.which("claude")` / `shutil.which("git")` — not the old
+service. Onboarding collapses from email→install→repo to a **single
+read-only screen** that runs that check, reports found/missing with an
+install link, and enters the app. The email-confirmation step (which fed analytics
 identity) is removed entirely.
 
 ### Backend launch & container (REQ-BACKEND)
@@ -351,7 +368,10 @@ _(Draft — refined during Q&A. Grouped by action.)_
 - `sculptor/sculptor/services/dependency_management_service.py`
 - `sculptor/sculptor/services/managed_tools.py`
 - `sculptor/sculptor/posthog_settings.py`, `sentry_settings.py`
-- btw_service module(s)
+- btw: `sculptor/sculptor/services/btw_service/` (incl. `api.py`,
+  `api_test.py`), `agents/default/claude_code_sdk/btw_process_manager.py`
+  (+ `_test.py`, but that goes with the `claude_code_sdk/` dir delete),
+  and the test element `sculptor/sculptor/testing/elements/btw_popup.py`
 
 **Delete (frontend / electron):**
 - `sculptor/frontend/src/pages/workspace/components/chat-alpha/` (+ stories)
@@ -381,13 +401,16 @@ _(Draft — refined during Q&A. Grouped by action.)_
   registration) and `config/user_config.py` `BabysitterAgent*` union
   (drop `BabysitterAgentClaude`/`BabysitterAgentPi`)
 - `database/workspace_enums.py` (strategy enum)
-- `config/user_config.py` (`DependencyPaths` simplification)
+- `config/user_config.py` (remove `DependencyPaths` — deleted, not
+  slimmed; see Data Model — and the experimental flags / `BabysitterAgent*`)
 - `web/app.py` (drop deps/diagnostics/telemetry routes)
 - `frontend Main.tsx`, `instrument.ts`, `App.tsx` (unhook bootstraps)
 - bundled skill packs — strip `mcp__sculptor__*` references from
   `sculptor/sculptor-workflow/skills/*` (~9) and
   `sculptor/sculptor-experimental/skills/*` (2)
-- `sculpt` CLI `agent create` (`--harness`: plain terminal | registered)
+- `sculpt` CLI `agent create` / `web/app.py` create handler — drop the
+  `Claude`/`pi` `--harness` values (keep `Terminal`/`Registered`) and
+  re-point the default from `Claude` to the bundled `claude-code` registration
 - `electron/main.ts` (drop auto-updater + custom-backend spawn)
 - `ChatPanelContent.tsx` (terminal-only render)
 - `pages/settings/sections.ts` + `SettingsPage.tsx` (section removals)
@@ -439,7 +462,7 @@ _(Draft — refined during Q&A. Grouped by action.)_
 
 ## Risks and Mitigations
 
-- **Test-suite blast radius (highest):** 131 FakeClaude files + 35
+- **Test-suite blast radius (highest):** ~133 FakeClaude test files + 35
   real_claude/real_pi files. Mitigation (shape, not sequencing): a
   deliberate per-test delete/rewrite classification artifact, plus a
   minimal fake registered terminal agent as the replacement harness for
@@ -449,9 +472,23 @@ _(Draft — refined during Q&A. Grouped by action.)_
   Mitigation: the explore pass mapped the dividing line; treat
   `ChatPanelContent` as the keep/cut boundary and verify imports before
   deleting.
-- **Legacy DB rows crashing on startup:** Mitigation: the tombstone /
-  defensive-deserialization decision (Open Questions) plus an alembic
-  version-test for a legacy row.
+- **Old DB opened instead of discarded:** the clean-break decision (no
+  legacy DB read; see Data Model / Migration Strategy) *eliminates* the
+  "legacy rows crash on startup" risk — there are no tombstones or
+  defensive-deserialization code to maintain. The residual risk is the
+  inverse: the upgrade path must actually **discard/replace** the old DB,
+  because if the slimmed app instead opens a pre-slim DB it would hit
+  removed enum values (`IN_PLACE`/`CLONE`, `CLAUDE`/`PI`) during
+  deserialization and crash. Mitigation: make the fresh-start/discard
+  behavior explicit and cover it with a startup test against a pre-slim DB.
+- **Enum/config removal fan-out:** dropping `AgentTypeName.CLAUDE/PI` and
+  the `ClaudeCodeSDKAgentConfig`/`PiAgentConfig` union tags forces edits at
+  every `match`/`isinstance` site beyond the `run_task` dispatch — e.g.
+  `web/derived.py`, `web/streams.py`, `web/app.py`, `web/terminal_input.py`,
+  `ci_babysitter_service/coordinator.py`. Mitigation: grep each removed
+  symbol to completion before deleting; after the backend enum edits,
+  run `just generate-api` (TS types are generated from these models) and
+  `just ratchets`.
 - **Onboarding regression locking users out:** a too-strict PATH check
   could block valid setups. Mitigation: report-and-link, allow proceed
   semantics per REQ-ONB.
@@ -471,11 +508,17 @@ _(Draft — refined during Q&A. Grouped by action.)_
 ## Testing Strategy
 
 The integration suite is the highest-risk area. Current shape (~285
-files): **211 frontend**, **37 regression**, **18 real_claude**, **17
-real_pi**, 2 root. `FakeClaude` is referenced by **131** of them — **106
-frontend + 22 regression + 3 real_claude**. `FakeClaude` imports from
-`claude_code_sdk.harness`, so it is deleted with the rich agent and every
-dependent test must be reclassified.
+files): **211 frontend** (209 test + 2 infra), **37 regression** (35 + 2),
+**18 real_claude**, **17 real_pi**, 2 root — 273 genuine `test_*.py` plus
+12 infra files. `FakeClaude` is *literally* referenced by **~133** test
+files — **109 frontend + 23 regression + 1 real_claude** (plus the shared
+fixtures `frontend/conftest.py` and `real_claude/conftest.py`/`helpers.py`).
+The triage's `fakeclaude` column is broader than this literal count: it
+marks a test "yes" when it is *driven by* a fake agent, which most tests do
+implicitly via `start_task_and_wait_for_ready` (the default model is a fake)
+without importing `fake_claude` by name. Either way, `FakeClaude` imports
+from `claude_code_sdk.harness` (`compute_claude_jsonl_directory`), so it is
+deleted with the rich agent and every dependent test must be reclassified.
 
 **How FakeClaude works (drives the triage + harness design).** It is a
 *scripted* agent: a test sends a prompt carrying a command DSL —
@@ -531,11 +574,12 @@ push branch → PR status updates → CI Babysitter (driving the bundled
 registration) advances it.
 
 **The per-file classification is done** — see the companion
-`test-triage.md` (the REQ-TEST-1 deliverable). Headline: of ~285 files,
-**166 DELETE / 79 REWRITE / 34 KEEP** (~60% / 28% / 12%), all verdicts
-firm (the six initially-ambiguous rows are resolved in §6). Crucially, this
-**confirms the "narrower than FakeClaude" assumption**: every one of the 79
-REWRITE files needs only the side-effecting DSL (write/edit/bash/git) plus
+`test-triage.md` (the REQ-TEST-1 deliverable). Headline: of 279 classified
+files, **166 DELETE / 80 REWRITE / 33 KEEP** (~60% / 29% / 12%), all
+verdicts firm (the six initially-ambiguous rows are resolved in §6).
+Crucially, this **confirms the "narrower than FakeClaude" assumption**:
+every one of the 80 REWRITE files needs only the side-effecting DSL
+(write/edit/bash/git) plus
 terminal lifecycle signals — none needs JSONL streaming, tool pills, MCP
 control, or AUQ blocks. So the fake terminal-agent harness can be built to
 that reduced surface with confidence. Sequencing remains a Plan concern.
@@ -561,8 +605,10 @@ Resolved in Q&A:
   new-agent creation to it remains.
 - ~~CI Babysitter fallback~~ → **bundled `claude` registration** (keeps
   REQ-CORE-3 intact; bare-shell MRU stays Disabled).
-- ~~`sculpt` CLI create surface~~ → keep `--harness` (plain terminal |
-  registered); no claude/pi options existed to drop.
+- ~~`sculpt` CLI create surface~~ → `--harness` already exists and today
+  accepts `Claude`/`pi`/`Terminal`/`Registered` (defaulting to `Claude`).
+  Drop the `Claude`/`pi` values, keep `Terminal`/`Registered`, and re-point
+  the default at the bundled `claude-code` registration.
 
 Remaining for the user to confirm against the spec:
 

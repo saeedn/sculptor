@@ -25,22 +25,26 @@ applied that rule; ambiguities were flagged rather than guessed.
 See the per-directory tables below. Aggregate counts are computed from the
 verdict column (the base verdict for ambiguous rows):
 
-| scope | DELETE | REWRITE | KEEP | test files | (+infra) |
+| scope | DELETE | REWRITE | KEEP | files classified | (+infra) |
 |---|---|---|---|---|---|
-| frontend | 116 | 64 | 29 | 209 | +2 = 211 |
+| frontend | 116 | 65 | 28 | 209 | +2 = 211 |
 | regression | 18 | 15 | 2 | 35 | +2 = 37 |
-| real_claude | 15 | 0 | 3¹ | 18 | — |
-| real_pi | 17 | 0 | 0 | 17 | — |
-| **total** | **166** | **79** | **34** | **279** | +6 = 285² |
+| real_claude | 15³ | 0 | 3¹ | 18 | — |
+| real_pi | 17³ | 0 | 0 | 17 | — |
+| **total** | **166** | **80** | **33** | **279** | +6 = 285² |
 
 ¹ real_claude KEEP = the one surviving terminal-agent test + its
-`__init__`/`conftest`. ² includes the 2 root `__init__`/`conftest` files.
-All previously-ambiguous rows are now resolved (see §6).
-`__init__.py`/`conftest.py` are infrastructure, not test subjects, and are
-listed only where they affect a verdict.
+`__init__`/`conftest`. ² The "+infra" column holds the frontend, regression,
+and root `__init__`/`conftest` files (2+2+2). ³ The real_claude (18) and
+real_pi (17) figures **fold in their own 3 infra files each**
+(`__init__`/`conftest`/`helpers`), counted under their verdicts (e.g.
+`helpers.py` → DELETE), rather than in the "+infra" column — that is why the
+column is "files classified," not "test files." Genuine `test_*.py` files =
+**273**; all integration `.py` = **285**. All previously-ambiguous rows are
+resolved (see §6); one further row was reclassified in review (see §6, row 7).
 
-**So: ~60% of the suite is DELETE, ~28% REWRITE against the fake terminal
-agent, ~12% KEEP.** The REWRITE bucket (79 files) is the real work — it is
+**So: ~60% of the suite is DELETE, ~29% REWRITE against the fake terminal
+agent, ~12% KEEP.** The REWRITE bucket (80 files) is the real work — it is
 what sizes the REQ-TEST-4 fake-terminal-agent harness and validates the
 architecture's "narrower than FakeClaude" assumption: every REWRITE row
 above needs only the side-effecting DSL (write/edit/bash/git) plus
@@ -173,7 +177,7 @@ a vehicle to mutate the workspace.
 | test_mention_picker_completion.py | DELETE | no | +/@ entity-mention picker | @-mentions + ChatInput picker removed |
 | test_migration.py | KEEP | no | data-dir bootstrap when .format_version missing | infra/bootstrap; survives |
 | test_minimum_interface_conformance.py | REWRITE | yes | harness turn-boundary conformance | conformance survives; pi half removed, re-express against terminal agent |
-| test_missing_claude_binary.py | KEEP | no | friendly error when claude binary disappears | claude availability/error survives; real-claude stub |
+| test_missing_claude_binary.py | REWRITE | no | friendly error when claude binary disappears | RESOLVED (reclassified in review): behavior survives, but the test sets a broken path via `DependencyPaths(claude=…)` + `dependency_stubs` + `_resolve_claude_binary_path()` — all removed under PATH-only resolution. Re-express by making `shutil.which("claude")` fail (manipulate `PATH`), not via the deleted config field |
 | test_model_capability_gating.py | DELETE | yes | model selector + fast-mode | removed ChatInput controls |
 | test_multi_agent_workspace.py | REWRITE | yes | multiple agents per workspace | multi-agent + tab lifecycle survive; FakeClaude vehicle |
 | test_multi_repo.py | REWRITE | yes | multi-repo workspace creation & switching | project/repo + workspace lifecycle survive |
@@ -386,8 +390,9 @@ streaming, tool pills, MCP control, or AUQ blocks (those surfaces are gone).
 
 ## §6. Ambiguous — RESOLVED
 
-All six flagged rows were settled with the user (and grounded in code, not
-guessed). The verdicts are reflected in the tables above.
+The six originally-flagged rows were settled with the user (and grounded in
+code, not guessed); a seventh (row 7) was caught and reclassified during
+review. The verdicts are reflected in the tables above.
 
 - **frontend/test_custom_actions.py** → **REWRITE.** The actions panel
   survives untouched: `chatActionsAtom` is agent-agnostic and
@@ -412,3 +417,12 @@ guessed). The verdicts are reflected in the tables above.
 - **real_claude/test_stop_kills_foreground_subprocess.py** → **DELETE.**
   Redundant — process-group teardown is covered by the two frontend
   `test_stop_kills_*` rewrites against terminal agents.
+- **(row 7) frontend/test_missing_claude_binary.py** → **REWRITE** (was
+  KEEP). The friendly "claude binary missing" behavior survives, but the
+  test drives it through removed machinery: it imports `DependencyPaths`,
+  sets `dependency_paths={"claude": <stub>}`, and relies on
+  `dependency_stubs.create_claude_stub_dir` + `_resolve_claude_binary_path()`
+  — all gone under PATH-only resolution. Re-express by making
+  `shutil.which("claude")` fail (e.g. an empty `PATH`), asserting the same
+  friendly error. KEEP "no change needed" was incorrect because the test's
+  *vehicle* (not just subject) sits on deleted surface.

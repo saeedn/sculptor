@@ -5,6 +5,10 @@ setup_status column. After a successful run we persist `succeeded`; on app
 restart, the lifespan reconciler should leave that row alone (only `running`
 rows are converted to `failed`). Manual rerun via the SetupStatusCard's
 button still works.
+
+The workspace is created with a terminal agent (no chat / prompt vehicle); the
+setup-command run + status card are independent of which agent the workspace
+holds.
 """
 
 from playwright.sync_api import expect

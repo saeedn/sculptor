@@ -15,6 +15,10 @@ end-to-end flow:
 4. Reopen the pre-existing workspace and assert the setup card never enters
    `running` (the cancel button never appears) — i.e. the command did not
    auto-fire retroactively.
+
+The workspace is created with a terminal agent (no chat / prompt vehicle); the
+setup-command run + status card are independent of which agent the workspace
+holds.
 """
 
 from playwright.sync_api import expect
@@ -50,7 +54,7 @@ def test_setup_command_does_not_run_in_preexisting_workspace(
             setup_input.blur()
         assert response_info.value.ok, f"setup command clear failed: {response_info.value.status}"
 
-        start_task_and_wait_for_ready(page, prompt="Say hi to me")
+        start_task_and_wait_for_ready(page)
 
         # Configure a setup command, then shut down.
         settings_page = navigate_to_settings_page(page=page)

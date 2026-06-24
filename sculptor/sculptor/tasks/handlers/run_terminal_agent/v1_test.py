@@ -100,6 +100,8 @@ def environment(
         project_id=project.object_id,
         concurrency_group=test_root_concurrency_group,
         repo_host_path=code_dir,
+        source_branch="main",
+        requested_branch_name=f"ws/{uuid4().hex[:8]}",
     )
     try:
         yield environment

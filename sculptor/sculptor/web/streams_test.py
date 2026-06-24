@@ -73,7 +73,7 @@ def _make_terminal_workspace(*, setup_run_id: str | None, setup_log_path: str | 
         project_id=ProjectID(),
         organization_reference=OrganizationReference("org-1"),
         description="ws",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
         environment_id="env-1",
         setup_status="succeeded",
         setup_run_id=setup_run_id,

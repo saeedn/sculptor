@@ -1,8 +1,7 @@
 """Integration tests for worktree-mode edge cases.
 
-Three orthogonal spec requirements bundled for suite manageability:
-- Mode selector visibility around the now-opt-in CLONE option.
-- Workspace setup command runs in worktree mode just like in clone.
+Two orthogonal spec requirements bundled for suite manageability:
+- Workspace setup command runs in a worktree workspace.
 - Missing local repo surfaces a clear error state.
 
 The "missing local repo" case is intentionally last: the project-accessibility
@@ -18,38 +17,11 @@ from playwright.sync_api import expect
 
 from sculptor.constants import ElementIDs
 from sculptor.testing.elements.setup_status import PlaywrightSetupStatusElement
-from sculptor.testing.elements.user_config import enable_clone_workspaces
-from sculptor.testing.elements.user_config import enable_in_place_workspaces
 from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
 from sculptor.testing.playwright_utils import navigate_to_add_workspace_page
 from sculptor.testing.playwright_utils import navigate_to_settings_page
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-
-
-@user_story("to only see the CLONE option when the opt-in clone flag is enabled")
-def test_clone_mode_hidden_when_flag_off(sculptor_instance_: SculptorInstance) -> None:
-    page = sculptor_instance_.page
-    enable_in_place_workspaces(page)
-
-    # With clone disabled but in-place enabled, the mode selector is visible
-    # (since one opt-in flag is on) and lists Worktree + In-place but NOT
-    # Clone.
-    navigate_to_add_workspace_page(page)
-    add_ws = PlaywrightAddWorkspacePage(page=page)
-    add_ws.get_mode_selector().click()
-
-    expect(add_ws.get_mode_option_worktree()).to_be_visible()
-    expect(add_ws.get_mode_option_in_place()).to_be_visible()
-    expect(add_ws.get_mode_option_clone()).to_have_count(0)
-
-    page.keyboard.press("Escape")
-
-    # Flip on the clone flag — Clone option appears in the selector.
-    enable_clone_workspaces(page)
-    navigate_to_add_workspace_page(page)
-    add_ws.get_mode_selector().click()
-    expect(add_ws.get_mode_option_clone()).to_be_visible()
 
 
 @user_story("to have my worktree workspace automatically set up when created")

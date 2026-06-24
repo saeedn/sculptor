@@ -26,7 +26,6 @@ from sculptor.state.messages import LLMModel
 from sculptor.testing.elements.base import type_into_tiptap
 from sculptor.testing.elements.chat_panel import select_model_by_name
 from sculptor.testing.elements.task_starter import FAKE_CLAUDE_MODEL_NAME
-from sculptor.testing.elements.user_config import enable_clone_workspaces
 from sculptor.testing.elements.user_config import enable_pi_agent
 from sculptor.testing.pages.settings_page import PlaywrightSettingsPage
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
@@ -245,7 +244,6 @@ def start_task_and_wait_for_ready(
     wait_for_agent_to_finish: bool = True,
     model_name: str | None = FAKE_CLAUDE_MODEL_NAME,
     workspace_name: str | None = None,
-    mode: str | None = None,
     agent_type: str | None = None,
 ) -> PlaywrightTaskPage:
     """Create a workspace and agent through the Add Workspace UI.
@@ -270,17 +268,8 @@ def start_task_and_wait_for_ready(
     that only need the workspace UI shell and do not exercise the agent (e.g. in
     packaged-release runs where Fake Claude is gated off).
 
-    By default the workspace is created in WORKTREE mode (the product default).
-    Tests that exercise CLONE-specific semantics (e.g. ``origin/*`` remote
-    refs in the workspace's checkout) can pass ``mode="CLONE"`` — the helper
-    will enable the clone-workspaces flag, reload, then pick CLONE in the
-    mode selector before submitting.
+    Workspaces are always created in WORKTREE mode (the only supported mode).
     """
-    if mode == "CLONE":
-        enable_clone_workspaces(sculptor_page)
-    elif mode not in (None, "WORKTREE"):
-        raise ValueError(f"unsupported mode: {mode!r}; expected None, 'WORKTREE', or 'CLONE'")
-
     if agent_type not in (None, "claude", "pi", "terminal"):
         raise ValueError(f"unsupported agent_type: {agent_type!r}; expected None, 'claude', 'pi', or 'terminal'")
     # Only the pi *option* is gated behind the experimental pi-agent flag
@@ -299,10 +288,6 @@ def start_task_and_wait_for_ready(
         workspace_name = f"Test Workspace {next(_workspace_name_counter)}"
     workspace_name_input = sculptor_page.get_by_test_id(ElementIDs.WORKSPACE_NAME_INPUT)
     workspace_name_input.fill(workspace_name)
-
-    if mode == "CLONE":
-        sculptor_page.get_by_test_id(ElementIDs.MODE_SELECTOR).click()
-        sculptor_page.get_by_test_id(ElementIDs.MODE_OPTION_CLONE).click()
 
     # When an agent type is requested, drive the first-agent type select
     # before submitting. Defaults to Claude (the form default) when omitted.

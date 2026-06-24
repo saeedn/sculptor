@@ -42,20 +42,6 @@ def _set_user_config_flag(page: Page, field: str, value: object) -> None:
     wait_for_tiptap_ready(page)
 
 
-def enable_in_place_workspaces(page: Page) -> None:
-    """Enable the experimental in-place workspaces flag."""
-    _set_user_config_flag(page, "enableInPlaceWorkspaces", True)
-
-
-def enable_clone_workspaces(page: Page) -> None:
-    """Enable the opt-in clone workspaces flag.
-
-    Worktree mode is the default; clone mode is gated behind this flag so it
-    only appears in the Add Workspace mode selector for users who want it.
-    """
-    _set_user_config_flag(page, "enableCloneWorkspaces", True)
-
-
 def enable_entity_mentions(page: Page) -> None:
     """Enable the experimental entity mentions flag."""
     _set_user_config_flag(page, "enableEntityMentions", True)

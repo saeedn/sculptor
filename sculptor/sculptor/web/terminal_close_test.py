@@ -97,7 +97,7 @@ def test_delete_terminal_kills_shell_and_unregisters(
     with user_session.open_transaction(test_services) as transaction:
         workspace = test_services.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="terminal-close-test",
@@ -154,7 +154,7 @@ def test_delete_terminal_404_when_terminal_not_started(
     with user_session.open_transaction(test_services) as transaction:
         workspace = test_services.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="terminal-close-404-test",

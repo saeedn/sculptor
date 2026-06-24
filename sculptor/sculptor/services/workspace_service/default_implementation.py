@@ -263,30 +263,19 @@ class DefaultWorkspaceService(WorkspaceService):
     def _resolve_default_target_branch(
         self,
         project_path: Path,
-        initialization_strategy: WorkspaceInitializationStrategy,
     ) -> str | None:
         """Detect the best default target branch for a new workspace.
 
         Checks the user's local repo for a suitable remote-tracking branch to
         use as the diff target.  When no remote-tracking branch is present
         (e.g. a local-only repo with no ``origin``), falls back to the local
-        ``main``/``master`` ref:
-
-        * For CLONE workspaces, returns ``origin/<branch>``: clone_strategy
-          creates a synthetic ``origin`` remote pointing at the source and
-          seeds ``refs/remotes/origin/<branch>`` from the source's local
-          branches, so the ref resolves inside the clone.
-        * For IN_PLACE and WORKTREE workspaces, returns the bare branch
-          name (``main``/``master``): these workspaces share ``.git`` with
-          the user's repo, so the local branch resolves directly.
+        ``main``/``master`` ref — a worktree shares ``.git`` with the user's
+        repo, so the local branch resolves directly.
         """
         # Try origin first (most common case)
         branch = self._detect_default_branch_for_remote(project_path, "origin")
         if branch is not None:
             return branch
-
-        if initialization_strategy == WorkspaceInitializationStrategy.CLONE:
-            return self._detect_fallback_branch_for_clone_target(project_path)
 
         return self._detect_local_main_or_master(project_path)
 
@@ -358,16 +347,6 @@ class DefaultWorkspaceService(WorkspaceService):
                 continue
         return None
 
-    def _detect_fallback_branch_for_clone_target(self, project_path: Path) -> str | None:
-        """Return ``origin/main`` or ``origin/master`` for CLONE targets.
-
-        clone_strategy creates a synthetic ``origin`` remote pointing at the
-        source path and seeds ``refs/remotes/origin/<branch>`` from the
-        source's local branches, so we want the ``origin/<branch>`` form.
-        """
-        local = self._detect_local_main_or_master(project_path)
-        return f"origin/{local}" if local is not None else None
-
     def create_workspace(
         self,
         project: Project,
@@ -392,19 +371,15 @@ class DefaultWorkspaceService(WorkspaceService):
         # Use the caller-provided target branch if given, otherwise resolve a
         # sensible default from the user's repo.
         if target_branch is None:
-            target_branch = self._resolve_default_target_branch(project_path, initialization_strategy)
+            target_branch = self._resolve_default_target_branch(project_path)
 
         # Resolve through the project's tri-state default helper: `None` means
         # "use the current default", `""` means "user cleared", and any other
-        # value is the user's custom command. Setup runs on any fresh isolated
-        # checkout — both CLONE and WORKTREE.
+        # value is the user's custom command. Setup runs on the fresh worktree
+        # checkout when a command is configured.
         resolved_setup_command = resolve_workspace_setup_command(project.workspace_setup_command)
         has_command = resolved_setup_command is not None and resolved_setup_command != ""
-        is_clone_or_worktree = initialization_strategy in (
-            WorkspaceInitializationStrategy.CLONE,
-            WorkspaceInitializationStrategy.WORKTREE,
-        )
-        initial_setup_status = "pending" if (has_command and is_clone_or_worktree) else "not_configured"
+        initial_setup_status = "pending" if has_command else "not_configured"
 
         workspace_id = WorkspaceID()
         workspace = Workspace(
@@ -811,7 +786,7 @@ class DefaultWorkspaceService(WorkspaceService):
     ) -> Path | None:
         """Get the git working directory for a workspace.
 
-        Delegates to the Environment abstraction so IN_PLACE vs CLONE path logic
+        Delegates to the Environment abstraction so the worktree checkout path
         lives in one place (LocalEnvironment.get_working_directory).
 
         Returns None if the workspace's environment hasn't been initialized yet.
@@ -825,8 +800,6 @@ class DefaultWorkspaceService(WorkspaceService):
             raise WorkspaceNotFoundError(workspace.object_id)
 
         if workspace.environment_id is None:
-            if workspace.initialization_strategy == WorkspaceInitializationStrategy.IN_PLACE:
-                return project.get_local_user_path()
             return None
 
         environment = self.environment_manager.resume_environment(

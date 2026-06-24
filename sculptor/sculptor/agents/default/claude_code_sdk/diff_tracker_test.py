@@ -34,34 +34,24 @@ _FILE_PATH: Final[str] = "main.py"
 def _create_agent_execution_environment(
     path: Path, test_root_concurrency_group: ConcurrencyGroup
 ) -> AgentExecutionEnvironment:
-    local_env = LocalEnvironment.create(
+    """Create a worktree environment where workspace_path != working_directory.
+
+    The workspace_path is the task root (``path``) and the working directory is
+    ``path/code/``. Built directly (bypassing ``LocalEnvironment.create``, which
+    runs ``git worktree add``) so these diff tests don't need a real git repo;
+    the directories are created manually.
+    """
+    code_dir = path / "code"
+    code_dir.mkdir(parents=True, exist_ok=True)
+    local_env = LocalEnvironment(
         environment_id=LocalEnvironmentID(str(path)),
         project_id=ProjectID(),
         concurrency_group=test_root_concurrency_group,
-        repo_host_path=path,
-    )
-    mock_cg = MagicMock(spec=ConcurrencyGroup)
-    dep_service = DependencyManagementService.model_construct(concurrency_group=mock_cg)
-    return LocalAgentExecutionEnvironment(local_env, TaskID(), dep_service)
-
-
-def _create_clone_mode_agent_execution_environment(
-    workspace_root: Path, test_root_concurrency_group: ConcurrencyGroup
-) -> AgentExecutionEnvironment:
-    """Create a clone-mode environment where workspace_path != working_directory.
-
-    In clone mode, workspace_path is the task root (workspace_root) and the
-    working directory is workspace_root/code/.
-    """
-    code_dir = workspace_root / "code"
-    code_dir.mkdir(parents=True, exist_ok=True)
-    local_env = LocalEnvironment(
-        environment_id=LocalEnvironmentID(str(workspace_root)),
-        project_id=ProjectID(),
-        concurrency_group=test_root_concurrency_group,
         repo_host_path=code_dir,
-        initialization_strategy=WorkspaceInitializationStrategy.CLONE,
+        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
     )
+    local_env.to_host_path(local_env.get_state_path()).mkdir(parents=True, exist_ok=True)
+    local_env.to_host_path(local_env.get_artifacts_path()).mkdir(parents=True, exist_ok=True)
     mock_cg = MagicMock(spec=ConcurrencyGroup)
     dep_service = DependencyManagementService.model_construct(concurrency_group=mock_cg)
     return LocalAgentExecutionEnvironment(local_env, TaskID(), dep_service)
@@ -90,7 +80,7 @@ def environment_and_initial_repo_commit_hash(
 def clone_mode_environment_and_initial_repo_commit_hash(
     tmp_path: Path, test_root_concurrency_group: ConcurrencyGroup
 ) -> tuple[AgentExecutionEnvironment, str]:
-    environment = _create_clone_mode_agent_execution_environment(tmp_path, test_root_concurrency_group)
+    environment = _create_agent_execution_environment(tmp_path, test_root_concurrency_group)
     initial_repo_commit_hash = _setup_repo_in_environment_with_initial_files_commit(environment=environment).strip()
     return environment, initial_repo_commit_hash
 

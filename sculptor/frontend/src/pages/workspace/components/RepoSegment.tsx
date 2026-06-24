@@ -20,8 +20,6 @@ type RepoSegmentProps = {
 };
 
 const MODE_BADGE_LABEL: Record<WorkspaceInitializationStrategy, string> = {
-  [WorkspaceInitializationStrategy.IN_PLACE]: "in-place",
-  [WorkspaceInitializationStrategy.CLONE]: "clone",
   [WorkspaceInitializationStrategy.WORKTREE]: "worktree",
 };
 
@@ -32,7 +30,6 @@ export const RepoSegment = ({
   shouldShowModeBadge,
   projectName,
 }: RepoSegmentProps): ReactElement => {
-  const isInPlace = strategy === WorkspaceInitializationStrategy.IN_PLACE;
   const badgeLabel = MODE_BADGE_LABEL[strategy];
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [preferredApp, setPreferredApp] = useState<ExternalApp | null>(getPreferredApp);
@@ -40,7 +37,7 @@ export const RepoSegment = ({
   const openWithItems = canOpenInOS ? getOpenWithItems() : [];
 
   const codePath = environmentPath ? `${environmentPath}/code` : null;
-  const openWithPath = isInPlace ? sourcePath : (codePath ?? sourcePath);
+  const openWithPath = codePath ?? sourcePath;
   const copyPath = openWithPath;
   const relativePath = openWithPath.split("/").pop() ?? openWithPath;
 

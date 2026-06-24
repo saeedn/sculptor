@@ -85,18 +85,85 @@ def _create_isolated_git_repo(path: Path, concurrency_group: ConcurrencyGroup) -
     return repo.base_path
 
 
+def _init_and_activate_project(
+    test_service_collection: CompleteServiceCollection,
+    repo_path: Path,
+) -> Project:
+    """Initialize and activate a project for an isolated repo."""
+    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
+        project = test_service_collection.project_service.initialize_project(
+            project_path=repo_path,
+            organization_reference=ANONYMOUS_ORGANIZATION_REFERENCE,
+            transaction=transaction,
+        )
+        test_service_collection.project_service.activate_project(project)
+    return project
+
+
+def _create_worktree_workspace_with_env(
+    test_service_collection: CompleteServiceCollection,
+    project: Project,
+    concurrency_group: ConcurrencyGroup,
+    description: str,
+    requested_branch_name: str,
+    source_branch: str = "main",
+) -> WorkspaceID:
+    """Create a WORKTREE workspace and build its on-disk environment.
+
+    Building the environment runs ``git worktree add`` so the workspace has a
+    real working directory (``<environment_id>/code``) that diff generation can
+    resolve. Returns the workspace id.
+    """
+    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
+        workspace = test_service_collection.workspace_service.create_workspace(
+            project=project,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
+            source_branch=source_branch,
+            requested_branch_name=requested_branch_name,
+            description=description,
+            transaction=transaction,
+        )
+        workspace_id = workspace.object_id
+
+    with concurrency_group.make_concurrency_group("env_setup") as env_concurrency_group:
+        with test_service_collection.workspace_service.agent_environment_context(
+            project=project,
+            workspace_id=workspace_id,
+            task_id=TaskID(),
+            concurrency_group=env_concurrency_group,
+            root_progress_handle=RootProgressHandle(),
+            shutdown_event=GLOBAL_SHUTDOWN_EVENT,
+        ):
+            pass  # Just need the environment (and its worktree checkout) created
+
+    return workspace_id
+
+
+def _workspace_working_directory(
+    test_service_collection: CompleteServiceCollection,
+    workspace_id: WorkspaceID,
+) -> Path:
+    """Resolve the worktree checkout directory for a workspace with an environment."""
+    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
+        workspace = transaction.get_workspace(workspace_id)
+        assert workspace is not None
+        working_dir = test_service_collection.workspace_service.get_workspace_working_directory(workspace, transaction)
+    assert working_dir is not None
+    return working_dir
+
+
 # Workspace CRUD operations
 
 
-def test_create_workspace_in_place(
+def test_create_workspace(
     test_service_collection: CompleteServiceCollection,
     test_project: Project,
 ) -> None:
-    """Test creating an IN_PLACE workspace."""
+    """Test creating a WORKTREE workspace (without building its environment)."""
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="Test workspace",
@@ -105,31 +172,11 @@ def test_create_workspace_in_place(
 
     assert workspace is not None
     assert workspace.project_id == test_project.object_id
-    assert workspace.initialization_strategy == WorkspaceInitializationStrategy.IN_PLACE
+    assert workspace.initialization_strategy == WorkspaceInitializationStrategy.WORKTREE
     assert workspace.source_branch is None
     assert workspace.description == "Test workspace"
     assert workspace.environment_id is None  # Not yet created
     assert not workspace.is_deleted
-
-
-def test_create_workspace_clone(
-    test_service_collection: CompleteServiceCollection,
-    test_project: Project,
-) -> None:
-    """Test creating a CLONE workspace."""
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        workspace = test_service_collection.workspace_service.create_workspace(
-            project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.CLONE,
-            source_branch="feature-branch",
-            requested_branch_name=None,
-            description="Clone workspace",
-            transaction=transaction,
-        )
-
-    assert workspace is not None
-    assert workspace.initialization_strategy == WorkspaceInitializationStrategy.CLONE
-    assert workspace.source_branch == "feature-branch"
 
 
 def test_create_workspace_generates_description_without_prefix(
@@ -140,7 +187,7 @@ def test_create_workspace_generates_description_without_prefix(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description=None,  # Should be auto-generated
@@ -160,7 +207,7 @@ def test_delete_workspace(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="To be deleted",
@@ -205,7 +252,7 @@ def test_workspace_lookup_via_transaction(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="Lookup test",
@@ -234,17 +281,17 @@ def test_workspace_list_via_transaction(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace1 = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
-            requested_branch_name=None,
+            requested_branch_name="ws/list-1",
             description="Workspace 1",
             transaction=transaction,
         )
         workspace2 = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.CLONE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch="main",
-            requested_branch_name=None,
+            requested_branch_name="ws/list-2",
             description="Workspace 2",
             transaction=transaction,
         )
@@ -269,7 +316,7 @@ def test_create_workspace_captures_source_git_hash(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="Test workspace",
@@ -286,7 +333,8 @@ def test_create_workspace_captures_source_git_hash(
 
 def test_get_workspace_diff_generates_on_demand_when_artifact_missing(
     test_service_collection: CompleteServiceCollection,
-    test_project: Project,
+    test_root_concurrency_group: ConcurrencyGroup,
+    tmp_path: Path,
 ) -> None:
     """Test that get_workspace_diff generates the diff on-demand when the artifact is missing.
 
@@ -294,17 +342,15 @@ def test_get_workspace_diff_generates_on_demand_when_artifact_missing(
     without generating the artifact, and get_workspace_diff generates it
     when the frontend fetches it.
     """
-    # Create workspace without letting the callback run
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        workspace = test_service_collection.workspace_service.create_workspace(
-            project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
-            description="Test workspace",
-            transaction=transaction,
-        )
-        workspace_id = workspace.object_id
+    repo_path = _create_isolated_git_repo(tmp_path / "repo", test_root_concurrency_group)
+    project = _init_and_activate_project(test_service_collection, repo_path)
+    workspace_id = _create_worktree_workspace_with_env(
+        test_service_collection,
+        project,
+        test_root_concurrency_group,
+        description="Test workspace",
+        requested_branch_name="ws/on-demand-diff",
+    )
 
     # Manually remove any generated diff to simulate the lazy startup path
     assert isinstance(test_service_collection.workspace_service, DefaultWorkspaceService)
@@ -323,19 +369,19 @@ def test_get_workspace_diff_generates_on_demand_when_artifact_missing(
 
 def test_refresh_workspace_diff_creates_diff_artifact(
     test_service_collection: CompleteServiceCollection,
-    test_project: Project,
+    test_root_concurrency_group: ConcurrencyGroup,
+    tmp_path: Path,
 ) -> None:
     """Test that refresh_workspace_diff creates a diff artifact and updates workspace status."""
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        workspace = test_service_collection.workspace_service.create_workspace(
-            project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
-            description="Test workspace",
-            transaction=transaction,
-        )
-        workspace_id = workspace.object_id
+    repo_path = _create_isolated_git_repo(tmp_path / "repo", test_root_concurrency_group)
+    project = _init_and_activate_project(test_service_collection, repo_path)
+    workspace_id = _create_worktree_workspace_with_env(
+        test_service_collection,
+        project,
+        test_root_concurrency_group,
+        description="Test workspace",
+        requested_branch_name="ws/refresh-diff",
+    )
 
     test_service_collection.workspace_service.refresh_workspace_diff(workspace_id)
 
@@ -358,19 +404,19 @@ def test_refresh_workspace_diff_creates_diff_artifact(
 
 def test_get_workspace_diff_with_force_refresh(
     test_service_collection: CompleteServiceCollection,
-    test_project: Project,
+    test_root_concurrency_group: ConcurrencyGroup,
+    tmp_path: Path,
 ) -> None:
     """Test that force_refresh=True regenerates the diff."""
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        workspace = test_service_collection.workspace_service.create_workspace(
-            project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
-            description="Test workspace",
-            transaction=transaction,
-        )
-        workspace_id = workspace.object_id
+    repo_path = _create_isolated_git_repo(tmp_path / "repo", test_root_concurrency_group)
+    project = _init_and_activate_project(test_service_collection, repo_path)
+    workspace_id = _create_worktree_workspace_with_env(
+        test_service_collection,
+        project,
+        test_root_concurrency_group,
+        description="Test workspace",
+        requested_branch_name="ws/force-refresh",
+    )
 
     # Get diff with force_refresh
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
@@ -383,19 +429,19 @@ def test_get_workspace_diff_with_force_refresh(
 
 def test_maybe_refresh_workspace_diff_always_refreshes(
     test_service_collection: CompleteServiceCollection,
-    test_project: Project,
+    test_root_concurrency_group: ConcurrencyGroup,
+    tmp_path: Path,
 ) -> None:
     """Test that maybe_refresh_workspace_diff refreshes the diff (always refreshes for now)."""
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        workspace = test_service_collection.workspace_service.create_workspace(
-            project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
-            description="Test workspace",
-            transaction=transaction,
-        )
-        workspace_id = workspace.object_id
+    repo_path = _create_isolated_git_repo(tmp_path / "repo", test_root_concurrency_group)
+    project = _init_and_activate_project(test_service_collection, repo_path)
+    workspace_id = _create_worktree_workspace_with_env(
+        test_service_collection,
+        project,
+        test_root_concurrency_group,
+        description="Test workspace",
+        requested_branch_name="ws/maybe-refresh",
+    )
 
     test_service_collection.workspace_service.maybe_refresh_workspace_diff(workspace_id)
 
@@ -442,46 +488,33 @@ def test_two_workspaces_have_separate_diffs_visible_to_all_their_agents(
     repo_a = _create_isolated_git_repo(tmp_path / "repo_a", test_root_concurrency_group)
     repo_b = _create_isolated_git_repo(tmp_path / "repo_b", test_root_concurrency_group)
 
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        project_a = test_service_collection.project_service.initialize_project(
-            project_path=repo_a,
-            organization_reference=ANONYMOUS_ORGANIZATION_REFERENCE,
-            transaction=transaction,
-        )
-        test_service_collection.project_service.activate_project(project_a)
-        workspace_a = test_service_collection.workspace_service.create_workspace(
-            project=project_a,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
-            description="Workspace A",
-            transaction=transaction,
-        )
+    project_a = _init_and_activate_project(test_service_collection, repo_a)
+    project_b = _init_and_activate_project(test_service_collection, repo_b)
 
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        project_b = test_service_collection.project_service.initialize_project(
-            project_path=repo_b,
-            organization_reference=ANONYMOUS_ORGANIZATION_REFERENCE,
-            transaction=transaction,
-        )
-        test_service_collection.project_service.activate_project(project_b)
-        workspace_b = test_service_collection.workspace_service.create_workspace(
-            project=project_b,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
-            description="Workspace B",
-            transaction=transaction,
-        )
+    # Each workspace gets its own worktree checkout (built via the environment),
+    # off a distinct branch since two worktrees can't share a branch.
+    ws_id_a = _create_worktree_workspace_with_env(
+        test_service_collection,
+        project_a,
+        test_root_concurrency_group,
+        description="Workspace A",
+        requested_branch_name="ws/diff-isolation-a",
+    )
+    ws_id_b = _create_worktree_workspace_with_env(
+        test_service_collection,
+        project_b,
+        test_root_concurrency_group,
+        description="Workspace B",
+        requested_branch_name="ws/diff-isolation-b",
+    )
 
-    ws_id_a = workspace_a.object_id
-    ws_id_b = workspace_b.object_id
-
-    # --- Create a file unique to each repo (simulating agent work) ---
-    # For IN_PLACE workspaces the diff is computed against the project repo,
-    # so we write directly to the repo path.
-    (repo_a / "only_in_a.txt").write_text("workspace A content")
-    (repo_b / "only_in_b.txt").write_text("workspace B content")
+    # --- Create a file unique to each workspace (simulating agent work) ---
+    # The diff is computed against the worktree checkout (workspace/code/), so
+    # write the file there rather than into the user's source repo.
+    working_dir_a = _workspace_working_directory(test_service_collection, ws_id_a)
+    working_dir_b = _workspace_working_directory(test_service_collection, ws_id_b)
+    (working_dir_a / "only_in_a.txt").write_text("workspace A content")
+    (working_dir_b / "only_in_b.txt").write_text("workspace B content")
 
     # --- Refresh diffs for both workspaces ---
     test_service_collection.workspace_service.refresh_workspace_diff(ws_id_a)
@@ -546,9 +579,9 @@ def test_delete_workspace_removes_environment_directory(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
+            source_branch="main",
+            requested_branch_name=f"ws/env-deletion-{uuid4().hex[:8]}",
             description="Env deletion test",
             transaction=transaction,
         )
@@ -625,9 +658,9 @@ def test_delete_workspace_offloads_environment_teardown_off_request_thread(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
+            source_branch="main",
+            requested_branch_name=f"ws/teardown-offload-{uuid4().hex[:8]}",
             description="Teardown offload test",
             transaction=transaction,
         )
@@ -815,9 +848,9 @@ def test_concurrent_setup_creates_single_environment(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
+            source_branch="main",
+            requested_branch_name=f"ws/concurrent-{uuid4().hex[:8]}",
             description="Concurrent test workspace",
             transaction=transaction,
         )
@@ -922,7 +955,7 @@ def test_create_workspace_auto_resolves_target_branch_with_origin(
         test_service_collection.project_service.activate_project(project)
         workspace = test_service_collection.workspace_service.create_workspace(
             project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="Test workspace",
@@ -949,7 +982,7 @@ def test_create_workspace_uses_explicit_target_branch_over_auto_resolution(
         test_service_collection.project_service.activate_project(project)
         workspace = test_service_collection.workspace_service.create_workspace(
             project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="Test workspace",
@@ -966,10 +999,10 @@ def test_create_workspace_target_branch_falls_back_to_local_main_without_remote(
     test_root_concurrency_group: ConcurrencyGroup,
     tmp_path: Path,
 ) -> None:
-    """IN_PLACE workspace on a local-only repo should resolve target_branch to the bare local default branch.
+    """WORKTREE workspace on a local-only repo should resolve target_branch to the bare local default branch.
 
-    IN_PLACE workspaces share .git with the user's repo, so the bare branch
-    name (``main``/``master``) resolves directly.
+    Worktrees share .git with the user's repo, so the bare branch name
+    (``main``/``master``) resolves directly.
     """
     repo_path = _create_isolated_git_repo(tmp_path / "no_remote_repo", test_root_concurrency_group)
 
@@ -982,7 +1015,7 @@ def test_create_workspace_target_branch_falls_back_to_local_main_without_remote(
         test_service_collection.project_service.activate_project(project)
         workspace = test_service_collection.workspace_service.create_workspace(
             project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="No remote workspace",
@@ -992,39 +1025,6 @@ def test_create_workspace_target_branch_falls_back_to_local_main_without_remote(
     assert workspace.target_branch == "main"
 
 
-def test_create_workspace_clone_falls_back_to_origin_main(
-    test_service_collection: CompleteServiceCollection,
-    test_root_concurrency_group: ConcurrencyGroup,
-    tmp_path: Path,
-) -> None:
-    """CLONE workspace without origin should resolve target_branch to origin/main.
-
-    When the source has no remotes, clone_strategy creates a synthetic
-    ``origin`` remote and seeds ``refs/remotes/origin/<branch>`` from the
-    source's local branches, so the fallback target branch lives under
-    ``origin/*`` in the clone.
-    """
-    repo_path = _create_isolated_git_repo(tmp_path / "clone_no_origin", test_root_concurrency_group)
-
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        project = test_service_collection.project_service.initialize_project(
-            project_path=repo_path,
-            organization_reference=ANONYMOUS_ORGANIZATION_REFERENCE,
-            transaction=transaction,
-        )
-        test_service_collection.project_service.activate_project(project)
-        workspace = test_service_collection.workspace_service.create_workspace(
-            project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.CLONE,
-            source_branch=None,
-            requested_branch_name=None,
-            description="Clone no origin",
-            transaction=transaction,
-        )
-
-    assert workspace.target_branch == "origin/main"
-
-
 def test_target_branch_diff_uses_auto_resolved_branch(
     test_service_collection: CompleteServiceCollection,
     test_root_concurrency_group: ConcurrencyGroup,
@@ -1032,24 +1032,22 @@ def test_target_branch_diff_uses_auto_resolved_branch(
 ) -> None:
     """Target branch diff should use the auto-resolved target_branch."""
     repo_path = _create_repo_with_origin_and_feature_branch(tmp_path, test_root_concurrency_group)
+    project = _init_and_activate_project(test_service_collection, repo_path)
+
+    # Branch the worktree off "feature" (which adds new_file.txt) so the diff
+    # against the auto-resolved target (origin/main) contains that file.
+    workspace_id = _create_worktree_workspace_with_env(
+        test_service_collection,
+        project,
+        test_root_concurrency_group,
+        description="Test workspace",
+        requested_branch_name="ws/target-branch-diff",
+        source_branch="feature",
+    )
 
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        project = test_service_collection.project_service.initialize_project(
-            project_path=repo_path,
-            organization_reference=ANONYMOUS_ORGANIZATION_REFERENCE,
-            transaction=transaction,
-        )
-        test_service_collection.project_service.activate_project(project)
-        workspace = test_service_collection.workspace_service.create_workspace(
-            project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
-            description="Test workspace",
-            transaction=transaction,
-        )
-        workspace_id = workspace.object_id
-
+        workspace = transaction.get_workspace(workspace_id)
+    assert workspace is not None
     # target_branch was auto-resolved
     assert workspace.target_branch == "origin/main"
 
@@ -1093,23 +1091,19 @@ def test_diff_skipped_when_no_target_branch(
         capture_output=True,
     )
 
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        project = test_service_collection.project_service.initialize_project(
-            project_path=repo_path,
-            organization_reference=ANONYMOUS_ORGANIZATION_REFERENCE,
-            transaction=transaction,
-        )
-        test_service_collection.project_service.activate_project(project)
-        workspace = test_service_collection.workspace_service.create_workspace(
-            project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
-            source_branch=None,
-            requested_branch_name=None,
-            description="No target branch",
-            transaction=transaction,
-        )
-        workspace_id = workspace.object_id
+    project = _init_and_activate_project(test_service_collection, repo_path)
+    workspace_id = _create_worktree_workspace_with_env(
+        test_service_collection,
+        project,
+        test_root_concurrency_group,
+        description="No target branch",
+        requested_branch_name="ws/no-target-branch",
+        source_branch="develop",
+    )
 
+    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
+        workspace = transaction.get_workspace(workspace_id)
+    assert workspace is not None
     assert workspace.target_branch is None
 
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:

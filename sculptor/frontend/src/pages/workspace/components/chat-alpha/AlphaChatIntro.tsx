@@ -2,7 +2,7 @@ import { useAtomValue } from "jotai";
 import { CircleHelpIcon, GitBranchIcon, SparklesIcon, UsersIcon } from "lucide-react";
 import type { ReactElement } from "react";
 
-import { ElementIds, WorkspaceInitializationStrategy } from "~/api";
+import { ElementIds } from "~/api";
 import { useActiveProjectID, useWorkspacePageParams } from "~/common/NavigateUtils";
 import { pendingAgentTitlesAtom } from "~/common/state/atoms/tasks";
 import { useProject } from "~/common/state/hooks/useProjects";
@@ -31,8 +31,6 @@ export const AlphaChatIntro = (): ReactElement => {
   const task = useTask(taskID ?? "");
   const pendingAgentTitles = useAtomValue(pendingAgentTitlesAtom);
 
-  const isInPlace = workspace?.initializationStrategy === WorkspaceInitializationStrategy.IN_PLACE;
-  const isWorktree = workspace?.initializationStrategy === WorkspaceInitializationStrategy.WORKTREE;
   const projectName = project?.name ?? "";
   const sourceBranch = workspace?.sourceBranch;
   const createdAt = workspace?.createdAt;
@@ -44,14 +42,14 @@ export const AlphaChatIntro = (): ReactElement => {
       <div className={styles.detailRow}>
         <GitBranchIcon size={14} className={styles.detailIcon} />
         <span>
-          {isInPlace ? "Working directly in" : isWorktree ? "Branched off" : "Cloned"}
-          {!isInPlace && sourceBranch && (
+          Branched off
+          {sourceBranch && (
             <>
               {" "}
               <span className={styles.highlight}>{sourceBranch}</span>
             </>
           )}
-          {!isInPlace && projectName && <> from</>}
+          {projectName && <> from</>}
           {projectName && (
             <>
               {" "}

@@ -145,10 +145,9 @@ class WorkspaceService(Service, ABC):
 
         Args:
             project: The project to create the workspace for.
-            initialization_strategy: Strategy for workspace initialization (IN_PLACE, CLONE, or WORKTREE).
-            source_branch: Branch to use for CLONE strategy, or base ref for WORKTREE.
-            requested_branch_name: Final branch name; required for WORKTREE, optional
-                for CLONE, must be None for IN_PLACE.
+            initialization_strategy: Strategy for workspace initialization (WORKTREE).
+            source_branch: Base ref off which to create the worktree branch.
+            requested_branch_name: Final branch name; required for WORKTREE.
             description: Optional description for the workspace.
             transaction: Database transaction for atomicity.
             target_branch: Diff/merge target branch. When None, a default is resolved
@@ -368,8 +367,7 @@ class WorkspaceService(Service, ABC):
         """
         Get the git working directory for a workspace.
 
-        For IN_PLACE workspaces, returns the project's local path.
-        For CLONE workspaces, returns the cloned repository path inside the environment.
+        Returns the worktree checkout path inside the environment.
         Returns None if the workspace's environment hasn't been initialized yet.
 
         Args:

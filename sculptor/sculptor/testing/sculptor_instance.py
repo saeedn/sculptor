@@ -308,7 +308,7 @@ class SculptorInstance:
         # has been unloaded.  If we PUT the reset while the old page is
         # still alive, a debounced sync hook (e.g. usePanelLayoutSync)
         # can fire afterwards and PUT the full stale config back —
-        # silently re-enabling flags like enableInPlaceWorkspaces and
+        # silently re-enabling flags like enablePiAgent and
         # breaking the next test.  about:blank tears down the React
         # tree, which cancels those pending timers.
         self._reset_user_config_defaults()
@@ -365,11 +365,10 @@ class SculptorInstance:
         """Reset persistent user-config flags that tests may have mutated.
 
         User config lives on disk and is shared across tests in the same
-        instance, so any flag a test enables (enableInPlaceWorkspaces,
-        enableCloneWorkspaces, ...) leaks into the next test unless
-        reset here. Each flag listed below must default to False in the
-        shipping config; add new entries when a test starts toggling a
-        new flag.
+        instance, so any flag a test enables (e.g. enablePiAgent) leaks into
+        the next test unless reset here. Each flag listed below must default
+        to False in the shipping config; add new entries when a test starts
+        toggling a new flag.
 
         The most-recently-used harness (lastUsedAgentType) is the same kind
         of shared, persistent state: the server records it whenever an agent
@@ -406,11 +405,7 @@ class SculptorInstance:
         # enablePiAgent is included because it gates harness resolution: a
         # leaked "pi" most-recently-used type only resolves to Pi while it is
         # on, so clearing it keeps an omitted agent_type defaulting to Claude.
-        flags_to_reset_to_false = (
-            "enableInPlaceWorkspaces",
-            "enableCloneWorkspaces",
-            "enablePiAgent",
-        )
+        flags_to_reset_to_false = ("enablePiAgent",)
         # The recorded most-recently-used harness (see the docstring); reset to
         # None so an agent-type-less create defaults to Claude.
         needs_flag_reset = any(config.get(flag) is not False for flag in flags_to_reset_to_false)

@@ -112,7 +112,7 @@ class Workspace(DatabaseModel):
     setup_log_truncated: bool = False
     diff_status: DiffStatus = DiffStatus.NONE
     diff_updated_at: datetime.datetime | None = None
-    # User-supplied or auto-generated branch name. Required for WORKTREE workspaces (validated at the API layer); optional for CLONE; null for IN_PLACE.
+    # User-supplied or auto-generated branch name. Required for WORKTREE workspaces (validated at the API layer).
     requested_branch_name: str | None = None
 
 

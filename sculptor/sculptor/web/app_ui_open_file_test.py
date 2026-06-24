@@ -38,7 +38,7 @@ def test_ui_open_file_returns_409_when_workspace_closed(
     with user_session.open_transaction(test_services) as transaction:
         workspace = test_services.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="ui open-file test workspace",
@@ -67,7 +67,7 @@ def test_ui_open_file_returns_400_for_relative_path(
     with user_session.open_transaction(test_services) as transaction:
         workspace = test_services.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="ui open-file relative path test",
@@ -91,7 +91,7 @@ def test_ui_open_file_returns_404_for_nonexistent_file(
     with user_session.open_transaction(test_services) as transaction:
         workspace = test_services.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="ui open-file 404 test",
@@ -115,7 +115,7 @@ def test_ui_open_file_returns_422_for_invalid_mode(
     with user_session.open_transaction(test_services) as transaction:
         workspace = test_services.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="ui open-file mode test",
@@ -139,7 +139,7 @@ def test_ui_open_file_publishes_action_on_success(
     with user_session.open_transaction(test_services) as transaction:
         workspace = test_services.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="ui open-file publish test",

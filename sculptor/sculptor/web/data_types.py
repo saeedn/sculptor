@@ -128,7 +128,7 @@ class StartTaskRequest(RequestModel):
     interface: str = TaskInterface.TERMINAL.value
     model: LLMModel
     files: list[str] = Field(default_factory=list)
-    initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.IN_PLACE
+    initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE
     name: str | None = None
     source_branch: str | None = None
     # Mutually exclusive with initialization_strategy.
@@ -151,7 +151,7 @@ class CreateWorkspaceRequestV2(RequestModel):
     initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None = None
     description: str | None = None
-    # Final branch name after user edits; required for WORKTREE, optional for CLONE, must be None for IN_PLACE.
+    # Final branch name after user edits; required for WORKTREE workspaces.
     requested_branch_name: str | None = None
     # Diff/merge target branch. When None, the backend resolves a sensible default
     # from the repo (origin's default branch, else local main/master).
@@ -549,8 +549,7 @@ class UpdateUserConfigRequest(RequestModel):
     The handler merges into the current config and re-validates as a full
     ``UserConfig``. This avoids the lost-update race where a stale
     full-object PUT clobbers fields recently changed by another writer
-    (e.g. a debounced panel-layout sync overwriting
-    ``enable_in_place_workspaces``).
+    (e.g. a debounced panel-layout sync overwriting a setting toggle).
     """
 
     user_config: dict[str, Any]

@@ -28,7 +28,7 @@ class EnvironmentManager(ABC):
         project_path: Path,
         project_id: ProjectID,
         concurrency_group: ConcurrencyGroup,
-        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.IN_PLACE,
+        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE,
         source_branch: str | None = None,
         requested_branch_name: str | None = None,
         env_var_override: bool = False,
@@ -41,10 +41,8 @@ class EnvironmentManager(ABC):
             project_id: ID of the project.
             concurrency_group: Concurrency group for process management.
             initialization_strategy: Strategy for workspace initialization.
-            source_branch: Branch to checkout after cloning (for CLONE mode) or base
-                ref off which to create the worktree branch (for WORKTREE mode).
-            requested_branch_name: For WORKTREE mode, the new branch name created by
-                `git worktree add -b`; required for WORKTREE, unused otherwise.
+            source_branch: Base ref off which to create the worktree branch.
+            requested_branch_name: The new branch name created by `git worktree add -b`.
             env_var_override: Whether project env vars override os.environ on collision.
 
         Returns:
@@ -58,7 +56,7 @@ class EnvironmentManager(ABC):
         project_path: Path,
         project_id: ProjectID,
         concurrency_group: ConcurrencyGroup,
-        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.IN_PLACE,
+        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE,
         env_var_override: bool = False,
         sculptor_folder: Path | None = None,
     ) -> Environment:

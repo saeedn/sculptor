@@ -268,14 +268,6 @@ class UserConfig(SerializableModel):
         default=True,
         description="Whether to enable smooth text streaming animation in the chat",
     )
-    enable_in_place_workspaces: bool = Field(
-        default=False,
-        description="When enabled, the in-place workspace mode is available during workspace creation",
-    )
-    enable_clone_workspaces: bool = Field(
-        default=False,
-        description="When enabled, the legacy clone workspace mode is available during workspace creation. Worktree mode is now the default; this re-exposes clone mode for users who still want it.",
-    )
     default_workspace_branch_naming_pattern: str = Field(
         default="<user>/<slug>",
         description="User-global default pattern for auto-generated workspace branch names. Supports <user> and <slug> placeholders. Overridden per-project by Project.naming_pattern.",

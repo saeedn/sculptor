@@ -60,26 +60,6 @@ class PlaywrightAddWorkspacePage(PlaywrightProjectLayoutPage):
         expect(branch_option).to_have_count(1)
         branch_option.click()
 
-    def get_mode_selector(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.MODE_SELECTOR)
-
-    def get_mode_option_worktree(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.MODE_OPTION_WORKTREE)
-
-    def get_mode_option_in_place(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.MODE_OPTION_IN_PLACE)
-
-    def get_mode_option_clone(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.MODE_OPTION_CLONE)
-
-    def select_mode(self, mode_option_id: str) -> None:
-        """Click the mode selector and choose a mode option."""
-        self.get_mode_selector().click()
-        mode_option = self._page.get_by_test_id(mode_option_id)
-        expect(mode_option).to_be_visible()
-        mode_option.click()
-        expect(mode_option).not_to_be_visible()
-
     def get_chat_panel(self) -> Locator:
         return self.get_by_test_id(ElementIDs.CHAT_PANEL)
 

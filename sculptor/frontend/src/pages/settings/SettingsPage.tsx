@@ -13,10 +13,8 @@ import {
   configuredDefaultModelAtom,
   defaultEffortLevelAtom,
   isAlwaysInterruptAndSendAtom,
-  isCloneWorkspacesEnabledAtom,
   isDefaultFastModeAtom,
   isEntityMentionsEnabledAtom,
-  isInPlaceWorkspacesEnabledAtom,
   isPiAgentEnabledAtom,
   isReviewAllEnabledAtom,
   isRichMarkdownRenderingEnabledAtom,
@@ -73,8 +71,6 @@ export const SettingsPage = (): ReactElement => {
   const configuredDefaultModel = useAtomValue(configuredDefaultModelAtom);
   const userEmail = useAtomValue(userEmailAtom);
   const isAlwaysInterruptAndSend = useAtomValue(isAlwaysInterruptAndSendAtom);
-  const isInPlaceWorkspacesEnabled = useAtomValue(isInPlaceWorkspacesEnabledAtom);
-  const isCloneWorkspacesEnabled = useAtomValue(isCloneWorkspacesEnabledAtom);
   const isReviewAllEnabled = useAtomValue(isReviewAllEnabledAtom);
   const isPiAgentEnabled = useAtomValue(isPiAgentEnabledAtom);
   const visibleSections = SETTINGS_SECTIONS;
@@ -313,30 +309,6 @@ export const SettingsPage = (): ReactElement => {
                       onCheckedChange={(checked) =>
                         handleSettingChange(UserConfigField.IS_SMOOTH_STREAMING_ENABLED, checked)
                       }
-                    />
-                  </SettingRow>
-                  <SettingRow
-                    title="In-place workspaces"
-                    description="Allow creating in-place workspaces that operate directly in your repository instead of a clone."
-                  >
-                    <Switch
-                      checked={isInPlaceWorkspacesEnabled}
-                      onCheckedChange={(checked) =>
-                        handleSettingChange(UserConfigField.ENABLE_IN_PLACE_WORKSPACES, checked)
-                      }
-                      data-testid={ElementIds.SETTINGS_ENABLE_IN_PLACE_WORKSPACES_TOGGLE}
-                    />
-                  </SettingRow>
-                  <SettingRow
-                    title="Clone workspaces"
-                    description="Worktree workspaces are now the default. Enable this to also offer the older clone mode (full git clone with a separate `local` remote and explicit sync-back) in the Add Workspace mode picker."
-                  >
-                    <Switch
-                      checked={isCloneWorkspacesEnabled}
-                      onCheckedChange={(checked) =>
-                        handleSettingChange(UserConfigField.ENABLE_CLONE_WORKSPACES, checked)
-                      }
-                      data-testid={ElementIds.SETTINGS_ENABLE_CLONE_WORKSPACES_TOGGLE}
                     />
                   </SettingRow>
                   <SettingRow

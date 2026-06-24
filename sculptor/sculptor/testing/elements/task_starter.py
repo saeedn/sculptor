@@ -30,12 +30,6 @@ class PlaywrightTaskStarterElement(PlaywrightFilePreviewAndUploadMixin, Playwrig
     def get_branch_options(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.BRANCH_OPTION)
 
-    def get_task_mode_selector(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.MODE_SELECTOR)
-
-    def get_workspace_selector(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.WORKSPACE_SELECTOR)
-
     def get_system_prompt_open_button(self) -> Locator:
         return self.get_by_test_id(ElementIDs.HOME_PAGE_SYSTEM_PROMPT_OPEN_BUTTON)
 
@@ -121,61 +115,6 @@ def select_branch(
     expect(branch_option).to_have_count(1)
     branch_option.click()
     expect(branch_selector).to_have_text(branch_name)
-
-
-def select_task_mode(task_starter: PlaywrightTaskStarterElement, mode_option_id: str) -> None:
-    """Select a task mode from the mode selector dropdown.
-
-    Args:
-        task_starter: The task starter element
-        mode_option_id: The ElementIDs value for the mode option (e.g., ElementIDs.MODE_OPTION_CLONE)
-    """
-    mode_selector = task_starter.get_task_mode_selector()
-
-    # Map mode option test IDs to their display labels
-    mode_labels = {
-        ElementIDs.MODE_OPTION_IN_PLACE: "In-place",
-        ElementIDs.MODE_OPTION_CLONE: "Clone",
-        ElementIDs.MODE_OPTION_EXISTING: "Existing",
-    }
-    target_label = mode_labels.get(mode_option_id)
-    if target_label and target_label in (mode_selector.text_content() or ""):
-        return
-
-    mode_selector.click()
-    mode_option = task_starter._page.get_by_test_id(mode_option_id)
-    expect(mode_option).to_be_visible()
-    mode_option.click()
-    # Wait for the Radix UI Select dropdown to fully close. The dropdown portal
-    # sets body.style.pointerEvents = "none" while open and restores it on close.
-    # Without this wait, subsequent interactions can race with the close animation.
-    expect(mode_option).not_to_be_visible()
-
-
-def select_existing_workspace(task_starter: PlaywrightTaskStarterElement, workspace_description: str) -> None:
-    """Select "existing workspace" mode and choose a specific workspace.
-
-    Args:
-        task_starter: The task starter element
-        workspace_description: The description of the workspace to select
-    """
-    # First select "existing" mode
-    select_task_mode(task_starter, ElementIDs.MODE_OPTION_EXISTING)
-
-    # Then select the specific workspace from the workspace dropdown
-    workspace_selector = task_starter.get_workspace_selector()
-    workspace_selector.click()
-    # Find the option whose WORKSPACE_OPTION_NAME child has the exact text.
-    # We match on the nested test-id element rather than the option's accessible
-    # name, because badges ("current", "1 agent") are included in the accessible
-    # name and would break exact matching.
-    workspace_option = task_starter._page.get_by_role("option").filter(
-        has=task_starter._page.get_by_test_id(ElementIDs.WORKSPACE_OPTION_NAME).get_by_text(
-            workspace_description, exact=True
-        )
-    )
-    expect(workspace_option).to_have_count(1)
-    workspace_option.click()
 
 
 def set_home_page_system_prompt(task_starter: PlaywrightTaskStarterElement, system_prompt: str) -> None:

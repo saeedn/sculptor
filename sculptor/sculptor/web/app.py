@@ -58,7 +58,6 @@ from sculptor.database.models import Project
 from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.database.models import Workspace
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches import log_exception
 from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.event_utils import MutableEvent
@@ -668,26 +667,15 @@ def create_workspace_v2(
         if project is None:
             raise HTTPException(status_code=404, detail=f"Project {workspace_request.project_id} not found")
 
-        strategy = workspace_request.initialization_strategy
         branch_name = workspace_request.requested_branch_name
-        if strategy == WorkspaceInitializationStrategy.IN_PLACE:
-            if branch_name is not None:
-                raise HTTPException(
-                    status_code=400,
-                    detail="requested_branch_name is not supported for IN_PLACE workspaces",
-                )
-        elif strategy == WorkspaceInitializationStrategy.WORKTREE:
-            if branch_name is None or not branch_name.strip():
-                raise HTTPException(
-                    status_code=400, detail="requested_branch_name is required for WORKTREE workspaces"
-                )
-            if workspace_request.source_branch is None:
-                raise HTTPException(status_code=400, detail="source_branch is required for WORKTREE workspaces")
+        if branch_name is None or not branch_name.strip():
+            raise HTTPException(status_code=400, detail="requested_branch_name is required for WORKTREE workspaces")
+        if workspace_request.source_branch is None:
+            raise HTTPException(status_code=400, detail="source_branch is required for WORKTREE workspaces")
 
-        if branch_name:
-            with services.git_repo_service.open_local_user_git_repo_for_read(project, log_command=False) as repo:
-                if repo.is_branch_ref(branch_name):
-                    raise HTTPException(status_code=409, detail=f"Branch '{branch_name}' already exists")
+        with services.git_repo_service.open_local_user_git_repo_for_read(project, log_command=False) as repo:
+            if repo.is_branch_ref(branch_name):
+                raise HTTPException(status_code=409, detail=f"Branch '{branch_name}' already exists")
 
         workspace = services.workspace_service.create_workspace(
             project=project,
@@ -700,12 +688,7 @@ def create_workspace_v2(
         )
         update_most_recently_used_project(project_id=validated_project_id)
         logger.info("Created workspace {} for project {}", workspace.object_id, workspace_request.project_id)
-        setup_command = (
-            resolve_workspace_setup_command(project.workspace_setup_command)
-            if workspace.initialization_strategy
-            in (WorkspaceInitializationStrategy.CLONE, WorkspaceInitializationStrategy.WORKTREE)
-            else None
-        )
+        setup_command = resolve_workspace_setup_command(project.workspace_setup_command)
         return _workspace_to_response(workspace, workspace_setup_command=setup_command)
 
 
@@ -717,19 +700,14 @@ def preview_branch_name(
     request: Request,
     project_id: str,
     workspace_name: str = "",
-    mode: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE,
     user_session: UserSession = Depends(get_user_session),
 ) -> PreviewBranchNameResponse:
     """Resolve the auto-filled branch-name preview for the Add Workspace form.
 
-    In-place mode returns an empty string since the field is hidden. Clone and
-    worktree modes resolve the project's or user-global naming pattern against
-    a `<slug>` derived from the workspace name (random if empty) and a `<user>`
-    slug derived from the repo's `git config user.name`.
+    Resolves the project's or user-global naming pattern against a `<slug>`
+    derived from the workspace name (random if empty) and a `<user>` slug
+    derived from the repo's `git config user.name`.
     """
-    if mode == WorkspaceInitializationStrategy.IN_PLACE:
-        return PreviewBranchNameResponse(branch_name="")
-
     validated_project_id = validate_project_id(project_id)
     services = get_services_from_request_or_websocket(request)
 
@@ -1598,8 +1576,8 @@ def get_skills(
     Exactly one of project_id or workspace_id must be provided.
 
     When workspace_id is given, discovers skills from the workspace's working
-    directory (which may be a clone in CLONE mode). Falls back to the project's
-    local repo if the workspace environment hasn't been initialized yet.
+    directory (the worktree checkout). Falls back to the project's local repo
+    if the workspace environment hasn't been initialized yet.
 
     When project_id is given, discovers skills from the project's local
     repository. Used on the Add Workspace page where no workspace exists yet.
@@ -2854,8 +2832,8 @@ def update_user_config(
 
     ``user_config`` is a partial dict; fields absent from it are left
     unchanged. This prevents stale full-object PUTs (e.g. a debounced
-    panel-layout sync) from clobbering fields like
-    ``enable_in_place_workspaces`` that a different code path just changed.
+    panel-layout sync) from clobbering fields that a different code path
+    just changed.
     """
     old_user_config = get_user_config_instance()
 

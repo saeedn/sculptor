@@ -55,12 +55,18 @@ def local_environment(
     repo_dir = workspace_dir / "repo"
     repo_dir.mkdir(parents=True, exist_ok=True)
     try:
-        local_env = LocalEnvironment.create(
+        # Build directly (bypassing LocalEnvironment.create, which runs
+        # `git worktree add`) and create the worktree dirs manually so this
+        # test doesn't need a real git repo.
+        local_env = LocalEnvironment(
             environment_id=LocalEnvironmentID(str(workspace_dir)),
             project_id=ProjectID(),
             concurrency_group=test_root_concurrency_group,
             repo_host_path=repo_dir,
         )
+        local_env.to_host_path(local_env.get_state_path()).mkdir(parents=True, exist_ok=True)
+        local_env.to_host_path(local_env.get_artifacts_path()).mkdir(parents=True, exist_ok=True)
+        local_env.get_working_directory().mkdir(parents=True, exist_ok=True)
         mock_cg = MagicMock(spec=ConcurrencyGroup)
         dep_service = DependencyManagementService.model_construct(concurrency_group=mock_cg)
         yield LocalAgentExecutionEnvironment(local_env, TaskID(), dep_service)

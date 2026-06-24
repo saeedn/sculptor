@@ -12,7 +12,6 @@ from sculptor.constants import ElementIDs
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
 from sculptor.testing.elements.terminal import expect_terminal_panel_replaces_chat
 from sculptor.testing.elements.user_config import disable_pi_agent
-from sculptor.testing.elements.user_config import enable_pi_agent
 from sculptor.testing.playwright_utils import navigate_to_add_workspace_page
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -31,32 +30,6 @@ def test_agent_type_select_visible_with_claude_default(
     picker = page.get_by_test_id(ElementIDs.ADD_WORKSPACE_AGENT_TYPE_SELECT)
     expect(picker).to_be_visible()
     expect(picker).to_contain_text("Claude")
-
-
-@user_story("to only see the pi agent type in the form when pi-agent is enabled")
-def test_pi_option_gated_behind_pi_agent_flag(
-    sculptor_instance_: SculptorInstance,
-) -> None:
-    page = sculptor_instance_.page
-
-    # The flag is sticky on the shared instance — reset it defensively.
-    disable_pi_agent(page)
-    navigate_to_add_workspace_page(page)
-    picker = page.get_by_test_id(ElementIDs.ADD_WORKSPACE_AGENT_TYPE_SELECT)
-    picker.click()
-    expect(page.get_by_test_id(ElementIDs.AGENT_TYPE_OPTION_CLAUDE)).to_be_visible()
-    expect(page.get_by_test_id(ElementIDs.AGENT_TYPE_OPTION_TERMINAL)).to_be_visible()
-    expect(page.get_by_test_id(ElementIDs.AGENT_TYPE_OPTION_PI)).to_have_count(0)
-    page.keyboard.press("Escape")
-
-    try:
-        enable_pi_agent(page)
-        navigate_to_add_workspace_page(page)
-        picker.click()
-        expect(page.get_by_test_id(ElementIDs.AGENT_TYPE_OPTION_PI)).to_be_visible()
-        page.keyboard.press("Escape")
-    finally:
-        disable_pi_agent(page)
 
 
 @user_story("to start a workspace whose first agent is a Terminal agent")

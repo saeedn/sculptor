@@ -509,18 +509,25 @@ def test_get_claude_command_disables_builtin_auq_and_exit_plan_mode() -> None:
 def _make_repo_with_file_ending_in_newline(
     tmp_path: Path, test_root_concurrency_group: ConcurrencyGroup
 ) -> tuple[LocalAgentExecutionEnvironment, str]:
-    """Create a real git repo in ``tmp_path`` containing one committed file
-    whose content ends in a newline. Returns (environment, absolute_file_path)."""
-    local_env = LocalEnvironment.create(
+    """Create a real git repo in the worktree checkout containing one committed
+    file whose content ends in a newline. Returns (environment, absolute_file_path).
+
+    Built directly (bypassing LocalEnvironment.create, which runs
+    `git worktree add`) and the worktree dirs are created manually, then a real
+    git repo is initialized inside the working directory."""
+    local_env = LocalEnvironment(
         environment_id=LocalEnvironmentID(str(tmp_path)),
         project_id=ProjectID(),
         concurrency_group=test_root_concurrency_group,
         repo_host_path=tmp_path,
     )
+    local_env.to_host_path(local_env.get_state_path()).mkdir(parents=True, exist_ok=True)
+    local_env.to_host_path(local_env.get_artifacts_path()).mkdir(parents=True, exist_ok=True)
+    local_env.get_working_directory().mkdir(parents=True, exist_ok=True)
     dep_service = DependencyManagementService.model_construct(concurrency_group=MagicMock(spec=ConcurrencyGroup))
     environment = LocalAgentExecutionEnvironment(local_env, TaskID(), dep_service)
 
-    file_path = str(tmp_path / "repo.py")
+    file_path = str(local_env.get_working_directory() / "repo.py")
     environment.write_file(file_path, "print('hello')\n")
     run_git_command_in_environment(environment=environment, command=["git", "init"])
     run_git_command_in_environment(environment=environment, command=["git", "add", "."])

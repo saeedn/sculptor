@@ -23,7 +23,7 @@ const createMockWorkspace = (overrides: Partial<Workspace> = {}): Workspace => (
   projectId: "proj_test123",
   organizationReference: "org_test",
   description: "Test workspace",
-  initializationStrategy: WorkspaceInitializationStrategy.IN_PLACE,
+  initializationStrategy: WorkspaceInitializationStrategy.WORKTREE,
   sourceBranch: "main",
   sourceGitHash: null,
   isDeleted: false,
@@ -85,20 +85,7 @@ describe("useWorkspace", () => {
     });
 
     expect(result.current).toEqual(workspace);
-    expect(result.current?.initializationStrategy).toBe(WorkspaceInitializationStrategy.IN_PLACE);
-  });
-
-  it("returns workspace with CLONE strategy", () => {
-    const workspace = createMockWorkspace({
-      objectId: "ws_clone",
-      initializationStrategy: WorkspaceInitializationStrategy.CLONE,
-    });
-
-    const { result } = renderHook(() => useWorkspace("ws_clone"), {
-      wrapper: createWrapper([[workspaceAtomFamily("ws_clone"), workspace]]),
-    });
-
-    expect(result.current?.initializationStrategy).toBe(WorkspaceInitializationStrategy.CLONE);
+    expect(result.current?.initializationStrategy).toBe(WorkspaceInitializationStrategy.WORKTREE);
   });
 });
 

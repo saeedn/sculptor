@@ -14,8 +14,6 @@ from typing import Union
 from loguru import logger
 from pydantic import PrivateAttr
 
-from sculptor.agents.default.constants import CLONE_MODE_PROMPT
-from sculptor.agents.default.constants import IN_PLACE_MODE_PROMPT
 from sculptor.agents.default.constants import WORKTREE_MODE_PROMPT
 from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
@@ -31,7 +29,6 @@ from sculptor.primitives.ids import LocalEnvironmentID
 from sculptor.primitives.ids import ProjectID
 from sculptor.services.workspace_service.environment_manager.env_file_parser import atomic_copy_env_file
 from sculptor.services.workspace_service.environment_manager.env_file_parser import load_project_env_vars
-from sculptor.services.workspace_service.environment_manager.environments.clone_strategy import clone_repository
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     TerminalEnvironmentConfig,
 )
@@ -77,7 +74,7 @@ class LocalEnvironment(Environment):
     # The repo host path - points directly to the user's repository.
     # This is always set when creating or resuming an environment.
     repo_host_path: Path | None = None
-    initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.IN_PLACE
+    initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE
     _processes: list[RunningProcess] = PrivateAttr(default_factory=list)
     _is_closed: bool = PrivateAttr(default=False)
     _closing_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
@@ -126,30 +123,17 @@ class LocalEnvironment(Environment):
     def get_working_directory(self) -> Path:
         """Get the directory where the agent should perform all work.
 
-        - In-place mode: Returns the user's original repository path.
-        - Clone mode / Worktree mode: Returns the checkout at workspace/code/.
+        Returns the worktree checkout at workspace/code/.
         """
-        if self.initialization_strategy in (
-            WorkspaceInitializationStrategy.CLONE,
-            WorkspaceInitializationStrategy.WORKTREE,
-        ):
-            return self.get_workspace_path() / "code"
-        if self.repo_host_path is None:
-            raise ValueError("repo_host_path must be set for LocalEnvironment")
-        return self.repo_host_path
+        return self.get_workspace_path() / "code"
 
     def get_system_prompt(self) -> str | None:
         """Get the environment-specific system prompt content.
 
-        Returns mode-specific instructions based on initialization_strategy,
-        plus the workspace attachments path for image display.
+        Returns the worktree-mode instructions plus the workspace attachments
+        path for image display.
         """
-        if self.initialization_strategy == WorkspaceInitializationStrategy.IN_PLACE:
-            mode_prompt = IN_PLACE_MODE_PROMPT
-        elif self.initialization_strategy == WorkspaceInitializationStrategy.WORKTREE:
-            mode_prompt = WORKTREE_MODE_PROMPT
-        else:
-            mode_prompt = CLONE_MODE_PROMPT
+        mode_prompt = WORKTREE_MODE_PROMPT
 
         attachments_path = self.get_attachments_path()
         attachments_prompt = f"\nThe workspace attachments directory is: {attachments_path}\nSave any media you want to display (e.g. screenshots, video recordings) to this directory.\n"
@@ -163,7 +147,7 @@ class LocalEnvironment(Environment):
         project_id: ProjectID,
         concurrency_group: ConcurrencyGroup,
         repo_host_path: Path,
-        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.IN_PLACE,
+        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE,
         source_branch: str | None = None,
         requested_branch_name: str | None = None,
         env_var_override: bool = False,
@@ -172,9 +156,7 @@ class LocalEnvironment(Environment):
         """Factory method to create a new LocalEnvironment with directories initialized.
 
         Creates the environment and ensures the state and artifacts directories exist.
-        For clone mode, clones the repository to workspace/code/.
-        For worktree mode, runs `git worktree add` off the user's repository into workspace/code/.
-        For in-place mode, the agent works directly in the user's repository.
+        Runs `git worktree add` off the user's repository into workspace/code/.
         Use the constructor directly when resuming an existing environment.
 
         Args:
@@ -183,10 +165,8 @@ class LocalEnvironment(Environment):
             concurrency_group: Concurrency group for process management.
             repo_host_path: Path to the user's repository.
             initialization_strategy: Strategy for workspace initialization.
-            source_branch: Branch to checkout after cloning (for CLONE mode) or base
-                ref off which to create the worktree branch (for WORKTREE mode).
-            requested_branch_name: For WORKTREE mode, the new branch name created by
-                `git worktree add -b`; required for WORKTREE, unused otherwise.
+            source_branch: Base ref off which to create the worktree branch.
+            requested_branch_name: The new branch name created by `git worktree add -b`.
             sculptor_folder: Override for the sculptor folder path (uses get_workspaces_folder() if None).
         """
         environment = cls(
@@ -200,47 +180,24 @@ class LocalEnvironment(Environment):
         environment.to_host_path(environment.get_state_path()).mkdir(parents=True, exist_ok=True)
         environment.to_host_path(environment.get_artifacts_path()).mkdir(parents=True, exist_ok=True)
 
-        # For clone mode, clone the repository to workspace/code/
-        if initialization_strategy == WorkspaceInitializationStrategy.CLONE:
-            assert repo_host_path is not None
-            clone_repository(
-                source_repo_path=repo_host_path,
-                destination=environment.get_working_directory(),
-                concurrency_group=concurrency_group,
-                target_branch=source_branch,
-            )
-            # If the user asked for a named branch inside the clone, create and
-            # check it out off the base branch. The collision re-check happens at
-            # the API layer so we don't need to handle "already exists" here.
-            if requested_branch_name is not None and requested_branch_name.strip():
-                concurrency_group.run_process_to_completion(
-                    command=["git", "checkout", "-b", requested_branch_name],
-                    cwd=environment.get_working_directory(),
-                    is_checked_after=True,
-                )
-            # Copy .sculptor/.env from the source repo into the clone.
-            # Git does not copy gitignored files, so this must be done explicitly.
-            source_env_file = repo_host_path / ".sculptor" / ".env"
-            if source_env_file.exists():
-                dest_env_file = environment.get_working_directory() / ".sculptor" / ".env"
-                atomic_copy_env_file(source_env_file, dest_env_file)
-        elif initialization_strategy == WorkspaceInitializationStrategy.WORKTREE:
-            if requested_branch_name is None:
-                raise ValueError("requested_branch_name is required for WORKTREE initialization")
-            if source_branch is None:
-                raise ValueError("source_branch (base ref) is required for WORKTREE initialization")
-            create_worktree(
-                user_repo_path=repo_host_path,
-                destination=environment.get_working_directory(),
-                concurrency_group=concurrency_group,
-                base_ref=source_branch,
-                new_branch=requested_branch_name,
-            )
-            # Gitignored files don't follow the worktree either; mirror the CLONE behavior.
-            source_env_file = repo_host_path / ".sculptor" / ".env"
-            if source_env_file.exists():
-                dest_env_file = environment.get_working_directory() / ".sculptor" / ".env"
-                atomic_copy_env_file(source_env_file, dest_env_file)
+        # Run `git worktree add` off the user's repository into workspace/code/.
+        if requested_branch_name is None:
+            raise ValueError("requested_branch_name is required for WORKTREE initialization")
+        if source_branch is None:
+            raise ValueError("source_branch (base ref) is required for WORKTREE initialization")
+        create_worktree(
+            user_repo_path=repo_host_path,
+            destination=environment.get_working_directory(),
+            concurrency_group=concurrency_group,
+            base_ref=source_branch,
+            new_branch=requested_branch_name,
+        )
+        # Gitignored files don't follow the worktree, so copy .sculptor/.env
+        # from the source repo into the checkout explicitly.
+        source_env_file = repo_host_path / ".sculptor" / ".env"
+        if source_env_file.exists():
+            dest_env_file = environment.get_working_directory() / ".sculptor" / ".env"
+            atomic_copy_env_file(source_env_file, dest_env_file)
 
         environment._sculptor_folder = sculptor_folder
         environment._project_env_vars = load_project_env_vars(
@@ -372,10 +329,10 @@ class LocalEnvironment(Environment):
         on_pid: Callable[[int], None],
         shutdown_event: ReadOnlyEvent,
     ) -> int:
-        # Run setup in the agent's working directory: for CLONE workspaces
-        # this is the freshly-cloned copy under workspace/code/, not the
-        # user's original repo. That's where build artifacts should land
-        # (node_modules, .venv, etc.) so the agent sees them when it runs.
+        # Run setup in the agent's working directory: the worktree checkout
+        # under workspace/code/, not the user's original repo. That's where
+        # build artifacts should land (node_modules, .venv, etc.) so the agent
+        # sees them when it runs.
         working_directory = self.get_working_directory()
         if self._env_var_override:
             merged = {**os.environ, **self._project_env_vars}

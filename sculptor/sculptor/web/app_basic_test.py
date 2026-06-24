@@ -121,7 +121,7 @@ def _create_workspace(
     """Create an IN_PLACE workspace for testing."""
     return services.workspace_service.create_workspace(
         project=project,
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
         source_branch=None,
         requested_branch_name=None,
         description=description,

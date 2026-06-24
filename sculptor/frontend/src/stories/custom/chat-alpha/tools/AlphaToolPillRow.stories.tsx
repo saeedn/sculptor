@@ -12,7 +12,7 @@ import { chatToolDensityAtom } from "~/pages/workspace/components/chat-alpha/ato
 import { toolResult, toolUse } from "./fixtures.ts";
 
 const STORYBOOK_WORKSPACE_ID = "storybook-ws";
-// `useWorkspaceCodePath` returns `${environmentId}/code` for CLONE workspaces,
+// `useWorkspaceCodePath` returns `${environmentId}/code` for worktree workspaces,
 // so the resolved prefix is `/Users/dev/work/sculptor-env/code`.
 const WORKSPACE_CODE_PATH_PREFIX = "/Users/dev/work/sculptor-env/code";
 
@@ -21,7 +21,7 @@ const STORYBOOK_WORKSPACE: Workspace = {
   projectId: "storybook-project",
   organizationReference: "storybook-org",
   description: "Storybook fixture",
-  initializationStrategy: WorkspaceInitializationStrategy.CLONE,
+  initializationStrategy: WorkspaceInitializationStrategy.WORKTREE,
   environmentId: "/Users/dev/work/sculptor-env",
 };
 

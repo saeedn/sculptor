@@ -168,14 +168,6 @@ export const isSmoothStreamingUserPreferenceAtom = atom<boolean>(
   (get) => (get(userConfigAtom)?.isSmoothStreamingEnabled as boolean | undefined) ?? true,
 );
 
-// In-place workspaces (opt-in — off by default)
-export const isInPlaceWorkspacesEnabledAtom = atom<boolean>(
-  (get) => get(userConfigAtom)?.enableInPlaceWorkspaces ?? false,
-);
-
-// Clone workspaces (opt-in — off by default; worktree is the default mode)
-export const isCloneWorkspacesEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.enableCloneWorkspaces ?? false);
-
 // Default branch-naming pattern (user-global default)
 export const defaultWorkspaceBranchNamingPatternAtom = atom<string>(
   (get) => get(userConfigAtom)?.defaultWorkspaceBranchNamingPattern ?? "<user>/<slug>",

@@ -18,13 +18,22 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
 
 
 def _create_local_environment_from_path(path: Path, concurrency_group: ConcurrencyGroup) -> LocalEnvironment:
-    """Create a LocalEnvironment for testing."""
-    return LocalEnvironment.create(
+    """Create a LocalEnvironment for testing.
+
+    Builds the environment directly (bypassing ``LocalEnvironment.create``,
+    which runs ``git worktree add``) and creates the state/artifacts/code
+    directories these wrapper tests rely on, without needing a real git repo.
+    """
+    environment = LocalEnvironment(
         environment_id=LocalEnvironmentID(str(path)),
         project_id=ProjectID(),
         concurrency_group=concurrency_group,
         repo_host_path=path,
     )
+    environment.to_host_path(environment.get_state_path()).mkdir(parents=True, exist_ok=True)
+    environment.to_host_path(environment.get_artifacts_path()).mkdir(parents=True, exist_ok=True)
+    environment.get_working_directory().mkdir(parents=True, exist_ok=True)
+    return environment
 
 
 @pytest.fixture

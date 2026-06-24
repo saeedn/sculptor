@@ -299,7 +299,7 @@ class _FakeEnv:
             project_id=self.project_id,
             organization_reference=organization_reference,
             description="test workspace",
-            initialization_strategy=WorkspaceInitializationStrategy.CLONE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
         )
         self.tasks_by_id: dict[TaskID, Task] = {}
         # Most-recent-first agent tasks the resolver sees through the coordinator's

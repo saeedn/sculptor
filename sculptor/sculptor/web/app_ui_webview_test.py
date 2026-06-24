@@ -25,7 +25,7 @@ def _create_open_workspace(
     with user_session.open_transaction(test_services) as transaction:
         workspace = test_services.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description=description,

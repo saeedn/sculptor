@@ -2,7 +2,6 @@ import { useStore } from "jotai/react";
 import { useMemo } from "react";
 
 import type { ExternalApp, Workspace } from "../../../api";
-import { WorkspaceInitializationStrategy } from "../../../api";
 import { openPathInExternalApp } from "../../../common/openInApp/items.tsx";
 import { getBackendCapabilities } from "../../../common/state/atoms/backendCapabilities.ts";
 import { chatActionsAtom } from "../../../common/state/atoms/chatActions.ts";
@@ -35,14 +34,12 @@ export type GitAndOpenInRuntime = {
 
 /**
  * Resolves the local filesystem path the workspace's "Open in..." actions
- * should target. Mirrors RepoSegment's logic: in-place workspaces use the
- * source path; cloned workspaces use the environment's `code/` subdir
- * when an environment is set, falling back to source.
+ * should target. Mirrors RepoSegment's logic: worktree workspaces use the
+ * environment's `code/` subdir when an environment is set, falling back to
+ * the source path.
  */
 const resolveOpenInPath = (workspace: Workspace, repoPath: string | null): string | null => {
   if (repoPath == null) return null;
-  const isInPlace = workspace.initializationStrategy === WorkspaceInitializationStrategy.IN_PLACE;
-  if (isInPlace) return repoPath;
   const codePath = workspace.environmentId ? `${workspace.environmentId}/code` : null;
   return codePath ?? repoPath;
 };

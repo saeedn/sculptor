@@ -1,6 +1,6 @@
-import { Button, Flex, Select, Spinner, Text, Tooltip } from "@radix-ui/themes";
+import { Button, Flex, Select, Spinner, Text } from "@radix-ui/themes";
 import { useAtomValue, useSetAtom } from "jotai";
-import { BlocksIcon, BotIcon } from "lucide-react";
+import { BotIcon } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -24,13 +24,7 @@ import {
   type StoredAgentType,
 } from "../../common/state/atoms/agentTabs.ts";
 import { projectsArrayAtom, updateProjectsAtom } from "../../common/state/atoms/projects.ts";
-import {
-  defaultModelAtom,
-  isCloneWorkspacesEnabledAtom,
-  isInPlaceWorkspacesEnabledAtom,
-  isPiAgentEnabledAtom,
-  userConfigAtom,
-} from "../../common/state/atoms/userConfig.ts";
+import { defaultModelAtom, isPiAgentEnabledAtom, userConfigAtom } from "../../common/state/atoms/userConfig.ts";
 import {
   clearDraftCreatingAtom,
   convertNewWorkspaceToTabAtom,
@@ -58,13 +52,7 @@ export const AddWorkspacePage = (): ReactElement => {
     throw new Error("AddWorkspacePage requires a draftId route parameter");
   }
   const { navigateToAgent } = useImbueNavigate();
-  const isInPlaceWorkspacesEnabled = useAtomValue(isInPlaceWorkspacesEnabledAtom);
-  const isCloneWorkspacesEnabled = useAtomValue(isCloneWorkspacesEnabledAtom);
   const isPiAgentEnabled = useAtomValue(isPiAgentEnabledAtom);
-  // Worktree mode is always the default; the selector only appears when an
-  // opt-in mode (clone or in-place) has been enabled and the user has more
-  // than one option to choose from.
-  const isModeSelectorVisible = isInPlaceWorkspacesEnabled || isCloneWorkspacesEnabled;
   const defaultModelPreference = useAtomValue(defaultModelAtom);
   const convertNewWorkspaceToTab = useSetAtom(convertNewWorkspaceToTabAtom);
   const markDraftCreating = useSetAtom(markDraftCreatingAtom);
@@ -84,8 +72,6 @@ export const AddWorkspacePage = (): ReactElement => {
   selectedProjectIdRef.current = selectedProjectId;
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
 
-  // Form state. Worktree is the default mode; clone and in-place are opt-in.
-  const [mode, setMode] = useState<WorkspaceInitializationStrategy>(WorkspaceInitializationStrategy.WORKTREE);
   // The type of the workspace's first agent (agent type is per-agent, not
   // per-workspace). Registered terminal agents select as `registered:<id>`.
   // The form opens preset to the shared last-used type (the same MRU the tab
@@ -123,14 +109,6 @@ export const AddWorkspacePage = (): ReactElement => {
   const [branchNameOverride, setBranchNameOverride] = useDraftBranchNameOverride(draftId);
   const isBranchNameManuallyEdited = branchNameOverride !== null;
 
-  const handleModeChange = useCallback(
-    (nextMode: WorkspaceInitializationStrategy): void => {
-      setMode(nextMode);
-      setBranchNameOverride(null);
-    },
-    [setBranchNameOverride],
-  );
-
   const handleProjectChange = useCallback(
     (nextProjectId: string | null): void => {
       setSelectedProjectId(nextProjectId);
@@ -151,7 +129,6 @@ export const AddWorkspacePage = (): ReactElement => {
   } = useBranchNamePreview({
     projectId: selectedProjectId,
     workspaceName,
-    mode,
     override: branchNameOverride,
   });
 
@@ -243,20 +220,13 @@ export const AddWorkspacePage = (): ReactElement => {
     if (isPending || !selectedProjectId) return;
 
     const trimmedBranch = effectiveBranchName.trim();
-    if (mode === WorkspaceInitializationStrategy.WORKTREE && !trimmedBranch) {
+    if (!trimmedBranch) {
       setToast({
-        title: "Branch name is required for worktree workspaces",
+        title: "Branch name is required",
         type: ToastType.ERROR,
       });
       return;
     }
-
-    const requestedBranchName =
-      mode === WorkspaceInitializationStrategy.IN_PLACE
-        ? undefined
-        : mode === WorkspaceInitializationStrategy.WORKTREE
-          ? trimmedBranch
-          : trimmedBranch || undefined;
 
     setIsPending(true);
     try {
@@ -268,10 +238,10 @@ export const AddWorkspacePage = (): ReactElement => {
       const wsResponse = await createWorkspaceV2({
         body: {
           projectId: selectedProjectId,
-          initializationStrategy: mode,
-          sourceBranch: mode === WorkspaceInitializationStrategy.IN_PLACE ? undefined : sourceBranch,
+          initializationStrategy: WorkspaceInitializationStrategy.WORKTREE,
+          sourceBranch,
           description: workspaceName.trim() || "Untitled workspace",
-          requestedBranchName,
+          requestedBranchName: trimmedBranch,
         },
       });
 
@@ -356,7 +326,6 @@ export const AddWorkspacePage = (): ReactElement => {
     isPending,
     selectedProjectId,
     draftId,
-    mode,
     agentType,
     registrationId,
     registrations,
@@ -415,15 +384,11 @@ export const AddWorkspacePage = (): ReactElement => {
             nameInputRef={nameInputRef}
             repoInfo={repoInfo}
             isPending={isPending}
-            isSubmitDisabled={
-              mode === WorkspaceInitializationStrategy.WORKTREE &&
-              (effectiveBranchName.trim() === "" || isBranchNamePreviewLoading)
-            }
+            isSubmitDisabled={effectiveBranchName.trim() === "" || isBranchNamePreviewLoading}
             onSubmit={handleSubmit}
             autoFocus
             branchField={
               <BranchNameField
-                mode={mode}
                 value={effectiveBranchName}
                 isManuallyEdited={isBranchNameManuallyEdited}
                 isLoading={isBranchNamePreviewLoading}
@@ -443,28 +408,13 @@ export const AddWorkspacePage = (): ReactElement => {
             />
 
             {repoInfo ? (
-              mode === WorkspaceInitializationStrategy.IN_PLACE ? (
-                <Tooltip content="In-place workspaces use the current branch in your repository">
-                  <span style={{ display: "flex" }}>
-                    <BranchSelector
-                      fetchRepoInfo={fetchRepoInfo}
-                      repoInfo={repoInfo}
-                      setUserSelectedBranch={setUserSelectedBranch}
-                      sourceBranch={sourceBranch}
-                      disabled={true}
-                      triggerVariant="ghost"
-                    />
-                  </span>
-                </Tooltip>
-              ) : (
-                <BranchSelector
-                  fetchRepoInfo={fetchRepoInfo}
-                  repoInfo={repoInfo}
-                  setUserSelectedBranch={setUserSelectedBranch}
-                  sourceBranch={sourceBranch}
-                  triggerVariant="ghost"
-                />
-              )
+              <BranchSelector
+                fetchRepoInfo={fetchRepoInfo}
+                repoInfo={repoInfo}
+                setUserSelectedBranch={setUserSelectedBranch}
+                sourceBranch={sourceBranch}
+                triggerVariant="ghost"
+              />
             ) : (
               <Button disabled={true} className={styles.loadingButton}>
                 <Flex align="center" gap="1">
@@ -525,55 +475,6 @@ export const AddWorkspacePage = (): ReactElement => {
                 ))}
               </Select.Content>
             </Select.Root>
-
-            {/* Mode selector — shown when any experimental workspace mode is enabled */}
-            {isModeSelectorVisible && (
-              <Select.Root
-                size="1"
-                value={mode}
-                onValueChange={(value) => handleModeChange(value as WorkspaceInitializationStrategy)}
-              >
-                <Select.Trigger
-                  variant="ghost"
-                  className={styles.compactSelector}
-                  data-testid={ElementIds.MODE_SELECTOR}
-                >
-                  <Flex align="center" gap="1">
-                    <BlocksIcon size={12} />
-                    <Text className={styles.selectorLabel}>environment</Text>
-                    {mode === WorkspaceInitializationStrategy.IN_PLACE
-                      ? "In-place"
-                      : mode === WorkspaceInitializationStrategy.WORKTREE
-                        ? "Worktree"
-                        : "Clone"}
-                  </Flex>
-                </Select.Trigger>
-                <Select.Content position="popper" side="bottom" sideOffset={5}>
-                  <Select.Item
-                    value={WorkspaceInitializationStrategy.WORKTREE}
-                    data-testid={ElementIds.MODE_OPTION_WORKTREE}
-                  >
-                    Worktree
-                  </Select.Item>
-                  {isCloneWorkspacesEnabled && (
-                    <Select.Item
-                      value={WorkspaceInitializationStrategy.CLONE}
-                      data-testid={ElementIds.MODE_OPTION_CLONE}
-                    >
-                      Clone
-                    </Select.Item>
-                  )}
-                  {isInPlaceWorkspacesEnabled && (
-                    <Select.Item
-                      value={WorkspaceInitializationStrategy.IN_PLACE}
-                      data-testid={ElementIds.MODE_OPTION_IN_PLACE}
-                    >
-                      In-place
-                    </Select.Item>
-                  )}
-                </Select.Content>
-              </Select.Root>
-            )}
           </NewWorkspaceForm>
         </Flex>
       </Flex>

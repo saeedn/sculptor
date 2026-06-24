@@ -254,7 +254,7 @@ def _make_workspace(*, workspace_id: WorkspaceID, project_id: ProjectID, is_dele
         project_id=project_id,
         organization_reference=OrganizationReference("test-org"),
         description="test",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
+        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
         is_deleted=is_deleted,
     )
 

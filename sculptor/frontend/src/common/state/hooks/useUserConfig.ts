@@ -59,9 +59,8 @@ export const useUserConfig = (): UserConfigSyncActions => {
 
       try {
         // Send only the changed fields; the backend merges into the current
-        // server config. PUTting the full atom would let stale fields
-        // (e.g. enableInPlaceWorkspaces from a previous load) clobber the
-        // server.
+        // server config. PUTting the full atom would let stale fields from a
+        // previous load clobber the server.
         const { data: newConfig } = await updateUserConfig({
           body: {
             userConfig: fieldUpdates as Record<string, unknown>,

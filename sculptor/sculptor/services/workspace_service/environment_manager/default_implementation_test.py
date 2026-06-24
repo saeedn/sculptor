@@ -7,7 +7,6 @@ import pytest
 
 from sculptor.config.settings import SculptorSettings
 from sculptor.database.models import Project
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.git import get_repo_base_path
 from sculptor.primitives.constants import ANONYMOUS_ORGANIZATION_REFERENCE
@@ -66,6 +65,8 @@ def test_simple_local_environment_run(
         project_path=project_path,
         project_id=test_project.object_id,
         concurrency_group=test_root_concurrency_group,
+        source_branch="main",
+        requested_branch_name="ws/simple-run",
     )
     try:
         process = environment.run_process_in_background(["echo", "hello"], secrets={})
@@ -88,18 +89,22 @@ def test_simple_local_environment_run_with_content(
     test_project: Project,
     test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
-    """Test that files in the project path are accessible in the environment."""
+    """Test that files in the worktree checkout are accessible in the environment."""
     project_path = initial_commit_repo[0]
 
     test_file_name = "test_file.txt"
     test_file_content = "hello"
-    (project_path / test_file_name).write_text(test_file_content)
 
     environment = environment_manager.create_environment(
         project_path=project_path,
         project_id=test_project.object_id,
         concurrency_group=test_root_concurrency_group,
+        source_branch="main",
+        requested_branch_name="ws/run-with-content",
     )
+    # The worktree checkout (workspace/code/) is the agent's working directory,
+    # so write the file there rather than into the user's source repo.
+    (environment.get_working_directory() / test_file_name).write_text(test_file_content)
     try:
         process = environment.run_process_in_background(["cat", test_file_name], secrets={})
         queue = process.get_queue()
@@ -127,6 +132,8 @@ def test_create_environment_directly(
         project_path=project_path,
         project_id=test_project.object_id,
         concurrency_group=test_root_concurrency_group,
+        source_branch="main",
+        requested_branch_name="ws/create-directly",
     )
 
     try:
@@ -149,6 +156,8 @@ def test_resume_environment(
         project_path=project_path,
         project_id=test_project.object_id,
         concurrency_group=test_root_concurrency_group,
+        source_branch="main",
+        requested_branch_name="ws/resume",
     )
     environment_id = environment.environment_id
     environment.close()
@@ -165,88 +174,3 @@ def test_resume_environment(
         assert resumed_environment.environment_id == environment_id
     finally:
         resumed_environment.destroy()
-
-
-def _create_clone_with_env_file(
-    project_path: Path,
-    env_content: str,
-    environment_manager: EnvironmentManager,
-    test_project: Project,
-    concurrency_group: ConcurrencyGroup,
-) -> str:
-    """Create a clone environment with a .sculptor/.env file and return its environment_id."""
-    env_dir = project_path / ".sculptor"
-    env_dir.mkdir(parents=True, exist_ok=True)
-    (env_dir / ".env").write_text(env_content)
-
-    environment = environment_manager.create_environment(
-        project_path=project_path,
-        project_id=test_project.object_id,
-        concurrency_group=concurrency_group,
-        initialization_strategy=WorkspaceInitializationStrategy.CLONE,
-    )
-    environment_id = environment.environment_id
-    environment.close()
-    return environment_id
-
-
-def test_resume_environment_recopies_env_file_in_clone_mode(
-    initial_commit_repo: tuple[Path, str],
-    test_root_concurrency_group: ConcurrencyGroup,
-    environment_manager: EnvironmentManager,
-    test_project: Project,
-) -> None:
-    """Resume in clone mode should re-copy .sculptor/.env from the source repo."""
-    project_path = initial_commit_repo[0]
-    environment_id = _create_clone_with_env_file(
-        project_path, "RESUME_VAR=original\n", environment_manager, test_project, test_root_concurrency_group
-    )
-
-    (project_path / ".sculptor" / ".env").write_text("RESUME_VAR=updated\n")
-
-    resumed = environment_manager.resume_environment(
-        environment_id=environment_id,
-        project_path=project_path,
-        project_id=test_project.object_id,
-        concurrency_group=test_root_concurrency_group,
-        initialization_strategy=WorkspaceInitializationStrategy.CLONE,
-        sculptor_folder=project_path / "fake_sculptor",
-    )
-
-    try:
-        assert isinstance(resumed, LocalEnvironment)
-        assert resumed._project_env_vars == {"RESUME_VAR": "updated"}
-    finally:
-        resumed.destroy()
-
-
-def test_resume_environment_deletes_env_file_when_source_removed(
-    initial_commit_repo: tuple[Path, str],
-    test_root_concurrency_group: ConcurrencyGroup,
-    environment_manager: EnvironmentManager,
-    test_project: Project,
-) -> None:
-    """Resume in clone mode should delete dest .env if source .env no longer exists."""
-    project_path = initial_commit_repo[0]
-    environment_id = _create_clone_with_env_file(
-        project_path, "TEMP_VAR=will_be_removed\n", environment_manager, test_project, test_root_concurrency_group
-    )
-
-    (project_path / ".sculptor" / ".env").unlink()
-
-    resumed = environment_manager.resume_environment(
-        environment_id=environment_id,
-        project_path=project_path,
-        project_id=test_project.object_id,
-        concurrency_group=test_root_concurrency_group,
-        initialization_strategy=WorkspaceInitializationStrategy.CLONE,
-        sculptor_folder=project_path / "fake_sculptor",
-    )
-
-    try:
-        assert isinstance(resumed, LocalEnvironment)
-        assert resumed._project_env_vars == {}
-        dest_env = resumed.get_working_directory() / ".sculptor" / ".env"
-        assert not dest_env.exists()
-    finally:
-        resumed.destroy()

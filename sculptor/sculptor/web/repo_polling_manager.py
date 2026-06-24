@@ -341,7 +341,7 @@ def _resolve_workspace_working_dir(services: CompleteServiceCollection, workspac
     """Resolve the git working directory for a workspace.
 
     Delegates to WorkspaceService.get_workspace_working_directory so that the
-    IN_PLACE vs CLONE path resolution lives in the Environment abstraction.
+    worktree checkout path resolution lives in the Environment abstraction.
 
     Returns None if the workspace environment hasn't been initialized yet.
     """

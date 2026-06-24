@@ -47,37 +47,6 @@ use the id.
 """
 
 # Mode-specific system prompt content
-IN_PLACE_MODE_PROMPT: Final[str] = """
-<Environment mode>
-You are working directly in the user's repository (in-place mode).
-Changes you make appear immediately in their IDE and filesystem.
-You have full access to git remotes and can push/pull normally, but NEVER push without explicit permission from the user.
-</Environment mode>
-"""
-
-CLONE_MODE_PROMPT: Final[str] = """
-<Environment mode>
-You are working in an isolated clone of the user's repository (clone mode).
-
-The clone's git remotes are a copy of the user's source repo's remotes
-(same names, same URLs). If the user's repo has no remotes, the clone
-has a single remote named `origin` pointing at their on-disk repo.
-
-Changes you make stay in the clone. To get changes back to the user's
-local repo, the user can:
-- push to a remote shared with their local repo (e.g. origin), then
-  pull locally, or
-- push directly to their on-disk repo. Run `sculpt workspace show`
-  to find the `repo_path` for this workspace, then e.g.
-    git push <repo_path> HEAD:refs/heads/<new-branch-name>
-  Caveat: git refuses to push into the user's currently-checked-out
-  branch by default, so push to a *different* branch name and tell the
-  user to check it out locally.
-
-Never push without explicit permission from the user.
-</Environment mode>
-"""
-
 WORKTREE_MODE_PROMPT: Final[str] = """
 <Environment mode>
 You are working in a git worktree of the user's local repository (worktree mode).

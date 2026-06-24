@@ -62,8 +62,6 @@ export type CommandRuntime = {
      * `AgentTabs`. No-op when no workspace is mounted.
      */
     createAgent: () => void;
-    /** Open the Report a problem (file a bug) popover. */
-    openReportProblem: () => void;
     /**
      * Clear the active terminal tab's visible buffer and scrollback. No-op
      * when no terminal panel is mounted or no terminal tab has registered

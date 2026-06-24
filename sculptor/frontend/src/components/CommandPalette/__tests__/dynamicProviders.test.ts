@@ -52,7 +52,6 @@ const makeRuntime = (): CommandRuntime => {
       nextAgent: noop,
       previousAgent: noop,
       createAgent: noop,
-      openReportProblem: noop,
       clearActiveTerminal: noop,
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },

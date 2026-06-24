@@ -54,7 +54,6 @@ const makeRuntime = (): CommandRuntime =>
       previousWorkspaceTab: noop,
       nextAgent: noop,
       previousAgent: noop,
-      openReportProblem: noop,
       clearActiveTerminal: noop,
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },

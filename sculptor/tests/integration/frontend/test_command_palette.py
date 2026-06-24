@@ -174,23 +174,6 @@ def test_command_palette_open_button_visible_in_topbar(sculptor_instance_: Sculp
 
 
 @pytest.mark.release
-@user_story("to file a bug report from the command palette")
-def test_command_palette_report_problem_opens_popover(sculptor_instance_: SculptorInstance) -> None:
-    # Regression lock: the new help.report_problem command must trigger the
-    # ReportProblemPopover (opened via runtime.ui.openReportProblem).
-    layout = _layout(sculptor_instance_)
-    palette = layout.open_command_palette()
-
-    palette.type_query("Report a problem")
-    palette.select_by_command_id("help.report_problem")
-
-    # The palette closes after a non-keepOpen command, and the bug-report
-    # popover surfaces with its REPORT_PROBLEM_POPOVER test id.
-    expect(palette).not_to_be_visible()
-    expect(layout.get_report_problem_popover()).to_be_visible()
-
-
-@pytest.mark.release
 @user_story("to fuzzy-find a Settings sub-page command from the palette root")
 def test_command_palette_cross_page_reveal_finds_subpage_item(sculptor_instance_: SculptorInstance) -> None:
     # Regression lock: typing a query at the root must surface page-scoped

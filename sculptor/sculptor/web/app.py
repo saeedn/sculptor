@@ -220,8 +220,6 @@ from sculptor.web.data_types import SubmitAuthCodeRequest
 from sculptor.web.data_types import TerminalInputRequest
 from sculptor.web.data_types import UpdateUserConfigRequest
 from sculptor.web.data_types import UpdateWorkspaceRequest
-from sculptor.web.data_types import UploadDiagnosticsRequest
-from sculptor.web.data_types import UploadDiagnosticsResponse
 from sculptor.web.data_types import UploadFileResponse
 from sculptor.web.data_types import WebviewCommandUiAction
 from sculptor.web.data_types import WebviewNavigateRequest
@@ -260,7 +258,6 @@ from sculptor.web.terminal_input import TerminalDeliveryResult
 from sculptor.web.terminal_input import deliver_prompt_to_terminal_agent
 from sculptor.web.ui_actions import next_webview_seq
 from sculptor.web.ui_actions import publish_ui_action
-from sculptor.web.upload_diagnostics import upload_diagnostics as perform_upload_diagnostics
 
 UpdateT = TypeVar("UpdateT", bound=StreamingUpdate)
 
@@ -4275,23 +4272,6 @@ def get_uploaded_file(
         raise HTTPException(status_code=404, detail="File not found")
 
     return FileResponse(file_path)
-
-
-@router.post("/api/v1/upload-diagnostics")
-def upload_diagnostics(
-    request_body: UploadDiagnosticsRequest,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> UploadDiagnosticsResponse:
-    """Bundle diagnostic data and logs into a zip, upload to S3, and return the report ID."""
-    settings = get_settings()
-    services = get_services_from_request_or_websocket(request)
-    return perform_upload_diagnostics(
-        request_body=request_body,
-        settings=settings,
-        server_start_time=_SERVER_START_TIME,
-        dependency_management_service=services.dependency_management_service,
-    )
 
 
 class TraceBatchRequest(SerializableModel):

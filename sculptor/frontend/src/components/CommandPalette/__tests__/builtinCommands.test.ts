@@ -78,7 +78,6 @@ const makeRuntime = (overrides: Partial<CommandRuntime> = {}): CommandRuntime =>
       nextAgent: vi.fn(),
       previousAgent: vi.fn(),
       createAgent: vi.fn(),
-      openReportProblem: vi.fn(),
       clearActiveTerminal: vi.fn(),
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },
@@ -604,21 +603,7 @@ describe("buildTerminalCommands", () => {
 describe("buildHelpCommands", () => {
   it("emits exactly the expected command ids", () => {
     const cmds = buildHelpCommands(makeRuntime());
-    expect(cmds.map((c) => c.id).sort()).toEqual(["help.shortcuts", "help.report_problem"].sort());
-  });
-
-  it("help.report_problem is in the help group with no onPage and no pageId", () => {
-    const cmd = buildHelpCommands(makeRuntime()).find((c) => c.id === "help.report_problem")!;
-    expect(cmd.group).toBe("help");
-    expect(cmd.onPage).toBeUndefined();
-    expect(cmd.pageId).toBeUndefined();
-  });
-
-  it("performing help.report_problem calls runtime.ui.openReportProblem exactly once", () => {
-    const runtime = makeRuntime();
-    const cmd = buildHelpCommands(runtime).find((c) => c.id === "help.report_problem")!;
-    runPerform(cmd);
-    expect(runtime.ui.openReportProblem).toHaveBeenCalledTimes(1);
+    expect(cmds.map((c) => c.id).sort()).toEqual(["help.shortcuts"].sort());
   });
 
   it("help.shortcuts calls runtime.ui.toggleHelpDialog", () => {

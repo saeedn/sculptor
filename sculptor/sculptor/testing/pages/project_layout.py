@@ -172,9 +172,6 @@ class PlaywrightProjectLayoutPage(PlaywrightIntegrationTestPage):
         locator = self.get_by_test_id(ElementIDs.KEYBOARD_SHORTCUTS_DIALOG)
         return PlaywrightKeyboardShortcutsDialogElement(locator=locator, page=self._page)
 
-    def get_report_problem_popover(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.REPORT_PROBLEM_POPOVER)
-
     def get_command_palette(self) -> PlaywrightCommandPaletteElement:
         """Get the command palette locator (visible only when open)."""
         palette = self.get_by_test_id(ElementIDs.COMMAND_PALETTE)

@@ -515,21 +515,6 @@ class HealthCheckResponse(SerializableModel):
     dependencies_status: "DependenciesStatus | None" = None
 
 
-class UploadDiagnosticsRequest(RequestModel):
-    """Request to upload a diagnostics report."""
-
-    description: str
-    current_url: str
-    frontend_diagnostics: dict[str, str | float | int | None] = Field(default_factory=dict)
-
-
-class UploadDiagnosticsResponse(SerializableModel):
-    """Response after a diagnostics report is uploaded."""
-
-    report_id: str
-    s3_url: str
-
-
 class EmailConfigRequest(RequestModel):
     """Request to save user email configuration"""
 

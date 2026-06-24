@@ -6,7 +6,6 @@ import type { UserConfigField } from "../../api";
 import { CHAT_INPUT_ELEMENT_ID } from "../../common/Constants.ts";
 import { useImbueNavigate } from "../../common/NavigateUtils.ts";
 import { chatSearchFocusRequestAtom, chatSearchVisibleAtom } from "../../common/state/atoms/chatSearch.ts";
-import { updateReportProblemAtom } from "../../common/state/atoms/reportProblem.ts";
 import { themeBuilderSettingsAtom } from "../../common/state/atoms/themeBuilder.ts";
 import { openWorkspaceTabAtom } from "../../common/state/atoms/workspaces.ts";
 import { useDevPanel } from "../../common/state/hooks/useDevPanel.ts";
@@ -79,7 +78,6 @@ export const useCommandRuntime = (): CommandRuntime => {
   const setThemeSettings = useSetAtom(themeBuilderSettingsAtom);
   const setChatSearchVisible = useSetAtom(chatSearchVisibleAtom);
   const setChatSearchFocus = useSetAtom(chatSearchFocusRequestAtom);
-  const updateReportProblem = useSetAtom(updateReportProblemAtom);
   const openWorkspaceTab = useSetAtom(openWorkspaceTabAtom);
 
   const { updateField } = useUserConfig();
@@ -132,7 +130,6 @@ export const useCommandRuntime = (): CommandRuntime => {
   const nextAgent = useEvent((): void => invokeAction("agent.next"));
   const previousAgent = useEvent((): void => invokeAction("agent.previous"));
   const createAgent = useEvent((): void => invokeAction("agent.create"));
-  const openReportProblem = useEvent((): void => updateReportProblem({ isOpen: true }));
   const clearActiveTerminal = useEvent((): void => invokeAction("terminal.clearActive"));
 
   const updateConfigField = useEvent(
@@ -176,7 +173,6 @@ export const useCommandRuntime = (): CommandRuntime => {
         nextAgent,
         previousAgent,
         createAgent,
-        openReportProblem,
         clearActiveTerminal,
       },
       config: { updateField: updateConfigField },
@@ -206,7 +202,6 @@ export const useCommandRuntime = (): CommandRuntime => {
       nextAgent,
       previousAgent,
       createAgent,
-      openReportProblem,
       clearActiveTerminal,
       updateConfigField,
       reloadWindow,

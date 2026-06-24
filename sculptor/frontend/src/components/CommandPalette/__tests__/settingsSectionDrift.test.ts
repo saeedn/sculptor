@@ -38,7 +38,6 @@ const makeRuntime = (): CommandRuntime =>
       previousWorkspaceTab: noop,
       nextAgent: noop,
       previousAgent: noop,
-      openReportProblem: noop,
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },
     electron: { isAvailable: false, reloadWindow: noop },

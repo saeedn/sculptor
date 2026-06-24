@@ -1,0 +1,13 @@
+.panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+// Pinned setup-status row above the terminal: intrinsic height, never grows.
+.setupRow {
+  flex-shrink: 0;
+  padding-top: var(--space-2);
+}

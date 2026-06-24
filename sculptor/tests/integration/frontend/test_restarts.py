@@ -15,6 +15,7 @@ from playwright.sync_api import expect
 
 from sculptor.constants import ElementIDs
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
+from sculptor.testing.elements.terminal import focus_agent_terminal
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.elements.terminal import wait_for_xterm_substring
 from sculptor.testing.fake_terminal_agent import DEFAULT_DISPLAY_NAME
@@ -123,8 +124,10 @@ def test_chats_persist_on_restart(sculptor_instance_factory_: SculptorInstanceFa
         expect(terminal_tab).to_be_visible()
         terminal_tab.click()
         expect(get_agent_terminal_panel(page)).to_be_visible()
-        # The relaunched runner re-announces readiness (resume or fresh launch).
-        wait_for_xterm_substring(page, "FAKE-TERMINAL-AGENT")
+        focus_agent_terminal(page)
+        # The session id was reported before the restart, so the runner resumes:
+        # its rendered resume command echoes "RESUMED-<session id>".
+        wait_for_xterm_substring(page, "RESUMED-fake-terminal-agent-session")
 
         # The relaunched agent is operational, not a dead tab: a fresh DSL
         # command is picked up and run to completion by the resumed runner.

@@ -17,7 +17,6 @@ import sqlalchemy
 from playwright.sync_api import expect
 
 import sculptor.primitives.ids
-from sculptor.config.user_config import DependencyPaths
 from sculptor.config.user_config import UserConfig
 from sculptor.database.core import create_new_engine
 from sculptor.database.core import initialize_db
@@ -43,7 +42,6 @@ def _make_test_user_config() -> UserConfig:
         is_session_recording_enabled=True,
         is_privacy_policy_consented=True,
         is_telemetry_level_set=True,
-        dependency_paths=DependencyPaths(claude="claude"),
     )
 
 

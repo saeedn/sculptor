@@ -2,10 +2,6 @@
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import select_model_by_name
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.elements.task_starter import FAKE_CLAUDE_MODEL_NAME
 from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -57,19 +53,15 @@ def test_branch_switching_with_untracked_file(sculptor_instance_: SculptorInstan
     # Select branch B via the branch selector on the New Workspace page
     add_workspace_page.select_branch(branch_b)
 
-    # Submit to create the workspace (no prompt on the Add Workspace page)
+    # Submit to create the workspace (no prompt on the Add Workspace page).
+    # Pick a plain terminal agent so the terminal panel renders in CI.
+    add_workspace_page.select_terminal_agent_type()
     expect(submit_button).to_be_enabled()
     submit_button.click()
 
-    # Wait for the chat panel to appear (we navigated to the workspace/agent page)
+    # Wait for the terminal panel to appear (we navigated to the workspace/agent page).
     task_page = PlaywrightTaskPage(page=page)
-    chat_panel = task_page.get_chat_panel()
-    expect(chat_panel).to_be_visible()
-
-    # Switch to the Fake Claude model on the chat panel, then send the prompt.
-    select_model_by_name(chat_panel=chat_panel, model_name=FAKE_CLAUDE_MODEL_NAME)
-    send_chat_message(chat_panel=chat_panel, message="Hello!")
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
     # Worktree mode should not show a mode badge.
     mode_badge = task_page.get_mode_badge()

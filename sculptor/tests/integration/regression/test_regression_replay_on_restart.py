@@ -23,6 +23,7 @@ are covered by backend unit tests in
 from playwright.sync_api import expect
 
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
+from sculptor.testing.elements.terminal import focus_agent_terminal
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.elements.terminal import wait_for_xterm_substring
 from sculptor.testing.fake_terminal_agent import DEFAULT_DISPLAY_NAME
@@ -70,6 +71,7 @@ def _launch_and_complete_terminal_turn(instance: SculptorInstance) -> None:
     expect(registered_item).to_be_visible()
     registered_item.click()
     expect(get_agent_terminal_panel(page)).to_be_visible()
+    focus_agent_terminal(page)
     wait_for_xterm_substring(page, "FAKE-TERMINAL-AGENT-READY")
 
     send_fake_agent_command_and_wait(agents_dir, write_file("replay_marker.txt", "done"))
@@ -103,5 +105,6 @@ def test_terminal_agent_settles_ready_after_restart(
 
         # The relaunch ran the rendered resume command (no fresh prompt replay)
         # and the agent settles back to idle.
+        focus_agent_terminal(instance.page)
         wait_for_xterm_substring(instance.page, "RESUMED-fake-terminal-agent-session")
         expect(terminal_tab).to_have_attribute("data-status", TaskStatus.READY, timeout=_SETTLE_TIMEOUT_MS)

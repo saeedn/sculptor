@@ -44,7 +44,7 @@ def _create_worktree_workspace(page: Page, workspace_name: str) -> tuple[str, st
     expect(branch_input).to_have_value(re.compile(rf".*{re.escape(slug_pattern)}.*"))
     branch_name = branch_input.input_value()
 
-    add_ws_page.submit_and_wait_for_chat_panel()
+    add_ws_page.submit_and_wait_for_workspace()
 
     expect(page).to_have_url(re.compile(r".*/ws/(ws_[a-z0-9]+)/"))
     match = re.search(r"/ws/(ws_[a-z0-9]+)/", page.url)

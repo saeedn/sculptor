@@ -19,42 +19,30 @@ from sculptor.testing.user_stories import user_story
 def test_agent_type_menu_creates_terminal_agent_and_remembers_type(
     sculptor_instance_: SculptorInstance,
 ) -> None:
-    """Plain `+` keeps one-click Claude creation; the menu creates Terminal
-    agents and updates the last-used type for subsequent plain clicks."""
+    """The chevron menu creates plain Terminal agents and updates the last-used
+    type so a subsequent plain `+` click creates the same type."""
     page = sculptor_instance_.page
     task_page = PlaywrightTaskPage(page=page)
     agent_tab_bar = task_page.get_agent_tab_bar()
 
+    # The first agent is a plain terminal ("Terminal 1"), created by the helper.
     start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Agent Type WS")
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(1)
+    expect(agent_tab_bar.get_agent_tab_by_name("Terminal 1")).to_have_count(1)
 
-    # Plain + click creates a Claude agent (initial last-used type): the new
-    # tab is "Claude 2" and the chat panel is present.
-    agent_tab_bar.get_add_agent_button().click()
-    expect(agent_tabs).to_have_count(2)
-    expect(agent_tab_bar.get_agent_tab_by_name("Claude 2")).to_have_count(1)
-    expect(task_page.get_chat_panel()).to_be_visible()
-
-    # Chevron menu → Terminal creates "Terminal 1" (numbered independently
-    # from "Claude N") whose main panel is a terminal, not a chat.
+    # Chevron menu → Terminal creates "Terminal 2" whose main panel is a terminal.
     agent_tab_bar.open_agent_type_menu()
     agent_tab_bar.get_agent_type_menu_item_terminal().click()
-    expect(agent_tabs).to_have_count(3)
-    expect(agent_tab_bar.get_agent_tab_by_name("Terminal 1")).to_have_count(1)
+    expect(agent_tabs).to_have_count(2)
+    expect(agent_tab_bar.get_agent_tab_by_name("Terminal 2")).to_have_count(1)
     expect_terminal_panel_replaces_chat(page)
 
     # Last-used type persisted: a plain + click now creates another Terminal.
     agent_tab_bar.get_add_agent_button().click()
-    expect(agent_tabs).to_have_count(4)
-    expect(agent_tab_bar.get_agent_tab_by_name("Terminal 2")).to_have_count(1)
-
-    # Choosing Claude from the menu restores it as the last-used type (and
-    # keeps the shared instance's default for subsequent tests).
-    agent_tab_bar.open_agent_type_menu()
-    agent_tab_bar.get_agent_type_menu_item_claude().click()
-    expect(agent_tabs).to_have_count(5)
-    expect(agent_tab_bar.get_agent_tab_by_name("Claude 3")).to_have_count(1)
+    expect(agent_tabs).to_have_count(3)
+    expect(agent_tab_bar.get_agent_tab_by_name("Terminal 3")).to_have_count(1)
+    expect_terminal_panel_replaces_chat(page)
 
 
 @user_story("to see registered terminal agents in the type menu without restarting")

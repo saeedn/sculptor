@@ -77,7 +77,7 @@ def test_worktree_create_with_default_branch_name(sculptor_instance_: SculptorIn
 
     branch_name = _wait_for_branch_preview(add_ws_page, r".*fix-login-bug$")
 
-    add_ws_page.submit_and_wait_for_chat_panel()
+    add_ws_page.submit_and_wait_for_workspace()
 
     paths = _worktree_paths(sculptor_instance_.project_path)
     assert paths, "no worktree created"
@@ -102,7 +102,7 @@ def test_worktree_create_with_custom_branch_name(sculptor_instance_: SculptorIns
     branch_input.fill(custom_name)
     expect(branch_input).to_have_value(custom_name)
 
-    add_ws_page.submit_and_wait_for_chat_panel()
+    add_ws_page.submit_and_wait_for_workspace()
 
     paths = _worktree_paths(sculptor_instance_.project_path)
     assert paths, "no worktree created"
@@ -119,7 +119,7 @@ def test_worktree_create_with_empty_workspace_name_random_slug(sculptor_instance
 
     branch_name = _wait_for_branch_preview(add_ws_page, r".*[a-z0-9]+-[a-z0-9]+$")
 
-    add_ws_page.submit_and_wait_for_chat_panel()
+    add_ws_page.submit_and_wait_for_workspace()
 
     paths = _worktree_paths(sculptor_instance_.project_path)
     assert paths, "no worktree created"

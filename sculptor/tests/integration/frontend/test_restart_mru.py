@@ -57,7 +57,7 @@ def test_restart_restores_active_workspace_and_agent(
             re.compile(re.escape(first_url_hash) + "$"),
         )
         task_page = PlaywrightTaskPage(page)
-        expect(task_page.get_chat_panel()).to_be_visible()
+        expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
 @user_story("to come back to the same /ws/new draft I was on when I quit")

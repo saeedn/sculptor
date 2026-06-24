@@ -67,8 +67,10 @@ def test_setup_command_runs_in_new_workspace(sculptor_instance_: SculptorInstanc
 
     setup = PlaywrightSetupStatusElement(page=page)
     expect(setup.get_card()).to_be_visible()
-    # The queued card mirrors its readiness via `aria-disabled`, so this click
-    # auto-waits for the run to start and the popover trigger to mount (SCU-1215).
+    # Wait for the run to reach its terminal state (rerun button appears) so the
+    # card is the interactive popover-opening row before we click it — clicking
+    # while it is still the inert queued row would be dropped.
+    expect(setup.get_rerun_button()).to_be_visible()
     setup.get_card().click()
     expect(setup.get_output()).to_contain_text("SCULPTOR_SETUP_MARKER_12345")
 

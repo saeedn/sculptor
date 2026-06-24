@@ -63,9 +63,32 @@ class PlaywrightAddWorkspacePage(PlaywrightProjectLayoutPage):
     def get_chat_panel(self) -> Locator:
         return self.get_by_test_id(ElementIDs.CHAT_PANEL)
 
-    def submit_and_wait_for_chat_panel(self, timeout: int = 60_000) -> None:
-        """Click the submit button and wait for the chat panel to appear."""
+    def get_terminal_panel(self) -> Locator:
+        """The agent terminal panel — the main pane of a (terminal-only) workspace."""
+        return self.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
+
+    def select_terminal_agent_type(self) -> None:
+        """Pick the plain Terminal agent type for the first agent.
+
+        The default first agent is the bundled ``claude-code`` registered agent,
+        which launches the real Claude TUI — unavailable in CI, so its terminal
+        never renders. A plain terminal agent is a bare shell that always
+        launches, so tests that need the workspace's terminal panel to appear
+        select it explicitly.
+        """
+        self.get_by_test_id(ElementIDs.ADD_WORKSPACE_AGENT_TYPE_SELECT).click()
+        self.get_by_test_id(ElementIDs.AGENT_TYPE_OPTION_TERMINAL).click()
+
+    def submit_and_wait_for_workspace(self, timeout: int = 60_000) -> None:
+        """Select a plain terminal agent, submit, and wait for the workspace to load.
+
+        The workspace/agent page has loaded once the terminal panel appears —
+        the surviving signal in the terminal-only world. A plain terminal agent
+        is selected so the panel reliably renders in CI (the default bundled
+        ``claude-code`` agent would try to launch the real Claude TUI).
+        """
+        self.select_terminal_agent_type()
         submit_button = self.get_submit_button()
         expect(submit_button).to_be_enabled()
         submit_button.click()
-        expect(self.get_chat_panel()).to_be_visible(timeout=timeout)
+        expect(self.get_terminal_panel()).to_be_visible(timeout=timeout)

@@ -23,6 +23,7 @@ from playwright.sync_api import expect
 
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
 from sculptor.testing.elements.pr_popover import PlaywrightPrPopoverElement
+from sculptor.testing.elements.terminal import focus_agent_terminal
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.elements.terminal import get_xterm_buffer_text
 from sculptor.testing.elements.terminal import wait_for_xterm_substring
@@ -248,6 +249,7 @@ def test_scenario_1_failed_pipeline_creates_babysitter(sculptor_instance_: Sculp
         expect(babysitter_tab.first).to_be_visible(timeout=90_000)
         babysitter_tab.first.click()
         expect(get_agent_terminal_panel(page)).to_be_visible()
+        focus_agent_terminal(page)
         wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline", timeout_ms=90_000)
     finally:
         registration.unlink(missing_ok=True)
@@ -284,6 +286,7 @@ def test_scenario_7_merged_mr_retires_babysitter(sculptor_instance_: SculptorIns
         babysitter_tab.first.click()
         expect(get_agent_terminal_panel(page)).to_be_visible()
         # The failure delivers exactly one prompt to the babysitter's PTY.
+        focus_agent_terminal(page)
         wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline", timeout_ms=90_000)
 
         state_file.write_text("merged")
@@ -395,6 +398,7 @@ def test_babysitter_drives_registered_terminal_agent(sculptor_instance_: Sculpto
         expect(babysitter_tab.first).to_be_visible(timeout=90_000)
         babysitter_tab.first.click()
         expect(get_agent_terminal_panel(page)).to_be_visible()
+        focus_agent_terminal(page)
         wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline", timeout_ms=90_000)
     finally:
         registration.unlink(missing_ok=True)
@@ -507,6 +511,7 @@ def test_restart_reuses_existing_babysitter_tab(
             expect(babysitter_tab).to_have_count(1, timeout=90_000)
             babysitter_tab.first.click()
             expect(get_agent_terminal_panel(page)).to_be_visible()
+            focus_agent_terminal(page)
             wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline", timeout_ms=90_000)
 
         # Restart against the same database, then drive another CI failure. The
@@ -534,6 +539,7 @@ def test_restart_reuses_existing_babysitter_tab(
             expect(agent_tabs.get_agent_tab_by_name("CI Babysitter")).to_have_count(1, timeout=90_000)
             babysitter_tab.first.click()
             expect(get_agent_terminal_panel(page)).to_be_visible()
+            focus_agent_terminal(page)
             wait_for_xterm_substring(page, "RECEIVED:Investigate the failing pipeline", timeout_ms=90_000)
             expect(agent_tabs.get_agent_tab_by_name("CI Babysitter")).to_have_count(1)
     finally:

@@ -13,7 +13,6 @@ from playwright.sync_api import Page
 from playwright.sync_api import expect
 
 import sculptor.primitives.ids
-from sculptor.config.user_config import DependencyPaths
 from sculptor.config.user_config import UserConfig
 from sculptor.services.user_config.user_config import save_config
 from sculptor.testing.dependency_stubs import DependencyState
@@ -38,7 +37,6 @@ def _make_test_config() -> UserConfig:
         is_session_recording_enabled=True,
         is_privacy_policy_consented=True,
         is_telemetry_level_set=True,
-        dependency_paths=DependencyPaths(claude="claude"),
     )
 
 

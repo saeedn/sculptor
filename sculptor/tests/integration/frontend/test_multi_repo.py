@@ -15,8 +15,6 @@ import pytest
 from playwright.sync_api import Page
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
 from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.playwright_utils import navigate_to_add_workspace_page
@@ -65,9 +63,8 @@ def test_create_new_project_from_add_workspace_page(
     # Create a workspace in the new project
     task_page = start_task_and_wait_for_ready(page, prompt="hello world", workspace_name="New Project Workspace")
 
-    # Verify the chat panel is visible (workspace was created successfully)
-    chat_panel = task_page.get_chat_panel()
-    expect(chat_panel).to_be_visible()
+    # Verify the terminal panel is visible (workspace was created successfully)
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
 @user_story("to initialize git in non-git directories")
@@ -131,8 +128,7 @@ def test_create_workspaces_in_multiple_projects_and_switch(
     Verifies:
     - Workspaces can be created in different projects
     - Workspace tabs appear for each workspace
-    - Clicking a workspace tab navigates to that workspace's chat
-    - Each workspace has its own isolated chat panel
+    - Clicking a workspace tab navigates to that workspace's terminal panel
     """
     project_a = "project_alpha"
     project_b = "project_beta"
@@ -151,16 +147,14 @@ def test_create_workspaces_in_multiple_projects_and_switch(
     # Create a workspace in project A
     navigate_to_add_workspace_page(page)
     PlaywrightAddWorkspacePage(page=page).select_project_by_name(project_a)
-    task_page_a = start_task_and_wait_for_ready(page, prompt="Alpha task 1", workspace_name="Alpha Workspace")
-    chat_panel_a = task_page_a.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel_a, expected_message_count=2)
+    task_page_a = start_task_and_wait_for_ready(page, workspace_name="Alpha Workspace")
+    expect(task_page_a.get_terminal_panel()).to_be_visible(timeout=60_000)
 
     # Create a workspace in project B
     navigate_to_add_workspace_page(page)
     PlaywrightAddWorkspacePage(page=page).select_project_by_name(project_b)
-    task_page_b = start_task_and_wait_for_ready(page, prompt="Beta task 1", workspace_name="Beta Workspace")
-    chat_panel_b = task_page_b.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel_b, expected_message_count=2)
+    task_page_b = start_task_and_wait_for_ready(page, workspace_name="Beta Workspace")
+    expect(task_page_b.get_terminal_panel()).to_be_visible(timeout=60_000)
 
     # Verify there are 2 workspace tabs
     workspace_tabs = task_page_b.get_workspace_tabs()
@@ -169,34 +163,28 @@ def test_create_workspaces_in_multiple_projects_and_switch(
     # Click the first workspace tab (Alpha) to switch back
     workspace_tabs.first.click()
     task_page = PlaywrightTaskPage(page=page)
-    expect(task_page.get_chat_panel()).to_be_visible()
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
     # Click the second workspace tab (Beta) to switch
     workspace_tabs.nth(1).click()
-    expect(task_page.get_chat_panel()).to_be_visible()
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
-@user_story("to send messages across workspaces in multiple projects")
-def test_send_messages_across_multiple_project_workspaces(
+@user_story("to keep workspaces in multiple projects isolated and switch between them")
+def test_workspaces_isolated_across_multiple_projects(
     sculptor_instance_: SculptorInstance, test_repo_factory_: TestRepoFactory
 ) -> None:
-    """Test sending messages in workspaces across different projects.
+    """Test that workspaces in different projects stay isolated and survive tab switching.
 
     Verifies:
-    - Messages can be sent in workspaces using different projects
-    - Message history is preserved when switching between workspace tabs
-    - No message cross-contamination between workspaces
+    - Workspaces can be created in workspaces using different projects
+    - Each workspace keeps its own branch identity
+    - Switching between workspace tabs reloads the correct workspace
     """
     project_a = "project_alpha"
     project_b = "project_beta"
     branch_a = "alpha-branch"
     branch_b = "beta-branch"
-
-    initial_prompt_b = "hello from project B"
-    follow_up_prompt_b = "hello again from B"
-
-    initial_prompt_a = "hello from project A"
-    follow_up_prompt_a = "hello again from A"
 
     repo_a = test_repo_factory_.create_repo(name=project_a, branch=branch_a)
     repo_b = test_repo_factory_.create_repo(name=project_b, branch=branch_b)
@@ -210,43 +198,29 @@ def test_send_messages_across_multiple_project_workspaces(
     # Create workspace in project A
     navigate_to_add_workspace_page(page)
     PlaywrightAddWorkspacePage(page=page).select_project_by_name(project_a)
-    task_page_a = start_task_and_wait_for_ready(page, prompt=initial_prompt_a, workspace_name="Alpha Workspace")
-    chat_panel_a = task_page_a.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel_a, expected_message_count=2)
-
-    # Send follow-up in workspace A
-    send_chat_message(chat_panel=chat_panel_a, message=follow_up_prompt_a)
-    wait_for_completed_message_count(chat_panel=chat_panel_a, expected_message_count=4)
+    task_page_a = start_task_and_wait_for_ready(page, workspace_name="Alpha Workspace")
+    expect(task_page_a.get_terminal_panel()).to_be_visible(timeout=60_000)
+    alpha_url = page.url
 
     # Create workspace in project B
     navigate_to_add_workspace_page(page)
     PlaywrightAddWorkspacePage(page=page).select_project_by_name(project_b)
-    task_page_b = start_task_and_wait_for_ready(page, prompt=initial_prompt_b, workspace_name="Beta Workspace")
-    chat_panel_b = task_page_b.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel_b, expected_message_count=2)
+    task_page_b = start_task_and_wait_for_ready(page, workspace_name="Beta Workspace")
+    expect(task_page_b.get_terminal_panel()).to_be_visible(timeout=60_000)
+    beta_url = page.url
+    assert alpha_url != beta_url, "the two project workspaces should have distinct URLs"
 
-    # Send follow-up in workspace B
-    send_chat_message(chat_panel=chat_panel_b, message=follow_up_prompt_b)
-    wait_for_completed_message_count(chat_panel=chat_panel_b, expected_message_count=4)
-
-    # Switch back to workspace A via workspace tab
+    # Switch back to workspace A via its workspace tab; the terminal panel reloads.
     workspace_tabs = task_page_b.get_workspace_tabs()
     workspace_tabs.first.click()
+    task_page = PlaywrightTaskPage(page=page)
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
+    expect(page).to_have_url(alpha_url)
 
-    # Re-acquire the chat panel after navigation
-    chat_panel_a = PlaywrightTaskPage(page=page).get_chat_panel()
-    expect(chat_panel_a._locator).to_be_visible()
-
-    # Verify workspace A still has 4 messages (2 user + 2 assistant).
-    expect(chat_panel_a.get_messages()).to_have_count(4)
-
-    # Switch back to workspace B
+    # Switch back to workspace B.
     workspace_tabs.nth(1).click()
-    chat_panel_b = PlaywrightTaskPage(page=page).get_chat_panel()
-    expect(chat_panel_b._locator).to_be_visible()
-
-    # Verify workspace B still has 4 messages
-    expect(chat_panel_b.get_messages()).to_have_count(4)
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
+    expect(page).to_have_url(beta_url)
 
 
 @user_story("to have the most recently used project pre-selected when creating a new workspace")

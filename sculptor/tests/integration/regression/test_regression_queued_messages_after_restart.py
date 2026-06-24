@@ -32,6 +32,7 @@ from playwright.sync_api import Page
 from playwright.sync_api import expect
 
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
+from sculptor.testing.elements.terminal import focus_agent_terminal
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.elements.terminal import wait_for_xterm_substring
 from sculptor.testing.fake_terminal_agent import DEFAULT_DISPLAY_NAME
@@ -85,6 +86,7 @@ def _start_paused_terminal_turn(instance: SculptorInstance) -> None:
     expect(registered_item).to_be_visible()
     registered_item.click()
     expect(get_agent_terminal_panel(page)).to_be_visible()
+    focus_agent_terminal(page)
     wait_for_xterm_substring(page, "FAKE-TERMINAL-AGENT-READY")
 
     send_fake_agent_command(agents_dir, wait_for_file(_HOLD_SENTINEL))
@@ -110,6 +112,7 @@ def _assert_recovered_after_restart(page: Page) -> None:
     terminal_tab.click()
     expect(get_agent_terminal_panel(page)).to_be_visible()
 
+    focus_agent_terminal(page)
     wait_for_xterm_substring(page, "RESUMED-fake-terminal-agent-session")
     expect(terminal_tab).to_have_attribute("data-status", _NON_ERROR_STATUS, timeout=_SETTLE_TIMEOUT_MS)
 

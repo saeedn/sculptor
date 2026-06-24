@@ -22,6 +22,14 @@ class PlaywrightTaskPage(PlaywrightProjectLayoutPage):
         chat_panel = self.get_by_test_id(ElementIDs.CHAT_PANEL)
         return PlaywrightChatPanelElement(locator=chat_panel, page=self._page)
 
+    def get_terminal_panel(self) -> Locator:
+        """Get the agent terminal panel, the main pane of a (terminal-only) workspace.
+
+        Its visibility is the signal that the workspace/agent page has loaded —
+        the surviving replacement for the removed chat panel.
+        """
+        return self.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
+
     def get_agent_tab_bar(self) -> PlaywrightAgentTabBarElement:
         return PlaywrightAgentTabBarElement(page=self._page)
 

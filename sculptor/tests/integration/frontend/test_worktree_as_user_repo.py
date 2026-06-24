@@ -70,4 +70,4 @@ def test_clone_workspace_from_worktree_user_repo(
         prompt="hello world",
         workspace_name="Clone From Worktree",
     )
-    expect(task_page.get_chat_panel()).to_be_visible()
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)

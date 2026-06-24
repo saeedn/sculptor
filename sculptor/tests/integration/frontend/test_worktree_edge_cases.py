@@ -42,10 +42,12 @@ def test_setup_command_runs_in_worktree_workspace(sculptor_instance_: SculptorIn
     add_ws.get_workspace_name_input().fill("setup-in-worktree")
     branch_input = add_ws.get_branch_name_input()
     expect(branch_input).to_have_value(re.compile(r".+"), timeout=5_000)
+    add_ws.select_terminal_agent_type()
     add_ws.get_submit_button().click()
 
-    chat_panel = add_ws.get_chat_panel()
-    expect(chat_panel).to_be_visible(timeout=60_000)
+    # The workspace/agent page loaded once the terminal panel appears.
+    terminal_panel = page.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
+    expect(terminal_panel).to_be_visible(timeout=60_000)
 
     # The setup command no longer runs in a PTY tab; it streams into the
     # SetupStatusCard popover. Wait for a known terminal state before opening
@@ -77,7 +79,7 @@ def test_missing_local_repo_surfaces_error(sculptor_instance_: SculptorInstance)
     branch_input = add_ws.get_branch_name_input()
     expect(branch_input).to_have_value(re.compile(r".+"))
 
-    add_ws.submit_and_wait_for_chat_panel()
+    add_ws.submit_and_wait_for_workspace()
 
     user_repo_path = sculptor_instance_.project_path
     moved_path = user_repo_path.parent / f"{user_repo_path.name}-moved-by-test"

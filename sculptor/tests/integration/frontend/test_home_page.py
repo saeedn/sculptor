@@ -120,7 +120,7 @@ def test_clicking_workspace_row_navigates_to_workspace(
 
     # Should navigate to the workspace — verify by checking the chat panel appears
     task_page = PlaywrightTaskPage(page)
-    expect(task_page.get_chat_panel()).to_be_visible()
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
 @user_story("to navigate to a workspace by clicking it in the recent workspaces list")
@@ -160,7 +160,7 @@ def test_clicking_recent_workspace_after_reload_navigates_without_spinner(
     # Step 4: Wait for the app to finish loading after reload.
     # The root loader redirects to the MRU workspace, so the chat panel should appear.
     task_page = PlaywrightTaskPage(page)
-    expect(task_page.get_chat_panel()).to_be_visible(timeout=30000)
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
     # Step 5: Navigate to the Home page.
     navigate_to_home_page(page)
@@ -174,7 +174,7 @@ def test_clicking_recent_workspace_after_reload_navigates_without_spinner(
     # Step 7: Verify the chat panel appears — this means the workspace loaded
     # successfully. With the bug, this would time out because an infinite
     # spinner is shown instead.
-    expect(task_page.get_chat_panel()).to_be_visible()
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
 @user_story("to see the current branch for each workspace on the home page")

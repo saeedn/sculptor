@@ -73,6 +73,18 @@ def get_agent_terminal_panel(page: Page) -> Locator:
     return page.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
 
 
+def focus_agent_terminal(page: Page) -> None:
+    """Click the visible agent terminal's xterm screen so the focus-tracked
+    ``window.__xterm`` test handle points at it.
+
+    Needed when more than one agent terminal is mounted (e.g. a plain first
+    agent plus a driven agent, or after a restart): selecting a tab alone does
+    not fire a focus event, so a subsequent buffer read could target the other
+    agent's terminal. A real click focuses this xterm and updates the handle.
+    """
+    get_agent_terminal_panel(page).locator(".xterm-screen").click()
+
+
 def expect_terminal_panel_replaces_chat(page: Page) -> None:
     """Assert the main panel is the terminal, not the chat.
 

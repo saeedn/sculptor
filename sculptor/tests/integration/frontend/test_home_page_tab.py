@@ -88,9 +88,8 @@ def test_clicking_workspace_replaces_home_tab(
     workspace_tab = task_page.get_workspace_tabs()
     expect(workspace_tab).to_be_visible()
 
-    # Step 7: Verify the chat panel appears.
-    chat_panel = task_page.get_chat_panel()
-    expect(chat_panel).to_be_visible()
+    # Step 7: Verify the workspace loaded — the terminal panel appears.
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
 @user_story("to close the Home tab and return to a workspace")

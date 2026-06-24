@@ -1,0 +1,268 @@
+// Workspace setup status row, pinned above the agent terminal. Uses a
+// compact `[icon] Setup · [command] [aside]` layout: a terminal glyph,
+// the "Setup" label, the command that ran (code font), and a status
+// badge plus action buttons (run / rerun / cancel / edit). Clicking the
+// row opens a popover with the captured output.
+
+@use "scrollbar" as *;
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 100%;
+  }
+
+  50% {
+    opacity: 0%;
+  }
+}
+
+.row {
+  align-items: baseline;
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-1);
+  color: var(--gray-10);
+  cursor: pointer;
+  display: flex;
+  font-family: var(--default-font-family);
+  font-size: var(--font-size-2);
+  gap: var(--space-2);
+  line-height: var(--line-height-2);
+  min-width: 0;
+  padding: var(--space-1) var(--space-3);
+  text-align: left;
+  transition:
+    background var(--duration-fast) ease,
+    color var(--duration-fast) ease;
+}
+
+.row:hover,
+.row:focus-visible {
+  background: var(--gray-a3);
+  color: var(--gray-12);
+  outline: none;
+}
+
+.rowOpen,
+.rowOpen:hover,
+.rowOpen:focus-visible {
+  background: var(--accent-a3);
+  color: var(--accent-11);
+}
+
+.rowError {
+  color: var(--red-11);
+}
+
+.rowNoToggle {
+  cursor: default;
+}
+
+.rowLeading {
+  align-items: baseline;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--space-2);
+}
+
+.rowIcon {
+  align-self: center;
+  color: var(--gray-8);
+  flex-shrink: 0;
+}
+
+.rowOpen .rowIcon {
+  color: var(--accent-11);
+}
+
+.rowError .rowIcon {
+  color: var(--red-11);
+}
+
+.rowLabel {
+  color: inherit;
+}
+
+.rowSeparator {
+  color: var(--gray-8);
+  user-select: none;
+}
+
+.rowTitle {
+  color: var(--gray-10);
+  flex: 1 1 0;
+  font-family: var(--code-font-family);
+  font-size: var(--font-size-1);
+  line-height: var(--line-height-2);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rowOpen .rowTitle {
+  color: var(--accent-11);
+}
+
+.rowError .rowTitle {
+  color: var(--red-11);
+}
+
+.rowPrompt {
+  color: var(--gray-8);
+  user-select: none;
+}
+
+.rowPlaceholder {
+  color: var(--gray-9);
+  font-style: italic;
+}
+
+.rowAside {
+  align-items: center;
+  display: inline-flex;
+  flex-shrink: 0;
+  gap: var(--space-2);
+}
+
+.badge {
+  align-items: center;
+  border-radius: var(--radius-1);
+  display: inline-flex;
+  flex-shrink: 0;
+  font-family: var(--code-font-family);
+  font-size: var(--font-size-1);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-medium);
+  gap: var(--space-1);
+  min-width: 0;
+  padding: 1px 6px;
+}
+
+.badgeIcon {
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 12px;
+  width: 12px;
+}
+
+.badgeIcon svg {
+  height: 100%;
+  width: 100%;
+}
+
+.badgeSuccess {
+  background: transparent;
+  color: var(--green-11);
+}
+
+.badgeError {
+  background: var(--red-a2);
+  color: var(--red-11);
+}
+
+.badgeRunning {
+  background: var(--accent-a3);
+  color: var(--accent-11);
+}
+
+.popoverContent {
+  animation: none !important;
+  border-radius: var(--radius-1) !important;
+  max-height: 380px !important;
+  padding: 0 !important;
+}
+
+.popover {
+  display: flex;
+  flex-direction: column;
+  max-height: 380px;
+  overflow: hidden;
+  position: relative;
+}
+
+.popoverSection {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 1;
+  min-height: 0;
+  position: relative;
+}
+
+.popoverSection:first-child {
+  max-height: 190px;
+  overflow: hidden;
+}
+
+.popoverSection + .popoverSection {
+  border-top: 1px solid var(--gray-a4);
+}
+
+.popoverCommand {
+  color: var(--gray-12);
+  display: block;
+  font-family: var(--code-font-family);
+  font-size: var(--font-size-1);
+  line-height: 1.5;
+  max-height: 190px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  padding-right: var(--space-6);
+  white-space: pre-wrap;
+  word-break: break-all;
+
+  @include thin-scrollbar;
+}
+
+.popoverSummary {
+  color: var(--gray-9);
+  font-size: var(--font-size-1);
+  margin-top: var(--space-1);
+}
+
+.popoverBody {
+  color: var(--gray-12);
+  flex: 1;
+  font-family: var(--code-font-family);
+  font-size: var(--font-size-1);
+  line-height: 1.5;
+  max-height: 300px;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  padding-right: var(--space-6);
+  white-space: pre-wrap;
+  word-break: break-all;
+
+  @include thin-scrollbar;
+}
+
+.prompt {
+  color: var(--gray-8);
+  flex-shrink: 0;
+  font-weight: var(--font-weight-regular);
+}
+
+.streamCursor {
+  animation: blink 1s step-end infinite;
+  background: var(--accent-11);
+  display: inline-block;
+  height: 1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  width: 2px;
+}
+
+.popoverEmpty {
+  color: var(--gray-9);
+  font-style: italic;
+}
+
+.truncationBanner {
+  background: var(--amber-a3);
+  color: var(--amber-11);
+  font-size: var(--font-size-1);
+  padding: var(--space-1) var(--space-3);
+}

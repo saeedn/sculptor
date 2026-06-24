@@ -12,6 +12,7 @@ import re
 from playwright.sync_api import expect
 
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
+from sculptor.testing.elements.terminal import focus_agent_terminal
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.elements.terminal import get_agent_terminal_textarea
 from sculptor.testing.elements.terminal import get_xterm_buffer_text
@@ -133,6 +134,7 @@ def test_registered_terminal_agent_resumes_after_restart(
         expect(resume_tab).to_be_visible()
         resume_tab.click()
         expect(get_agent_terminal_panel(page)).to_be_visible()
+        focus_agent_terminal(page)
 
         # The relaunch used the rendered resume command with the quoted id.
         wait_for_xterm_substring(page, "RESUMED-WITH fake-session-42")

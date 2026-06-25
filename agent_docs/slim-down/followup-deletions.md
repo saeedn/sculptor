@@ -39,27 +39,36 @@ by mistake).
 - **Smooth-streaming frontend layer** (§4c): `useChatData`,
   `useSmoothStreaming*`, `smoothStreaming` atoms removed.
 
-**Still remaining (NOT yet done):**
-- **Email on startup** (§2b/2c): `user_email` + identity fields
-  (`user_id`/`organization_id`, derived from email), the `email`/
-  `skip_account` endpoints, `EmailConfigRequest`/`SkipAccountSetupRequest`,
-  email validation, `has_email`. **Risk:** interwoven with the telemetry
-  identity (`user_id`/`organization_id` feed `TelemetryInfo`), the
-  **onboarding-completion gate** (the `is_privacy_policy_consented` flag
-  doubles as the "onboarding done" marker that `RequireOnboarding` reads),
-  and test fixtures. Removing it cleanly means deciding the fate of the
-  telemetry-identity system and rewiring onboarding completion — a design
-  change on the untested first-run path, not a vestige deletion.
+**Also done & committed:**
+- **Email-on-startup surface** (§2b): removed `user_email` + the
+  email-derived identity fields (`user_id`/`organization_id`/
+  `user_full_name`), the `email`/`skip_account` endpoints,
+  `EmailConfigRequest`/`SkipAccountSetupRequest`, email validation, and
+  `has_email`. The onboarding-completion gate (the privacy-consent flag)
+  and `TelemetryInfo` are kept intact; test fixtures updated.
+- **Dead mention/suggestion system** (§4b): detached the `Mention`
+  extension + all suggestion wiring from `Editor`/`TipTapConfig` (leaving
+  a plain rich-text editor) and deleted the orphaned cluster
+  (EntityMention*, Mention*, mentionDetailPanes, mentionDetails,
+  SkillSuggestion/SkillList, SuggestionUtils/DismissalPlugin/
+  ListContainer/SplitSuggestionLayout, fuzzyFileScorer). `skillBadge`,
+  `SkillHoverContent` (live SkillsPanel) and `FileUploadUtils` kept.
+
+**Genuinely remaining (each a bounded, separate follow-up):**
+- **Telemetry-consent fields + `TelemetryInfo`** — kept because the
+  `is_privacy_policy_consented` flag currently doubles as the
+  onboarding-complete marker. Finishing telemetry removal means rewiring
+  the onboarding gate (e.g. gate on `has_project` or an explicit flag) —
+  a deliberate behavior change on the first-run path.
 - **The model-switcher infra** (`ModelOption`, `get_available_models`/
-  `selected_model_id`, the `set_model` endpoint): string-based, doesn't
-  reference the removed enums, now dead (pi is gone). Bounded follow-up.
-- **Entity @-mentions + the rest of the dead mention/suggestion system**
-  (§4b): the TipTap `Editor` is live (ActionDialog) but passes no
-  project/workspace, so no picker ever fires. Removing requires surgically
-  detaching the `Mention` extension + suggestions from `Editor`/
-  `TipTapConfig`, then deleting ~20 interconnected files — some shared with
-  the live SkillsPanel (`skillBadge`, `SkillHoverContent` must stay).
-  Delicate; best as its own change with the live Editor verified.
+  `get_selected_model_id`, `AgentTaskStateV2.available_models`/
+  `current_model`, `ModelsAvailableAgentMessage`, the `set_model`
+  endpoint): string-based, doesn't reference the removed enums, now dead
+  (pi is gone). Bounded backend cleanup.
+- **Integration-test triage** for the removed surfaces (mention POMs,
+  Agent/Privacy settings POMs, model selectors) — the unit suite is green;
+  integration tests that exercise removed UI need the slim-down's
+  REQ-TEST delete/rewrite pass.
 
 ---
 

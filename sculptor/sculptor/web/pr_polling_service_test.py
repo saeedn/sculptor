@@ -366,9 +366,6 @@ def _make_user_config(
 ) -> UserConfig:
     """Build a UserConfig with only the polling-relevant fields set."""
     return UserConfig(
-        user_email="test@imbue.com",
-        user_id="test_user",
-        organization_id="test_org",
         instance_id="test_instance",
         pr_polling_enabled=pr_polling_enabled,
         pr_poll_interval_seconds=pr_poll_interval_seconds,

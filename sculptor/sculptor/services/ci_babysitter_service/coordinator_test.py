@@ -429,9 +429,6 @@ def _make_user_config(
     conflict_prompt: str = "CONFLICT_PROMPT",
 ) -> UserConfig:
     return UserConfig(
-        user_email="test@example.com",
-        user_id="u",
-        organization_id="o",
         instance_id="i",
         ci_babysitter=CIBabysitterConfig(
             enabled=enabled,
@@ -981,9 +978,6 @@ def _driveable_terminal_config(registration_id: str = "claude-code") -> Register
 
 def _make_config_with_agent(agent: Any) -> UserConfig:
     return UserConfig(
-        user_email="test@example.com",
-        user_id="u",
-        organization_id="o",
         instance_id="i",
         ci_babysitter=CIBabysitterConfig(enabled=True, agent=agent),
     )
@@ -1139,9 +1133,6 @@ def test_deliver_prompt_to_agent_writes_to_terminal_via_helper(
 
 def _make_terminal_config(failed_prompt: str = "FAILED_PROMPT", retry_cap: int = 3) -> UserConfig:
     return UserConfig(
-        user_email="test@example.com",
-        user_id="u",
-        organization_id="o",
         instance_id="i",
         ci_babysitter=CIBabysitterConfig(
             enabled=True,

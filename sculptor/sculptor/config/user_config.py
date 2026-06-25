@@ -103,10 +103,6 @@ class UserConfig(SerializableModel):
     When you add a new field, you should add it as a field with a default value so that it is backwards compatible.
     """
 
-    user_email: str = Field(default=..., description="User email address")
-    user_full_name: str | None = Field(default=None, description="Full name of the user")
-    user_id: str = Field(default=..., description="User ID")
-    organization_id: str = Field(default=..., description="Organization ID")
     instance_id: str = Field(default=..., description="Instance ID")
     is_error_reporting_enabled: bool = Field(default=False, description="Whether to enable error reporting")
     is_product_analytics_enabled: bool = Field(default=False, description="Whether to enable product analytics")

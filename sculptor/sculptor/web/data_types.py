@@ -6,7 +6,6 @@ from typing import Annotated
 from typing import Any
 from typing import Literal
 
-from pydantic import EmailStr
 from pydantic import Field
 from pydantic import Tag
 
@@ -463,7 +462,6 @@ class ProjectInitializationRequest(RequestModel):
 class ConfigStatusResponse(SerializableModel):
     """Response for config status check"""
 
-    has_email: bool
     has_privacy_consent: bool
     has_project: bool
     has_dependencies_passing: bool
@@ -497,25 +495,6 @@ class HealthCheckResponse(SerializableModel):
     install_path: str
     ci_job_id: str | None = None
     ci_ref: str | None = None
-
-
-class EmailConfigRequest(RequestModel):
-    """Request to save user email configuration"""
-
-    user_email: EmailStr
-    full_name: str | None = None
-    did_opt_in_to_marketing: bool = False
-    is_telemetry_enabled: bool = True
-
-
-class SkipAccountSetupRequest(RequestModel):
-    """Request to complete the onboarding welcome step without an account.
-
-    The user keeps the anonymous, instance-id-based identity; the only choice
-    they make on the welcome step is whether telemetry stays on.
-    """
-
-    is_telemetry_enabled: bool = True
 
 
 class UpdateUserConfigRequest(RequestModel):

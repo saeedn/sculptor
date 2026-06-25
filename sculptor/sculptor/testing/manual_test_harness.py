@@ -24,7 +24,6 @@ from playwright.sync_api import Page
 from playwright.sync_api import Playwright
 from playwright.sync_api import sync_playwright
 
-import sculptor.primitives.ids
 from sculptor.config.user_config import UserConfig
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.services.user_config.user_config import save_config
@@ -50,11 +49,7 @@ _VITE_SHUTDOWN_TIMEOUT_SECONDS = 5
 
 def _make_test_user_config() -> UserConfig:
     """Create a UserConfig with test defaults (mirrors resources.py)."""
-    test_email = "test@imbue.com"
     return UserConfig(
-        user_email=test_email,
-        user_id=sculptor.primitives.ids.create_user_id(test_email),
-        organization_id=sculptor.primitives.ids.create_organization_id(test_email),
         instance_id=hashlib.md5(os.urandom(64)).hexdigest(),
         is_error_reporting_enabled=True,
         is_product_analytics_enabled=True,

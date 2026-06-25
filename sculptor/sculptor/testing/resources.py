@@ -22,8 +22,6 @@ from sculptor.config.user_config import UserConfig
 from sculptor.constants import ElementIDs
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.concurrency_group import ConcurrencyGroupState
-from sculptor.primitives.ids import create_organization_id
-from sculptor.primitives.ids import create_user_id
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.services.user_config.user_config import save_config
 from sculptor.testing.dependency_stubs import apply_stubs_from_request
@@ -709,11 +707,7 @@ custom_sculptor_folder_populator = pytest.mark.custom_sculptor_folder
 
 def _make_test_user_config(claude_path: str = "claude") -> UserConfig:
     """Create a UserConfig with test defaults."""
-    test_email = "test@imbue.com"
     return UserConfig(
-        user_email=test_email,
-        user_id=create_user_id(test_email),
-        organization_id=create_organization_id(test_email),
         instance_id=hashlib.md5(os.urandom(64)).hexdigest(),
         is_error_reporting_enabled=True,
         is_product_analytics_enabled=True,

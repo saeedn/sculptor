@@ -13,9 +13,6 @@ def _make_config(
     is_product_analytics_enabled: bool = True,
 ) -> UserConfig:
     return UserConfig(
-        user_email="alice@example.com",
-        user_id="user_123",
-        organization_id="org_123",
         instance_id="instance_123",
         is_error_reporting_enabled=is_error_reporting_enabled,
         is_product_analytics_enabled=is_product_analytics_enabled,
@@ -52,8 +49,6 @@ def test_canonicalize_normalizes_mixed_flags_to_disabled(
     assert canonical.is_error_reporting_enabled is False
     assert canonical.is_product_analytics_enabled is False
     assert canonical.is_session_recording_enabled is False
-    # Everything unrelated to telemetry consent is untouched.
-    assert canonical.user_email == mixed.user_email
 
 
 def test_initialize_from_file_normalizes_mixed_flags_and_persists(tmp_path: Path, monkeypatch) -> None:

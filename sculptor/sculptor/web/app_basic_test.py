@@ -732,9 +732,6 @@ def telemetry_test_config(tmp_path, monkeypatch) -> Generator[UserConfig, None, 
     """A logged-in user config with telemetry enabled, persisted to a tmp config path."""
     monkeypatch.setattr(user_config_module, "_CONFIG_PATH", tmp_path / "config.toml")
     config = UserConfig(
-        user_email="alice@example.com",
-        user_id="user_123",
-        organization_id="org_123",
         instance_id="instance_123",
         is_privacy_policy_consented=True,
         is_telemetry_level_set=True,
@@ -766,54 +763,6 @@ def onboarding_test_config(tmp_path, monkeypatch) -> Generator[UserConfig, None,
     set_user_config_instance(None)
 
 
-def test_skip_account_setup_keeps_anonymous_identity_and_records_choice(
-    client: TestClient, onboarding_test_config: UserConfig
-) -> None:
-    response = client.post("/api/v1/config/skip_account", json={"isTelemetryEnabled": False})
-    assert response.status_code == 200, response.text
-    saved = user_config_module.get_user_config_instance()
-    assert saved.user_email == ""
-    assert saved.is_privacy_policy_consented is True
-    assert saved.is_telemetry_level_set is True
-    assert saved.is_error_reporting_enabled is False
-    assert saved.is_product_analytics_enabled is False
-    # The response carries the updated config for the FE handshake.
-    assert response.json()["userConfig"]["isProductAnalyticsEnabled"] is False
-
-
-def test_skip_account_setup_defaults_to_telemetry_enabled(
-    client: TestClient, onboarding_test_config: UserConfig
-) -> None:
-    response = client.post("/api/v1/config/skip_account", json={})
-    assert response.status_code == 200, response.text
-    saved = user_config_module.get_user_config_instance()
-    assert saved.is_error_reporting_enabled is True
-    assert saved.is_product_analytics_enabled is True
-
-
-def test_save_user_email_applies_telemetry_choice(client: TestClient, onboarding_test_config: UserConfig) -> None:
-    response = client.post(
-        "/api/v1/config/email",
-        json={"userEmail": "bob@example.com", "fullName": "Bob", "isTelemetryEnabled": False},
-    )
-    assert response.status_code == 200, response.text
-    saved = user_config_module.get_user_config_instance()
-    assert saved.user_email == "bob@example.com"
-    assert saved.is_privacy_policy_consented is True
-    assert saved.is_error_reporting_enabled is False
-    assert saved.is_product_analytics_enabled is False
-
-
-def test_complete_onboarding_allows_empty_email_after_skip(
-    client: TestClient, onboarding_test_config: UserConfig
-) -> None:
-    skip_response = client.post("/api/v1/config/skip_account", json={"isTelemetryEnabled": True})
-    assert skip_response.status_code == 200, skip_response.text
-
-    response = client.post("/api/v1/config/complete")
-    assert response.status_code == 200, response.text
-
-
 def test_complete_onboarding_backfills_consent_for_anonymous_user(
     client: TestClient, onboarding_test_config: UserConfig
 ) -> None:
@@ -822,7 +771,6 @@ def test_complete_onboarding_backfills_consent_for_anonymous_user(
     response = client.post("/api/v1/config/complete")
     assert response.status_code == 200, response.text
     saved = user_config_module.get_user_config_instance()
-    assert saved.user_email == ""
     assert saved.is_privacy_policy_consented is True
     assert saved.is_telemetry_level_set is True
 

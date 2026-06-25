@@ -6,22 +6,11 @@ The design is decoupled: check execution is separate from result presentation, a
 for flexible handling (CLI errors now, web modals in the future).
 """
 
-import re
 import tempfile
 
 from loguru import logger
 
-from sculptor.config.user_config import UserConfig
 from sculptor.utils import build as build_utils
-
-
-def check_is_user_email_field_valid(config: UserConfig) -> bool:
-    """Return whether the configured user email looks like a valid address."""
-    # Matches things like .@..., <some string>@<another>.<last one>
-    # which excludes '@' from each of the string parts but allows all other characters
-    # including special characters and '.' a dot itself.
-    pattern = r"^[^@]+@[^@]+\.[^@]+$"
-    return re.match(pattern, config.user_email) is not None
 
 
 def check_sculptor_directory_writable() -> bool:

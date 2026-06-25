@@ -93,8 +93,6 @@ from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import TypeIDPrefixMismatchError
 from sculptor.primitives.ids import WorkspaceID
-from sculptor.primitives.ids import create_organization_id
-from sculptor.primitives.ids import create_user_id
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.data_model_service.data_types import TaskAndDataModelTransaction
@@ -110,8 +108,6 @@ from sculptor.services.task_service.errors import TaskNotFound
 from sculptor.services.terminal_agent_registry.bundled import install_bundled_registrations
 from sculptor.services.terminal_agent_registry.registry import get_registration
 from sculptor.services.terminal_agent_registry.registry import load_registrations
-from sculptor.services.user_config.telemetry_info import get_onboarding_telemetry_info
-from sculptor.services.user_config.telemetry_info import get_telemetry_info as get_telemetry_info_impl
 from sculptor.services.user_config.user_config import get_config_path
 from sculptor.services.user_config.user_config import get_privacy_settings_for_telemetry
 from sculptor.services.user_config.user_config import get_user_config_instance
@@ -139,12 +135,10 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     unregister_terminal_manager,
 )
-from sculptor.startup_checks import check_is_user_email_field_valid
 from sculptor.startup_checks import check_sculptor_directory_writable
 from sculptor.state.messages import ChatInputUserMessage
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import create_agent_terminal
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import make_agent_terminal_id
-from sculptor.telemetry import telemetry
 from sculptor.utils import build as build_utils
 from sculptor.utils.build import get_install_path
 from sculptor.utils.build import get_sculptor_folder
@@ -176,7 +170,6 @@ from sculptor.web.data_types import CreateWorkspaceRequestV2
 from sculptor.web.data_types import CurrentBranchInfo
 from sculptor.web.data_types import DirectoryEntry
 from sculptor.web.data_types import DiscardFileRequest
-from sculptor.web.data_types import EmailConfigRequest
 from sculptor.web.data_types import EnvVarNamesResponse
 from sculptor.web.data_types import HealthCheckResponse
 from sculptor.web.data_types import InitializeGitRepoRequest
@@ -201,7 +194,6 @@ from sculptor.web.data_types import SendMessageRequest
 from sculptor.web.data_types import SetModelRequest
 from sculptor.web.data_types import SignalEventRequest
 from sculptor.web.data_types import SkillInfo
-from sculptor.web.data_types import SkipAccountSetupRequest
 from sculptor.web.data_types import StartTaskRequest
 from sculptor.web.data_types import TerminalInputRequest
 from sculptor.web.data_types import ToolAvailability
@@ -2560,18 +2552,6 @@ def _prevent_action_if_out_of_free_space(services: CompleteServiceCollection) ->
         )
 
 
-def get_logged_in_or_anonymous_telemetry_info() -> telemetry.TelemetryInfo:
-    """Returns telemetry info for the current user.
-
-    If the current user has not initialized their configuration, use an
-    anonymous config.
-    """
-    logged_in_info = get_telemetry_info_impl()
-    if not logged_in_info:
-        return get_onboarding_telemetry_info()
-    return logged_in_info
-
-
 @router.get("/api/v1/config/status")
 def get_config_status(
     request: Request,
@@ -2587,7 +2567,6 @@ def get_config_status(
 
     if not user_config:
         return ConfigStatusResponse(
-            has_email=False,
             has_privacy_consent=False,
             has_project=has_project,
             has_dependencies_passing=False,
@@ -2595,7 +2574,6 @@ def get_config_status(
 
     deps_passing = shutil.which("git") is not None and shutil.which("claude") is not None
     return ConfigStatusResponse(
-        has_email=bool(user_config.user_email) and check_is_user_email_field_valid(user_config),
         has_privacy_consent=user_config.is_privacy_policy_consented,
         has_project=has_project,
         has_dependencies_passing=deps_passing,
@@ -2618,87 +2596,12 @@ def get_tool_availability(
     )
 
 
-@router.post("/api/v1/config/email")
-def save_user_email(
-    request: Request,
-    email_config_request: EmailConfigRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> telemetry.TelemetryInfo:
-    """Save user email during onboarding
-
-    This function will determine the updated TelemetryInfo for the signed in user, and return that to the frontend.
-    """
-    # Get or create user config (since this is the first step)
-    user_config = get_user_config_instance()
-
-    user_config = model_update(
-        user_config,
-        {
-            "user_email": email_config_request.user_email,
-            "user_id": create_user_id(str(email_config_request.user_email)),
-            "user_full_name": email_config_request.full_name,
-            "organization_id": create_organization_id(str(email_config_request.user_email)),
-            # Saving user email counts as consenting to the Policy email
-            "is_privacy_policy_consented": True,
-            # Telemetry choice comes from the welcome-step checkbox
-            "is_telemetry_level_set": True,
-            **get_privacy_settings_for_telemetry(email_config_request.is_telemetry_enabled).model_dump(),
-        },
-    )
-
-    # The server log is bundled into bug-report diagnostics uploads, so never
-    # write the actual email/name into it.
-    logger.info(
-        "Saved user profile (has_full_name={}, did_opt_in_to_marketing={})",
-        email_config_request.full_name is not None,
-        email_config_request.did_opt_in_to_marketing,
-    )
-    save_config(user_config, get_config_path())
-    set_user_config_instance(user_config)
-
-    return get_logged_in_or_anonymous_telemetry_info()
-
-
-@router.post("/api/v1/config/skip_account")
-def skip_account_setup(
-    request: Request,
-    skip_account_request: SkipAccountSetupRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> telemetry.TelemetryInfo:
-    """Complete the onboarding welcome step without an account.
-
-    The user keeps the anonymous, instance-id-based identity (no email or
-    name); only their telemetry choice and the privacy-policy consent are
-    recorded. Telemetry events therefore stay anonymous.
-    """
-    user_config = get_user_config_instance()
-
-    user_config = model_update(
-        user_config,
-        {
-            # Continuing past the welcome step counts as consenting to the policy
-            "is_privacy_policy_consented": True,
-            "is_telemetry_level_set": True,
-            **get_privacy_settings_for_telemetry(skip_account_request.is_telemetry_enabled).model_dump(),
-        },
-    )
-
-    save_config(user_config, get_config_path())
-    set_user_config_instance(user_config)
-
-    return get_logged_in_or_anonymous_telemetry_info()
-
-
 @router.post("/api/v1/config/complete")
 def complete_onboarding(request: Request, user_session: UserSession = Depends(get_user_session)) -> None:
     """Complete onboarding by saving config to disk and initializing services"""
     user_config = get_user_config_instance()
     if not user_config:
         raise HTTPException(status_code=400, detail="User config not initialized")
-    # The new onboarding no longer collects an email; an empty email is the
-    # normal anonymous identity. Only non-empty emails are validated.
-    if user_config.user_email and not check_is_user_email_field_valid(user_config):
-        raise HTTPException(status_code=400, detail="Invalid email address")
 
     # Ensure privacy consent and telemetry level are set for returning users
     # who may have created their account before these fields were added.

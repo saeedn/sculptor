@@ -7,9 +7,6 @@ from sculptor.config.user_config import UserConfigField
 
 def test_ci_babysitter_defaults() -> None:
     config = UserConfig(
-        user_email="test@example.com",
-        user_id="user123",
-        organization_id="org123",
         instance_id="inst123",
     )
     assert isinstance(config.ci_babysitter, CIBabysitterConfig)

@@ -45,12 +45,7 @@ def get_user_config_instance_if_set() -> UserConfig | None:
 
 def set_user_config_instance(config: UserConfig | None) -> None:
     """Set the global config instance."""
-    # The file log sink captures DEBUG and is bundled into bug-report
-    # diagnostics uploads — log only whether an email is set, never its value.
-    logger.debug(
-        "Setting global user config instance (has_email={})",
-        bool(config.user_email) if config is not None else None,
-    )
+    logger.debug("Setting global user config instance (is_set={})", config is not None)
     global _CONFIG_INSTANCE
     _CONFIG_INSTANCE = config
 
@@ -180,9 +175,6 @@ def _generate_default_user_config_instance() -> UserConfig:
     """
 
     return UserConfig(
-        user_email="",
-        user_id=get_execution_instance_id(),
-        organization_id=get_execution_instance_id(),
         instance_id=get_execution_instance_id(),
         is_privacy_policy_consented=False,
         is_telemetry_level_set=False,

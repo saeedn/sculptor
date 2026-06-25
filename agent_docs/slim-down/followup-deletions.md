@@ -220,25 +220,53 @@ No inbound imports outside their own test/style:
 - `common/state/atoms/alphaScroll.ts` — `alphaScrollPositionAtomFamily`
   (dead; keep `debugViewAtomFamily`, used by AgentTabs).
 
-### 4b. Entity @-mentions system (DECIDE — large)
+### 4b. Entity @-mentions system (DEFERRED — bigger/entangled than expected)
 Spec'd for removal (REQ-CHAT-1, `enable_entity_mentions`). Currently
-hard-gated off via `isEntityMentionsEnabled = false` in `Editor.tsx`, but
-the whole tree is still present:
-- Frontend: `EntityMentionHydration.ts`, `EntityMentionList.tsx`,
-  `EntityMentionSuggestion.ts`, `MentionChip.tsx`, `MentionNodeView.tsx`,
-  `MentionPickerList.tsx`, `MentionPickerSuggestion.ts`,
-  `mentionDetailPanes/*`, `common/state/atoms/mentionDetails.ts`, plus the
-  TipTap wiring in `Editor.tsx`/`TipTapConfig.ts`.
-- Backend: `ENTITY_MENTIONS_SYSTEM_PROMPT` in `agents/default/constants.py`.
-- Recommendation: remove in a dedicated follow-up — it's a self-contained
-  but sizable subtree.
+hard-gated off via `isEntityMentionsEnabled = false` in `Editor.tsx`.
 
-### 4c. Smooth streaming (DECIDE)
+**Execution finding (2026-06-25):** this is more entangled than the sweep
+implied, so it was pulled out of this pass for a focused follow-up:
+- The TipTap `Editor` is still live — but its **only** consumer is
+  `ActionDialog.tsx`, which passes neither `projectID` nor `workspaceID`.
+  In `createTipTapExtensions`, suggestions only activate when
+  `editable && (projectID || workspaceID || entityDataRef)`, so in the
+  slimmed app **no** picker fires at all.
+- Consequently not just the entity (`+`) picker but the entire
+  `@file` / `/skill` mention-suggestion infrastructure
+  (`MentionPickerSuggestion`, `EntityMentionSuggestion`, `SkillSuggestion`,
+  `SuggestionUtils` file picker, `MentionPickerList`, `MentionNodeView`,
+  `MentionChip`, `EntityMention*`, `mentionDetailPanes/*`,
+  `mentionDetails.ts`) is dead.
+- The three chip variants (`@file`, `/skill`, `+entity`) share **one**
+  `Mention` node in `TipTapConfig.ts`, so an entity-only extraction is
+  fiddly surgery on a live shared node.
+- Backend: `ENTITY_MENTIONS_SYSTEM_PROMPT` in `agents/default/constants.py`.
+
+**Open question for the follow-up:** remove only the entity-specific
+parts (narrow, fiddly), or remove the whole now-dead mention/suggestion
+system and simplify `Editor`/`TipTapConfig` down to what `ActionDialog`
+actually needs (larger, cleaner)?
+
+### 4c. Smooth streaming (DEFERRED — part of the dead chat-render layer)
 Spec listed smooth-streaming for removal (REQ-CHAT). Still present:
 - `config/user_config.py` `is_smooth_streaming_enabled`.
-- `common/state/atoms/smoothStreaming.ts` and its consumers.
-- Recommendation: remove with the chat-render cleanup; confirm no
-  surviving terminal-path consumer first.
+- `common/state/atoms/smoothStreaming.ts`, `hooks/useSmoothStreaming.ts`,
+  `hooks/useSmoothStreamingViewportObserver.ts`.
+
+**Execution finding (2026-06-25):** the only consumer chain is
+`useChatData.ts`, which is itself **dead** — no live component imports it
+(only tests/comments reference it). `ChatPanelContent` is mounted in
+`WorkspacePage` but does **not** import `useChatData`/smooth streaming.
+
+### 4d. Dead chat render/data layer (NEW — the umbrella for 4b + 4c)
+The slim-down removed the `chat-alpha/` tree but left a sizable dead
+data/render layer with no live consumer: `useChatData.ts`,
+`useSmoothStreaming*`, the entire mention/suggestion system (§4b),
+`AlphaMarkdownBlock`, and likely more under `pages/workspace/hooks` /
+`components`. Recommendation: remove this as **one dedicated follow-up**
+(map it with an orphan-import pass, then delete leaf-first), rather than
+pulling individual threads (smooth streaming, entity mentions) that each
+dangle into the same dead cluster. Deferred out of this pass.
 
 ---
 

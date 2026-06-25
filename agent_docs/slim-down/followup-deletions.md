@@ -13,6 +13,42 @@ by mistake).
 
 ---
 
+## Execution status (2026-06-25)
+
+**Done & committed:**
+1. Dead chat keybindings + chat-search state (§3) — the whole `chat`
+   keybinding category, `focus_input`/`chat_search`, the chatSearch
+   atoms, and the command-palette chat plumbing.
+2. Orphaned chat-input components (§4a).
+3. **Settings → Agent page** and **Settings → Privacy page** removed
+   (§1a/1b/1f, §2a/2d): both sections, the dead frontend agent-behavior
+   code (model/fast-mode/effort components + atoms + per-task draft
+   store), the email atoms/AccountFieldRow, and the Agent/Privacy
+   ElementIds + Playwright POMs.
+
+**Deferred to a consolidated backend follow-up (with rationale):**
+- **Backend agent-behavior plumbing** (§1c/1d/1e): `LLMModel`/
+  `EffortLevel` enums, the `model`/`fast_mode`/`effort` request & message
+  fields, `AgentTaskInputsV2.default_model`, `set_model`, the
+  `default_llm`/`default_fast_mode`/`default_effort_level` config fields.
+- **Email / telemetry config + endpoints** (§2b/2c): `user_email` and the
+  telemetry-consent fields, `PrivacySettings`, the `email`/`skip_account`
+  endpoints, email validation.
+- **Dead chat render/data layer** (§4b/4c/4d): entity mentions, smooth
+  streaming, `useChatData`, `useSmoothStreaming*`, the mention/suggestion
+  system, `AlphaMarkdownBlock`.
+
+Why deferred together: the backend `model` field is woven into the task
+view (`derived.py`), `is_smooth_streaming_supported`, `ChatInputUserMessage`,
+and the harness interface (`get_available_models`/`get_selected_model_id`)
+— the same dead chat layer that entity mentions and smooth streaming
+dangle into. Excising any one thread in isolation leaves awkward
+half-states; they should be removed leaf-first as one coherent change.
+The user-facing pages are already gone; what remains is inert plumbing
+with no UI surface.
+
+---
+
 ## 1. Settings → Agent page + all agent-behavior vestiges
 
 We no longer control agent behavior (model, fast mode, thinking effort)

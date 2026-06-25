@@ -10,7 +10,6 @@ import httpx
 import typer
 import websockets.exceptions
 
-from sculpt.auth import MODEL_MAPPING
 from sculpt.auth import get_authenticated_client
 from sculpt.auth import get_default_base_url
 from sculpt.client import Client
@@ -91,17 +90,6 @@ def resolve_workspace(workspace: str | None, client: Client, json_output: bool) 
     cli_error("--workspace is required (or set SCULPT_WORKSPACE_ID)", json_output=json_output)
 
 
-def _format_model_name(model_value: str) -> str:
-    lower = model_value.lower()
-    if "opus" in lower:
-        return "opus"
-    if "sonnet" in lower:
-        return "sonnet"
-    if "haiku" in lower:
-        return "haiku"
-    return lower
-
-
 def _get_task_title(task: CodingAgentTaskView) -> str:
     if task.title:
         return task.title
@@ -121,9 +109,6 @@ def _format_snapshot_datetime(iso_str: str) -> str:
 def create(
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace ID (or set SCULPT_WORKSPACE_ID)"),
     prompt: str | None = typer.Option(None, "--prompt", "-p", help="The task prompt"),
-    model: str = typer.Option(
-        "opus", "--model", "-m", help="The model to use (haiku, sonnet, sonnet[1m], opus, opus[1m], fable)"
-    ),
     name: str | None = typer.Option(None, "--name", help="Agent name"),
     harness: str | None = typer.Option(
         None,
@@ -140,18 +125,8 @@ def create(
     """Create a new agent in a workspace."""
     base_url = base_url or get_default_base_url()
 
-    if not prompt and model != "opus":
-        cli_error("--model has no effect without --prompt", json_output=json_output)
-
     client = get_authenticated_client(base_url)
     workspace_id = resolve_workspace(workspace, client, json_output)
-
-    model_lower = model.lower()
-    if model_lower not in MODEL_MAPPING:
-        valid = ", ".join(MODEL_MAPPING.keys())
-        cli_error(f"Invalid model '{model}'. Valid options: {valid}", json_output=json_output)
-
-    llm_model = MODEL_MAPPING[model_lower]
 
     selection = resolve_harness_selection(harness, client, json_output)
     if (
@@ -163,7 +138,6 @@ def create(
 
     request = CreateAgentRequest(
         prompt=prompt,
-        model=llm_model if prompt else None,
         interface="API",
         name=name,
         sent_via="sculpt",
@@ -191,7 +165,6 @@ def create(
             id=result.id,
             title=_get_task_title(result),
             status=result.status.value,
-            model=result.model.value,
             workspace_id=result.workspace_id,
             created_at=result.created_at.isoformat(),
         )
@@ -200,7 +173,6 @@ def create(
 
     typer.echo(f"Agent created: {result.id}")
     typer.echo(f"Status: {result.status.value}")
-    typer.echo(f"Model: {result.model.value}")
 
 
 @agent_app.command("list")
@@ -258,7 +230,6 @@ def list_cmd(
                 id=t.task_id,
                 title=t.title or t.task_id,
                 status=t.status,
-                model=t.model,
                 workspace_id=t.workspace_id,
                 created_at=t.created_at,
             )
@@ -271,12 +242,11 @@ def list_cmd(
         typer.echo("No agents found.")
         return
 
-    headers = ["ID", "STATUS", "MODEL", "WORKSPACE", "CREATED", "TITLE"]
+    headers = ["ID", "STATUS", "WORKSPACE", "CREATED", "TITLE"]
     rows = [
         [
             t.task_id[:_ID_DISPLAY_PREFIX_LENGTH],
             t.status,
-            _format_model_name(t.model),
             t.workspace_id[:_ID_DISPLAY_PREFIX_LENGTH],
             _format_snapshot_datetime(t.created_at),
             truncate(t.title or t.task_id, _TITLE_DISPLAY_MAX_LENGTH),
@@ -321,7 +291,6 @@ def show(
             id=snapshot.task_id,
             title=snapshot.title or "Untitled",
             status=snapshot.status,
-            model=snapshot.model,
             interface=snapshot.interface,
             created_at=snapshot.created_at,
             updated_at=snapshot.updated_at,
@@ -347,7 +316,6 @@ def show(
         f"Agent: {snapshot.task_id}",
         f"Title: {snapshot.title or 'Untitled'}",
         f"Status: {snapshot.status}",
-        f"Model: {snapshot.model}",
         f"Interface: {snapshot.interface}",
         f"Created: {format_datetime(created_dt)}",
         f"Updated: {format_datetime(updated_dt)}",
@@ -445,9 +413,6 @@ def send(
     agent_id: str = typer.Argument(..., help="Agent ID or prefix"),
     message: str = typer.Argument(..., help="Message to send"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace ID (or set SCULPT_WORKSPACE_ID)"),
-    model: str = typer.Option(
-        "opus", "--model", "-m", help="The model to use (haiku, sonnet, sonnet[1m], opus, opus[1m], fable)"
-    ),
     file: list[str] | None = typer.Option(None, "--file", help="Files to include (repeatable)"),
     follow: bool = typer.Option(False, "--follow", "-f", help="Stream the agent's response after sending"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
@@ -456,12 +421,6 @@ def send(
     """Send a message to an agent."""
     base_url = base_url or get_default_base_url()
 
-    model_lower = model.lower()
-    if model_lower not in MODEL_MAPPING:
-        valid = ", ".join(MODEL_MAPPING.keys())
-        cli_error(f"Invalid model '{model}'. Valid options: {valid}", json_output=json_output)
-
-    llm_model = MODEL_MAPPING[model_lower]
     client = get_authenticated_client(base_url)
     workspace_id = resolve_workspace(workspace, client, json_output)
 
@@ -470,7 +429,6 @@ def send(
 
     request = SendMessageRequest(
         message=message,
-        model=llm_model,
         files=file or [],
         sent_via="sculpt",
     )

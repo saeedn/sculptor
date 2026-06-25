@@ -4,7 +4,6 @@ import type { ReactElement } from "react";
 
 import type {
   CodingAgentTaskView,
-  LlmModel,
   Project,
   PrStatusInfo,
   TaskInterface,
@@ -71,7 +70,6 @@ function makeTask(overrides: Partial<CodingAgentTaskView> & { id: string }): Cod
     titleOrSomethingLikeIt: "Task",
     interface: "TERMINAL" as TaskInterface,
     systemPrompt: null,
-    model: "CLAUDE-4-OPUS" as LlmModel,
     harnessCapabilities: {
       supportsChatInterface: true,
       supportsInteractiveBackchannel: true,
@@ -91,9 +89,6 @@ function makeTask(overrides: Partial<CodingAgentTaskView> & { id: string }): Cod
     },
     availableModels: [],
     selectedModelId: null,
-    isSmoothStreamingSupported: false,
-    fastMode: false,
-    effort: null,
     isDeleted: false,
     lastReadAt: null,
     title: "Agent 1",

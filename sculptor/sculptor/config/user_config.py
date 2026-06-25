@@ -121,11 +121,6 @@ class UserConfig(SerializableModel):
     keybindings: dict[str, str | None] = Field(
         default_factory=dict, description="User-customized keybinding overrides"
     )
-    default_llm: str | None = Field(
-        default=None,
-        description="Default LLM model for new agents. If None, then most recently used LLM will be used.",
-    )
-    # NOTE: The electron frontend might read this value directly in configFallback.ts. Please remember to keep them in sync.
     update_channel: UpdateChannel = Field(
         default=UpdateChannel.STABLE,
         description="Update channel for receiving Sculptor updates (stable or alpha)",
@@ -190,10 +185,6 @@ class UserConfig(SerializableModel):
         default=False,
         description="When True, .sculptor/.env values override pre-existing environment variables",
     )
-    is_smooth_streaming_enabled: bool = Field(
-        default=True,
-        description="Whether to enable smooth text streaming animation in the chat",
-    )
     default_workspace_branch_naming_pattern: str = Field(
         default="<user>/<slug>",
         description="User-global default pattern for auto-generated workspace branch names. Supports <user> and <slug> placeholders. Overridden per-project by Project.naming_pattern.",
@@ -201,15 +192,6 @@ class UserConfig(SerializableModel):
     workspace_branch_deletion_policy: Literal["never", "delete_if_safe", "always"] = Field(
         default="delete_if_safe",
         description="What to do with a worktree workspace's auto-generated branch when the workspace is deleted: never (preserve), delete_if_safe (refuses to delete unmerged), always (force-delete).",
-    )
-    default_fast_mode: bool = Field(
-        default=False,
-        description="When enabled, new agents default to fast mode",
-    )
-    # pyrefly: ignore [bad-assignment]
-    default_effort_level: Literal["low", "medium", "high", "xhigh", "max"] = Field(
-        default="xhigh",
-        description="Default thinking effort level for new agents (low, medium, high, xhigh, max)",
     )
     last_used_agent_type: str | None = Field(
         default=None,

@@ -94,7 +94,6 @@ class AgentCreateOutput(BaseModel):
     id: str = Field(description="Unique agent ID")
     title: str = Field(description="Agent title")
     status: str = Field(description="Agent infrastructure status")
-    model: str = Field(description="LLM model identifier")
     workspace_id: str = Field(description="Parent workspace ID")
     created_at: str = Field(description="ISO 8601 datetime of creation")
 
@@ -105,7 +104,6 @@ class AgentListItem(BaseModel):
     id: str = Field(description="Unique agent ID")
     title: str = Field(description="Agent title")
     status: str = Field(description="Agent infrastructure status")
-    model: str = Field(description="LLM model identifier")
     workspace_id: str = Field(description="Parent workspace ID")
     created_at: str = Field(description="ISO 8601 datetime of creation")
 
@@ -116,7 +114,6 @@ class AgentShowOutput(BaseModel):
     id: str = Field(description="Unique agent ID")
     title: str = Field(description="Agent title")
     status: str = Field(description="Agent infrastructure status")
-    model: str = Field(description="LLM model identifier")
     interface: str = Field(description="Agent interface type")
     created_at: str = Field(description="ISO 8601 datetime of creation")
     updated_at: str = Field(description="ISO 8601 datetime of last update")
@@ -183,7 +180,6 @@ class RunOutput(BaseModel):
     workspace_id: str = Field(description="Created workspace ID")
     agent_id: str = Field(description="Created agent ID")
     strategy: str = Field(description="Workspace initialization strategy")
-    model: str = Field(description="LLM model identifier")
     prompt: str = Field(description="The task prompt")
 
 

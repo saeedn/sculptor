@@ -68,7 +68,6 @@ from sculptor.services.data_model_service.sql_implementation import WORKSPACE_LA
 from sculptor.services.data_model_service.sql_implementation import WORKSPACE_TABLE
 from sculptor.services.data_model_service.sql_implementation import _UPDATE_FIELDS_PROTECTED_COLUMNS
 from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import LLMModel
 from sculptor.utils.type_utils import extract_leaf_types
 
 
@@ -247,7 +246,7 @@ def test_get_tasks_for_project_excludes_deleting_tasks(
 def test_foreign_constraints_are_being_enforced(test_db_service: SQLDataModelService, tmp_path: Path) -> None:
     message_id = AgentMessageID()
     saved_agent_message = SavedAgentMessage.build(
-        message=ChatInputUserMessage(message_id=message_id, text="Hello, world!", model_name=LLMModel.CLAUDE_4_SONNET),
+        message=ChatInputUserMessage(message_id=message_id, text="Hello, world!"),
         task_id=TaskID(),
     )
     with pytest.raises(IntegrityError):
@@ -827,9 +826,7 @@ def test_observer_notification_saved_agent_message_insert_NOT_observed(
 
             message_id = AgentMessageID()
             message = SavedAgentMessage.build(
-                message=ChatInputUserMessage(
-                    message_id=message_id, text="Test message", model_name=LLMModel.CLAUDE_4_SONNET
-                ),
+                message=ChatInputUserMessage(message_id=message_id, text="Test message"),
                 task_id=task.object_id,
             )
             transaction.insert_message(message)

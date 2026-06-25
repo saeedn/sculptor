@@ -22,7 +22,6 @@ from tenacity import wait_fixed
 
 from sculptor.constants import ElementIDs
 from sculptor.foundation.async_monkey_patches import log_exception
-from sculptor.state.messages import LLMModel
 from sculptor.testing.pages.settings_page import PlaywrightSettingsPage
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 
@@ -447,14 +446,10 @@ def upload_file_via_api(page: Page, *, name: str, mime_type: str, content: bytes
     return response.json()["fileId"]
 
 
-def send_message_via_api(
-    page: Page, *, message: str, files: Sequence[str], model: LLMModel = LLMModel.CLAUDE_4_OPUS_200K
-) -> None:
+def send_message_via_api(page: Page, *, message: str, files: Sequence[str]) -> None:
     """Send a chat message (with attached upload ids) to the active agent via the API.
 
     Parses the workspace/agent ids from the page URL (``/ws/<ws>/agent/<agent>``).
-    pi ignores ``model`` (it reads its own ``models.json``), so the default is
-    only a schema-valid placeholder for pi workspaces.
     """
     base_url = page.url.split("#")[0].rstrip("/")
     match = re.search(r"/ws/([^/]+)/agent/([^/?#]+)", page.url)
@@ -462,7 +457,7 @@ def send_message_via_api(
     workspace_id, agent_id = match.group(1), match.group(2)
     response = page.request.post(
         f"{base_url}/api/v1/workspaces/{workspace_id}/agents/{agent_id}/messages",
-        data={"message": message, "model": model.value, "files": files},
+        data={"message": message, "files": files},
     )
     assert response.ok, f"send-message failed: {response.status} {response.text()}"
 

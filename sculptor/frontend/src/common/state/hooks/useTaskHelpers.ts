@@ -1,12 +1,10 @@
 import { useAtomValue } from "jotai";
 
-import type { CodingAgentTaskView, ModelOption, TaskStatus } from "../../../api";
+import type { CodingAgentTaskView, TaskStatus } from "../../../api";
 import {
   taskAcceptsAutomatedPromptsAtomFamily,
   taskAtomFamily,
-  taskAvailableModelsAtomFamily,
   taskIsAutoCompactingAtomFamily,
-  taskModelAtomFamily,
   taskSelectedModelIdAtomFamily,
   taskStatusAtomFamily,
   taskSupportsBackgroundTasksAtomFamily,
@@ -31,13 +29,6 @@ export const useTask = (taskId: string): CodingAgentTaskView | null => {
 
 /** Subscribe to only the task's status field. Re-renders only when status changes. */
 export const useTaskStatus = (taskId: string): TaskStatus | undefined => useAtomValue(taskStatusAtomFamily(taskId));
-
-/** Subscribe to only the task's model field. Re-renders only when model changes. */
-export const useTaskModel = (taskId: string): string | undefined => useAtomValue(taskModelAtomFamily(taskId));
-
-/** Subscribe to the harness's backend-sourced model list (pi); empty for Claude. */
-export const useTaskAvailableModels = (taskId: string): ReadonlyArray<ModelOption> =>
-  useAtomValue(taskAvailableModelsAtomFamily(taskId));
 
 /** Subscribe to the model_id the switcher should show selected for a backend list (pi). */
 export const useTaskSelectedModelId = (taskId: string): string | undefined =>

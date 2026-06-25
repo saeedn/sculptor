@@ -25,7 +25,6 @@ from sculptor.primitives.ids import UserReference
 from sculptor.primitives.ids import UserSettingsID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.state.messages import AgentMessageSource
-from sculptor.state.messages import LLMModel
 from sculptor.state.messages import ModelOption
 
 TaskID = AgentTaskID
@@ -146,10 +145,6 @@ class AgentTaskInputsV2(TaskInputs):
     git_hash: str
 
     system_prompt: str | None = None
-
-    # The model selected by the user when creating this agent.
-    # Used as fallback when no messages have been sent yet.
-    default_model: LLMModel | None = None
 
 
 class NoOpTaskInputsV1(TaskInputs):

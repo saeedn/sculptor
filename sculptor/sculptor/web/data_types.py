@@ -23,8 +23,6 @@ from sculptor.services.task_service.api import TaskMessageContainer
 from sculptor.services.terminal_agent_registry.registry import TerminalAgentRegistration
 from sculptor.services.workspace_service.api import GitOperationResult
 from sculptor.state.chat_state import AskUserQuestionData
-from sculptor.state.messages import EffortLevel
-from sculptor.state.messages import LLMModel
 from sculptor.state.messages import Message
 
 
@@ -121,7 +119,6 @@ class RequestModel(SerializableModel):
 class StartTaskRequest(RequestModel):
     prompt: str
     interface: str = TaskInterface.TERMINAL.value
-    model: LLMModel
     files: list[str] = Field(default_factory=list)
     initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE
     name: str | None = None
@@ -130,8 +127,6 @@ class StartTaskRequest(RequestModel):
     # When provided, the task will be created in an existing workspace
     workspace_id: WorkspaceID | None = None
     enter_plan_mode: bool = False
-    fast_mode: bool = False
-    effort: EffortLevel = EffortLevel.EXTRA_HIGH
     sent_via: str | None = None
     # None means "use the user's most-recently-used harness" (the server
     # resolves it). Prompt-ful creation is always a chat agent; terminal types
@@ -168,13 +163,10 @@ class CreateAgentRequest(RequestModel):
     """Create agent request — prompt is optional for the '+' button flow."""
 
     prompt: str | None = None
-    model: LLMModel | None = None
     interface: str = TaskInterface.TERMINAL.value
     files: list[str] = Field(default_factory=list)
     name: str | None = None
     enter_plan_mode: bool = False
-    fast_mode: bool = False
-    effort: EffortLevel = EffortLevel.EXTRA_HIGH
     sent_via: str | None = None
     # None means "use the user's most-recently-used harness" (the server
     # resolves it, matching the app's "+" button default).
@@ -286,12 +278,9 @@ class ListWorkspacesResponse(SerializableModel):
 
 class SendMessageRequest(RequestModel):
     message: str
-    model: LLMModel
     files: list[str] = Field(default_factory=list)
     enter_plan_mode: bool = False
     exit_plan_mode: bool = False
-    fast_mode: bool = False
-    effort: EffortLevel = EffortLevel.EXTRA_HIGH
     sent_via: str | None = None
 
 
@@ -300,7 +289,6 @@ class AnswerQuestionRequest(RequestModel):
     notes: dict[str, str] = Field(default_factory=dict)
     question_data: AskUserQuestionData
     tool_use_id: str
-    model: LLMModel
 
 
 class SetModelRequest(RequestModel):

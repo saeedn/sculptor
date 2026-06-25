@@ -38,7 +38,6 @@ from sculptor.services.terminal_agent_registry import registry as registry_modul
 from sculptor.services.user_config.user_config import get_privacy_settings_for_telemetry
 from sculptor.services.user_config.user_config import set_user_config_instance
 from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import LLMModel
 from sculptor.web.app import _agent_config_for_request
 from sculptor.web.auth import SESSION_TOKEN_HEADER_NAME
 from sculptor.web.auth import UserSession
@@ -159,7 +158,6 @@ def _create_task_with_message_in_workspace(
     task = _create_task_in_workspace(transaction, user_session, project, services, workspace)
     services.task_service.create_message(
         ChatInputUserMessage(
-            model_name=LLMModel.CLAUDE_4_SONNET,
             text="foo",
         ),
         task.object_id,
@@ -177,7 +175,6 @@ def test_create_task_creates_task(
         json=model_dump(
             StartTaskRequest(
                 prompt="foo",
-                model=LLMModel.CLAUDE_4_SONNET,
             ),
             is_camel_case=True,
         ),
@@ -313,7 +310,7 @@ def test_send_message_saves_message(
     response = client.post(
         f"/api/v1/workspaces/{workspace.object_id}/agents/{task.object_id}/messages",
         json=model_dump(
-            SendMessageRequest(message="This is a test message.", model=LLMModel.CLAUDE_4_SONNET),
+            SendMessageRequest(message="This is a test message."),
             is_camel_case=True,
         ),
     )
@@ -344,7 +341,7 @@ def test_send_message_returns_404_if_agent_does_not_exist(
     response = client.post(
         f"/api/v1/workspaces/{workspace.object_id}/agents/{TaskID()}/messages",
         json=model_dump(
-            SendMessageRequest(message="This is a test message.", model=LLMModel.CLAUDE_4_SONNET),
+            SendMessageRequest(message="This is a test message."),
             is_camel_case=True,
         ),
     )
@@ -423,7 +420,6 @@ def test_send_message_rejects_enter_plan_mode_when_harness_lacks_backchannel(
         json=model_dump(
             SendMessageRequest(
                 message="Enter plan mode.",
-                model=LLMModel.CLAUDE_4_SONNET,
                 enter_plan_mode=True,
             ),
             is_camel_case=True,
@@ -718,7 +714,7 @@ def test_create_agent_does_not_send_intro_message_when_agents_exist(
 
     response = client.post(
         f"/api/v1/workspaces/{workspace.object_id}/agents",
-        json=model_dump(CreateAgentRequest(model=LLMModel.CLAUDE_4_SONNET), is_camel_case=True),
+        json=model_dump(CreateAgentRequest(), is_camel_case=True),
     )
     assert response.status_code == 200
     agent_id = response.json()["id"]
@@ -851,7 +847,6 @@ def test_start_task_resolves_agent_type(
         json=model_dump(
             StartTaskRequest(
                 prompt="hello terminal",
-                model=LLMModel.CLAUDE_4_SONNET,
                 agent_type=AgentTypeName.TERMINAL,
             ),
             is_camel_case=True,

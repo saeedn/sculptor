@@ -3,7 +3,7 @@ import { atom } from "jotai";
 import { atomFamily } from "jotai/utils";
 import { isEqual } from "lodash";
 
-import type { CodingAgentTaskView, ModelOption, TaskStatus } from "../../../api";
+import type { CodingAgentTaskView, TaskStatus } from "../../../api";
 
 export const taskAtomFamily = atomFamily<string, PrimitiveAtom<CodingAgentTaskView | null>>(() =>
   atom<CodingAgentTaskView | null>(null),
@@ -92,23 +92,6 @@ export const pendingAgentTitlesAtom = atom<Readonly<Record<string, string>>>({})
 
 export const taskStatusAtomFamily = atomFamily<string, Atom<TaskStatus | undefined>>((taskId) =>
   atom((get) => get(taskAtomFamily(taskId))?.status),
-);
-
-export const taskModelAtomFamily = atomFamily<string, Atom<string | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.model),
-);
-
-// A stable reference for the "no backend list" case, so the derived atom below
-// keeps one identity across unrelated task updates instead of a fresh array each
-// recompute.
-const EMPTY_MODEL_OPTIONS: ReadonlyArray<ModelOption> = [];
-
-// The harness's backend-sourced model catalog (pi). A non-capability view field,
-// so the no-direct-harness-capability-read ratchet does not apply. Empty for
-// harnesses that source no list (Claude) — the switcher then falls back to its
-// built-in PRODUCTION_MODELS.
-export const taskAvailableModelsAtomFamily = atomFamily<string, Atom<ReadonlyArray<ModelOption>>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.availableModels ?? EMPTY_MODEL_OPTIONS),
 );
 
 // The model_id the switcher should show as selected for a backend-sourced list

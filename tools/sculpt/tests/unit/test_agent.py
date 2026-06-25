@@ -148,7 +148,7 @@ class TestAgentCreate:
         )
 
         result = runner.invoke(
-            app, ["agent", "create", "-w", "ws_test123", "-p", "Do something", "-m", "sonnet"]
+            app, ["agent", "create", "-w", "ws_test123", "-p", "Do something"]
         )
 
         assert result.exit_code == 0
@@ -200,13 +200,6 @@ class TestAgentCreate:
         result = runner.invoke(app, ["agent", "create", "-p", "Do something"])
 
         assert result.exit_code == 0
-
-    def test_create_invalid_model(self, runner: CliRunner) -> None:
-        result = runner.invoke(
-            app, ["agent", "create", "-w", "ws_test123", "-m", "invalid", "-p", "Do something"]
-        )
-
-        assert result.exit_code == 1
 
     @respx.mock
     def test_create_connection_error(self, runner: CliRunner) -> None:
@@ -640,7 +633,7 @@ class TestAgentSend:
         )
 
         result = runner.invoke(
-            app, ["agent", "send", "tsk_abc123def456", "Fix the bug", "-w", "ws_test123", "-m", "sonnet"]
+            app, ["agent", "send", "tsk_abc123def456", "Fix the bug", "-w", "ws_test123"]
         )
 
         assert result.exit_code == 0
@@ -691,13 +684,6 @@ class TestAgentSend:
 
     def test_send_missing_workspace(self, runner: CliRunner) -> None:
         result = runner.invoke(app, ["agent", "send", "tsk_abc123", "hello"])
-
-        assert result.exit_code == 1
-
-    def test_send_invalid_model(self, runner: CliRunner) -> None:
-        result = runner.invoke(
-            app, ["agent", "send", "tsk_abc123", "hello", "-w", "ws_test123", "-m", "invalid"]
-        )
 
         assert result.exit_code == 1
 

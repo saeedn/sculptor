@@ -118,11 +118,6 @@ export const commitPromptAtom = atom<string>((get) => get(userConfigAtom)?.commi
 // Project environment variable settings
 export const envVarOverrideEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.envVarOverrideEnabled ?? false);
 
-// Smooth streaming preference
-export const isSmoothStreamingUserPreferenceAtom = atom<boolean>(
-  (get) => (get(userConfigAtom)?.isSmoothStreamingEnabled as boolean | undefined) ?? true,
-);
-
 // Default branch-naming pattern (user-global default)
 export const defaultWorkspaceBranchNamingPatternAtom = atom<string>(
   (get) => get(userConfigAtom)?.defaultWorkspaceBranchNamingPattern ?? "<user>/<slug>",

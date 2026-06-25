@@ -36,8 +36,6 @@ from sculptor.state.claude_state import ParsedAgentResponsePassthrough
 from sculptor.state.claude_state import ParsedToolResultResponse
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import EffortLevel
-from sculptor.state.messages import LLMModel
 from sculptor.state.messages import Message
 from sculptor.state.messages import ModelOption
 from sculptor.state.messages import PersistentAgentMessage
@@ -250,9 +248,6 @@ class ResumeAgentResponseRunnerMessage(PersistentRunnerMessage):
     object_type: str = "ResumeAgentResponseRunnerMessage"
     for_user_message_id: AgentMessageID
     error: SerializedException | None = None
-    model_name: LLMModel | None = Field(default=None, description="Selected LLM model for the chat request")
-    fast_mode: bool = Field(default=False, description="Whether to enable fast output mode")
-    effort: EffortLevel = Field(default=EffortLevel.EXTRA_HIGH, description="Thinking effort level")
 
 
 class WarningMessage(Message):

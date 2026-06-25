@@ -6,7 +6,6 @@ from sculptor.interfaces.agents.agent import RequestSuccessAgentMessage
 from sculptor.interfaces.agents.agent import ResumeAgentResponseRunnerMessage
 from sculptor.interfaces.agents.agent import StopAgentUserMessage
 from sculptor.primitives.ids import AgentMessageID
-from sculptor.state.messages import LLMModel
 
 
 class _WrapperForTest(DefaultAgentWrapper):
@@ -56,7 +55,6 @@ def test_resume_turn_uses_for_user_message_id_as_request_id() -> None:
     original_user_message_id = AgentMessageID()
     resume_message = ResumeAgentResponseRunnerMessage(
         for_user_message_id=original_user_message_id,
-        model_name=LLMModel.CLAUDE_4_SONNET,
     )
     # Sanity: the resume message has its own id, distinct from the turn it resumes.
     assert resume_message.message_id != original_user_message_id

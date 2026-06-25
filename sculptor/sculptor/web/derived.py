@@ -65,7 +65,6 @@ from sculptor.state.chat_state import ToolUseBlock
 from sculptor.state.chat_state import TurnMetrics
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import LLMModel
 from sculptor.state.messages import Message
 from sculptor.state.messages import ModelOption
 from sculptor.state.messages import ResponseBlockAgentMessage
@@ -396,23 +395,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
 
     @computed_field
     @property
-    def model(self) -> LLMModel:
-        # Use the most recent chat message that carried an explicit model selection.
-        for message in reversed(self._messages):
-            if isinstance(message, ChatInputUserMessage) and message.model_name is not None:
-                return message.model_name
-        # Fall back to the model selected at agent creation time, then to the
-        # product default. Fable is currently disabled with an indefinite
-        # timeline, so the default falls back to the 1M-context Opus
-        # (CLAUDE_4_OPUS, shown as "Opus (1M)"; SCU-1576); Fable stays available
-        # in the switcher for if/when it returns.
-        input_data = self.task.input_data
-        if isinstance(input_data, AgentTaskInputsV2) and input_data.default_model is not None:
-            return input_data.default_model
-        return LLMModel.CLAUDE_4_OPUS
-
-    @computed_field
-    @property
     def harness_capabilities(self) -> HarnessCapabilities:
         return self._resolve_harness().capabilities()
 
@@ -438,24 +420,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
         # the terminal-input endpoint.
         agent_config = self.task_input.agent_config
         return isinstance(agent_config, RegisteredTerminalAgentConfig) and agent_config.accepts_automated_prompts
-
-    @computed_field
-    @property
-    def is_smooth_streaming_supported(self) -> bool:
-        return self.model in (
-            LLMModel.CLAUDE_4_SONNET,
-            LLMModel.CLAUDE_4_SONNET_200K,
-            LLMModel.CLAUDE_4_OPUS,
-            LLMModel.CLAUDE_4_OPUS_200K,
-            LLMModel.CLAUDE_4_7_OPUS,
-            LLMModel.CLAUDE_4_7_OPUS_200K,
-            LLMModel.CLAUDE_4_6_OPUS,
-            LLMModel.CLAUDE_4_6_OPUS_200K,
-            LLMModel.CLAUDE_4_HAIKU,
-            LLMModel.CLAUDE_FABLE_5,
-            LLMModel.FAKE_CLAUDE,
-            LLMModel.FAKE_CLAUDE_2,
-        )
 
     @computed_field
     @property

@@ -142,7 +142,6 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
 from sculptor.startup_checks import check_is_user_email_field_valid
 from sculptor.startup_checks import check_sculptor_directory_writable
 from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import LLMModel
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import create_agent_terminal
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import make_agent_terminal_id
 from sculptor.telemetry import telemetry
@@ -467,7 +466,6 @@ def start_task(
     """Start a new task with the given prompt"""
     prompt = task_request.prompt
     interface = task_request.interface
-    model = task_request.model
     initialization_strategy = task_request.initialization_strategy
     task_name = task_request.name
     source_branch = task_request.source_branch
@@ -496,12 +494,6 @@ def start_task(
         logger.info(
             "Starting new task with interface {} and initialization_strategy {}", interface, initialization_strategy
         )
-
-        if model in (LLMModel.FAKE_CLAUDE, LLMModel.FAKE_CLAUDE_2) and not settings.TESTING.INTEGRATION_ENABLED:
-            raise HTTPException(
-                status_code=422,
-                detail="Testing model is only available when integration testing is enabled",
-            )
 
         # little transaction here -- we don't want to span the whole thing bc then it will be slow
         with user_session.open_transaction(services) as transaction:
@@ -575,7 +567,6 @@ def start_task(
                 agent_config=agent_config,
                 git_hash=initial_commit_hash,
                 system_prompt=project.default_system_prompt,
-                default_model=model,
             ),
             current_state=initial_task_state,
         )
@@ -595,11 +586,8 @@ def start_task(
             input_user_message = ChatInputUserMessage(
                 text=prompt,
                 message_id=AgentMessageID(),
-                model_name=model,
                 files=task_request.files,
                 enter_plan_mode=task_request.enter_plan_mode,
-                fast_mode=task_request.fast_mode,
-                effort=task_request.effort,
                 sent_via=task_request.sent_via,
             )
             messages.append(input_user_message)
@@ -1866,29 +1854,13 @@ def create_workspace_agent(
             if agent_request.agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED):
                 raise HTTPException(status_code=422, detail="terminal agents do not take an initial prompt")
             # Delegate to existing start_task logic
-            model = agent_request.model
-            if model is None:
-                raise HTTPException(
-                    status_code=422,
-                    detail=[
-                        {
-                            "loc": ["body", "model"],
-                            "msg": "Model is required when providing a prompt",
-                            "type": "value_error.missing",
-                        }
-                    ],
-                )
-
             task_request = StartTaskRequest(
                 prompt=agent_request.prompt,
                 interface=agent_request.interface,
-                model=model,
                 files=agent_request.files,
                 name=agent_request.name,
                 workspace_id=validated_workspace_id,
                 enter_plan_mode=agent_request.enter_plan_mode,
-                fast_mode=agent_request.fast_mode,
-                effort=agent_request.effort,
                 sent_via=agent_request.sent_via,
                 agent_type=agent_request.agent_type,
             )
@@ -1950,7 +1922,6 @@ def create_workspace_agent(
                 agent_config=agent_config,
                 git_hash=initial_commit_hash,
                 system_prompt=project.default_system_prompt,
-                default_model=agent_request.model,
             ),
             current_state=initial_task_state,
         )
@@ -1968,7 +1939,6 @@ def create_workspace_agent(
             intro_message = ChatInputUserMessage(
                 text="/sculptor:help I just set up Sculptor for the first time. What should I know to get started?",
                 message_id=AgentMessageID(),
-                model_name=agent_request.model or LLMModel.CLAUDE_4_OPUS,
             )
             services.task_service.create_message(
                 message=intro_message,
@@ -2318,12 +2288,9 @@ def send_workspace_agent_messages(
         message = ChatInputUserMessage(
             message_id=message_id,
             text=message_str,
-            model_name=message_request.model,
             files=message_request.files,
             enter_plan_mode=message_request.enter_plan_mode,
             exit_plan_mode=message_request.exit_plan_mode,
-            fast_mode=message_request.fast_mode,
-            effort=message_request.effort,
             sent_via=message_request.sent_via,
         )
 

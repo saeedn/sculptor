@@ -1,7 +1,6 @@
 import httpx
 import typer
 
-from sculpt.auth import MODEL_MAPPING
 from sculpt.auth import get_authenticated_client
 from sculpt.auth import get_default_base_url
 from sculpt.client.api.default import create_workspace_agent
@@ -32,9 +31,6 @@ def run_cmd(
             + " SCULPT_PROJECT_ID env var (set in every Sculptor workspace shell),"
             + " or matched against the current working directory."
         ),
-    ),
-    model: str = typer.Option(
-        "opus", "--model", "-m", help="The model to use (haiku, sonnet, sonnet[1m], opus, opus[1m], fable)"
     ),
     strategy: str = typer.Option(
         "worktree",
@@ -71,12 +67,6 @@ def run_cmd(
     """Create a workspace and agent in one step."""
     base_url = base_url or get_default_base_url()
 
-    model_lower = model.lower()
-    if model_lower not in MODEL_MAPPING:
-        valid = ", ".join(MODEL_MAPPING.keys())
-        cli_error(f"Invalid model '{model}'. Valid options: {valid}", json_output=json_output)
-
-    llm_model = MODEL_MAPPING[model_lower]
     client = get_authenticated_client(base_url)
 
     # Resolve the harness up front so a bad or terminal choice fails before we
@@ -132,7 +122,6 @@ def run_cmd(
     # "+" button uses).
     agent_request = CreateAgentRequest(
         prompt=prompt,
-        model=llm_model,
         interface="API",
         files=file or [],
         name=name,
@@ -156,7 +145,6 @@ def run_cmd(
             workspace_id=workspace_id,
             agent_id=agent_result.id,
             strategy=ws_result.initialization_strategy.value,
-            model=agent_result.model.value,
             prompt=prompt,
         )
         typer.echo(output.model_dump_json(indent=2))

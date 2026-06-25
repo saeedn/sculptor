@@ -213,35 +213,6 @@
             ],
             "title": "AgentMessageSource",
             "type": "string"
-          },
-          "EffortLevel": {
-            "enum": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "title": "EffortLevel",
-            "type": "string"
-          },
-          "LLMModel": {
-            "enum": [
-              "CLAUDE-4-OPUS",
-              "CLAUDE-4-OPUS-200K",
-              "CLAUDE-4-7-OPUS",
-              "CLAUDE-4-7-OPUS-200K",
-              "CLAUDE-4-6-OPUS",
-              "CLAUDE-4-6-OPUS-200K",
-              "CLAUDE-4-SONNET",
-              "CLAUDE-4-SONNET-200K",
-              "CLAUDE-4-HAIKU",
-              "CLAUDE-FABLE-5",
-              "FAKE_CLAUDE",
-              "FAKE_CLAUDE_2"
-            ],
-            "title": "LLMModel",
-            "type": "string"
           }
         },
         "additionalProperties": true,
@@ -251,11 +222,6 @@
             "format": "date-time",
             "title": "Approximatecreationtime",
             "type": "string"
-          },
-          "effort": {
-            "$ref": "#/$defs/EffortLevel",
-            "default": "xhigh",
-            "description": "Thinking effort level"
           },
           "enterPlanMode": {
             "default": false,
@@ -267,12 +233,6 @@
             "default": false,
             "description": "Whether the user requested to exit plan mode",
             "title": "Exitplanmode",
-            "type": "boolean"
-          },
-          "fastMode": {
-            "default": false,
-            "description": "Whether to enable fast output mode",
-            "title": "Fastmode",
             "type": "boolean"
           },
           "files": {
@@ -287,18 +247,6 @@
             "description": "Unique identifier for the user message",
             "title": "Messageid",
             "type": "string"
-          },
-          "modelName": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/LLMModel"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Selected LLM model for the chat request"
           },
           "objectType": {
             "default": "ChatInputUserMessage",
@@ -1570,17 +1518,6 @@
             "title": "AgentMessageSource",
             "type": "string"
           },
-          "EffortLevel": {
-            "enum": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ],
-            "title": "EffortLevel",
-            "type": "string"
-          },
           "JsonTypeAlias": {
             "anyOf": [
               {
@@ -1611,24 +1548,6 @@
                 "type": "null"
               }
             ]
-          },
-          "LLMModel": {
-            "enum": [
-              "CLAUDE-4-OPUS",
-              "CLAUDE-4-OPUS-200K",
-              "CLAUDE-4-7-OPUS",
-              "CLAUDE-4-7-OPUS-200K",
-              "CLAUDE-4-6-OPUS",
-              "CLAUDE-4-6-OPUS-200K",
-              "CLAUDE-4-SONNET",
-              "CLAUDE-4-SONNET-200K",
-              "CLAUDE-4-HAIKU",
-              "CLAUDE-FABLE-5",
-              "FAKE_CLAUDE",
-              "FAKE_CLAUDE_2"
-            ],
-            "title": "LLMModel",
-            "type": "string"
           },
           "SerializedException": {
             "additionalProperties": true,
@@ -1677,11 +1596,6 @@
             "title": "Approximatecreationtime",
             "type": "string"
           },
-          "effort": {
-            "$ref": "#/$defs/EffortLevel",
-            "default": "xhigh",
-            "description": "Thinking effort level"
-          },
           "error": {
             "anyOf": [
               {
@@ -1693,12 +1607,6 @@
             ],
             "default": null
           },
-          "fastMode": {
-            "default": false,
-            "description": "Whether to enable fast output mode",
-            "title": "Fastmode",
-            "type": "boolean"
-          },
           "forUserMessageId": {
             "title": "Forusermessageid",
             "type": "string"
@@ -1706,18 +1614,6 @@
           "messageId": {
             "title": "Messageid",
             "type": "string"
-          },
-          "modelName": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/LLMModel"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "description": "Selected LLM model for the chat request"
           },
           "objectType": {
             "default": "ResumeAgentResponseRunnerMessage",
@@ -2340,7 +2236,7 @@
         "$defs": {
           "ModelOption": {
             "additionalProperties": true,
-            "description": "One model a harness offers in its switcher.\n\n`provider` and `model_id` identify the model on the harness's own terms\n(pi sends them back as a `set_model` selection; for the Claude harness\n`model_id` is the `LLMModel` value). `display_name` is the selector label.",
+            "description": "One model a harness offers in its switcher.\n\n`provider` and `model_id` identify the model on the harness's own terms;\n`display_name` is the selector label.",
             "properties": {
               "displayName": {
                 "title": "Displayname",
@@ -2544,24 +2440,6 @@
     "input_data": {
       "AgentTaskInputsV2": {
         "$defs": {
-          "LLMModel": {
-            "enum": [
-              "CLAUDE-4-OPUS",
-              "CLAUDE-4-OPUS-200K",
-              "CLAUDE-4-7-OPUS",
-              "CLAUDE-4-7-OPUS-200K",
-              "CLAUDE-4-6-OPUS",
-              "CLAUDE-4-6-OPUS-200K",
-              "CLAUDE-4-SONNET",
-              "CLAUDE-4-SONNET-200K",
-              "CLAUDE-4-HAIKU",
-              "CLAUDE-FABLE-5",
-              "FAKE_CLAUDE",
-              "FAKE_CLAUDE_2"
-            ],
-            "title": "LLMModel",
-            "type": "string"
-          },
           "RegisteredTerminalAgentConfig": {
             "additionalProperties": true,
             "description": "A terminal agent that launches a registered program in its shell.\n\nLaunch parameters are stamped at creation from the registration so the\ntask stays self-describing even if the registration file later changes.",
@@ -2635,17 +2513,6 @@
               }
             ],
             "title": "Agentconfig"
-          },
-          "defaultModel": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/LLMModel"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
           },
           "gitHash": {
             "title": "Githash",

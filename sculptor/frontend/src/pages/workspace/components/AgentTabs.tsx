@@ -9,7 +9,6 @@ import {
   createWorkspaceAgent,
   ElementIds,
   getWorkspaceAgentDiagnostics,
-  type LlmModel,
   markWorkspaceAgentUnread,
   renameWorkspaceAgent,
 } from "~/api";
@@ -264,15 +263,11 @@ export const AgentTabs = (): ReactElement | null => {
         } else {
           ({ agentType, registrationId } = parseStoredAgentType(defaultAgentType));
         }
-        // Inherit the model from the currently viewed agent so the new agent
-        // starts with the same model selection. Terminal agents never read it.
-        const currentAgent = agentID ? workspaceAgents.find((a) => a.id === agentID) : undefined;
-        const model = currentAgent?.model as LlmModel | undefined;
         let response;
         try {
           response = await createWorkspaceAgent({
             path: { workspace_id: workspaceID },
-            body: { model, agentType, registrationId },
+            body: { agentType, registrationId },
           });
         } catch (error) {
           // A remembered registered agent's registration can be deleted out
@@ -285,7 +280,7 @@ export const AgentTabs = (): ReactElement | null => {
             setLastUsedAgentType("terminal");
             response = await createWorkspaceAgent({
               path: { workspace_id: workspaceID },
-              body: { model, agentType: "terminal" },
+              body: { agentType: "terminal" },
             });
           } else {
             throw error;
@@ -301,7 +296,7 @@ export const AgentTabs = (): ReactElement | null => {
         setIsCreating(false);
       }
     },
-    [workspaceID, isCreating, navigateToAgent, agentID, workspaceAgents, defaultAgentType, setLastUsedAgentType],
+    [workspaceID, isCreating, navigateToAgent, defaultAgentType, setLastUsedAgentType],
   );
 
   useKeybindingHandler("new_agent", () => {

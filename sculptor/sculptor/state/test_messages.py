@@ -3,7 +3,6 @@ from syrupy import SnapshotAssertion
 from sculptor.primitives.ids import AssistantMessageID
 from sculptor.state.chat_state import TextBlock
 from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import LLMModel
 from sculptor.state.messages import ResponseBlockAgentMessage
 
 
@@ -16,6 +15,5 @@ def test_create_messages(snapshot: SnapshotAssertion) -> None:
         ),
         ChatInputUserMessage(
             text="some text",
-            model_name=LLMModel.CLAUDE_4_OPUS,
         ),
     ]

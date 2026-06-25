@@ -274,18 +274,6 @@ class TestRun:
         assert request_body["targetBranch"] == "feature"
 
     @respx.mock
-    def test_run_with_model(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_initialize_project()
-        _mock_workspace_and_agent()
-
-        result = runner.invoke(
-            app, ["run", "Fix the bug", "--repo", "/tmp/test", "-m", "sonnet"]
-        )
-
-        assert result.exit_code == 0
-
-    @respx.mock
     def test_run_with_files(self, runner: CliRunner) -> None:
         _mock_session()
         _mock_initialize_project()
@@ -347,13 +335,6 @@ class TestRun:
         )
 
         result = runner.invoke(app, ["run", "Fix the bug", "--repo", "/tmp/test"])
-
-        assert result.exit_code == 1
-
-    def test_run_invalid_model(self, runner: CliRunner) -> None:
-        result = runner.invoke(
-            app, ["run", "Fix the bug", "--repo", "/tmp/test", "-m", "invalid"]
-        )
 
         assert result.exit_code == 1
 

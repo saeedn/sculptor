@@ -11,35 +11,11 @@ from sculptor.primitives.ids import AssistantMessageID
 from sculptor.state.chat_state import ContentBlockTypes
 
 
-class LLMModel(StrEnum):
-    CLAUDE_4_OPUS = "CLAUDE-4-OPUS"
-    CLAUDE_4_OPUS_200K = "CLAUDE-4-OPUS-200K"
-    CLAUDE_4_7_OPUS = "CLAUDE-4-7-OPUS"
-    CLAUDE_4_7_OPUS_200K = "CLAUDE-4-7-OPUS-200K"
-    CLAUDE_4_6_OPUS = "CLAUDE-4-6-OPUS"
-    CLAUDE_4_6_OPUS_200K = "CLAUDE-4-6-OPUS-200K"
-    CLAUDE_4_SONNET = "CLAUDE-4-SONNET"
-    CLAUDE_4_SONNET_200K = "CLAUDE-4-SONNET-200K"
-    CLAUDE_4_HAIKU = "CLAUDE-4-HAIKU"
-    CLAUDE_FABLE_5 = "CLAUDE-FABLE-5"
-    FAKE_CLAUDE = "FAKE_CLAUDE"
-    FAKE_CLAUDE_2 = "FAKE_CLAUDE_2"
-
-
-class EffortLevel(StrEnum):
-    LOW = "low"
-    MEDIUM = "medium"
-    HIGH = "high"
-    EXTRA_HIGH = "xhigh"
-    MAX = "max"
-
-
 class ModelOption(SerializableModel):
     """One model a harness offers in its switcher.
 
-    `provider` and `model_id` identify the model on the harness's own terms
-    (pi sends them back as a `set_model` selection; for the Claude harness
-    `model_id` is the `LLMModel` value). `display_name` is the selector label.
+    `provider` and `model_id` identify the model on the harness's own terms;
+    `display_name` is the selector label.
     """
 
     provider: str
@@ -117,15 +93,12 @@ class PersistentUserMessage(PersistentMessage):
 class ChatInputUserMessage(PersistentUserMessage):
     object_type: str = Field(default="ChatInputUserMessage")
     text: str = Field(description="User input text content")
-    model_name: LLMModel | None = Field(default=None, description="Selected LLM model for the chat request")
     files: list[str] = Field(
         default_factory=list,
         description="List of file paths (images, PDFs, etc., stored in Electron app folder) attached to this message",
     )
     enter_plan_mode: bool = Field(default=False, description="Whether the user requested to enter plan mode")
     exit_plan_mode: bool = Field(default=False, description="Whether the user requested to exit plan mode")
-    fast_mode: bool = Field(default=False, description="Whether to enable fast output mode")
-    effort: EffortLevel = Field(default=EffortLevel.EXTRA_HIGH, description="Thinking effort level")
     sent_via: str | None = Field(default=None, description="Interface that sent this message, e.g. 'sculpt'")
 
 

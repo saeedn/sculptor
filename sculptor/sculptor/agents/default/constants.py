@@ -1,7 +1,6 @@
 from typing import Final
 
 from sculptor.interfaces.agents.tool_names import AgentToolName
-from sculptor.state.messages import LLMModel
 
 DEFAULT_WAIT_TIMEOUT: Final[float] = 30.0
 REMOVED_MESSAGE_IDS_STATE_FILE: Final[str] = "removed_message_ids"
@@ -12,20 +11,6 @@ FILE_CHANGE_TOOL_NAMES: Final[tuple[AgentToolName, ...]] = (
     AgentToolName.WRITE,
     AgentToolName.MULTI_EDIT,
 )
-
-
-MODEL_SHORTNAME_MAP: Final[dict[LLMModel, str]] = {
-    LLMModel.CLAUDE_4_OPUS: "opus[1m]",
-    LLMModel.CLAUDE_4_OPUS_200K: "opus",
-    LLMModel.CLAUDE_4_7_OPUS: "claude-opus-4-7[1m]",
-    LLMModel.CLAUDE_4_7_OPUS_200K: "claude-opus-4-7",
-    LLMModel.CLAUDE_4_6_OPUS: "claude-opus-4-6[1m]",
-    LLMModel.CLAUDE_4_6_OPUS_200K: "claude-opus-4-6",
-    LLMModel.CLAUDE_4_SONNET: "sonnet[1m]",
-    LLMModel.CLAUDE_4_SONNET_200K: "sonnet",
-    LLMModel.CLAUDE_4_HAIKU: "haiku",
-    LLMModel.CLAUDE_FABLE_5: "claude-fable-5",
-}
 
 
 ENTITY_MENTIONS_SYSTEM_PROMPT: Final[str] = """

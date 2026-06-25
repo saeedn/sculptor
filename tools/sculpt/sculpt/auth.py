@@ -6,7 +6,6 @@ import httpx
 import typer
 
 from sculpt.client import Client
-from sculpt.client.models import LLMModel
 from sculpt.session import SessionTokenError
 from sculpt.session import get_session_token
 
@@ -17,16 +16,6 @@ def get_default_base_url() -> str:
     """Get the default base URL, respecting SCULPT_API_PORT if set."""
     port = os.environ.get("SCULPT_API_PORT", str(DEFAULT_PORT))
     return f"http://localhost:{port}"
-
-
-MODEL_MAPPING: dict[str, LLMModel] = {
-    "haiku": LLMModel.CLAUDE_4_HAIKU,
-    "sonnet": LLMModel.CLAUDE_4_SONNET_200K,
-    "sonnet[1m]": LLMModel.CLAUDE_4_SONNET,
-    "opus": LLMModel.CLAUDE_4_OPUS_200K,
-    "opus[1m]": LLMModel.CLAUDE_4_OPUS,
-    "fable": LLMModel.CLAUDE_FABLE_5,
-}
 
 
 def get_authenticated_client(base_url: str) -> Client:

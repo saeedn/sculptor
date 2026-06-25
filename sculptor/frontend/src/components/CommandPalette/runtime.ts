@@ -46,9 +46,6 @@ export type CommandRuntime = {
      */
     togglePanel: (panelId: string) => void;
     setTheme: (mode: AppearanceMode) => void;
-    focusChatInput: () => void;
-    showChatSearch: () => void;
-    jumpChatToBottom: () => void;
     /** Cycle to the next/previous workspace tab. Wraps `next_tab` / `previous_tab`. */
     nextWorkspaceTab: () => void;
     previousWorkspaceTab: () => void;

@@ -15,7 +15,6 @@ import { useEffect, useRef } from "react";
  * point at actions with no shortcut.
  */
 export type CommandActionId =
-  | "chat.jumpToBottom"
   | "workspace.closeCurrent"
   | "workspace.nextTab"
   | "workspace.previousTab"

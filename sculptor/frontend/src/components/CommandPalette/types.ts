@@ -43,7 +43,6 @@ export type PaletteContext = {
   route: PaletteRoute;
   activeWorkspaceId: string | null;
   activeAgentId: string | null;
-  hasChatPanel: boolean;
   hasTerminalPanel: boolean;
   isZenMode: boolean;
   /** The current sub-page id, or null for the root page. */

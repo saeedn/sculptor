@@ -83,11 +83,8 @@ const BLOCKLISTED_SHORTCUTS: Array<string> = [
   "Ctrl+T",
   "Ctrl+O",
 
-  // TipTap / ProseMirror StarterKit defaults — consumed inside the chat editor.
+  // TipTap / ProseMirror StarterKit defaults — consumed inside the editor.
   // Any shortcut here will be eaten by the editor before global handlers see it.
-  // Exceptions intentionally kept off this list (handled at the input layer):
-  //   Meta+Enter → send_message (hardBreak overridden)
-  //   Meta+I     → focus_input (italic — only fires from outside the editor)
   "Meta+B",
   "Meta+U",
   "Meta+E",

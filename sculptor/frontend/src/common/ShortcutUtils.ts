@@ -1,10 +1,6 @@
 /**
  * Utility functions for handling keyboard shortcuts
  */
-import { useCallback } from "react";
-
-import { isModifierPressed } from "~/electron/utils.ts";
-
 import { isMac } from "../electron/utils.ts";
 
 export type ShortcutParsed = {
@@ -262,39 +258,4 @@ export const formatShortcutForDisplay = (shortcut: string | undefined): string =
       }
     })
     .join(separator);
-};
-
-type UseModifiedEnterOptions = {
-  onConfirm: () => void;
-  onInterruptAndSend?: () => void;
-  sendMessageBinding: string | null;
-};
-
-export const useModifiedEnter = ({
-  onConfirm,
-  onInterruptAndSend,
-  sendMessageBinding,
-}: UseModifiedEnterOptions): ((e: KeyboardEvent) => boolean) => {
-  return useCallback(
-    (e: KeyboardEvent): boolean => {
-      if (e.key !== "Enter" || sendMessageBinding == null) {
-        return false;
-      }
-
-      // Cmd+Shift+Enter (or Ctrl+Shift+Enter) always triggers interrupt-and-send
-      if (e.shiftKey && isModifierPressed(e) && onInterruptAndSend) {
-        onInterruptAndSend();
-        return true;
-      }
-
-      // Check if the binding matches the event
-      if (shouldHandleKeybinding(e, sendMessageBinding)) {
-        onConfirm();
-        return true;
-      }
-
-      return false;
-    },
-    [onConfirm, onInterruptAndSend, sendMessageBinding],
-  );
 };

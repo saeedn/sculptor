@@ -1,6 +1,5 @@
 import { useMemo } from "react";
 
-import { buildChatCommands } from "./builtinCommands/chat.ts";
 import { buildHelpCommands } from "./builtinCommands/help.ts";
 import { buildNavigationCommands } from "./builtinCommands/navigation.ts";
 import { buildPanelCommands } from "./builtinCommands/panels.ts";
@@ -44,7 +43,6 @@ export const CommandRegistrations = (): null => {
       ...buildSettingsCommands(runtime),
       ...buildPanelCommands(runtime),
       ...buildThemeCommands(runtime),
-      ...buildChatCommands(runtime),
       ...buildTerminalCommands(runtime),
       ...buildHelpCommands(runtime),
     ],

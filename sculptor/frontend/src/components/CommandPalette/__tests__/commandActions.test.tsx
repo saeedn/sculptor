@@ -109,17 +109,17 @@ describe("commandActions", () => {
       const closeWs = vi.fn();
 
       const a = renderRegister(store, "agent.previous", top);
-      const b = renderRegister(store, "chat.jumpToBottom", bottom);
+      const b = renderRegister(store, "agent.next", bottom);
       const c = renderRegister(store, "workspace.closeCurrent", closeWs);
 
       expect(getRegistered(store, "agent.previous")).toBeDefined();
-      expect(getRegistered(store, "chat.jumpToBottom")).toBeDefined();
+      expect(getRegistered(store, "agent.next")).toBeDefined();
       expect(getRegistered(store, "workspace.closeCurrent")).toBeDefined();
 
       // Unmount one consumer; the other two should remain registered.
       b.unmount();
       expect(getRegistered(store, "agent.previous")).toBeDefined();
-      expect(getRegistered(store, "chat.jumpToBottom")).toBeUndefined();
+      expect(getRegistered(store, "agent.next")).toBeUndefined();
       expect(getRegistered(store, "workspace.closeCurrent")).toBeDefined();
 
       // The surviving registrations still dispatch to the right callback.

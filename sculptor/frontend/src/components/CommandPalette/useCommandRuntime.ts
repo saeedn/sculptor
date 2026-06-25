@@ -3,9 +3,7 @@ import { useStore } from "jotai/react";
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 
 import type { UserConfigField } from "../../api";
-import { CHAT_INPUT_ELEMENT_ID } from "../../common/Constants.ts";
 import { useImbueNavigate } from "../../common/NavigateUtils.ts";
-import { chatSearchFocusRequestAtom, chatSearchVisibleAtom } from "../../common/state/atoms/chatSearch.ts";
 import { themeSettingsAtom } from "../../common/state/atoms/theme.ts";
 import { openWorkspaceTabAtom } from "../../common/state/atoms/workspaces.ts";
 import { useDevPanel } from "../../common/state/hooks/useDevPanel.ts";
@@ -23,12 +21,6 @@ const reloadElectronWindow = (): void => {
   // The Electron preload exposes window.sculptor; when not present,
   // fallback to the browser-side reload.
   window.location.reload();
-};
-
-const focusChatInput = (): void => {
-  const chatInput = document.getElementById(CHAT_INPUT_ELEMENT_ID);
-  const editable = chatInput?.querySelector<HTMLElement>("[contenteditable='true']");
-  editable?.focus();
 };
 
 /**
@@ -76,8 +68,6 @@ export const useCommandRuntime = (): CommandRuntime => {
   const { togglePanel } = usePanelActions();
 
   const setThemeSettings = useSetAtom(themeSettingsAtom);
-  const setChatSearchVisible = useSetAtom(chatSearchVisibleAtom);
-  const setChatSearchFocus = useSetAtom(chatSearchFocusRequestAtom);
   const openWorkspaceTab = useSetAtom(openWorkspaceTabAtom);
 
   const { updateField } = useUserConfig();
@@ -119,12 +109,6 @@ export const useCommandRuntime = (): CommandRuntime => {
   const setTheme = useEvent((mode: "light" | "dark" | "system"): void => {
     setThemeSettings((prev) => ({ ...prev, appearance: mode }));
   });
-  const uiFocusChatInput = useEvent((): void => focusChatInput());
-  const showChatSearch = useEvent((): void => {
-    setChatSearchVisible(true);
-    setChatSearchFocus((n: number) => n + 1);
-  });
-  const jumpChatToBottom = useEvent((): void => invokeAction("chat.jumpToBottom"));
   const nextWorkspaceTab = useEvent((): void => invokeAction("workspace.nextTab"));
   const previousWorkspaceTab = useEvent((): void => invokeAction("workspace.previousTab"));
   const nextAgent = useEvent((): void => invokeAction("agent.next"));
@@ -165,9 +149,6 @@ export const useCommandRuntime = (): CommandRuntime => {
         toggleRightPanel: uiToggleRightPanel,
         togglePanel: uiTogglePanel,
         setTheme,
-        focusChatInput: uiFocusChatInput,
-        showChatSearch,
-        jumpChatToBottom,
         nextWorkspaceTab,
         previousWorkspaceTab,
         nextAgent,
@@ -194,9 +175,6 @@ export const useCommandRuntime = (): CommandRuntime => {
       uiToggleRightPanel,
       uiTogglePanel,
       setTheme,
-      uiFocusChatInput,
-      showChatSearch,
-      jumpChatToBottom,
       nextWorkspaceTab,
       previousWorkspaceTab,
       nextAgent,

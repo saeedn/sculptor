@@ -4,9 +4,7 @@ import { useCallback, useEffect } from "react";
 
 import type { RepoInfo } from "~/api";
 import { ElementIds } from "~/api";
-import { useKeybinding, useKeybindingDisplayText } from "~/common/keybindings/hooks.ts";
 import { isDismissibleOverlayOpen } from "~/common/overlayUtils.ts";
-import { useModifiedEnter } from "~/common/ShortcutUtils.ts";
 import { KeyboardHint } from "~/components/KeyboardHint.tsx";
 
 import { getMetaKey, isModifierPressed } from "../../../electron/utils.ts";
@@ -39,9 +37,6 @@ export const NewWorkspaceForm = ({
   children,
   branchField,
 }: NewWorkspaceFormProps): ReactElement => {
-  const sendMessageBinding = useKeybinding("send_message");
-  const sendHint = useKeybindingDisplayText("send_message");
-
   const sendMessageTooltipContent = !repoInfo
     ? "Loading repository info..."
     : isPending
@@ -52,21 +47,14 @@ export const NewWorkspaceForm = ({
 
   const isDisabled = (repoInfo && repoInfo.recentBranches?.length === 0) || isPending || !!isSubmitDisabled;
 
-  const handleKeyPress = useModifiedEnter({
-    onConfirm: onSubmit,
-    sendMessageBinding,
-  });
-
   const handleNameInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>): void => {
       if (e.key === "Enter" && isModifierPressed(e)) {
         e.preventDefault();
         onSubmit();
-        return;
       }
-      handleKeyPress(e.nativeEvent);
     },
-    [onSubmit, handleKeyPress],
+    [onSubmit],
   );
 
   // Allow Cmd+Enter to submit from anywhere on the page, not just the input
@@ -104,7 +92,7 @@ export const NewWorkspaceForm = ({
             {children}
           </Flex>
           <Flex align="center" gap="1" flexShrink="0">
-            <Tooltip content={sendMessageTooltipContent ?? `${sendHint} to create workspace`}>
+            <Tooltip content={sendMessageTooltipContent ?? `${getMetaKey()}↵ to create workspace`}>
               <Button
                 onClick={onSubmit}
                 disabled={!!isDisabled}

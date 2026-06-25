@@ -1,14 +1,11 @@
 import { useAtomValue, useSetAtom } from "jotai";
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 
-import { ElementIds } from "../../api";
-import { CHAT_INPUT_ELEMENT_ID } from "../../common/Constants.ts";
 import { keybindingsMapAtom } from "../../common/keybindings/atoms.ts";
 import type { KeybindingId } from "../../common/keybindings/types.ts";
 import { useImbueNavigate } from "../../common/NavigateUtils.ts";
 import { isDismissibleOverlayOpen } from "../../common/overlayUtils.ts";
 import { shouldHandleKeybinding } from "../../common/ShortcutUtils.ts";
-import { chatSearchFocusRequestAtom, chatSearchVisibleAtom } from "../../common/state/atoms/chatSearch.ts";
 import { themeSettingsAtom } from "../../common/state/atoms/theme.ts";
 import { useDevPanel } from "../../common/state/hooks/useDevPanel.ts";
 import { useHelpDialog } from "../../common/state/hooks/useHelpDialog.ts";
@@ -27,8 +24,6 @@ export const usePageLayoutKeyboardShortcuts = (): void => {
   } = useCommandPalette();
   const { toggleHelpDialog } = useHelpDialog();
   const { navigateToAddWorkspace, navigateToHome } = useImbueNavigate();
-  const setChatSearchVisible = useSetAtom(chatSearchVisibleAtom);
-  const setFocusRequest = useSetAtom(chatSearchFocusRequestAtom);
   const openSettings = useOpenSettings();
 
   const { toggleFocusMode } = useFocusMode();
@@ -39,10 +34,6 @@ export const usePageLayoutKeyboardShortcuts = (): void => {
   const resolvedTheme = useResolvedTheme();
   const setThemeSettings = useSetAtom(themeSettingsAtom);
 
-  const isChatSearchVisible = useAtomValue(chatSearchVisibleAtom);
-  const isChatSearchVisibleRef = useRef(isChatSearchVisible);
-  isChatSearchVisibleRef.current = isChatSearchVisible;
-
   const keybindingsMap = useAtomValue(keybindingsMapAtom);
 
   useEffect(() => {
@@ -51,16 +42,6 @@ export const usePageLayoutKeyboardShortcuts = (): void => {
       if (e.ctrlKey && e.altKey && e.key === "/") {
         e.preventDefault();
         toggleDevPanel();
-        return;
-      }
-
-      // Escape closes chat search (not a registry keybinding)
-      if (e.key === "Escape" && isChatSearchVisibleRef.current) {
-        if (isDismissibleOverlayOpen()) {
-          return;
-        }
-        e.preventDefault();
-        setChatSearchVisible(false);
         return;
       }
 
@@ -118,33 +99,6 @@ export const usePageLayoutKeyboardShortcuts = (): void => {
         ["command_palette", (): void => toggleCommandPalette()],
         ["help", (): void => toggleHelpDialog()],
         [
-          "chat_search",
-          (): void => {
-            // Only activate when a chat panel is on screen
-            const hasChatPanel = document.querySelector(`[data-testid="${ElementIds.CHAT_PANEL}"]`) !== null;
-            if (!hasChatPanel) return;
-            setChatSearchVisible(true);
-            setFocusRequest((n: number): number => n + 1);
-          },
-        ],
-        [
-          "focus_input",
-          (): void => {
-            // Try workspace name input first (Add Workspace page)
-            const nameInput = document.querySelector<HTMLElement>(`[data-testid="${ElementIds.WORKSPACE_NAME_INPUT}"]`);
-            if (nameInput) {
-              nameInput.focus();
-              return;
-            }
-            // Fall back to the chat input (workspace pages)
-            const chatInput = document.getElementById(CHAT_INPUT_ELEMENT_ID);
-            const editable = chatInput?.querySelector<HTMLElement>("[contenteditable='true']");
-            if (editable) {
-              editable.focus();
-            }
-          },
-        ],
-        [
           "new_workspace",
           (): void => {
             if (isCommandPaletteOpen) {
@@ -198,8 +152,6 @@ export const usePageLayoutKeyboardShortcuts = (): void => {
     window.addEventListener("keydown", handleKeyDown);
     return (): void => window.removeEventListener("keydown", handleKeyDown);
   }, [
-    setChatSearchVisible,
-    setFocusRequest,
     closeCommandPalette,
     isCommandPaletteOpen,
     toggleDevPanel,

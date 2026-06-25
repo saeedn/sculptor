@@ -2,7 +2,6 @@ import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DEFAULT_THEME_SETTINGS, themeSettingsAtom } from "../../../common/state/atoms/theme.ts";
-import { buildChatCommands } from "../builtinCommands/chat.ts";
 import { buildHelpCommands } from "../builtinCommands/help.ts";
 import { buildNavigationCommands } from "../builtinCommands/navigation.ts";
 import { buildPanelCommands } from "../builtinCommands/panels.ts";
@@ -17,7 +16,6 @@ const ROOT_CTX: PaletteContext = {
   route: { isHome: true, isWorkspace: false, isSettings: false, isAddWorkspace: false, isAgent: false },
   activeWorkspaceId: null,
   activeAgentId: null,
-  hasChatPanel: false,
   hasTerminalPanel: false,
   isZenMode: false,
   page: null,
@@ -36,11 +34,6 @@ const SETTINGS_CTX: PaletteContext = {
 const ADD_WORKSPACE_CTX: PaletteContext = {
   ...ROOT_CTX,
   route: { isHome: false, isWorkspace: false, isSettings: false, isAddWorkspace: true, isAgent: false },
-};
-
-const WORKSPACE_WITH_CHAT_CTX: PaletteContext = {
-  ...WORKSPACE_CTX,
-  hasChatPanel: true,
 };
 
 const WORKSPACE_WITH_TERMINAL_CTX: PaletteContext = {
@@ -69,9 +62,6 @@ const makeRuntime = (overrides: Partial<CommandRuntime> = {}): CommandRuntime =>
       toggleRightPanel: vi.fn(),
       togglePanel: vi.fn(),
       setTheme: vi.fn(),
-      focusChatInput: vi.fn(),
-      showChatSearch: vi.fn(),
-      jumpChatToBottom: vi.fn(),
       nextWorkspaceTab: vi.fn(),
       previousWorkspaceTab: vi.fn(),
       nextAgent: vi.fn(),
@@ -471,48 +461,6 @@ describe("buildThemeCommands", () => {
   });
 });
 
-describe("buildChatCommands", () => {
-  it("emits exactly the expected command ids", () => {
-    const cmds = buildChatCommands(makeRuntime());
-    expect(cmds.map((c) => c.id).sort()).toEqual(["chat.focus_input", "chat.search", "chat.jump_bottom"].sort());
-  });
-
-  it("chat.focus_input.when requires hasChatPanel (not surfaced on AddWorkspace, see review M10)", () => {
-    // Title says "Focus chat input" — must not surface anywhere a chat
-    // input doesn't exist. The `focus_input` keybinding handler in
-    // usePageLayoutKeyboardShortcuts handles AddWorkspace's name input
-    // separately (and as a keyboard-only fallback).
-    const cmd = buildChatCommands(makeRuntime()).find((c) => c.id === "chat.focus_input")!;
-    expect(cmd.when!(ROOT_CTX)).toBe(false);
-    expect(cmd.when!(WORKSPACE_CTX)).toBe(false);
-    expect(cmd.when!(WORKSPACE_WITH_CHAT_CTX)).toBe(true);
-    expect(cmd.when!(ADD_WORKSPACE_CTX)).toBe(false);
-  });
-
-  it("chat.search and chat.jump_bottom both require hasChatPanel", () => {
-    const cmds = buildChatCommands(makeRuntime());
-    for (const id of ["chat.search", "chat.jump_bottom"]) {
-      const cmd = cmds.find((c) => c.id === id)!;
-      expect(cmd.when).toBeDefined();
-      expect(cmd.when!(WORKSPACE_WITH_CHAT_CTX)).toBe(true);
-      expect(cmd.when!(WORKSPACE_CTX)).toBe(false);
-      expect(cmd.when!(ADD_WORKSPACE_CTX)).toBe(false);
-      expect(cmd.when!(ROOT_CTX)).toBe(false);
-    }
-  });
-
-  it("perform delegates to the matching runtime.ui method", () => {
-    const runtime = makeRuntime();
-    const cmds = buildChatCommands(runtime);
-    runPerform(cmds.find((c) => c.id === "chat.focus_input")!);
-    runPerform(cmds.find((c) => c.id === "chat.search")!);
-    runPerform(cmds.find((c) => c.id === "chat.jump_bottom")!);
-    expect(runtime.ui.focusChatInput).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.showChatSearch).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.jumpChatToBottom).toHaveBeenCalledTimes(1);
-  });
-});
-
 describe("buildTerminalCommands", () => {
   it("emits exactly the expected command ids", () => {
     const cmds = buildTerminalCommands(makeRuntime());
@@ -532,7 +480,7 @@ describe("buildTerminalCommands", () => {
   it("terminal.clear.when requires hasTerminalPanel (not surfaced where no terminal exists)", () => {
     // The palette path clears the active terminal regardless of focus, so
     // surfacing the row anywhere without a terminal mounted would be a
-    // no-op that confuses the user. Gate is parallel to chat.* + hasChatPanel.
+    // no-op that confuses the user.
     const cmd = buildTerminalCommands(makeRuntime()).find((c) => c.id === "terminal.clear")!;
     expect(cmd.when).toBeDefined();
     expect(cmd.when!(WORKSPACE_WITH_TERMINAL_CTX)).toBe(true);
@@ -586,7 +534,6 @@ describe("invariants", () => {
       ...buildSettingsCommands(runtime),
       ...buildPanelCommands(runtime),
       ...buildThemeCommands(runtime),
-      ...buildChatCommands(runtime),
       ...buildTerminalCommands(runtime),
       ...buildHelpCommands(runtime),
     ];

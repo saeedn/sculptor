@@ -7,7 +7,6 @@ const ROOT_CTX: PaletteContext = {
   route: { isHome: true, isWorkspace: false, isSettings: false, isAddWorkspace: false, isAgent: false },
   activeWorkspaceId: null,
   activeAgentId: null,
-  hasChatPanel: false,
   hasTerminalPanel: false,
   isZenMode: false,
   page: null,

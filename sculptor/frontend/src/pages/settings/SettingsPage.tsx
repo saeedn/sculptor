@@ -1,26 +1,18 @@
-import { Box, Flex, SegmentedControl, Select, Switch } from "@radix-ui/themes";
-import { useAtom, useAtomValue } from "jotai";
+import { Box, Flex, SegmentedControl, Select } from "@radix-ui/themes";
+import { useAtom } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Monitor, Moon, Sun } from "lucide-react";
 import { type ReactElement, useEffect, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { themeSettingsAtom } from "~/common/state/atoms/theme.ts";
-import { ModelSelectOptions } from "~/components/ModelSelectOptions.tsx";
 
-import { ElementIds, UserConfigField } from "../../api";
-import {
-  configuredDefaultModelAtom,
-  defaultEffortLevelAtom,
-  isDefaultFastModeAtom,
-  userEmailAtom,
-} from "../../common/state/atoms/userConfig.ts";
+import type { UserConfigField } from "../../api";
+import { ElementIds } from "../../api";
 import { useUserConfig } from "../../common/state/hooks/useUserConfig.ts";
 import { mergeClasses, optional } from "../../common/Utils.ts";
-import { EFFORT_DISPLAY_NAMES, EFFORT_OPTIONS } from "../../components/effortConstants.ts";
 import type { ToastContent } from "../../components/Toast.tsx";
 import { Toast, ToastType } from "../../components/Toast.tsx";
-import { AccountFieldRow } from "./components/AccountFieldRow.tsx";
 import { ActionsSettingsSection } from "./components/ActionsSettingsSection.tsx";
 import { CIBabysitterSettingsSection } from "./components/CIBabysitterSettingsSection.tsx";
 import { EnvironmentVariablesSection } from "./components/EnvironmentVariablesSection.tsx";
@@ -60,15 +52,11 @@ export const SettingsPage = (): ReactElement => {
     }
   }, [searchParams, setActiveSection]);
   const [themeSettings, setThemeSettings] = useAtom(themeSettingsAtom);
-  const configuredDefaultModel = useAtomValue(configuredDefaultModelAtom);
-  const userEmail = useAtomValue(userEmailAtom);
   const visibleSections = SETTINGS_SECTIONS;
   // The mobile Select binds value={activeSection}, so its options must always
   // include the active section — even one normally hidden — or the trigger
   // renders blank.
   const mobileSections = SETTINGS_SECTIONS.filter((s) => visibleSections.includes(s) || s.id === activeSection);
-  const isDefaultFastMode = useAtomValue(isDefaultFastModeAtom);
-  const defaultEffortLevel = useAtomValue(defaultEffortLevelAtom);
   const [toast, setToast] = useState<ToastContent | null>(null);
 
   const { updateField } = useUserConfig();
@@ -165,81 +153,8 @@ export const SettingsPage = (): ReactElement => {
                   </SettingRow>
                 </SettingsSectionLayout>
               )}
-              {activeSection === SettingsSection.AGENT && (
-                <SettingsSectionLayout description="Configure default agent behavior and model preferences.">
-                  <SettingRow title="Default Model" description="Select the default model for new agents.">
-                    <Select.Root
-                      value={configuredDefaultModel ?? "None"}
-                      onValueChange={(value) => {
-                        if (value === "None") {
-                          handleSettingChange(UserConfigField.DEFAULT_LLM, null);
-                        } else {
-                          handleSettingChange(UserConfigField.DEFAULT_LLM, value);
-                        }
-                      }}
-                    >
-                      <Select.Trigger
-                        variant="soft"
-                        className={styles.settingControl}
-                        data-testid={ElementIds.SETTINGS_DEFAULT_MODEL_SELECT}
-                      />
-                      <Select.Content>
-                        <Select.Item key="None" value="None">
-                          Most Recently Used
-                        </Select.Item>
-                        <ModelSelectOptions optionTestId={ElementIds.SETTINGS_DEFAULT_MODEL_OPTION} />
-                      </Select.Content>
-                    </Select.Root>
-                  </SettingRow>
-
-                  <SettingRow
-                    title="Fast Mode"
-                    description="When enabled, new agents default to fast mode for faster output."
-                  >
-                    <Switch
-                      checked={isDefaultFastMode}
-                      onCheckedChange={(checked) => handleSettingChange(UserConfigField.DEFAULT_FAST_MODE, checked)}
-                      data-testid={ElementIds.SETTINGS_DEFAULT_FAST_MODE_TOGGLE}
-                    />
-                  </SettingRow>
-
-                  <SettingRow title="Effort Level" description="Default thinking effort level for new agents.">
-                    <Select.Root
-                      value={defaultEffortLevel}
-                      onValueChange={(value) => handleSettingChange(UserConfigField.DEFAULT_EFFORT_LEVEL, value)}
-                    >
-                      <Select.Trigger
-                        variant="soft"
-                        className={styles.settingControl}
-                        data-testid={ElementIds.SETTINGS_DEFAULT_EFFORT_LEVEL_SELECT}
-                      />
-                      <Select.Content>
-                        {EFFORT_OPTIONS.map((level) => (
-                          <Select.Item
-                            key={level}
-                            value={level}
-                            data-testid={ElementIds.SETTINGS_DEFAULT_EFFORT_LEVEL_OPTION}
-                          >
-                            {EFFORT_DISPLAY_NAMES[level]}
-                          </Select.Item>
-                        ))}
-                      </Select.Content>
-                    </Select.Root>
-                  </SettingRow>
-                </SettingsSectionLayout>
-              )}
               {activeSection === SettingsSection.KEYBINDINGS && (
                 <KeybindingsSection onSettingChange={handleSettingChange} />
-              )}
-              {activeSection === SettingsSection.PRIVACY && (
-                <SettingsSectionLayout description="Your email address.">
-                  <AccountFieldRow
-                    title="Email Address"
-                    description="Email address associated with your account"
-                    value={userEmail ?? ""}
-                    elementId={ElementIds.SETTINGS_EMAIL_FIELD}
-                  />
-                </SettingsSectionLayout>
               )}
               {activeSection === SettingsSection.REPOSITORIES && <ReposSection setToast={setToast} />}
               {activeSection === SettingsSection.ACTIONS && <ActionsSettingsSection setToast={setToast} />}

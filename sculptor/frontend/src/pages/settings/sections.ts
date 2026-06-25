@@ -1,14 +1,4 @@
-import {
-  CodeIcon,
-  CogIcon,
-  FolderTreeIcon,
-  GitBranchIcon,
-  KeyboardIcon,
-  PlayIcon,
-  ShieldCheckIcon,
-  ShieldIcon,
-  TerminalIcon,
-} from "lucide-react";
+import { CodeIcon, CogIcon, FolderTreeIcon, GitBranchIcon, KeyboardIcon, ShieldIcon, TerminalIcon } from "lucide-react";
 import type { ComponentType } from "react";
 
 import { ElementIds } from "../../api";
@@ -28,14 +18,12 @@ import { ElementIds } from "../../api";
 
 export const SettingsSection = {
   GENERAL: "GENERAL",
-  AGENT: "AGENT",
   KEYBINDINGS: "KEYBINDINGS",
   REPOSITORIES: "REPOSITORIES",
   GIT: "GIT",
   CI: "CI",
   FILE_BROWSER: "FILE_BROWSER",
   PROJECT_ENV_VARS: "PROJECT_ENV_VARS",
-  PRIVACY: "PRIVACY",
   ACTIONS: "ACTIONS",
 } as const;
 
@@ -65,14 +53,6 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
     paletteKeywords: ["theme", "updates"],
     icon: CogIcon,
     testId: ElementIds.SETTINGS_NAV_GENERAL,
-  },
-  {
-    id: SettingsSection.AGENT,
-    displayName: "Agent",
-    paletteSubtitle: "Default model and effort",
-    paletteKeywords: ["model", "llm", "claude"],
-    icon: PlayIcon,
-    testId: ElementIds.SETTINGS_NAV_AGENT,
   },
   {
     id: SettingsSection.KEYBINDINGS,
@@ -121,14 +101,6 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
     paletteKeywords: ["env", "vars"],
     icon: TerminalIcon,
     testId: ElementIds.SETTINGS_NAV_PROJECT_ENV_VARS,
-  },
-  {
-    id: SettingsSection.PRIVACY,
-    displayName: "Privacy",
-    paletteSubtitle: "Email and telemetry",
-    paletteKeywords: ["account", "profile", "telemetry", "tracking", "data", "opt out"],
-    icon: ShieldCheckIcon,
-    testId: ElementIds.SETTINGS_NAV_PRIVACY,
   },
   {
     id: SettingsSection.ACTIONS,

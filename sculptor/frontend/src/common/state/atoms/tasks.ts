@@ -4,7 +4,6 @@ import { atomFamily } from "jotai/utils";
 import { isEqual } from "lodash";
 
 import type { CodingAgentTaskView, ModelOption, TaskStatus } from "../../../api";
-import { removeTaskSettings } from "./draftAgentSettings.ts";
 
 export const taskAtomFamily = atomFamily<string, PrimitiveAtom<CodingAgentTaskView | null>>(() =>
   atom<CodingAgentTaskView | null>(null),
@@ -33,7 +32,6 @@ export const updateTasksAtom = atom(null, (get, set, updates: Record<string, Cod
         didIdsChange = true;
       }
       set(taskAtomFamily(id), null);
-      removeTaskSettings(id);
       return;
     }
 

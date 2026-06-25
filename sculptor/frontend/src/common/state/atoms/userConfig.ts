@@ -1,10 +1,6 @@
 import { atom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
-
-import { isLlmModel } from "~/common/Guards.ts";
 
 import type { CiBabysitterConfig, CustomActionsConfig, UserConfig } from "../../../api";
-import { LlmModel } from "../../../api";
 import { themeAppearanceAtom } from "./theme";
 
 /**
@@ -36,33 +32,6 @@ export const userConfigAtom = atom<UserConfig | null>(null);
 export const appThemeAtom = atom<"light" | "dark" | "system">((get) => {
   return get(themeAppearanceAtom);
 });
-
-// Model preferences
-
-export const lastUsedModelAtom = atomWithStorage<string | null>("sculptor-last-used-model", null);
-
-export const configuredDefaultModelAtom = atom<string | null>((get) => get(userConfigAtom)?.defaultLlm ?? null);
-
-export const defaultModelAtom = atom<string>((get) => {
-  const configuredDefaultModel = get(configuredDefaultModelAtom);
-  if (configuredDefaultModel && isLlmModel(configuredDefaultModel)) {
-    return configuredDefaultModel;
-  }
-  const lastUsedModel = get(lastUsedModelAtom);
-  if (lastUsedModel && isLlmModel(lastUsedModel)) {
-    return lastUsedModel;
-  }
-  // Product default when nothing else is selected. Fable is currently disabled
-  // with an indefinite timeline, so the default falls back to the 1M-context
-  // Opus (CLAUDE_4_OPUS, shown as "Opus (1M)"; SCU-1576). Fable stays available
-  // in the switcher for if/when it returns.
-  return LlmModel.CLAUDE_4_OPUS;
-});
-
-// User identity settings
-export const userEmailAtom = atom<string | undefined>((get) => get(userConfigAtom)?.userEmail);
-
-export const userFullNameAtom = atom<string | undefined>((get) => get(userConfigAtom)?.userFullName ?? undefined);
 
 // Custom actions
 const EMPTY_CUSTOM_ACTIONS: CustomActionsConfig = { actions: [], groups: [] };
@@ -165,8 +134,3 @@ export const workspaceBranchDeletionPolicyAtom = atom<"never" | "delete_if_safe"
     (get(userConfigAtom)?.workspaceBranchDeletionPolicy as "never" | "delete_if_safe" | "always" | undefined) ??
     "delete_if_safe",
 );
-
-// Agent defaults
-export const isDefaultFastModeAtom = atom<boolean>((get) => get(userConfigAtom)?.defaultFastMode ?? false);
-
-export const defaultEffortLevelAtom = atom<string>((get) => get(userConfigAtom)?.defaultEffortLevel ?? "xhigh");

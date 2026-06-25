@@ -1,22 +1,12 @@
 import type { Editor as TipTapEditor } from "@tiptap/react";
 import { EditorContent, useEditor } from "@tiptap/react";
-import { useAtomValue } from "jotai";
 import type React from "react";
 import type { ReactElement } from "react";
 import { useEffect, useMemo, useRef } from "react";
-import { useParams } from "react-router-dom";
 
-import { projectsArrayAtom } from "~/common/state/atoms/projects";
-import { tasksArrayAtom } from "~/common/state/atoms/tasks";
-import { workspacesArrayAtom } from "~/common/state/atoms/workspaces";
-
-import { useImbueParams } from "../common/NavigateUtils";
 import { mergeClasses, optional } from "../common/Utils.ts";
 import styles from "./Editor.module.scss";
-import { hydrateEntityMentions } from "./EntityMentionHydration";
-import type { EntityDataRef } from "./EntityMentionSuggestion";
 import { processAndValidateFiles, saveFiles } from "./FileUploadUtils";
-import { isAnySuggestionPopoverActive } from "./SuggestionUtils";
 import { createTipTapExtensions } from "./TipTapConfig";
 
 /**
@@ -92,15 +82,6 @@ type EditorProps = {
   onFilesChange?: (files: Array<string>) => void;
   onError?: (error: { title: string; description?: string }) => void;
   editorRef?: React.MutableRefObject<TipTapEditor | null>;
-  projectID?: string;
-  workspaceID?: string;
-  /**
-   * Forwarded to `createTipTapExtensions` so the `+` prefilter popover can
-   * fire the host's image upload dialog when the user picks "Images". The
-   * callback identity may change across renders; we capture it through a
-   * ref so the editor isn't torn down on every parent re-render.
-   */
-  onTriggerImageUpload?: () => void;
 };
 
 export const Editor = ({
@@ -117,18 +98,10 @@ export const Editor = ({
   onFilesChange,
   onError,
   editorRef,
-  projectID: projectIDProp,
-  workspaceID: workspaceIDProp,
-  onTriggerImageUpload,
 }: EditorProps): ReactElement => {
-  const { projectID: routeProjectID } = useImbueParams();
-  const routeWorkspaceID = useParams<{ workspaceID?: string }>().workspaceID;
-  const projectID = projectIDProp ?? routeProjectID;
-  const workspaceID = workspaceIDProp ?? routeWorkspaceID;
   const onKeyDownRef = useRef<((event: KeyboardEvent) => boolean | void) | undefined>(onKeyDown);
   const onFilesChangeRef = useRef(onFilesChange);
   const onErrorRef = useRef(onError);
-  const onTriggerImageUploadRef = useRef(onTriggerImageUpload);
   // The editor is recreated only when `extensions` changes (see useEditor deps
   // below), so the `onUpdate` callback closes over whichever `onChange` was in
   // scope at editor creation. Route subsequent updates through a ref so a
@@ -149,58 +122,10 @@ export const Editor = ({
   }, [onError]);
 
   useEffect(() => {
-    onTriggerImageUploadRef.current = onTriggerImageUpload;
-  }, [onTriggerImageUpload]);
-
-  useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  // Entity mentions stay off — their former experimental default (REQ-EXP-1).
-  const isEntityMentionsEnabled = false;
-  const projects = useAtomValue(projectsArrayAtom);
-  const workspaces = useAtomValue(workspacesArrayAtom);
-  const tasks = useAtomValue(tasksArrayAtom);
-
-  // The ref is read only inside Tiptap suggestion callbacks (user-triggered
-  // events like typing `@`), never during React render. The effect below
-  // keeps `.current` fresh whenever the backing atoms change; since effects
-  // run after commit and before the next event-loop tick, suggestion reads
-  // always see up-to-date data.
-  const entityDataRef: EntityDataRef = useRef({
-    repositories: projects ?? [],
-    workspaces: workspaces ?? [],
-    agents: tasks ?? [],
-  });
-
-  useEffect(() => {
-    entityDataRef.current = {
-      repositories: projects ?? [],
-      workspaces: workspaces ?? [],
-      agents: tasks ?? [],
-    };
-  }, [projects, workspaces, tasks]);
-
-  // Memoize extensions so that createSkillSuggestion (which eagerly fetches
-  // the /api/v1/skills endpoint) is not re-invoked on every render.
-  const extensions = useMemo(
-    () =>
-      createTipTapExtensions({
-        placeholder,
-        editable: true,
-        projectID,
-        workspaceID,
-        entityDataRef: isEntityMentionsEnabled ? entityDataRef : undefined,
-        // Indirect through the ref so callers can pass an inline arrow
-        // without busting the extensions memo on every render. Reading
-        // .current is safe — the suggestion config calls this only inside
-        // user-triggered command callbacks, never during construction.
-        onTriggerImageUpload: () => onTriggerImageUploadRef.current?.(),
-      }),
-    // entityDataRef is a stable ref — not included in deps
-
-    [placeholder, projectID, workspaceID, isEntityMentionsEnabled],
-  );
+  const extensions = useMemo(() => createTipTapExtensions({ placeholder, editable: true }), [placeholder]);
 
   const editor = useEditor(
     {
@@ -212,18 +137,6 @@ export const Editor = ({
           spellcheck: "true",
         },
         handleKeyDown: (_, event) => {
-          // When a TipTap suggestion popover is visible, defer Enter to the
-          // suggestion plugin's `handleKeyDown` instead of the parent's
-          // `onKeyDown`. ProseMirror's `someProp` calls `editorProps` before
-          // plugin props (see prosemirror-view), so a ChatInput whose
-          // `send_message` keybinding is `Enter` would otherwise submit the
-          // typed text before the popover could accept the highlighted
-          // suggestion (SCU-1134). Scope the gate to `Enter` so any future
-          // parent-handled shortcut (e.g. Ctrl+L) still fires while a popover
-          // is open.
-          if (event.key === "Enter" && isAnySuggestionPopoverActive()) {
-            return false;
-          }
           return onKeyDownRef.current?.(event) ?? false;
         },
         handlePaste: (view, event) => {
@@ -287,17 +200,6 @@ export const Editor = ({
     };
   }, [editor, editorRef]);
 
-  // Hydrate `+[type:id|display_name]` text into entity-mention nodes once the
-  // editor exists. The editor is initialized with `content: value` and
-  // markdown contentType, but the markdown parser leaves the compact `+[…]`
-  // token as literal text — and the value-change effect below skips the
-  // re-hydration call when the markdown round-trips identical (the
-  // restored-draft case). Hydrating here covers the initial mount.
-  useEffect(() => {
-    if (!editor) return;
-    hydrateEntityMentions(editor);
-  }, [editor]);
-
   // Handle autoFocus
   useEffect(() => {
     if (autoFocus && editor) {
@@ -313,12 +215,6 @@ export const Editor = ({
       if (value !== currentMarkdown) {
         if (value) {
           editor.commands.setContent(value, { contentType: "markdown" });
-          // Re-hydrate `+[type:id|display_name]` text into entity-mention
-          // nodes. The markdown parser leaves the token as literal text,
-          // so without this an entity-mention draft restored from
-          // localStorage (e.g. after navigating between agents) would
-          // render as raw `+[…]` text instead of a styled chip.
-          hydrateEntityMentions(editor);
         } else {
           editor.commands.clearContent();
         }

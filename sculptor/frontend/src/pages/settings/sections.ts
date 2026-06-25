@@ -36,7 +36,6 @@ export const SettingsSection = {
   FILE_BROWSER: "FILE_BROWSER",
   PROJECT_ENV_VARS: "PROJECT_ENV_VARS",
   PRIVACY: "PRIVACY",
-  EXPERIMENTAL: "EXPERIMENTAL",
   ACTIONS: "ACTIONS",
 } as const;
 
@@ -130,14 +129,6 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
     paletteKeywords: ["account", "profile", "telemetry", "tracking", "data", "opt out"],
     icon: ShieldCheckIcon,
     testId: ElementIds.SETTINGS_NAV_PRIVACY,
-  },
-  {
-    id: SettingsSection.EXPERIMENTAL,
-    displayName: "Experimental",
-    paletteSubtitle: "Feature flags",
-    paletteKeywords: ["flags", "beta"],
-    icon: ShieldIcon,
-    testId: ElementIds.SETTINGS_NAV_EXPERIMENTAL,
   },
   {
     id: SettingsSection.ACTIONS,

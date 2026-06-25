@@ -1,4 +1,4 @@
-import { Box, Flex, SegmentedControl, Select, Separator, Switch } from "@radix-ui/themes";
+import { Box, Flex, SegmentedControl, Select, Switch } from "@radix-ui/themes";
 import { useAtom, useAtomValue } from "jotai";
 import { atomWithStorage } from "jotai/utils";
 import { Monitor, Moon, Sun } from "lucide-react";
@@ -12,11 +12,7 @@ import { ElementIds, UserConfigField } from "../../api";
 import {
   configuredDefaultModelAtom,
   defaultEffortLevelAtom,
-  isAlwaysInterruptAndSendAtom,
   isDefaultFastModeAtom,
-  isEntityMentionsEnabledAtom,
-  isRichMarkdownRenderingEnabledAtom,
-  isSmoothStreamingUserPreferenceAtom,
   userEmailAtom,
 } from "../../common/state/atoms/userConfig.ts";
 import { useUserConfig } from "../../common/state/hooks/useUserConfig.ts";
@@ -66,15 +62,11 @@ export const SettingsPage = (): ReactElement => {
   const [themeSettings, setThemeSettings] = useAtom(themeSettingsAtom);
   const configuredDefaultModel = useAtomValue(configuredDefaultModelAtom);
   const userEmail = useAtomValue(userEmailAtom);
-  const isAlwaysInterruptAndSend = useAtomValue(isAlwaysInterruptAndSendAtom);
   const visibleSections = SETTINGS_SECTIONS;
   // The mobile Select binds value={activeSection}, so its options must always
   // include the active section — even one normally hidden — or the trigger
   // renders blank.
   const mobileSections = SETTINGS_SECTIONS.filter((s) => visibleSections.includes(s) || s.id === activeSection);
-  const isEntityMentionsEnabled = useAtomValue(isEntityMentionsEnabledAtom);
-  const isRichMarkdownRenderingEnabled = useAtomValue(isRichMarkdownRenderingEnabledAtom);
-  const isSmoothStreamingEnabled = useAtomValue(isSmoothStreamingUserPreferenceAtom);
   const isDefaultFastMode = useAtomValue(isDefaultFastModeAtom);
   const defaultEffortLevel = useAtomValue(defaultEffortLevelAtom);
   const [toast, setToast] = useState<ToastContent | null>(null);
@@ -109,7 +101,6 @@ export const SettingsPage = (): ReactElement => {
             <Flex direction="column" gap="2">
               {visibleSections.map(({ id }) => (
                 <Box key={id}>
-                  {id === SettingsSection.EXPERIMENTAL && <Separator size="4" my="2" className={styles.navSeparator} />}
                   <Box
                     className={mergeClasses(styles.navItem, optional(activeSection === id, styles.active))}
                     onClick={() => setActiveSection(id)}
@@ -261,66 +252,6 @@ export const SettingsPage = (): ReactElement => {
               )}
               {activeSection === SettingsSection.PROJECT_ENV_VARS && (
                 <EnvironmentVariablesSection onSettingChange={handleSettingChange} />
-              )}
-              {activeSection === SettingsSection.EXPERIMENTAL && (
-                <SettingsSectionLayout description="Features that are still being developed. These may change or be removed.">
-                  <SettingRow
-                    title="Always interrupt and send"
-                    description="When enabled, new messages immediately interrupt the agent instead of being queued."
-                  >
-                    <Select.Root
-                      value={isAlwaysInterruptAndSend ? "true" : "false"}
-                      onValueChange={(value) =>
-                        handleSettingChange(UserConfigField.IS_ALWAYS_INTERRUPT_AND_SEND, value === "true")
-                      }
-                    >
-                      <Select.Trigger variant="soft" data-testid={ElementIds.SETTINGS_ALWAYS_INTERRUPT_SELECT} />
-                      <Select.Content>
-                        <Select.Item value="false" data-testid={ElementIds.SETTINGS_ALWAYS_INTERRUPT_DISABLED_OPTION}>
-                          Disabled
-                        </Select.Item>
-                        <Select.Item value="true" data-testid={ElementIds.SETTINGS_ALWAYS_INTERRUPT_OPTION}>
-                          Enabled
-                        </Select.Item>
-                      </Select.Content>
-                    </Select.Root>
-                  </SettingRow>
-                  <SettingRow
-                    title="Smooth Streaming"
-                    description="Smoothly animate text as it streams in, rather than showing it in bursts."
-                  >
-                    <Switch
-                      checked={isSmoothStreamingEnabled}
-                      onCheckedChange={(checked) =>
-                        handleSettingChange(UserConfigField.IS_SMOOTH_STREAMING_ENABLED, checked)
-                      }
-                    />
-                  </SettingRow>
-                  <SettingRow
-                    title="Entity Mentions"
-                    description="Type + in the chat input to mention repositories, workspaces, and agents."
-                  >
-                    <Switch
-                      checked={isEntityMentionsEnabled}
-                      onCheckedChange={(checked) =>
-                        handleSettingChange(UserConfigField.ENABLE_ENTITY_MENTIONS, checked)
-                      }
-                      data-testid={ElementIds.SETTINGS_ENABLE_ENTITY_MENTIONS_TOGGLE}
-                    />
-                  </SettingRow>
-                  <SettingRow
-                    title="Rich markdown rendering"
-                    description="Render .md and .markdown files as formatted HTML in the file viewer instead of source. Toggle via the eye icon in the diff toolbar."
-                  >
-                    <Switch
-                      checked={isRichMarkdownRenderingEnabled}
-                      onCheckedChange={(checked) =>
-                        handleSettingChange(UserConfigField.ENABLE_RICH_MARKDOWN_RENDERING, checked)
-                      }
-                      data-testid={ElementIds.SETTINGS_ENABLE_RICH_MARKDOWN_RENDERING_TOGGLE}
-                    />
-                  </SettingRow>
-                </SettingsSectionLayout>
               )}
             </Flex>
           </div>

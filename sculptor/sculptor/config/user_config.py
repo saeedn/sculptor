@@ -178,10 +178,6 @@ class UserConfig(SerializableModel):
         default="unified",
         description="Default diff view: 'unified' or 'split'",
     )
-    is_always_interrupt_and_send: bool = Field(
-        default=False,
-        description="When enabled, sending a message while the agent is busy immediately interrupts and sends instead of queuing",
-    )
     commit_prompt: str = Field(
         default="Stage every changed and untracked file, then commit with a comprehensive commit message. Do not leave any files unstaged.",
         description="Default prompt sent to the agent when Commit Changes is clicked",
@@ -205,14 +201,6 @@ class UserConfig(SerializableModel):
     workspace_branch_deletion_policy: Literal["never", "delete_if_safe", "always"] = Field(
         default="delete_if_safe",
         description="What to do with a worktree workspace's auto-generated branch when the workspace is deleted: never (preserve), delete_if_safe (refuses to delete unmerged), always (force-delete).",
-    )
-    enable_entity_mentions: bool = Field(
-        default=False,
-        description="When enabled, typing % in the chat input opens entity mention completions for repositories, workspaces, and agents",
-    )
-    enable_rich_markdown_rendering: bool = Field(
-        default=False,
-        description="When enabled, .md and .markdown files in the read-only file preview can be shown as rendered markdown via the eye toggle. Off by default while we iterate on the renderer.",
     )
     default_fast_mode: bool = Field(
         default=False,

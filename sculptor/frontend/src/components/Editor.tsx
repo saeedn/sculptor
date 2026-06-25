@@ -8,7 +8,6 @@ import { useParams } from "react-router-dom";
 
 import { projectsArrayAtom } from "~/common/state/atoms/projects";
 import { tasksArrayAtom } from "~/common/state/atoms/tasks";
-import { isEntityMentionsEnabledAtom } from "~/common/state/atoms/userConfig";
 import { workspacesArrayAtom } from "~/common/state/atoms/workspaces";
 
 import { useImbueParams } from "../common/NavigateUtils";
@@ -157,7 +156,8 @@ export const Editor = ({
     onChangeRef.current = onChange;
   }, [onChange]);
 
-  const isEntityMentionsEnabled = useAtomValue(isEntityMentionsEnabledAtom);
+  // Entity mentions stay off — their former experimental default (REQ-EXP-1).
+  const isEntityMentionsEnabled = false;
   const projects = useAtomValue(projectsArrayAtom);
   const workspaces = useAtomValue(workspacesArrayAtom);
   const tasks = useAtomValue(tasksArrayAtom);

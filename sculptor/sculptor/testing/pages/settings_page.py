@@ -8,10 +8,8 @@ from sculptor.testing.elements.settings_agent import PlaywrightAgentSettingsElem
 from sculptor.testing.elements.settings_ci_babysitter import PlaywrightCIBabysitterSettingsElement
 from sculptor.testing.elements.settings_claude_cli import PlaywrightClaudeCliSettingsElement
 from sculptor.testing.elements.settings_env_vars import PlaywrightEnvVarsSettingsElement
-from sculptor.testing.elements.settings_experimental import PlaywrightExperimentalSettingsElement
 from sculptor.testing.elements.settings_git import PlaywrightGitSettingsElement
 from sculptor.testing.elements.settings_keybindings import PlaywrightKeybindingsSettingsElement
-from sculptor.testing.elements.settings_pi import PlaywrightPiSettingsElement
 from sculptor.testing.elements.settings_privacy import PlaywrightPrivacySettingsElement
 from sculptor.testing.elements.settings_repositories import PlaywrightRepositoriesSettingsElement
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
@@ -49,11 +47,6 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
         self._get_keybindings_nav().click()
         return PlaywrightKeybindingsSettingsElement(locator=self._get_settings_content(), page=self._page)
 
-    def click_on_pi(self) -> PlaywrightPiSettingsElement:
-        """Navigate to Pi (experimental) settings and return the section element."""
-        self._get_pi_nav().click()
-        return PlaywrightPiSettingsElement(locator=self._get_settings_content(), page=self._page)
-
     def click_on_privacy(self) -> PlaywrightPrivacySettingsElement:
         """Navigate to Privacy settings and return the section element."""
         self._get_privacy_nav().click()
@@ -84,11 +77,6 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
         self._get_env_vars_nav().click()
         return PlaywrightEnvVarsSettingsElement(locator=self._get_settings_content(), page=self._page)
 
-    def click_on_experimental(self) -> PlaywrightExperimentalSettingsElement:
-        """Navigate to Experimental settings and return the section element."""
-        self._get_experimental_nav().click()
-        return PlaywrightExperimentalSettingsElement(locator=self._get_settings_content(), page=self._page)
-
     def _get_settings_content(self) -> Locator:
         """Get the main settings page container."""
         return self.get_by_test_id(ElementIDs.SETTINGS_CONTENT)
@@ -104,10 +92,6 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
     def _get_keybindings_nav(self) -> Locator:
         """Get the Keybindings navigation item."""
         return self.get_by_test_id(ElementIDs.SETTINGS_NAV_KEYBINDINGS)
-
-    def _get_pi_nav(self) -> Locator:
-        """Get the Pi (experimental) navigation item."""
-        return self.get_by_test_id(ElementIDs.SETTINGS_NAV_PI)
 
     def _get_privacy_nav(self) -> Locator:
         """Get the Privacy navigation item."""
@@ -132,10 +116,6 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
     def _get_env_vars_nav(self) -> Locator:
         """Get the Environment Variables navigation item."""
         return self.get_by_test_id(ElementIDs.SETTINGS_NAV_PROJECT_ENV_VARS)
-
-    def _get_experimental_nav(self) -> Locator:
-        """Get the Experimental navigation item."""
-        return self.get_by_test_id(ElementIDs.SETTINGS_NAV_EXPERIMENTAL)
 
     def _get_dependencies_nav(self) -> Locator:
         """Get the Dependencies navigation item."""

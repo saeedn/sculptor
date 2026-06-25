@@ -37,12 +37,6 @@ export const appThemeAtom = atom<"light" | "dark" | "system">((get) => {
   return get(themeAppearanceAtom);
 });
 
-// Experimental settings
-
-export const isAlwaysInterruptAndSendAtom = atom<boolean>(
-  (get) => get(userConfigAtom)?.isAlwaysInterruptAndSend ?? false,
-);
-
 // Model preferences
 
 export const lastUsedModelAtom = atomWithStorage<string | null>("sculptor-last-used-model", null);
@@ -69,14 +63,6 @@ export const defaultModelAtom = atom<string>((get) => {
 export const userEmailAtom = atom<string | undefined>((get) => get(userConfigAtom)?.userEmail);
 
 export const userFullNameAtom = atom<string | undefined>((get) => get(userConfigAtom)?.userFullName ?? undefined);
-
-export const isTelemetryEnabledAtom = atom<boolean>((get) => {
-  const config = get(userConfigAtom);
-  if (config == null) {
-    return false;
-  }
-  return (config.isErrorReportingEnabled ?? false) && (config.isProductAnalyticsEnabled ?? false);
-});
 
 // Custom actions
 const EMPTY_CUSTOM_ACTIONS: CustomActionsConfig = { actions: [], groups: [] };
@@ -178,14 +164,6 @@ export const workspaceBranchDeletionPolicyAtom = atom<"never" | "delete_if_safe"
   (get) =>
     (get(userConfigAtom)?.workspaceBranchDeletionPolicy as "never" | "delete_if_safe" | "always" | undefined) ??
     "delete_if_safe",
-);
-
-// Entity mentions (experimental — off by default)
-export const isEntityMentionsEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.enableEntityMentions ?? false);
-
-// Rich markdown rendering (experimental — off by default)
-export const isRichMarkdownRenderingEnabledAtom = atom<boolean>(
-  (get) => get(userConfigAtom)?.enableRichMarkdownRendering ?? false,
 );
 
 // Agent defaults

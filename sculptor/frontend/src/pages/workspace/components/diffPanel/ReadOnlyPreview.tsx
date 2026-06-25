@@ -8,11 +8,7 @@ import ReactMarkdown, { type Components } from "react-markdown";
 
 import { ElementIds } from "~/api";
 import { themeCodeThemeAtom } from "~/common/state/atoms/theme.ts";
-import {
-  appThemeAtom,
-  fileBrowserLineWrappingAtom,
-  isRichMarkdownRenderingEnabledAtom,
-} from "~/common/state/atoms/userConfig.ts";
+import { appThemeAtom, fileBrowserLineWrappingAtom } from "~/common/state/atoms/userConfig.ts";
 import { useWorkspaceFileContent } from "~/common/state/hooks/useWorkspaceFileContent.ts";
 import { getShikiThemes } from "~/common/theme/shikiThemes.ts";
 import { MarkdownAnchor } from "~/components/MarkdownDiff/MarkdownAnchor.tsx";
@@ -119,7 +115,9 @@ export const ReadOnlyPreview = ({ workspaceId, filePath }: ReadOnlyPreviewProps)
   const codeTheme = useAtomValue(themeCodeThemeAtom);
   const shikiThemes = getShikiThemes(codeTheme);
   const markdownMode = useAtomValue(markdownRenderModeAtom);
-  const isRichMarkdownRenderingEnabled = useAtomValue(isRichMarkdownRenderingEnabledAtom);
+  // Rich markdown rendering stays off — its former experimental default
+  // (REQ-EXP-1). The source view is the only path.
+  const isRichMarkdownRenderingEnabled = false;
   const pierreRef = useRef<HTMLDivElement>(null);
   // The persisted `markdownRenderModeAtom` may carry "rendered" from before
   // the flag was introduced (or after the user flipped it on then off again).

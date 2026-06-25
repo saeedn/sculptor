@@ -754,10 +754,10 @@ def test_put_user_config_no_op_telemetry_flag_passes_through(
 ) -> None:
     response = client.put(
         "/api/v1/config",
-        json={"userConfig": {"isProductAnalyticsEnabled": True, "isAlwaysInterruptAndSend": True}},
+        json={"userConfig": {"isProductAnalyticsEnabled": True, "envVarOverrideEnabled": True}},
     )
     assert response.status_code == 200, response.text
-    assert response.json()["isAlwaysInterruptAndSend"] is True
+    assert response.json()["envVarOverrideEnabled"] is True
 
 
 @pytest.fixture

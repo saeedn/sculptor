@@ -10,7 +10,6 @@ import {
   appThemeAtom,
   fileBrowserDiffViewTypeAtom,
   fileBrowserLineWrappingAtom,
-  isRichMarkdownRenderingEnabledAtom,
 } from "~/common/state/atoms/userConfig.ts";
 import { useUserConfig } from "~/common/state/hooks/useUserConfig.ts";
 import { useWorkspaceCommitDiff } from "~/common/state/hooks/useWorkspaceCommitDiff.ts";
@@ -169,7 +168,9 @@ export const DiffPanel = ({ workspaceId }: DiffPanelProps): ReactElement => {
   }, [overflow, updateField]);
 
   const [markdownMode, setMarkdownMode] = useAtom(markdownRenderModeAtom);
-  const isRichMarkdownRenderingEnabled = useAtomValue(isRichMarkdownRenderingEnabledAtom);
+  // Rich markdown rendering stays off — its former experimental default
+  // (REQ-EXP-1). The source view is the only path; the toggle stays hidden.
+  const isRichMarkdownRenderingEnabled = false;
 
   // ReadOnlyPreview is the only path that supports rendered markdown — used
   // for file-view tabs and "no diff" states. Hide the toggle elsewhere. Even

@@ -26,26 +26,40 @@ by mistake).
    store), the email atoms/AccountFieldRow, and the Agent/Privacy
    ElementIds + Playwright POMs.
 
-**Deferred to a consolidated backend follow-up (with rationale):**
-- **Backend agent-behavior plumbing** (§1c/1d/1e): `LLMModel`/
+**Also done & committed (consolidated backend pass):**
+- **Backend agent-behavior plumbing** (§1c/1d/1e): removed `LLMModel`/
   `EffortLevel` enums, the `model`/`fast_mode`/`effort` request & message
-  fields, `AgentTaskInputsV2.default_model`, `set_model`, the
-  `default_llm`/`default_fast_mode`/`default_effort_level` config fields.
-- **Email / telemetry config + endpoints** (§2b/2c): `user_email` and the
-  telemetry-consent fields, `PrivacySettings`, the `email`/`skip_account`
-  endpoints, email validation.
-- **Dead chat render/data layer** (§4b/4c/4d): entity mentions, smooth
-  streaming, `useChatData`, `useSmoothStreaming*`, the mention/suggestion
-  system, `AlphaMarkdownBlock`.
+  fields, `AgentTaskInputsV2.default_model`, the dead task-view computed
+  fields (`model`, `is_smooth_streaming_supported`), `MODEL_SHORTNAME_MAP`,
+  and the `default_llm`/`default_fast_mode`/`default_effort_level`/
+  `is_smooth_streaming_enabled` config fields. Frozen JSON schemas
+  refreshed (field removal is backward-compatible — no data migration).
+  Frontend fallout fixed; the sculpt CLI `--model` option removed across
+  `run`/`agent create`/`agent send`.
+- **Smooth-streaming frontend layer** (§4c): `useChatData`,
+  `useSmoothStreaming*`, `smoothStreaming` atoms removed.
 
-Why deferred together: the backend `model` field is woven into the task
-view (`derived.py`), `is_smooth_streaming_supported`, `ChatInputUserMessage`,
-and the harness interface (`get_available_models`/`get_selected_model_id`)
-— the same dead chat layer that entity mentions and smooth streaming
-dangle into. Excising any one thread in isolation leaves awkward
-half-states; they should be removed leaf-first as one coherent change.
-The user-facing pages are already gone; what remains is inert plumbing
-with no UI surface.
+**Still remaining (NOT yet done):**
+- **Email on startup** (§2b/2c): `user_email` + identity fields
+  (`user_id`/`organization_id`, derived from email), the `email`/
+  `skip_account` endpoints, `EmailConfigRequest`/`SkipAccountSetupRequest`,
+  email validation, `has_email`. **Risk:** interwoven with the telemetry
+  identity (`user_id`/`organization_id` feed `TelemetryInfo`), the
+  **onboarding-completion gate** (the `is_privacy_policy_consented` flag
+  doubles as the "onboarding done" marker that `RequireOnboarding` reads),
+  and test fixtures. Removing it cleanly means deciding the fate of the
+  telemetry-identity system and rewiring onboarding completion — a design
+  change on the untested first-run path, not a vestige deletion.
+- **The model-switcher infra** (`ModelOption`, `get_available_models`/
+  `selected_model_id`, the `set_model` endpoint): string-based, doesn't
+  reference the removed enums, now dead (pi is gone). Bounded follow-up.
+- **Entity @-mentions + the rest of the dead mention/suggestion system**
+  (§4b): the TipTap `Editor` is live (ActionDialog) but passes no
+  project/workspace, so no picker ever fires. Removing requires surgically
+  detaching the `Mention` extension + suggestions from `Editor`/
+  `TipTapConfig`, then deleting ~20 interconnected files — some shared with
+  the live SkillsPanel (`skillBadge`, `SkillHoverContent` must stay).
+  Delicate; best as its own change with the live Editor verified.
 
 ---
 

@@ -923,13 +923,6 @@ install-pi:
     }
     quiet_by_default install-pi _do_install_pi
 
-# Recompute pi's per-platform sha256 pin: download each supported-platform tarball,
-# hash it, and print the platforms={...} block to paste into PI_PIN
-# (sculptor/services/managed_tools.py). The one manual step at a pi version bump.
-[group("install")]
-compute-pi-pin version:
-    uv run python "{{justfile_directory()}}/scripts/compute_pi_pin.py" "{{version}}"
-
 # Installs additional dependencies for testing
 [group("install")]
 install-test:

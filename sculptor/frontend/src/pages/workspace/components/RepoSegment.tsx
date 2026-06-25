@@ -1,9 +1,9 @@
-import { AlertDialog, Badge, Button, DropdownMenu, Flex, Tooltip } from "@radix-ui/themes";
+import { AlertDialog, Button, DropdownMenu, Flex, Tooltip } from "@radix-ui/themes";
 import { ClipboardIcon, FolderIcon, FolderOpenIcon } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useState } from "react";
 
-import { ElementIds, type ExternalApp, openPathInApp, WorkspaceInitializationStrategy } from "~/api";
+import { ElementIds, type ExternalApp, openPathInApp } from "~/api";
 import { useKeybindingDisplayText, useKeybindingHandler } from "~/common/keybindings/hooks";
 import { getOpenWithItems, getPreferredApp, savePreferredApp } from "~/common/openInApp/items";
 import { getBackendCapabilities } from "~/common/state/atoms/backendCapabilities";
@@ -13,24 +13,11 @@ import styles from "./RepoSegment.module.scss";
 type RepoSegmentProps = {
   sourcePath: string;
   environmentPath: string | null;
-  strategy: WorkspaceInitializationStrategy;
-  shouldShowModeBadge: boolean;
   projectName: string;
   "data-testid"?: string;
 };
 
-const MODE_BADGE_LABEL: Record<WorkspaceInitializationStrategy, string> = {
-  [WorkspaceInitializationStrategy.WORKTREE]: "worktree",
-};
-
-export const RepoSegment = ({
-  sourcePath,
-  environmentPath,
-  strategy,
-  shouldShowModeBadge,
-  projectName,
-}: RepoSegmentProps): ReactElement => {
-  const badgeLabel = MODE_BADGE_LABEL[strategy];
+export const RepoSegment = ({ sourcePath, environmentPath, projectName }: RepoSegmentProps): ReactElement => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [preferredApp, setPreferredApp] = useState<ExternalApp | null>(getPreferredApp);
   const canOpenInOS = getBackendCapabilities().canOpenInOS;
@@ -148,11 +135,6 @@ export const RepoSegment = ({
             ))}
           </DropdownMenu.Content>
         </DropdownMenu.Root>
-        {shouldShowModeBadge && (
-          <Badge size="1" color="gray" variant="solid" data-testid={ElementIds.TASK_MODE_BADGE}>
-            {badgeLabel}
-          </Badge>
-        )}
       </Flex>
       <AlertDialog.Root open={errorMessage !== null} onOpenChange={(open) => !open && setErrorMessage(null)}>
         <AlertDialog.Content maxWidth="400px">

@@ -4,7 +4,7 @@ import { GitBranchIcon } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ElementIds, updateWorkspace, WorkspaceInitializationStrategy } from "~/api";
+import { ElementIds, updateWorkspace } from "~/api";
 import { useActiveProjectID, useWorkspacePageParams } from "~/common/NavigateUtils";
 import { prStatusAtomFamily } from "~/common/state/atoms/prStatus";
 import { prDefaultTargetBranchAtom } from "~/common/state/atoms/userConfig";
@@ -134,11 +134,6 @@ export const WorkspaceBanner = (): ReactElement | null => {
   }
 
   const repoPath = repoInfo?.repoPath || null;
-  const strategy = workspace.initializationStrategy;
-  // Worktree is the default mode, so it gets no badge — only clone and
-  // in-place workspaces are visually marked so users can spot the non-default
-  // ones in a mixed list.
-  const shouldShowModeBadge = strategy !== WorkspaceInitializationStrategy.WORKTREE;
   // The target-branch selector is host-agnostic — it just edits the
   // workspace's merge target — so it is shown for every repo regardless of
   // remote host (SCU-1526). PR/MR creation, on the other hand, requires the
@@ -167,8 +162,6 @@ export const WorkspaceBanner = (): ReactElement | null => {
             <RepoSegment
               sourcePath={repoPath}
               environmentPath={workspace.environmentId ?? null}
-              strategy={strategy}
-              shouldShowModeBadge={shouldShowModeBadge}
               projectName={project?.name ?? repoPath.split("/").pop() ?? repoPath}
             />
           </div>

@@ -66,6 +66,9 @@ _BUNDLED_REGISTRATION_ID = "claude-code"
 _DISABLED_REASON_PINNED_UNAVAILABLE = (
     "The CI Babysitter's selected agent is no longer available. Choose another in CI Babysitter settings."
 )
+_DISABLED_REASON_NO_DRIVEABLE_AGENT = (
+    "The CI Babysitter has no agent to drive here. Create a prompt-enabled terminal agent in this workspace."
+)
 # Transient (runtime) reason: the most recent terminal drive couldn't reach the
 # program's prompt. Cleared by the next successful drive or when the CI cycle
 # resolves; the attempt still counts against retry_cap.
@@ -372,7 +375,7 @@ class CIBabysitterCoordinator(Service):
         try:
             self.concurrency_group.start_new_thread(
                 target=self._run_terminal_drive,
-                args=(state, task_id, prompt_text, config),
+                args=(state, task_id, prompt_text),
                 name="ci-babysitter-terminal-drive",
             )
         except Exception as exc:
@@ -399,9 +402,7 @@ class CIBabysitterCoordinator(Service):
             elif transition is Transition.MERGE_CONFLICT:
                 state.last_dispatched_merge_conflict = True
 
-    def _run_terminal_drive(
-        self, state: CIBabysitterState, task_id: TaskID, prompt_text: str, config: UserConfig
-    ) -> None:
+    def _run_terminal_drive(self, state: CIBabysitterState, task_id: TaskID, prompt_text: str) -> None:
         """Worker: drive a registered terminal agent's PTY off the consumer loop.
 
         Sets the transient disabled-reason on a failed write and clears it on
@@ -420,7 +421,7 @@ class CIBabysitterCoordinator(Service):
                 with self._lock:
                     state.transient_disabled_reason = _TRANSIENT_REASON_UNREACHABLE
                 return
-            result = self.deliver_prompt_to_agent(task, prompt_text, config)
+            result = self.deliver_prompt_to_agent(task, prompt_text)
             with self._lock:
                 if result is TerminalDeliveryResult.DELIVERED:
                     state.transient_disabled_reason = None
@@ -489,7 +490,7 @@ class CIBabysitterCoordinator(Service):
             driveable = _driveable_terminal_from_registration(_BUNDLED_REGISTRATION_ID)
             if driveable is not None:
                 return driveable
-            return Disabled(_DISABLED_REASON_MRU_NON_DRIVEABLE)
+            return Disabled(_DISABLED_REASON_NO_DRIVEABLE_AGENT)
         input_data = tasks[0].input_data
         assert isinstance(input_data, AgentTaskInputsV2)
         agent_config = input_data.agent_config
@@ -503,7 +504,7 @@ class CIBabysitterCoordinator(Service):
         # plain TerminalAgentConfig (a bare shell) — never driveable.
         return Disabled(_DISABLED_REASON_MRU_NON_DRIVEABLE)
 
-    def deliver_prompt_to_agent(self, task: Task, prompt_text: str, config: UserConfig) -> TerminalDeliveryResult:
+    def deliver_prompt_to_agent(self, task: Task, prompt_text: str) -> TerminalDeliveryResult:
         """The single delivery seam: how a prompt physically reaches the agent.
 
         Registered terminal agents get a guarded PTY write via the shared

@@ -57,10 +57,10 @@ def run_cmd(
         None,
         "--harness",
         help=(
-            "Chat harness to run the prompt with: Claude or Pi. Terminal harnesses"
-            + " can't take a prompt, so they're rejected here. If omitted, uses your"
-            + " most-recently-used harness from the Sculptor app (falling back to"
-            + " Claude when that is a terminal harness)."
+            "Agent harness to run the prompt with. `sculpt run` always sends a"
+            + " prompt, so an explicit terminal/registered harness is rejected here;"
+            + " use `sculpt agent create` for those. If omitted, uses your"
+            + " most-recently-used harness from the Sculptor app."
         ),
     ),
     file: list[str] | None = typer.Option(None, "--file", help="Files to include (repeatable)"),

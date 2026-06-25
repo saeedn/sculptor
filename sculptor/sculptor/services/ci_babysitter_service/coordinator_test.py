@@ -1064,12 +1064,13 @@ def test_mru_no_prior_task_is_disabled_when_bundled_registration_missing(
     env: _FakeEnv, test_root_concurrency_group: ConcurrencyGroup, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # No prior agent and the bundled "claude-code" registration is gone → the
-    # babysitter is inert with the MRU-non-driveable reason.
+    # babysitter is inert with the no-driveable-agent reason (there is no
+    # most-recent agent to describe here).
     coordinator, _ = _build_coordinator(env, test_root_concurrency_group)
     monkeypatch.setattr(coordinator_module, "get_registration", lambda _id: None)
     result = _resolve(coordinator, env, _make_config_with_agent(BabysitterAgentMRU()), [])
     assert isinstance(result, Disabled)
-    assert result.reason == coordinator_module._DISABLED_REASON_MRU_NON_DRIVEABLE
+    assert result.reason == coordinator_module._DISABLED_REASON_NO_DRIVEABLE_AGENT
 
 
 def test_mru_does_not_skip_terminal_to_reach_older_driveable(
@@ -1125,7 +1126,7 @@ def test_deliver_prompt_to_agent_writes_to_terminal_via_helper(
         return coordinator_module.TerminalDeliveryResult.DELIVERED
 
     monkeypatch.setattr(coordinator_module, "deliver_prompt_to_terminal_agent", _fake_deliver)
-    result = coordinator.deliver_prompt_to_agent(task, "fix the pipeline", _make_user_config())
+    result = coordinator.deliver_prompt_to_agent(task, "fix the pipeline")
 
     assert result is coordinator_module.TerminalDeliveryResult.DELIVERED
     assert calls == [(task.object_id, "fix the pipeline", True)]

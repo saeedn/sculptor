@@ -22,10 +22,6 @@ type ClosedWorkspaceRowProps = {
   onDelete: (workspace: RecentWorkspaceResponse) => void;
 };
 
-const formatInitStrategy = (strategy: string): string => {
-  return strategy === "IN_PLACE" ? "in-place" : "clone";
-};
-
 const StatusDot = ({ workspaceId }: { workspaceId: string }): ReactElement => {
   const tasks = useAtomValue(tasksArrayAtom);
 
@@ -66,8 +62,7 @@ export const ClosedWorkspaceRow = ({ workspace, onReopen, onDelete }: ClosedWork
 
       <div className={styles.bottomLine}>
         <span className={styles.meta}>
-          {workspace.projectName} · {workspace.agentCount} {workspace.agentCount === 1 ? "agent" : "agents"},{" "}
-          {formatInitStrategy(workspace.initializationStrategy)}
+          {workspace.projectName} · {workspace.agentCount} {workspace.agentCount === 1 ? "agent" : "agents"}
         </span>
         {displayBranch && (
           <div className={styles.prButton} onClick={(e) => e.stopPropagation()}>

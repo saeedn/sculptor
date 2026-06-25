@@ -5,7 +5,7 @@ import { useSetAtom } from "jotai";
 import type { ReactElement } from "react";
 import { useEffect } from "react";
 
-import { themeBuilderSettingsAtom } from "../src/common/state/atoms/themeBuilder.ts";
+import { themeSettingsAtom } from "../src/common/state/atoms/theme.ts";
 import type { ShikiThemePairName } from "../src/common/theme/shikiThemes.ts";
 import { SHIKI_THEME_PAIR_NAMES } from "../src/common/theme/shikiThemes.ts";
 import "../src/index.css";
@@ -53,9 +53,9 @@ const preview: Preview = {
 // eslint-disable-next-line import/no-default-export
 export default preview;
 
-/** Syncs the Storybook codeTheme global to the jotai themeBuilderSettings atom. */
+/** Syncs the Storybook codeTheme global to the jotai theme settings atom. */
 const CodeThemeSync = ({ codeTheme }: { codeTheme: ShikiThemePairName }): null => {
-  const setSettings = useSetAtom(themeBuilderSettingsAtom);
+  const setSettings = useSetAtom(themeSettingsAtom);
   useEffect(() => {
     setSettings((prev) => ({ ...prev, codeTheme }));
   }, [codeTheme, setSettings]);

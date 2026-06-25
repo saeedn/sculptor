@@ -400,20 +400,11 @@ class SculptorInstance:
             logger.warning("GET /api/v1/config returned {} during pre-test cleanup", response.status)
             return
         config = response.json()
-        # Persistent flags that tests can mutate. Each must be reset between
-        # tests because the user config lives on disk in the shared instance.
-        # enablePiAgent is included because it gates harness resolution: a
-        # leaked "pi" most-recently-used type only resolves to Pi while it is
-        # on, so clearing it keeps an omitted agent_type defaulting to Claude.
-        flags_to_reset_to_false = ("enablePiAgent",)
-        # The recorded most-recently-used harness (see the docstring); reset to
-        # None so an agent-type-less create defaults to Claude.
-        needs_flag_reset = any(config.get(flag) is not False for flag in flags_to_reset_to_false)
-        needs_mru_reset = config.get("lastUsedAgentType") not in (None, "")
-        if not (needs_flag_reset or needs_mru_reset):
+        # The recorded most-recently-used harness lives on disk in the shared
+        # instance and leaks between tests; reset it to None so an
+        # agent-type-less create defaults to the bundled registration.
+        if config.get("lastUsedAgentType") in (None, ""):
             return
-        for flag in flags_to_reset_to_false:
-            config[flag] = False
         config["lastUsedAgentType"] = None
         last_status: int | None = None
         for attempt in range(3):
@@ -430,8 +421,8 @@ class SculptorInstance:
                 logger.warning("PUT /api/v1/config raised on attempt {}", attempt + 1, exc_info=True)
             self.page.wait_for_timeout(500)
         raise RuntimeError(
-            f"Failed to reset experimental flags to False after 3 attempts (last status={last_status}). "
-            + "Subsequent tests would run with stale flags; failing fast here."
+            f"Failed to reset the most-recently-used agent type after 3 attempts (last status={last_status}). "
+            + "Subsequent tests would run with a stale MRU; failing fast here."
         )
 
     def _delete_all_workspaces_via_api(self) -> None:

@@ -79,15 +79,18 @@ by mistake).
   `RUN_ALL=1` pass of `frontend` + `regression` (425 tests) is green
   **except** one pre-existing failure (see below).
 
-**One pre-existing failure (NOT a slim-down regression):**
-- `test_restarts.py::test_chats_persist_on_restart` fails deterministically.
-  Verified it **also fails on the branch base `051228e494`** (a clean
-  checkout, before any of these removals), and git confirms none of the
-  resume-path files (`fake_terminal_agent.py`, `run_terminal_agent/v1.py`,
-  `test_restarts.py`) were touched by this work. The relaunched terminal
-  shows the launch banner instead of `RESUMED-…`, i.e. `terminal_session_id`
-  isn't available on resume — a terminal session-id persistence/timing issue
-  in the (memory-flagged fragile) restart infra, to be tracked separately.
+**Fixed: `test_restarts.py::test_chats_persist_on_restart`.**
+- It failed deterministically — the relaunched terminal showed the launch
+  banner instead of `RESUMED-…` (`terminal_session_id` None on resume). Root
+  cause was in the slim-down's *rewrite of this test*, not the product: the
+  test gated readiness on the agent tab dot settling (the `idle` signal) as a
+  proxy for "the session id reached the backend," but the dot can read
+  read/unread before the `session-id` signal is processed, so teardown raced
+  persistence. The resume feature itself is sound — `test_registered_terminal_
+  agent_resumes_after_restart` exercises it and passes by gating on an explicit
+  post-signal terminal marker. Fix adopts the same pattern: the fake runner now
+  prints `SESSION-REPORTED-<id>` right after its blocking `sculpt signal
+  session-id` returns, and the test waits for that marker. Full suite green.
 
 **Genuinely remaining (one cohesive follow-up — the dead chat render layer):**
 - The `chat-alpha/` render tree leftovers (`AlphaMarkdownBlock`, the

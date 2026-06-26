@@ -94,12 +94,6 @@ export const taskStatusAtomFamily = atomFamily<string, Atom<TaskStatus | undefin
   atom((get) => get(taskAtomFamily(taskId))?.status),
 );
 
-// The model_id the switcher should show as selected for a backend-sourced list
-// (pi), or undefined when the harness tracks no per-task selection.
-export const taskSelectedModelIdAtomFamily = atomFamily<string, Atom<string | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.selectedModelId ?? undefined),
-);
-
 export const taskIsAutoCompactingAtomFamily = atomFamily<string, Atom<boolean>>((taskId) =>
   atom((get) => get(taskAtomFamily(taskId))?.isAutoCompacting ?? false),
 );
@@ -154,10 +148,6 @@ export const taskSupportsSessionResumeAtomFamily = atomFamily<string, Atom<boole
 
 export const taskSupportsToolUseRenderingAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
   atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsToolUseRendering),
-);
-
-export const taskSupportsModelSelectionAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsModelSelection),
 );
 
 export const taskAcceptsAutomatedPromptsAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>

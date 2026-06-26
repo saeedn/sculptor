@@ -2,7 +2,6 @@ import datetime
 import shutil
 from abc import ABC
 from abc import abstractmethod
-from collections.abc import Sequence
 from contextlib import contextmanager
 from datetime import timedelta
 from pathlib import Path
@@ -28,9 +27,6 @@ from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.errors import ExpectedError
 from sculptor.foundation.event_utils import ShutdownEvent
-from sculptor.foundation.nested_evolver import assign
-from sculptor.foundation.nested_evolver import chill
-from sculptor.foundation.nested_evolver import evolver
 from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.time_utils import get_current_time
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
@@ -70,7 +66,6 @@ from sculptor.services.task_service.errors import UserStoppedTaskError
 from sculptor.services.workspace_service.api import WorkspaceService
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import Message
-from sculptor.state.messages import ModelOption
 from sculptor.state.messages import PersistentMessage
 from sculptor.tasks.api import run_task
 from sculptor.utils.errors import is_irrecoverable_exception
@@ -230,33 +225,6 @@ class BaseTaskService(TaskService, ABC):
         # subscribers refresh even though this rename created no message. Without
         # it, an idle terminal agent (no message activity to piggyback on) keeps
         # its old tab name until a tab switch forces a re-fetch (SCU-1531).
-        transaction.add_callback(lambda: self._publish_task_update(task=updated_task))
-        return updated_task
-
-    def update_available_models(
-        self,
-        task_id: TaskID,
-        available_models: Sequence[ModelOption],
-        current_model: ModelOption | None,
-        transaction: DataModelTransaction,
-    ) -> Task | None:
-        assert isinstance(transaction, SQLTransaction)
-        task = self.get_task(task_id, transaction)
-        if task is None or not isinstance(task.current_state, AgentTaskStateV2):
-            return None
-        models = list(available_models)
-        state = task.current_state
-        if state.available_models == models and state.current_model == current_model:
-            return None
-        # Evolve only the catalog fields; the title is read from this same task
-        # row, so a concurrent rename already committed is preserved.
-        mutable_state = evolver(state)
-        assign(mutable_state.available_models, lambda: models)
-        assign(mutable_state.current_model, lambda: current_model)
-        updated_task = task.evolve(task.ref().current_state, chill(mutable_state).model_dump())
-        updated_task = transaction.upsert_task(updated_task)
-        # Publish the same task-update a message write registers, so a live
-        # switcher refreshes even though this change created no message.
         transaction.add_callback(lambda: self._publish_task_update(task=updated_task))
         return updated_task
 

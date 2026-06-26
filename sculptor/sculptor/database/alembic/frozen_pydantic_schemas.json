@@ -1631,61 +1631,6 @@
         "title": "ResumeAgentResponseRunnerMessage",
         "type": "object"
       },
-      "SetModelUserMessage": {
-        "$defs": {
-          "AgentMessageSource": {
-            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), SCULPTOR_SYSTEM (multifaceted sculptor app and service code) and RUNNER (the process controlling a task on the server.)",
-            "enum": [
-              "AGENT",
-              "USER",
-              "SCULPTOR_SYSTEM",
-              "RUNNER"
-            ],
-            "title": "AgentMessageSource",
-            "type": "string"
-          }
-        },
-        "additionalProperties": true,
-        "description": "Switch the running agent's model out-of-band (the pi `set_model` path).\n\nPersistent like `ClearContextUserMessage` so the harness picks it up through\nthe task runner and runs it between turns. Carries the `(provider, model_id)`\nof the chosen `ModelOption`; the pi adapter issues pi's `set_model` RPC and,\non success, updates the persisted current model. Claude never receives this \u2014\nits model rides each turn as `ChatInputUserMessage.model_name`.",
-        "properties": {
-          "approximateCreationTime": {
-            "description": "Approximate UTC timestamp when user message was created",
-            "format": "date-time",
-            "title": "Approximatecreationtime",
-            "type": "string"
-          },
-          "messageId": {
-            "description": "Unique identifier for the user message",
-            "title": "Messageid",
-            "type": "string"
-          },
-          "modelId": {
-            "description": "The chosen model's id (pi's `modelId`)",
-            "title": "Modelid",
-            "type": "string"
-          },
-          "objectType": {
-            "default": "SetModelUserMessage",
-            "title": "Objecttype",
-            "type": "string"
-          },
-          "provider": {
-            "description": "The chosen model's provider (e.g. 'anthropic')",
-            "title": "Provider",
-            "type": "string"
-          },
-          "source": {
-            "$ref": "#/$defs/AgentMessageSource",
-            "default": "USER"
-          }
-        },
-        "required": [
-          "provider",
-          "modelId"
-        ],
-        "title": "SetModelUserMessage",
-        "type": "object"
-      },
       "TurnMetricsAgentMessage": {
         "$defs": {
           "AgentMessageSource": {
@@ -2233,55 +2178,9 @@
   "Task": {
     "current_state": {
       "AgentTaskStateV2": {
-        "$defs": {
-          "ModelOption": {
-            "additionalProperties": true,
-            "description": "One model a harness offers in its switcher.\n\n`provider` and `model_id` identify the model on the harness's own terms;\n`display_name` is the selector label.",
-            "properties": {
-              "displayName": {
-                "title": "Displayname",
-                "type": "string"
-              },
-              "modelId": {
-                "title": "Modelid",
-                "type": "string"
-              },
-              "provider": {
-                "title": "Provider",
-                "type": "string"
-              }
-            },
-            "required": [
-              "provider",
-              "modelId",
-              "displayName"
-            ],
-            "title": "ModelOption",
-            "type": "object"
-          }
-        },
         "additionalProperties": true,
         "description": "The state of a run_agent server task.\nThis is used to snapshot the state of the task at various points in time so that the agent can be resumed.",
         "properties": {
-          "availableModels": {
-            "default": [],
-            "items": {
-              "$ref": "#/$defs/ModelOption"
-            },
-            "title": "Availablemodels",
-            "type": "array"
-          },
-          "currentModel": {
-            "anyOf": [
-              {
-                "$ref": "#/$defs/ModelOption"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null
-          },
           "lastProcessedMessageId": {
             "anyOf": [
               {

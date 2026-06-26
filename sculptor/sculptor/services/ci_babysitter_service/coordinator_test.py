@@ -158,15 +158,6 @@ class _StubTaskService(TaskService):
     def rename_task(self, task_id: TaskID, title: str, transaction: DataModelTransaction) -> Task:
         return _stub(task_id, title, transaction)
 
-    def update_available_models(
-        self,
-        task_id: TaskID,
-        available_models: Any,
-        current_model: Any,
-        transaction: DataModelTransaction,
-    ) -> Any:
-        return _stub(task_id, available_models, current_model, transaction)
-
     def restore_task(self, task_id: TaskID, transaction: DataModelTransaction) -> Task:
         return _stub(task_id, transaction)
 

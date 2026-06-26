@@ -5,7 +5,6 @@ import {
   taskAcceptsAutomatedPromptsAtomFamily,
   taskAtomFamily,
   taskIsAutoCompactingAtomFamily,
-  taskSelectedModelIdAtomFamily,
   taskStatusAtomFamily,
   taskSupportsBackgroundTasksAtomFamily,
   taskSupportsCompactionAtomFamily,
@@ -16,7 +15,6 @@ import {
   taskSupportsImageInputAtomFamily,
   taskSupportsInteractiveBackchannelAtomFamily,
   taskSupportsInterruptionAtomFamily,
-  taskSupportsModelSelectionAtomFamily,
   taskSupportsSessionResumeAtomFamily,
   taskSupportsSkillsAtomFamily,
   taskSupportsSubAgentsAtomFamily,
@@ -29,10 +27,6 @@ export const useTask = (taskId: string): CodingAgentTaskView | null => {
 
 /** Subscribe to only the task's status field. Re-renders only when status changes. */
 export const useTaskStatus = (taskId: string): TaskStatus | undefined => useAtomValue(taskStatusAtomFamily(taskId));
-
-/** Subscribe to the model_id the switcher should show selected for a backend list (pi). */
-export const useTaskSelectedModelId = (taskId: string): string | undefined =>
-  useAtomValue(taskSelectedModelIdAtomFamily(taskId));
 
 export const useTaskIsAutoCompacting = (taskId: string): boolean =>
   useAtomValue(taskIsAutoCompactingAtomFamily(taskId));
@@ -88,10 +82,6 @@ export const useTaskSupportsSessionResume = (taskId: string): boolean | undefine
 /** Subscribe to only the task's `supports_tool_use_rendering` capability. */
 export const useTaskSupportsToolUseRendering = (taskId: string): boolean | undefined =>
   useAtomValue(taskSupportsToolUseRenderingAtomFamily(taskId));
-
-/** Subscribe to only the task's `supports_model_selection` capability. */
-export const useTaskSupportsModelSelection = (taskId: string): boolean | undefined =>
-  useAtomValue(taskSupportsModelSelectionAtomFamily(taskId));
 
 /** Subscribe to only the task's `accepts_automated_prompts` field — true
  * only for registered terminal agents whose registration opted in. */

@@ -11,18 +11,6 @@ from sculptor.primitives.ids import AssistantMessageID
 from sculptor.state.chat_state import ContentBlockTypes
 
 
-class ModelOption(SerializableModel):
-    """One model a harness offers in its switcher.
-
-    `provider` and `model_id` identify the model on the harness's own terms;
-    `display_name` is the selector label.
-    """
-
-    provider: str
-    model_id: str
-    display_name: str
-
-
 class AgentMessageSource(StrEnum):
     """
     Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), SCULPTOR_SYSTEM (multifaceted sculptor app and service code) and RUNNER (the process controlling a task on the server.)

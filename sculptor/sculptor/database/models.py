@@ -25,7 +25,6 @@ from sculptor.primitives.ids import UserReference
 from sculptor.primitives.ids import UserSettingsID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.state.messages import AgentMessageSource
-from sculptor.state.messages import ModelOption
 
 TaskID = AgentTaskID
 
@@ -191,13 +190,6 @@ class AgentTaskStateV2(BaseTaskState):
     # Terminal agents only: the shell pid of the handler's last PTY spawn,
     # used to reap a crash-surviving shell before relaunching.
     terminal_shell_pid: int | None = None
-    # pi agents only: the curated model catalog the agent fetched from pi at
-    # start (get_available_models), surfaced by the pi harness's
-    # get_available_models so the chat switcher offers pi's real models.
-    available_models: list[ModelOption] = []
-    # pi agents only: the model pi reported as current at start (get_state.model),
-    # surfaced by the pi harness's get_selected_model_id as the switcher's value.
-    current_model: ModelOption | None = None
 
 
 class NoOpTaskStateV1(BaseTaskState):

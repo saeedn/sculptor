@@ -683,3 +683,48 @@ Two clean-break DB changes (each `just check` + `just test-unit` green):
 **Operational note:** existing dev/user databases carry the old dual-table
 schema and a now-deleted alembic revision; they must be reset (clean break — no
 data migration). Fresh installs and the test suite (in-memory DBs) are unaffected.
+
+---
+
+## Dead-code pass #2 (2026-06-26, sixth batch) — feature-support stragglers
+
+Three committed cleanups of code stranded by earlier removals (each
+`just check` + `just test-unit` green):
+
+1. **Backend agent-construction + agent-tool infra.** The `Agent` ABC,
+   `AgentRunContext`, and `create_agent_for_run` (only ever raised; only a test
+   called it); `Harness.get_tasks_path`; `interfaces/agents/tool_names.py` (the
+   `AgentToolName` enum, zero importers); `interfaces/agents/constants.py`;
+   the claude/pi/rich-agent error classes in `errors.py` (kept `AgentCrashed`);
+   `ObjectSnapshotID`.
+
+2. **Frontend feature-support.** CapabilityGate + useCapabilityGate +
+   useTaskSupportsInterruption + the CAPABILITY_DISABLED_* ElementIds;
+   useInterruptAgent + interruptState (the backend interrupt endpoint stays —
+   the sculpt CLI uses it); statusPillTasks; pseudoSkills; useProjectSkills;
+   CHAT_INPUT_ELEMENT_ID.
+
+3. **Always-constant API fields.** HarnessCapabilities collapsed to the single
+   read field `supports_skills`; dropped `current_activity`/`last_activity`/
+   `waiting_detail` (always None) and simplified the workspace-peek that read
+   them; dropped `TaskStatus.REQUEST_ERROR` (never produced); dropped the
+   `SavedAgentMessage.is_partial` column and regenerated the squashed initial
+   migration. (The migration squash made is_partial cheap to remove — it had
+   been left as a "not worth a migration" vestige.)
+
+### Identified but NOT yet removed — the PLAN-artifact / task-list subsystem
+
+Strong evidence it is dead for terminal agents, deferred as its own pass:
+`tasks/handlers/run_terminal_agent/v1.py` does **no artifact sync**, so no PLAN
+artifact is ever written; `ensure_artifact_cache_populated(task_id, PLAN)` then
+always returns False, so `_build_existing_artifact_messages` never emits an
+`UpdatedArtifactAgentMessage(name=PLAN)`, so `derived.py::_task_data` is always
+None and `task_completed`/`task_total`/`current_task_subject` are always 0/0/None
+(the workspace-peek "X of Y tasks done" never shows real data). Candidate set:
+`ArtifactType.PLAN`, `TaskListArtifact`/`TodoListArtifact`, the PLAN branch of
+`_build_existing_artifact_messages`, `_get_last_task_list_artifact` + the PLAN
+parsing in derived.py, `UpdatedArtifactAgentMessage` + `FileAgentArtifact`
+(ephemeral — no frozen-schema impact), the TaskList branches of the
+getWorkspaceAgentArtifact endpoint, and the three derived task-list fields +
+their frontend reads. KEEP `ArtifactType.DIFF` (the live workspace-diff
+artifact, written in workspace_service/default_implementation.py).

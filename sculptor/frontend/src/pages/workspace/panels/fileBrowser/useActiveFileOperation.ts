@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 
 import { isToolUseBlock } from "~/common/Guards.ts";
-import { useTaskChatMessages } from "~/common/state/hooks/useTaskDetail.ts";
+import { useTaskDetailWithDefaults } from "~/common/state/hooks/useTaskDetail.ts";
 import { isDiffTool } from "~/pages/workspace/utils/utils.ts";
 
 type ActiveFileOperation = {
@@ -10,7 +10,7 @@ type ActiveFileOperation = {
 };
 
 export const useActiveFileOperation = (taskId: string | undefined): ActiveFileOperation | null => {
-  const { inProgressChatMessage } = useTaskChatMessages(taskId ?? "");
+  const { inProgressChatMessage } = useTaskDetailWithDefaults(taskId ?? "");
 
   return useMemo(() => {
     if (!taskId || !inProgressChatMessage) return null;

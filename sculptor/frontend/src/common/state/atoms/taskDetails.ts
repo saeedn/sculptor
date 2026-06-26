@@ -3,7 +3,7 @@ import { atom } from "jotai";
 import { atomFamily } from "jotai/utils";
 import isEqual from "lodash/isEqual";
 
-import type { ArtifactType, AskUserQuestionData, ChatMessage, SubmittedQuestionAnswers } from "../../../api";
+import type { ArtifactType, ChatMessage } from "../../../api";
 import type { ArtifactsMap } from "../../../pages/workspace/Types";
 
 /**
@@ -11,19 +11,11 @@ import type { ArtifactsMap } from "../../../pages/workspace/Types";
  * This is accumulated from incremental TaskUpdate messages.
  */
 export type TaskDetailState = {
-  completedChatMessages: Array<ChatMessage>;
+  // The agent's current in-flight message; read by useActiveFileOperation to
+  // highlight the file the agent is editing. (Terminal agents drive this via
+  // the stream; the older chat-message accumulation was removed.)
   inProgressChatMessage: ChatMessage | null;
-  queuedChatMessages: Array<ChatMessage>;
-  workingUserMessageId: string | null;
   artifacts: ArtifactsMap;
-  pendingUserQuestion: AskUserQuestionData | null;
-  submittedQuestionAnswers: Record<string, SubmittedQuestionAnswers>;
-  isInPlanMode: boolean;
-  // Background tasks whose ``task_started`` has arrived but whose
-  // ``task_notification`` has not. Drives the alpha status pill's
-  // "waiting for background task" label so it doesn't claim the agent is
-  // thinking while the harness is actually idle (SCU-387).
-  pendingBackgroundTaskIds: Array<string>;
   error?: string;
 };
 
@@ -33,15 +25,8 @@ export const taskDetailAtomFamily = atomFamily<string, PrimitiveAtom<TaskDetailS
 
 export const getEmptyTaskDetailState = (): TaskDetailState => {
   return {
-    completedChatMessages: [],
     inProgressChatMessage: null,
-    queuedChatMessages: [],
-    workingUserMessageId: null,
     artifacts: {},
-    pendingUserQuestion: null,
-    submittedQuestionAnswers: {},
-    isInPlanMode: false,
-    pendingBackgroundTaskIds: [],
   };
 };
 
@@ -72,34 +57,6 @@ export const updateTaskUpdatedArtifactsAtom = atom(
     const mergedTypes = Array.from(new Set([...existing, ...update.artifactTypes]));
     setAtom(taskUpdatedArtifactsAtomFamily(update.taskId), mergedTypes);
   },
-);
-
-/**
- * Draft state for the AskUserQuestion form.
- *
- * Stored in a separate atom family (keyed by taskId) so that in-progress
- * selections and typed text survive component unmounts caused by navigation.
- */
-export type DraftQuestionState = {
-  toolUseId: string;
-  currentIndex: number;
-  answers: Record<string, string>;
-  otherTexts: Record<string, string>;
-  otherSelected: Record<string, boolean>;
-  multiSelections: Record<string, Array<string>>;
-};
-
-export const EMPTY_DRAFT_QUESTION_STATE: DraftQuestionState = {
-  toolUseId: "",
-  currentIndex: 0,
-  answers: {},
-  otherTexts: {},
-  otherSelected: {},
-  multiSelections: {},
-};
-
-export const draftQuestionStateAtomFamily = atomFamily<string, PrimitiveAtom<DraftQuestionState>>(() =>
-  atom<DraftQuestionState>(EMPTY_DRAFT_QUESTION_STATE),
 );
 
 export const clearTaskUpdatedArtifactsAtom = atom(

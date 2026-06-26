@@ -17,7 +17,6 @@ import { appendSetupOutputChunkAtom } from "../atoms/workspaceSetupOutput";
 import { updateWorkspaceSetupStatusAtom } from "../atoms/workspaceSetupStatus";
 import { updateWorkspaceTargetBranchesAtom } from "../atoms/workspaceTargetBranches";
 import { acknowledgeRequests, updateActiveWebsockets } from "../requestTracking";
-import { chatMessagesReducer } from "../taskDetailReducers.ts";
 import { useWebsocket } from "./useWebsocket";
 
 const API_BASE_URL = "/api/v1";
@@ -73,25 +72,9 @@ export const useUnifiedStream = (): void => {
             taskId,
             updater: (currentState) => {
               const state = currentState || getEmptyTaskDetailState();
-
-              // Process incremental updates using pure reducers
-              const newChatState = chatMessagesReducer(
-                {
-                  completedChatMessages: state.completedChatMessages,
-                  inProgressChatMessage: state.inProgressChatMessage,
-                  queuedChatMessages: state.queuedChatMessages,
-                  workingUserMessageId: state.workingUserMessageId,
-                  pendingUserQuestion: state.pendingUserQuestion,
-                  submittedQuestionAnswers: state.submittedQuestionAnswers,
-                  isInPlanMode: state.isInPlanMode,
-                  pendingBackgroundTaskIds: state.pendingBackgroundTaskIds,
-                },
-                taskUpdate,
-              );
-
               return {
                 ...state,
-                ...newChatState,
+                inProgressChatMessage: taskUpdate.inProgressChatMessage,
               };
             },
           });

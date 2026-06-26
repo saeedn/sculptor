@@ -137,15 +137,14 @@ WORKSPACE_LIST_ALL_KEYS = {
 
 REPO_KEYS = {"id", "name", "path", "accessible", "created_at"}
 
-AGENT_CREATE_KEYS = {"id", "title", "status", "model", "workspace_id", "created_at"}
+AGENT_CREATE_KEYS = {"id", "title", "status", "workspace_id", "created_at"}
 
-AGENT_LIST_KEYS = {"id", "title", "status", "model", "workspace_id", "created_at"}
+AGENT_LIST_KEYS = {"id", "title", "status", "workspace_id", "created_at"}
 
 AGENT_SHOW_KEYS = {
     "id",
     "title",
     "status",
-    "model",
     "interface",
     "created_at",
     "updated_at",
@@ -175,7 +174,7 @@ AGENT_STATUS_KEYS = {
     "current_task_subject",
 }
 
-RUN_KEYS = {"workspace_id", "agent_id", "strategy", "model", "prompt"}
+RUN_KEYS = {"workspace_id", "agent_id", "strategy", "prompt"}
 
 
 # ---------------------------------------------------------------------------
@@ -352,8 +351,6 @@ def test_run_with_repo_to_already_registered_path_is_idempotent(
             "scu-1309 idempotent --repo",
             "--repo",
             str(sculptor_instance_.project_path),
-            "--model",
-            "haiku",
             "--name",
             "SCU-1309 idempotent repo",
             "--strategy",
@@ -383,8 +380,6 @@ def test_run_creates_worktree_workspace_via_cli(sculptor_instance_: SculptorInst
         [
             "run",
             "Do something",
-            "--model",
-            "haiku",
             "--strategy",
             "worktree",
             "--branch",
@@ -426,8 +421,6 @@ def test_run_creates_worktree_workspace_autogen_branch_name(sculptor_instance_: 
         [
             "run",
             "Do something",
-            "--model",
-            "haiku",
             "--strategy",
             "worktree",
             "--branch",
@@ -768,8 +761,6 @@ def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorIns
         sculptor_instance_,
         [
             "run",
-            "--model",
-            "haiku",
             "--name",
             "Run Command Test",
             "--strategy",
@@ -784,7 +775,7 @@ def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorIns
 
     assert set(result.keys()) == RUN_KEYS
     _assert_subset(
-        {"strategy": "WORKTREE", "model": "CLAUDE-4-HAIKU", "prompt": "Do something"},
+        {"strategy": "WORKTREE", "prompt": "Do something"},
         result,
     )
 
@@ -800,7 +791,7 @@ def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorIns
     assert exit_code == 0
     agents = json.loads(output)
     agent_match = next(a for a in agents if a["id"] == result["agent_id"])
-    _assert_subset({"model": "CLAUDE-4-HAIKU"}, agent_match)
+    assert agent_match["id"] == result["agent_id"]
 
 
 # ---------------------------------------------------------------------------

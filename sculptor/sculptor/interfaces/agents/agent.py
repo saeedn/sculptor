@@ -28,15 +28,11 @@ from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import TaskID as TaskID
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
-from sculptor.state.claude_state import ParsedAgentResponsePassthrough
-from sculptor.state.claude_state import ParsedToolResultResponse
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import ChatInputUserMessage
 from sculptor.state.messages import Message
 from sculptor.state.messages import PersistentAgentMessage
 from sculptor.state.messages import PersistentMessage
-
-ParsedAgentResponseType = ParsedAgentResponsePassthrough | ParsedToolResultResponse
 
 
 class Agent(MutableModel, abc.ABC):

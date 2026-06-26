@@ -48,7 +48,6 @@ from sculptor.interfaces.agents.harness import HarnessCapabilities
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import WorkspaceID
-from sculptor.state.chat_state import AskUserQuestionData
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import ChatInputUserMessage
 from sculptor.state.messages import Message
@@ -513,12 +512,6 @@ TaskViewTypes = Annotated[
     Annotated[CodingAgentTaskView, Tag("CodingAgentTaskView")] | Annotated[NoOpTaskView, Tag("NoOpTaskView")],
     build_discriminator(),
 ]
-
-
-class SubmittedQuestionAnswers(SerializableModel):
-    question_data: AskUserQuestionData
-    answers: dict[str, str]
-    tool_use_id: str
 
 
 class UserUpdate(SerializableModel):

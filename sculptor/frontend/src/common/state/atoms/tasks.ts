@@ -94,60 +94,12 @@ export const taskStatusAtomFamily = atomFamily<string, Atom<TaskStatus | undefin
   atom((get) => get(taskAtomFamily(taskId))?.status),
 );
 
-export const taskIsAutoCompactingAtomFamily = atomFamily<string, Atom<boolean>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.isAutoCompacting ?? false),
-);
-
-export const taskSupportsInteractiveBackchannelAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsInteractiveBackchannel),
-);
-
-export const taskSupportsFastModeAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsFastMode),
-);
-
-export const taskSupportsFileAttachmentsAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsFileAttachments),
-);
-
-export const taskSupportsImageInputAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsImageInput),
-);
-
 export const taskSupportsSkillsAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
   atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsSkills),
 );
 
-export const taskSupportsSubAgentsAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsSubAgents),
-);
-
 export const taskSupportsInterruptionAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
   atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsInterruption),
-);
-
-export const taskSupportsFileReferencesAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsFileReferences),
-);
-
-export const taskSupportsContextResetAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsContextReset),
-);
-
-export const taskSupportsCompactionAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsCompaction),
-);
-
-export const taskSupportsBackgroundTasksAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsBackgroundTasks),
-);
-
-export const taskSupportsSessionResumeAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsSessionResume),
-);
-
-export const taskSupportsToolUseRenderingAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsToolUseRendering),
 );
 
 export const taskAcceptsAutomatedPromptsAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>

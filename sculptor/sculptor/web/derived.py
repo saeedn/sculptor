@@ -33,7 +33,6 @@ from sculptor.database.models import Workspace
 from sculptor.foundation.itertools import only
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import build_discriminator
-from sculptor.interfaces.agents.agent import AskUserQuestionAgentMessage
 from sculptor.interfaces.agents.agent import AutoCompactingAgentMessage
 from sculptor.interfaces.agents.agent import AutoCompactingDoneAgentMessage
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
@@ -46,8 +45,6 @@ from sculptor.interfaces.agents.agent import RequestStartedAgentMessage
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
 from sculptor.interfaces.agents.agent import UpdatedArtifactAgentMessage
-from sculptor.interfaces.agents.agent import UserQuestionAnswerMessage
-from sculptor.interfaces.agents.agent import is_terminal_agent_config
 from sculptor.interfaces.agents.artifacts import AgentTaskStatus
 from sculptor.interfaces.agents.artifacts import ArtifactType
 from sculptor.interfaces.agents.artifacts import TaskListArtifact
@@ -60,13 +57,10 @@ from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.state.chat_state import AskUserQuestionData
 from sculptor.state.chat_state import ChatMessage
-from sculptor.state.chat_state import TextBlock
-from sculptor.state.chat_state import ToolUseBlock
 from sculptor.state.chat_state import TurnMetrics
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import ChatInputUserMessage
 from sculptor.state.messages import Message
-from sculptor.state.messages import ResponseBlockAgentMessage
 from sculptor.utils.functional import first
 from sculptor.web.data_types import PrApproval  # noqa: F401 — re-exported for existing import sites
 from sculptor.web.data_types import PrComment  # noqa: F401 — re-exported for existing import sites
@@ -219,34 +213,6 @@ _FRIENDLY_ERROR_NAMES: dict[str, str] = {
     "KeyboardInterrupt": "Agent stopped unexpectedly",
     "SystemExit": "Agent stopped unexpectedly",
 }
-
-# (active, past, uses_file_path)
-_TOOL_DESCRIPTIONS: dict[str, tuple[str, str, bool]] = {
-    "Edit": ("Editing", "Edited", True),
-    "Read": ("Reading", "Read", True),
-    "Write": ("Creating", "Created", True),
-    "Bash": ("Running command", "Ran command", False),
-    "Grep": ("Searching codebase", "Searched codebase", False),
-    "Glob": ("Finding files", "Found files", False),
-    "Task": ("Running sub-agent", "Ran sub-agent", False),
-}
-
-
-def _describe_tool_use(block: ToolUseBlock, *, past_tense: bool = False) -> str:
-    name = block.name
-    entry = _TOOL_DESCRIPTIONS.get(name)
-    if entry is None:
-        return name
-
-    active, past, uses_file_path = entry
-    verb = past if past_tense else active
-
-    if uses_file_path:
-        file_path = block.input.get("file_path")
-        short_path = file_path.rsplit("/", 1)[-1] if isinstance(file_path, str) and file_path else None
-        return f"{verb} {short_path}" if short_path else f"{verb} file"
-
-    return verb
 
 
 def _get_last_task_list_artifact(messages: list[Message]) -> TaskListArtifact | None:
@@ -432,110 +398,22 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
         if task_from_outcome is not None:
             return task_from_outcome
 
-        if is_terminal_agent_config(self.task_input.agent_config):
-            # Terminal agents have no chat: status comes from the latest
-            # signal posted since the most recent run start. No signals this
-            # run → calm neutral READY; signals never drive the unread dot.
-            # No run-start anchor at all → still acquiring the environment
-            # (no "no user message → READY" special case applies).
-            run_started, latest_signal = scan_terminal_signal_state(self._messages)
-            if not run_started:
-                return TaskStatus.BUILDING
-            if latest_signal == TerminalStatusSignal.BUSY:
-                return TaskStatus.RUNNING
-            if latest_signal == TerminalStatusSignal.WAITING:
-                return TaskStatus.WAITING
-            return TaskStatus.READY
-
-        # Check if environment has been acquired via message
-        has_environment = any(isinstance(m, EnvironmentAcquiredRunnerMessage) for m in self._messages)
-        if not has_environment:
-            # If no user message has been sent yet, the agent is waiting for input (prompt-less creation).
-            # Show READY so the user can type the first message.
-            has_user_message = any(isinstance(m, ChatInputUserMessage) for m in self._messages)
-            if not has_user_message:
-                return TaskStatus.READY
+        # Every agent is a terminal agent: status comes from the latest signal
+        # posted since the most recent run start. No signals this run → calm
+        # neutral READY; signals never drive the unread dot. No run-start anchor
+        # at all → still acquiring the environment.
+        run_started, latest_signal = scan_terminal_signal_state(self._messages)
+        if not run_started:
             return TaskStatus.BUILDING
-
-        # if we're blocked on user input, return READY or WAITING.
-        chat_input_messages = [
-            x for x in self._messages if isinstance(x, (ChatInputUserMessage, UserQuestionAnswerMessage))
-        ]
-        request_finished_messages = {
-            x.request_id for x in self._messages if isinstance(x, PersistentRequestCompleteAgentMessage)
-        }
-        # If the agent has emitted an AskUserQuestion / ExitPlanMode whose
-        # answer hasn't arrived yet, the task is WAITING regardless of
-        # whether the in-flight request has formally completed. Under the
-        # in-process MCP flow the held ``tools/call`` keeps the request
-        # alive, so we'd otherwise fall through to ``RUNNING`` and never
-        # surface the "needs your input" signal to the workspace peek.
-        ready_or_waiting = self._ready_or_waiting()
-        if ready_or_waiting == TaskStatus.WAITING:
+        if latest_signal == TerminalStatusSignal.BUSY:
+            return TaskStatus.RUNNING
+        if latest_signal == TerminalStatusSignal.WAITING:
             return TaskStatus.WAITING
-
-        is_ready = all(input_message.message_id in request_finished_messages for input_message in chat_input_messages)
-        if is_ready:
-            if self._last_request_failed():
-                return TaskStatus.REQUEST_ERROR
-            return ready_or_waiting
-        # otherwise we're running.
-        return TaskStatus.RUNNING
+        return TaskStatus.READY
 
     def _resolve_harness(self) -> Harness:
         """Return the `Harness` this task's config resolves to."""
         return get_harness_for_config(self.task_input.agent_config)
-
-    def _ready_or_waiting(self) -> TaskStatus:
-        """Return WAITING if the agent has an unanswered question or pending plan approval, else READY.
-
-        Pending plan approval is signalled by an unanswered ``ExitPlanMode``
-        tool block — NOT by ``is_in_plan_mode`` alone. ``EnterPlanMode`` flips
-        ``is_in_plan_mode`` to True the moment the agent starts planning, but
-        the agent is still working at that point and there is nothing for the
-        user to act on.
-
-        AskUserQuestion tool blocks whose input fails strict validation are
-        skipped — those calls were rejected by the MCP server with a JSON-RPC
-        error and the agent has already moved on, so they should not pin the
-        workspace into a yellow ``Waiting for input`` state. ExitPlanMode
-        accepts any input per its schema, so any tool_use of it surfaces.
-
-        Likewise, an AUQ / ExitPlanMode tool block whose surrounding request
-        has since completed (Success / Failure / Stopped) is no longer
-        pending — the agent's process has moved on, so the question can no
-        longer be answered against the same turn (SCU-530 follow-on).
-        """
-        harness = self._resolve_harness()
-        # Check both the ephemeral AskUserQuestionAgentMessage (present during live
-        # streaming) and the persistent ToolUseBlock evidence (survives page reloads).
-        for msg in reversed(self._messages):
-            if isinstance(msg, UserQuestionAnswerMessage):
-                break
-            if isinstance(msg, PersistentRequestCompleteAgentMessage):
-                # Any AUQ older than the most recent completed request belongs
-                # to a turn the agent has already settled — no pending question.
-                break
-            if isinstance(msg, AskUserQuestionAgentMessage):
-                return TaskStatus.WAITING
-            if isinstance(msg, ResponseBlockAgentMessage):
-                for b in msg.content:
-                    if not isinstance(b, ToolUseBlock):
-                        continue
-                    if harness.is_ask_user_question_tool(b.name) and harness.is_valid_ask_user_question_input(
-                        b.name, b.input
-                    ):
-                        return TaskStatus.WAITING
-                    if harness.is_exit_plan_mode_tool(b.name):
-                        return TaskStatus.WAITING
-        return TaskStatus.READY
-
-    def _last_request_failed(self) -> bool:
-        """Return True if the most recent completed request ended with a failure."""
-        for msg in reversed(self._messages):
-            if isinstance(msg, PersistentRequestCompleteAgentMessage):
-                return isinstance(msg, RequestFailureAgentMessage)
-        return False
 
     @computed_field
     @property
@@ -583,25 +461,18 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
             self._cache["wps"] = self._compute_workspace_peek_status()
         return self._cache["wps"]
 
+    # current_activity/last_activity described the agent's latest chat
+    # tool-use/response. Terminal agents emit no such message stream, so both
+    # are always None now; the fields remain because the frontend workspace
+    # peek still reads them (falling back to "Working...").
     @computed_field
     @property
     def current_activity(self) -> str | None:
-        return self._find_latest_activity(past_tense=False)
+        return None
 
     @computed_field
     @property
     def last_activity(self) -> str | None:
-        return self._find_latest_activity(past_tense=True)
-
-    def _find_latest_activity(self, *, past_tense: bool) -> str | None:
-        for msg in reversed(self._messages):
-            if not isinstance(msg, ResponseBlockAgentMessage):
-                continue
-            for block in reversed(msg.content):
-                if isinstance(block, ToolUseBlock):
-                    return _describe_tool_use(block, past_tense=past_tense)
-                if isinstance(block, TextBlock) and block.text.strip():
-                    return "Responded" if past_tense else "Responding"
         return None
 
     @computed_field
@@ -634,24 +505,11 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
     @computed_field
     @property
     def waiting_detail(self) -> str | None:
-        if self.status != TaskStatus.WAITING:
-            return None
-        harness = self._resolve_harness()
-        for msg in reversed(self._messages):
-            if isinstance(msg, UserQuestionAnswerMessage):
-                break
-            if isinstance(msg, AskUserQuestionAgentMessage):
-                # The plan-approval AUQ uses a known header — render the short
-                # canonical text instead of the verbose internal question.
-                questions = msg.question_data.questions
-                if questions and questions[0].header == "Plan approval":
-                    return "Waiting for plan approval"
-                if questions:
-                    return questions[0].question
-                return None
-            if isinstance(msg, ResponseBlockAgentMessage):
-                if any(isinstance(b, ToolUseBlock) and harness.is_exit_plan_mode_tool(b.name) for b in msg.content):
-                    return "Waiting for plan approval"
+        # waiting_detail surfaced the specific AskUserQuestion / ExitPlanMode a
+        # chat agent was blocked on. Terminal agents have no message stream and
+        # signal WAITING without a detail, so this is always None now; the field
+        # stays because the frontend workspace peek reads it (falling back to
+        # "Waiting for input").
         return None
 
     @computed_field

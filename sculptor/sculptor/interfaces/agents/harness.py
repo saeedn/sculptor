@@ -31,7 +31,6 @@ and `ClaudeCodeSDKAgent` may declare its `harness` field as
 from __future__ import annotations
 
 import abc
-from collections.abc import Iterable
 from pathlib import Path
 from typing import Callable
 
@@ -45,11 +44,6 @@ from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.interfaces.environments.agent_execution_environment import AgentExecutionEnvironment
 from sculptor.primitives.ids import TaskID
 from sculptor.services.workspace_service.api import WorkspaceService
-from sculptor.state.chat_state import AskUserQuestionData
-from sculptor.state.chat_state import ContentBlock
-from sculptor.state.chat_state import ToolInput
-from sculptor.state.chat_state import ToolInteractiveRole
-from sculptor.state.chat_state import ToolUseBlock
 
 
 class HarnessCapabilities(SerializableModel):
@@ -58,9 +52,7 @@ class HarnessCapabilities(SerializableModel):
     Read by backend feature gates and by the frontend (via the generated
     TypeScript twin). Populated truthfully by each harness through
     `Harness.capabilities()`. PHASE_5_NORTH_STAR §2 names this the
-    bool-field shape of the capability region; gated-method capabilities
-    (e.g. `Harness.is_ask_user_question_tool`) coexist on the `Harness`
-    interface for protocol-level questions no bool can express.
+    bool-field shape of the capability region.
 
     Fields have **no Python defaults** — every constructor must list every
     field. When a new capability lands, pydantic validation forces an edit
@@ -142,51 +134,6 @@ class Harness(BaseModel, abc.ABC):
             supports_interruption=False,
             supports_file_references=False,
         )
-
-    def is_ask_user_question_tool(self, tool_name: str) -> bool:
-        return False
-
-    def is_exit_plan_mode_tool(self, tool_name: str) -> bool:
-        return False
-
-    def is_valid_ask_user_question_input(self, tool_name: str, tool_input: ToolInput) -> bool:
-        return False
-
-    def classify_tool_ui_role(self, tool_name: str) -> ToolInteractiveRole | None:
-        """The interactive-backchannel role of a tool, or `None` for a regular one.
-
-        Composes the per-harness `is_ask_user_question_tool` /
-        `is_exit_plan_mode_tool` so each harness owns the name→role mapping in one
-        place; the conversion layer stamps the result onto the tool block so the
-        frontend renders by role, never by tool name.
-        """
-        if self.is_ask_user_question_tool(tool_name):
-            return "ask_user_question"
-        if self.is_exit_plan_mode_tool(tool_name):
-            return "exit_plan_mode"
-        return None
-
-    def reconstruct_pending_ask_user_question(self, block: ToolUseBlock) -> AskUserQuestionData | None:
-        """Rebuild the pending question from a persisted ask-user-question tool
-        block (page-reload support), or `None` when its input is not a valid
-        question.
-
-        Only reached once `is_ask_user_question_tool(block.name)` is True — i.e.
-        for a harness that has opted into ask-user-question — so the base has no
-        universal tool-input shape to assume. A harness whose
-        `is_ask_user_question_tool` can return True MUST override this to
-        translate its own tool-input shape into `AskUserQuestionData`.
-        """
-        raise NotImplementedError(
-            "a harness whose is_ask_user_question_tool can return True must override "
-            "reconstruct_pending_ask_user_question"
-        )
-
-    def get_plan_file_path_from_tool_use(self, block: ContentBlock) -> str | None:
-        return None
-
-    def extract_recent_plan_file_path(self, blocks: Iterable[ContentBlock]) -> str | None:
-        return None
 
     def get_jsonl_path_for_working_directory(self, home: Path, working_directory: Path) -> Path | None:
         """Return the per-session JSONL directory the harness uses for a

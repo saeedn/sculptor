@@ -43,10 +43,9 @@ class ResumeResponseBlock(ContentBlock):
 
 ToolInput = dict[str, Any]
 
-# The interactive-backchannel role of a tool, when it is one — set server-side
-# from the task's harness (`Harness.classify_tool_ui_role`) so the frontend
-# renders ask-user-question / plan-approval tools by role instead of matching a
-# hardcoded set of tool names. `None` for a regular tool.
+# The interactive-backchannel role of a tool, when it is one. A field on the
+# persisted ToolUseBlock schema; always `None` for terminal agents (which have
+# no parsed message stream), kept for backward-compatible deserialization.
 ToolInteractiveRole = Literal["ask_user_question", "exit_plan_mode"]
 
 
@@ -245,31 +244,4 @@ class AskUserQuestionData(SerializableModel):
     plan_file_path: str | None = Field(
         default=None,
         description="Absolute path of the plan file the agent wrote in this turn, when the question is the synthesized ExitPlanMode approval. Set by `make_plan_approval_question` and consumed by the frontend ExitPlanMode tool block to render a click-to-reopen link. None for non-plan-approval questions or when the agent didn't write a plan file in the current turn (e.g. re-using a plan from a prior turn).",
-    )
-
-
-def make_plan_approval_question(
-    tool_use_id: str,
-    plan_file_path: str | None = None,
-) -> AskUserQuestionData:
-    """Construct the plan approval question shown when the agent calls ExitPlanMode.
-
-    The optional plan_file_path is propagated to the frontend so the
-    ExitPlanMode tool block can render a click-to-reopen link without
-    scanning the chat for .claude/plans/ tool results.
-    """
-    return AskUserQuestionData(
-        questions=[
-            UserQuestion(
-                question="Planning complete. How would you like to proceed?",
-                header="Plan approval",
-                options=[
-                    QuestionOption(label="Approve plan", description="Proceed with implementing the plan"),
-                ],
-                multi_select=False,
-                other_label="Revise",
-            ),
-        ],
-        tool_use_id=tool_use_id,
-        plan_file_path=plan_file_path,
     )

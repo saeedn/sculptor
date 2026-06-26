@@ -223,18 +223,6 @@
             "title": "Approximatecreationtime",
             "type": "string"
           },
-          "enterPlanMode": {
-            "default": false,
-            "description": "Whether the user requested to enter plan mode",
-            "title": "Enterplanmode",
-            "type": "boolean"
-          },
-          "exitPlanMode": {
-            "default": false,
-            "description": "Whether the user requested to exit plan mode",
-            "title": "Exitplanmode",
-            "type": "boolean"
-          },
           "files": {
             "description": "List of file paths (images, PDFs, etc., stored in Electron app folder) attached to this message",
             "items": {
@@ -1252,10 +1240,7 @@
               "interactiveRole": {
                 "anyOf": [
                   {
-                    "enum": [
-                      "ask_user_question",
-                      "exit_plan_mode"
-                    ],
+                    "const": "ask_user_question",
                     "type": "string"
                   },
                   {
@@ -1325,10 +1310,7 @@
               "interactiveRole": {
                 "anyOf": [
                   {
-                    "enum": [
-                      "ask_user_question",
-                      "exit_plan_mode"
-                    ],
+                    "const": "ask_user_question",
                     "type": "string"
                   },
                   {

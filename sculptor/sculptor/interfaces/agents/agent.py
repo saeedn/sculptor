@@ -427,11 +427,6 @@ class AskUserQuestionAgentMessage(EphemeralAgentMessage):
     question_data: AskUserQuestionData
 
 
-class PlanModeAgentMessage(EphemeralAgentMessage):
-    object_type: str = "PlanModeAgentMessage"
-    is_in_plan_mode: bool
-
-
 class WarningAgentMessage(PersistentAgentMessage, WarningMessage):
     object_type: str = "WarningAgentMessage"
 
@@ -454,7 +449,6 @@ EphemeralAgentMessageUnion = (
     Annotated[PartialResponseBlockAgentMessage, Tag("PartialResponseBlockAgentMessage")]
     | Annotated[UpdatedArtifactAgentMessage, Tag("UpdatedArtifactAgentMessage")]
     | Annotated[AskUserQuestionAgentMessage, Tag("AskUserQuestionAgentMessage")]
-    | Annotated[PlanModeAgentMessage, Tag("PlanModeAgentMessage")]
     | Annotated[AutoCompactingAgentMessage, Tag("AutoCompactingAgentMessage")]
     | Annotated[AutoCompactingDoneAgentMessage, Tag("AutoCompactingDoneAgentMessage")]
 )

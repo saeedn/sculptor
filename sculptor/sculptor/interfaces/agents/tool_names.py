@@ -37,7 +37,6 @@ class AgentToolName(enum.StrEnum):
     TASK_LIST = "TaskList"
     TASK_GET = "TaskGet"
     SLASH_COMMAND = "SlashCommand"
-    EXIT_PLAN_MODE = "exit_plan_mode"
 
     # MCP tools
     MCP_TOOL = "mcp_tool"  # Generic MCP tool prefix

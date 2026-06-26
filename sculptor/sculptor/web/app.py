@@ -571,7 +571,6 @@ def start_task(
                 text=prompt,
                 message_id=AgentMessageID(),
                 files=task_request.files,
-                enter_plan_mode=task_request.enter_plan_mode,
                 sent_via=task_request.sent_via,
             )
             messages.append(input_user_message)
@@ -1844,7 +1843,6 @@ def create_workspace_agent(
                 files=agent_request.files,
                 name=agent_request.name,
                 workspace_id=validated_workspace_id,
-                enter_plan_mode=agent_request.enter_plan_mode,
                 sent_via=agent_request.sent_via,
                 agent_type=agent_request.agent_type,
             )
@@ -2256,16 +2254,6 @@ def send_workspace_agent_messages(
                 detail=[{"loc": ["body", "message"], "msg": "Message required", "type": "value_error.missing"}],
             )
 
-        assert isinstance(task.input_data, AgentTaskInputsV2), (
-            f"Expected AgentTaskInputsV2 for agent message endpoint, got {type(task.input_data).__name__}"
-        )
-        harness = get_harness_for_config(task.input_data.agent_config)
-        if message_request.enter_plan_mode and not harness.capabilities().supports_interactive_backchannel:
-            raise HTTPException(
-                status_code=400,
-                detail="plan mode requires a harness that supports the interactive backchannel",
-            )
-
         message_id = AgentMessageID()
         logger.info("Sending message {} to agent {}: {}", message_id, agent_id, message_str[:100])
 
@@ -2273,8 +2261,6 @@ def send_workspace_agent_messages(
             message_id=message_id,
             text=message_str,
             files=message_request.files,
-            enter_plan_mode=message_request.enter_plan_mode,
-            exit_plan_mode=message_request.exit_plan_mode,
             sent_via=message_request.sent_via,
         )
 

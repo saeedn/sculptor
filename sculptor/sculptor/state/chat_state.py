@@ -46,7 +46,7 @@ ToolInput = dict[str, Any]
 # The interactive-backchannel role of a tool, when it is one. A field on the
 # persisted ToolUseBlock schema; always `None` for terminal agents (which have
 # no parsed message stream), kept for backward-compatible deserialization.
-ToolInteractiveRole = Literal["ask_user_question", "exit_plan_mode"]
+ToolInteractiveRole = Literal["ask_user_question"]
 
 
 class ToolUseBlock(ContentBlock):

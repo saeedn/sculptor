@@ -11,8 +11,8 @@ import { CAPABILITY_UNSUPPORTED_COPY, useCapabilityGate } from "./useCapabilityG
 
 const Wrapper = ({ children }: { children: ReactNode }): ReactElement => <Theme>{children}</Theme>;
 
-const ENABLED_TESTID = ElementIds.PLAN_MODE_TOGGLE;
-const DISABLED_TESTID = ElementIds.CAPABILITY_DISABLED_PLAN_MODE;
+const ENABLED_TESTID = ElementIds.CHAT_INPUT;
+const DISABLED_TESTID = ElementIds.CAPABILITY_DISABLED_STOP;
 
 afterEach(() => {
   cleanup();

@@ -129,16 +129,11 @@ class ElementIDs(StrEnum):
     ASK_USER_QUESTION_ANSWERED_OPTION = "ASK_USER_QUESTION_ANSWERED_OPTION"
     ASK_USER_QUESTION_CUSTOM_TEXT = "ASK_USER_QUESTION_CUSTOM_TEXT"
 
-    # Plan Mode
-    EXIT_PLAN_MODE_TOOL_BLOCK = "EXIT_PLAN_MODE_TOOL_BLOCK"
-    PLAN_MODE_TOGGLE = "PLAN_MODE_TOGGLE"
-
     # Capability-gated affordances rendered disabled-with-tooltip (the shared
     # CapabilityGate treatment) when the active task's harness lacks the
     # capability. One test hook per interactive surface that can host a disabled
     # state; surfaces that cannot (picker rows, the skills panel, the
     # model-gated fast-mode toggle) are suppressed and asserted absent instead.
-    CAPABILITY_DISABLED_PLAN_MODE = "CAPABILITY_DISABLED_PLAN_MODE"
     CAPABILITY_DISABLED_STOP = "CAPABILITY_DISABLED_STOP"
     CAPABILITY_DISABLED_QUEUED_INTERRUPT = "CAPABILITY_DISABLED_QUEUED_INTERRUPT"
     CAPABILITY_DISABLED_MODEL_SELECTION = "CAPABILITY_DISABLED_MODEL_SELECTION"

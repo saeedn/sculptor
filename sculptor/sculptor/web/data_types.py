@@ -124,7 +124,6 @@ class StartTaskRequest(RequestModel):
     # Mutually exclusive with initialization_strategy.
     # When provided, the task will be created in an existing workspace
     workspace_id: WorkspaceID | None = None
-    enter_plan_mode: bool = False
     sent_via: str | None = None
     # None means "use the user's most-recently-used harness" (the server
     # resolves it). Prompt-ful creation is always a chat agent; terminal types
@@ -164,7 +163,6 @@ class CreateAgentRequest(RequestModel):
     interface: str = TaskInterface.TERMINAL.value
     files: list[str] = Field(default_factory=list)
     name: str | None = None
-    enter_plan_mode: bool = False
     sent_via: str | None = None
     # None means "use the user's most-recently-used harness" (the server
     # resolves it, matching the app's "+" button default).
@@ -277,8 +275,6 @@ class ListWorkspacesResponse(SerializableModel):
 class SendMessageRequest(RequestModel):
     message: str
     files: list[str] = Field(default_factory=list)
-    enter_plan_mode: bool = False
-    exit_plan_mode: bool = False
     sent_via: str | None = None
 
 

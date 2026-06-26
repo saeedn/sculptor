@@ -398,34 +398,6 @@ def test_send_message_returns_422_when_missing_required_attribute(
     assert response.status_code == 422
 
 
-def test_send_message_rejects_enter_plan_mode_when_harness_lacks_backchannel(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    """Plan mode depends on the harness's interactive backchannel capability;
-    rejecting the request honestly is better than silently ignoring the flag.
-    HelloHarness advertises `supports_interactive_backchannel=False`, so the
-    gate fires here even though `_create_task_with_message_in_workspace`
-    defaults to a Hello task.
-    """
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-        task = _create_task_with_message_in_workspace(
-            transaction, user_session, test_project, test_services, workspace
-        )
-    response = client.post(
-        f"/api/v1/workspaces/{workspace.object_id}/agents/{task.object_id}/messages",
-        json=model_dump(
-            SendMessageRequest(
-                message="Enter plan mode.",
-                enter_plan_mode=True,
-            ),
-            is_camel_case=True,
-        ),
-    )
-    assert response.status_code == 400
-
-
 def test_update_naming_pattern_performs_update(
     client: TestClient, test_services: CompleteServiceCollection, test_project: Project
 ) -> None:

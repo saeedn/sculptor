@@ -85,8 +85,6 @@ class ChatInputUserMessage(PersistentUserMessage):
         default_factory=list,
         description="List of file paths (images, PDFs, etc., stored in Electron app folder) attached to this message",
     )
-    enter_plan_mode: bool = Field(default=False, description="Whether the user requested to enter plan mode")
-    exit_plan_mode: bool = Field(default=False, description="Whether the user requested to exit plan mode")
     sent_via: str | None = Field(default=None, description="Interface that sent this message, e.g. 'sculpt'")
 
 

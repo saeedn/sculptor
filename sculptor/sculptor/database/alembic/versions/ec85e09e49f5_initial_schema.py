@@ -1,8 +1,8 @@
-"""Initial
+"""initial schema
 
-Revision ID: 9bb41574855c
+Revision ID: ec85e09e49f5
 Revises:
-Create Date: 2026-01-21 07:15:59.901961
+Create Date: 2026-06-26 13:21:50.225198
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "9bb41574855c"
+revision: str = "ec85e09e49f5"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -29,10 +29,11 @@ def upgrade() -> None:
         sa.Column("organization_reference", sa.String(), nullable=False),
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("user_git_repo_url", sa.String(), nullable=True),
-        sa.Column("is_loggable", sa.Integer(), nullable=False),
         sa.Column("is_path_accessible", sa.Integer(), nullable=False),
         sa.Column("is_deleted", sa.Integer(), nullable=False),
         sa.Column("default_system_prompt", sa.String(), nullable=True),
+        sa.Column("workspace_setup_command", sa.String(), nullable=True),
+        sa.Column("naming_pattern", sa.String(), nullable=True),
         sa.PrimaryKeyConstraint("snapshot_id"),
     )
     op.create_table(
@@ -42,10 +43,11 @@ def upgrade() -> None:
         sa.Column("organization_reference", sa.String(), nullable=False),
         sa.Column("name", sa.String(), nullable=False),
         sa.Column("user_git_repo_url", sa.String(), nullable=True),
-        sa.Column("is_loggable", sa.Integer(), nullable=False),
         sa.Column("is_path_accessible", sa.Integer(), nullable=False),
         sa.Column("is_deleted", sa.Integer(), nullable=False),
         sa.Column("default_system_prompt", sa.String(), nullable=True),
+        sa.Column("workspace_setup_command", sa.String(), nullable=True),
+        sa.Column("naming_pattern", sa.String(), nullable=True),
         sa.PrimaryKeyConstraint("object_id"),
     )
     op.create_table(
@@ -56,16 +58,14 @@ def upgrade() -> None:
         sa.Column("organization_reference", sa.String(), nullable=False),
         sa.Column("user_reference", sa.String(), nullable=False),
         sa.Column("project_id", sa.String(), nullable=False),
-        sa.Column("parent_task_id", sa.String(), nullable=True),
         sa.Column("input_data", sa.JSON(), nullable=False),
         sa.Column("max_seconds", sa.Float(), nullable=True),
         sa.Column("current_state", sa.JSON(), nullable=True),
         sa.Column("outcome", sa.String(), nullable=False),
         sa.Column("error", sa.JSON(), nullable=True),
-        sa.Column("is_archived", sa.Integer(), nullable=False),
-        sa.Column("is_archiving", sa.Integer(), nullable=False),
         sa.Column("is_deleted", sa.Integer(), nullable=False),
         sa.Column("is_deleting", sa.Integer(), nullable=False),
+        sa.Column("last_read_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("snapshot_id"),
     )
     op.create_table(
@@ -74,8 +74,6 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("object_id", sa.String(), nullable=False),
         sa.Column("user_reference", sa.String(), nullable=False),
-        sa.Column("is_usage_data_enabled", sa.Integer(), nullable=False),
-        sa.Column("allowed_product_logging", sa.String(), nullable=False),
         sa.PrimaryKeyConstraint("snapshot_id"),
     )
     op.create_table(
@@ -83,10 +81,37 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("object_id", sa.String(), nullable=False),
         sa.Column("user_reference", sa.String(), nullable=False),
-        sa.Column("is_usage_data_enabled", sa.Integer(), nullable=False),
-        sa.Column("allowed_product_logging", sa.String(), nullable=False),
         sa.PrimaryKeyConstraint("object_id"),
         sa.UniqueConstraint("user_reference", name="unique_user_reference"),
+    )
+    op.create_table(
+        "workspace",
+        sa.Column("snapshot_id", sa.String(), nullable=False),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("object_id", sa.String(), nullable=False),
+        sa.Column("project_id", sa.String(), nullable=False),
+        sa.Column("organization_reference", sa.String(), nullable=False),
+        sa.Column("description", sa.String(), nullable=False),
+        sa.Column("initialization_strategy", sa.String(), nullable=False),
+        sa.Column("source_branch", sa.String(), nullable=True),
+        sa.Column("target_branch", sa.String(), nullable=True),
+        sa.Column("environment_id", sa.String(), nullable=True),
+        sa.Column("source_git_hash", sa.String(), nullable=True),
+        sa.Column("is_deleted", sa.Integer(), nullable=False),
+        sa.Column("is_open", sa.Integer(), nullable=False),
+        sa.Column("setup_command_triggered", sa.Integer(), nullable=False),
+        sa.Column("setup_status", sa.String(), nullable=False),
+        sa.Column("setup_run_id", sa.String(), nullable=True),
+        sa.Column("setup_command", sa.String(), nullable=True),
+        sa.Column("setup_exit_code", sa.Integer(), nullable=True),
+        sa.Column("setup_started_at", sa.Float(), nullable=True),
+        sa.Column("setup_finished_at", sa.Float(), nullable=True),
+        sa.Column("setup_log_path", sa.String(), nullable=True),
+        sa.Column("setup_log_truncated", sa.Integer(), nullable=False),
+        sa.Column("diff_status", sa.String(), nullable=False),
+        sa.Column("diff_updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("requested_branch_name", sa.String(), nullable=True),
+        sa.PrimaryKeyConstraint("snapshot_id"),
     )
     op.create_table(
         "task_latest",
@@ -95,18 +120,44 @@ def upgrade() -> None:
         sa.Column("organization_reference", sa.String(), nullable=False),
         sa.Column("user_reference", sa.String(), nullable=False),
         sa.Column("project_id", sa.String(), nullable=False),
-        sa.Column("parent_task_id", sa.String(), nullable=True),
         sa.Column("input_data", sa.JSON(), nullable=False),
         sa.Column("max_seconds", sa.Float(), nullable=True),
         sa.Column("current_state", sa.JSON(), nullable=True),
         sa.Column("outcome", sa.String(), nullable=False),
         sa.Column("error", sa.JSON(), nullable=True),
-        sa.Column("is_archived", sa.Integer(), nullable=False),
-        sa.Column("is_archiving", sa.Integer(), nullable=False),
         sa.Column("is_deleted", sa.Integer(), nullable=False),
         sa.Column("is_deleting", sa.Integer(), nullable=False),
-        sa.ForeignKeyConstraint(["parent_task_id"], ["task_latest.object_id"], name="foreign_key_parent_task_id"),
+        sa.Column("last_read_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["project_id"], ["project_latest.object_id"], name="foreign_key_project_id"),
+        sa.PrimaryKeyConstraint("object_id"),
+    )
+    op.create_table(
+        "workspace_latest",
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.Column("object_id", sa.String(), nullable=False),
+        sa.Column("project_id", sa.String(), nullable=False),
+        sa.Column("organization_reference", sa.String(), nullable=False),
+        sa.Column("description", sa.String(), nullable=False),
+        sa.Column("initialization_strategy", sa.String(), nullable=False),
+        sa.Column("source_branch", sa.String(), nullable=True),
+        sa.Column("target_branch", sa.String(), nullable=True),
+        sa.Column("environment_id", sa.String(), nullable=True),
+        sa.Column("source_git_hash", sa.String(), nullable=True),
+        sa.Column("is_deleted", sa.Integer(), nullable=False),
+        sa.Column("is_open", sa.Integer(), nullable=False),
+        sa.Column("setup_command_triggered", sa.Integer(), nullable=False),
+        sa.Column("setup_status", sa.String(), nullable=False),
+        sa.Column("setup_run_id", sa.String(), nullable=True),
+        sa.Column("setup_command", sa.String(), nullable=True),
+        sa.Column("setup_exit_code", sa.Integer(), nullable=True),
+        sa.Column("setup_started_at", sa.Float(), nullable=True),
+        sa.Column("setup_finished_at", sa.Float(), nullable=True),
+        sa.Column("setup_log_path", sa.String(), nullable=True),
+        sa.Column("setup_log_truncated", sa.Integer(), nullable=False),
+        sa.Column("diff_status", sa.String(), nullable=False),
+        sa.Column("diff_updated_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("requested_branch_name", sa.String(), nullable=True),
+        sa.ForeignKeyConstraint(["project_id"], ["project_latest.object_id"], name="foreign_key_workspace_project_id"),
         sa.PrimaryKeyConstraint("object_id"),
     )
     op.create_table(
@@ -119,7 +170,6 @@ def upgrade() -> None:
         sa.Column("importance", sa.String(), nullable=False),
         sa.Column("task_id", sa.String(), nullable=True),
         sa.Column("project_id", sa.String(), nullable=True),
-        sa.Column("url", sa.String(), nullable=True),
         sa.ForeignKeyConstraint(["task_id"], ["task_latest.object_id"], name="foreign_key_task_id"),
         sa.PrimaryKeyConstraint("snapshot_id"),
     )
@@ -135,15 +185,21 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["task_id"], ["task_latest.object_id"], name="foreign_key_task_id"),
         sa.PrimaryKeyConstraint("snapshot_id"),
     )
+    op.create_index(
+        "ix_saved_agent_message_task_id_created_at", "saved_agent_message", ["task_id", "created_at"], unique=False
+    )
     # ### end Alembic commands ###
 
 
 def downgrade() -> None:
     """Downgrade schema."""
     # ### commands auto generated by Alembic - please adjust! ###
+    op.drop_index("ix_saved_agent_message_task_id_created_at", table_name="saved_agent_message")
     op.drop_table("saved_agent_message")
     op.drop_table("notification")
+    op.drop_table("workspace_latest")
     op.drop_table("task_latest")
+    op.drop_table("workspace")
     op.drop_table("user_settings_latest")
     op.drop_table("user_settings")
     op.drop_table("task")

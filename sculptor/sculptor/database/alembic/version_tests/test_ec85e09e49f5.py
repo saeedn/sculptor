@@ -7,6 +7,8 @@ EXPECTED_TABLES = {
     "project_latest",
     "task",
     "task_latest",
+    "workspace",
+    "workspace_latest",
     "user_settings",
     "user_settings_latest",
     "notification",
@@ -15,11 +17,11 @@ EXPECTED_TABLES = {
 
 
 class TestInitialMigration(MigrationTestFixture):
-    """Test fixture for the initial migration that creates all tables."""
+    """Test fixture for the squashed initial migration that creates all tables."""
 
     @property
     def revision(self) -> str:
-        return "9bb41574855c"
+        return "ec85e09e49f5"
 
     @property
     def down_revision(self) -> None:

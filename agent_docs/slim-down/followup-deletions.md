@@ -547,3 +547,67 @@ dangle into the same dead cluster. Deferred out of this pass.
    chat bindings.
 4. **Scope of §4:** ✅ **All included this pass** — orphaned chat
    components, the entity @-mentions subtree, and smooth streaming.
+
+---
+
+## Clean-break message-model removal (2026-06-26, third batch)
+
+Spec confirms **"No migration (clean break)... the slimmed app assumes a
+fresh start"** (spec.md §"Upgrading from an older install"). So code kept
+only for backward-compatible deserialization of old rich-agent data is now
+fair game. Removing old persisted data is NOT a goal; simplest implementation
+IS the goal.
+
+**Done & committed (each `just format && just check && just test-unit` green):**
+- **The dead `TaskUpdate` streaming subsystem** — see the section above; the
+  live `StreamingUpdate` builder never populated `task_update_by_task_id`.
+  Removed the backend `TaskUpdate` class + the `StreamingUpdate` field, the
+  whole frontend cascade (`taskDetails`/`useTaskDetail`/`useArtifactSync`/
+  `useActiveFileOperation`, the `useUnifiedStream` block), the file-op
+  highlighting it fed (`useAgentFileTracking`, `TreeRow.isActiveFile`), and —
+  because `ChatMessage`/content-block types left the generated API with it —
+  `StreamingEngine` and `Guards`.
+- **The plan-mode field cluster** — `ChatInputUserMessage.enter_plan_mode/
+  exit_plan_mode` (persisted) + the Start/Create/Send request fields + app.py
+  gate, `PlanModeAgentMessage`/`is_in_plan_mode`, `AgentToolName.EXIT_PLAN_MODE`,
+  the `"exit_plan_mode"` arm of `ToolInteractiveRole`, and the
+  `PLAN_MODE_TOGGLE`/`EXIT_PLAN_MODE_TOOL_BLOCK`/`CAPABILITY_DISABLED_PLAN_MODE`
+  ElementIds. **Frozen JSON schemas refreshed via `bump_migrations.py`**; the
+  generated no-op migration was removed (clean break — old rows are not
+  migrated). This is the first deliberate persisted-schema change of the slim
+  down; the pattern: edit model → `bump_migrations.py "<msg>"` → keep the
+  updated `frozen_pydantic_schemas.json`, delete the no-op migration stub.
+
+**Remaining (mapped, deferred as a focused refactor) — the dead message-class
+definitions + content-block layer:**
+Of the 45 message classes in `interfaces/agents/agent.py` + `state/messages.py`,
+~25 concrete ones have **zero live constructors** (terminal agents produce only
+`TerminalAgentSignalRunnerMessage`, `Environment*RunnerMessage`,
+`RequestSuccessAgentMessage`, the crash/killed runners, `ChatInputUserMessage`,
+`UpdatedArtifactAgentMessage`). The rest are back-compat-only. Removing them is
+one coherent but entangled refactor because the dead types are still *referenced*
+(not constructed) by:
+- **`web/derived.py`** isinstance branches in live computed fields:
+  `is_auto_compacting` (AutoCompacting*), `_is_content_message`/`updated_at`
+  (RequestStarted, RemoveQueuedMessageAgent), `error_detail` (RequestFailure).
+  These branches are dead-for-terminal — simplify, keeping the live logic +
+  the `PersistentRequestCompleteAgentMessage` base (its live subclass is
+  `RequestSuccessAgentMessage`).
+- **`tasks/handlers/run_terminal_agent/runner_support.py`** — isinstance
+  `RequestStoppedAgentMessage` (never constructed → dead branch in live code).
+- **`services/task_service`** — `ResumeAgentResponseRunnerMessage` appears in
+  `Queue[UserMessageUnion | ResumeAgentResponseRunnerMessage]` type sigs.
+- **The content-block layer** (`state/chat_state.py`: `ContentBlockTypes`,
+  `TextBlock`, `ToolUseBlock`, `interactive_role`/`ToolInteractiveRole`,
+  `AskUserQuestionData`) — consumed by `ResponseBlockAgentMessage` /
+  `UserQuestionAnswerMessage`; likely fully dead once those go.
+- **Migrations** reference `ClearContextUserMessage`/`ContextClearedMessage`
+  as string constants (historical — leave the migrations).
+Sequence: simplify the consumers above so nothing references the dead types →
+remove the classes + their discriminated-union members → `bump_migrations.py`
+for the persisted ones (ResponseBlock/UserQuestionAnswer/ClearContext) → drop
+the no-op migration. KEEP every type with a live constructor + the abstract
+bases with live subclasses. Deferred only because it's a large
+discriminated-union + persistence + load-bearing-`derived.py` refactor that
+wants focused attention, not a tail-end rush — it is confirmed dead, not
+uncertain.

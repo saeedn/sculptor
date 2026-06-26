@@ -37,11 +37,6 @@ def _make_test_user_config() -> UserConfig:
         user_id=sculptor.primitives.ids.create_user_id(test_email),
         organization_id=sculptor.primitives.ids.create_organization_id(test_email),
         instance_id=hashlib.md5(os.urandom(64)).hexdigest(),
-        is_error_reporting_enabled=True,
-        is_product_analytics_enabled=True,
-        is_session_recording_enabled=True,
-        is_privacy_policy_consented=True,
-        is_telemetry_level_set=True,
     )
 
 

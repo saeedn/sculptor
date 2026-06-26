@@ -22,10 +22,9 @@ export const RequireOnboarding = ({ children }: RequireOnboardingProps): ReactEl
           meta: { skipWsAck: true },
         });
 
-        // Onboarding is complete once the user has consented (backfilled on
-        // completion) and registered a project. The PATH check is advisory
-        // and never gates completion.
-        const isComplete = configStatus.hasPrivacyConsent && configStatus.hasProject;
+        // Onboarding is complete once the user has registered a project. The
+        // PATH check is advisory and never gates completion.
+        const isComplete = configStatus.hasProject;
 
         if (isComplete) {
           setIsOnboardingComplete(true);

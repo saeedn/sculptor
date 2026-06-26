@@ -25,16 +25,6 @@ class UpdateChannel(StrEnum):
     ALPHA = "ALPHA"
 
 
-class PrivacySettings(SerializableModel):
-    """This model contains a subset of the privacy fields that we support."""
-
-    is_error_reporting_enabled: bool = Field(False, description="Whether to enable error reporting, i.e. Sentry")
-    is_product_analytics_enabled: bool = Field(
-        False, description="Whether to enable product analytics, e.g. through PostHog"
-    )
-    is_session_recording_enabled: bool = Field(False, description="Whether to enable session recording")
-
-
 class PanelLayoutConfig(SerializableModel):
     """Panel layout preferences for the workspace page."""
 
@@ -104,15 +94,6 @@ class UserConfig(SerializableModel):
     """
 
     instance_id: str = Field(default=..., description="Instance ID")
-    is_error_reporting_enabled: bool = Field(default=False, description="Whether to enable error reporting")
-    is_product_analytics_enabled: bool = Field(default=False, description="Whether to enable product analytics")
-    is_session_recording_enabled: bool = Field(default=False, description="Whether to enable session recording")
-    is_privacy_policy_consented: bool = Field(
-        default=False, description="Whether the user consented to our privacy policy"
-    )
-    is_telemetry_level_set: bool = Field(
-        default=False, description="Whether the user consented to our telemetry level"
-    )
     # App configuration:
     keybindings: dict[str, str | None] = Field(
         default_factory=dict, description="User-customized keybinding overrides"
@@ -222,11 +203,6 @@ class UserConfig(SerializableModel):
     @property
     def free_disk_gb_warn_limit(self) -> float:
         return self.min_free_disk_gb * _FREE_DISK_GB_WARN_LIMIT_MULTIPLIER
-
-
-# At Runtime, ensure that all fields in PrivacySettings are also in UserConfig
-for field in PrivacySettings.model_fields:
-    assert field in UserConfig.model_fields, f"PrivacySettings field {field} is missing from UserConfig"
 
 
 def _generate_user_config_field_enum() -> type[StrEnum]:

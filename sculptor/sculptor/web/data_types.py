@@ -462,7 +462,6 @@ class ProjectInitializationRequest(RequestModel):
 class ConfigStatusResponse(SerializableModel):
     """Response for config status check"""
 
-    has_privacy_consent: bool
     has_project: bool
     has_dependencies_passing: bool
 

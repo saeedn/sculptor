@@ -66,7 +66,6 @@ from sculptor.foundation.log_utils import log_and_exit_program
 from sculptor.foundation.processes.local_process import run_blocking
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import model_dump
-from sculptor.foundation.pydantic_utils import model_update
 from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.subprocess_utils import ProcessSetupError
 from sculptor.interfaces.agents.agent import AgentConfigTypes
@@ -109,7 +108,6 @@ from sculptor.services.terminal_agent_registry.bundled import install_bundled_re
 from sculptor.services.terminal_agent_registry.registry import get_registration
 from sculptor.services.terminal_agent_registry.registry import load_registrations
 from sculptor.services.user_config.user_config import get_config_path
-from sculptor.services.user_config.user_config import get_privacy_settings_for_telemetry
 from sculptor.services.user_config.user_config import get_user_config_instance
 from sculptor.services.user_config.user_config import get_user_config_instance_if_set
 from sculptor.services.user_config.user_config import save_config
@@ -2567,14 +2565,12 @@ def get_config_status(
 
     if not user_config:
         return ConfigStatusResponse(
-            has_privacy_consent=False,
             has_project=has_project,
             has_dependencies_passing=False,
         )
 
     deps_passing = shutil.which("git") is not None and shutil.which("claude") is not None
     return ConfigStatusResponse(
-        has_privacy_consent=user_config.is_privacy_policy_consented,
         has_project=has_project,
         has_dependencies_passing=deps_passing,
     )
@@ -2598,24 +2594,18 @@ def get_tool_availability(
 
 @router.post("/api/v1/config/complete")
 def complete_onboarding(request: Request, user_session: UserSession = Depends(get_user_session)) -> None:
-    """Complete onboarding by saving config to disk and initializing services"""
+    """Complete onboarding by persisting the user config to disk.
+
+    Onboarding completion is now implied by having added a project (see
+    `get_config_status`); this endpoint just makes sure the current config
+    (instance id and any defaults) is written to disk.
+    """
     user_config = get_user_config_instance()
     if not user_config:
         raise HTTPException(status_code=400, detail="User config not initialized")
 
-    # Ensure privacy consent and telemetry level are set for returning users
-    # who may have created their account before these fields were added.
-    updates: dict[str, Any] = {}
-    if not user_config.is_privacy_policy_consented:
-        updates["is_privacy_policy_consented"] = True
-    if not user_config.is_telemetry_level_set:
-        updates["is_telemetry_level_set"] = True
-        updates.update(get_privacy_settings_for_telemetry(True).model_dump())
-    if updates:
-        user_config = model_update(user_config, updates)
-        save_config(user_config, get_config_path())
-        set_user_config_instance(user_config)
-
+    save_config(user_config, get_config_path())
+    set_user_config_instance(user_config)
     logger.info("Onboarding completed successfully")
 
 

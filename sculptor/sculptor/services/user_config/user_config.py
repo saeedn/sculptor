@@ -9,9 +9,7 @@ import tomlkit
 from loguru import logger
 from pydantic import ValidationError
 
-from sculptor.config.user_config import PrivacySettings
 from sculptor.config.user_config import UserConfig
-from sculptor.foundation.pydantic_utils import model_update
 from sculptor.utils.build import get_internal_folder
 
 
@@ -64,43 +62,6 @@ def get_execution_instance_id() -> str:
     the first time we generate user config.
     """
     return _EXECUTION_INSTANCE_ID
-
-
-# Telemetry consent is binary: either the SDK-facing flags are on (the default,
-# stipulated by our terms and conditions) or everything is off. Session recording
-# is always written as off — it has no user-facing toggle and the consent
-# endpoints never enable it.
-TELEMETRY_ENABLED_PRIVACY_SETTINGS = PrivacySettings(
-    is_error_reporting_enabled=True,
-    is_product_analytics_enabled=True,
-    is_session_recording_enabled=False,
-)
-TELEMETRY_DISABLED_PRIVACY_SETTINGS = PrivacySettings(
-    is_error_reporting_enabled=False,
-    is_product_analytics_enabled=False,
-    is_session_recording_enabled=False,
-)
-
-
-def get_privacy_settings_for_telemetry(is_enabled: bool) -> PrivacySettings:
-    """Return the canonical privacy settings for the given telemetry consent."""
-    return TELEMETRY_ENABLED_PRIVACY_SETTINGS if is_enabled else TELEMETRY_DISABLED_PRIVACY_SETTINGS
-
-
-def canonicalize_telemetry_flags(config: UserConfig) -> UserConfig:
-    """Collapse a mixed telemetry consent back to the canonical binary.
-
-    The consent endpoints always write is_error_reporting_enabled and
-    is_product_analytics_enabled together, so the flags can only diverge in
-    old or hand-edited config files. Normalize in the conservative
-    direction — everything off — so nobody gains tracking they didn't choose.
-
-    Returns the input instance unchanged (identity-preserving) when the
-    config is already canonical.
-    """
-    if config.is_error_reporting_enabled == config.is_product_analytics_enabled:
-        return config
-    return model_update(config, TELEMETRY_DISABLED_PRIVACY_SETTINGS.model_dump())
 
 
 def _generate_default_config_path() -> Path:
@@ -167,19 +128,8 @@ def save_config(config: UserConfig, config_path: Path) -> None:
 
 
 def _generate_default_user_config_instance() -> UserConfig:
-    """Generates a default, anonymized user config instance.
-
-    This spins up a fake user for onboarding purposes with an instance id.
-
-    This will uses the minimal consent level we support at the given time.
-    """
-
-    return UserConfig(
-        instance_id=get_execution_instance_id(),
-        is_privacy_policy_consented=False,
-        is_telemetry_level_set=False,
-        **TELEMETRY_ENABLED_PRIVACY_SETTINGS.model_dump(),
-    )
+    """Generates a default user config instance with an instance id."""
+    return UserConfig(instance_id=get_execution_instance_id())
 
 
 _DEFAULT_CONFIG_INSTANCE: UserConfig = _generate_default_user_config_instance()
@@ -201,11 +151,7 @@ def initialize_from_file() -> bool:
     if config_path.exists():
         try:
             config = load_config(config_path)
-            canonical_config = canonicalize_telemetry_flags(config)
-            if canonical_config is not config:
-                logger.info("Normalized mixed telemetry consent flags to disabled")
-                save_config(canonical_config, config_path)
-            set_user_config_instance(canonical_config)
+            set_user_config_instance(config)
             return True
         except (ValidationError, InvalidConfigError) as e:
             logger.info("Failed to load config, will require onboarding: {}", e)

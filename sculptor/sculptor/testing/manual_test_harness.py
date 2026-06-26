@@ -51,11 +51,6 @@ def _make_test_user_config() -> UserConfig:
     """Create a UserConfig with test defaults (mirrors resources.py)."""
     return UserConfig(
         instance_id=hashlib.md5(os.urandom(64)).hexdigest(),
-        is_error_reporting_enabled=True,
-        is_product_analytics_enabled=True,
-        is_session_recording_enabled=True,
-        is_privacy_policy_consented=True,
-        is_telemetry_level_set=True,
     )
 
 

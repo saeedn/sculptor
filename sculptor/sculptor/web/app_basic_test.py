@@ -35,7 +35,6 @@ from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.terminal_agent_registry import registry as registry_module
-from sculptor.services.user_config.user_config import get_privacy_settings_for_telemetry
 from sculptor.services.user_config.user_config import set_user_config_instance
 from sculptor.state.messages import ChatInputUserMessage
 from sculptor.web.app import _agent_config_for_request
@@ -724,38 +723,12 @@ def test_create_agent_does_not_send_intro_message_when_agents_exist(
     assert len(saved_messages) == 0
 
 
-# Telemetry consent endpoints.
-
-
-@pytest.fixture
-def telemetry_test_config(tmp_path, monkeypatch) -> Generator[UserConfig, None, None]:
-    """A logged-in user config with telemetry enabled, persisted to a tmp config path."""
-    monkeypatch.setattr(user_config_module, "_CONFIG_PATH", tmp_path / "config.toml")
-    config = UserConfig(
-        instance_id="instance_123",
-        is_privacy_policy_consented=True,
-        is_telemetry_level_set=True,
-        **get_privacy_settings_for_telemetry(True).model_dump(),
-    )
-    set_user_config_instance(config)
-    yield config
-    set_user_config_instance(None)
-
-
-def test_put_user_config_no_op_telemetry_flag_passes_through(
-    client: TestClient, telemetry_test_config: UserConfig
-) -> None:
-    response = client.put(
-        "/api/v1/config",
-        json={"userConfig": {"isProductAnalyticsEnabled": True, "envVarOverrideEnabled": True}},
-    )
-    assert response.status_code == 200, response.text
-    assert response.json()["envVarOverrideEnabled"] is True
+# Config + onboarding endpoints.
 
 
 @pytest.fixture
 def onboarding_test_config(tmp_path, monkeypatch) -> Generator[UserConfig, None, None]:
-    """A fresh anonymous config, as it exists before the onboarding welcome step."""
+    """A fresh anonymous config, as it exists before onboarding completes."""
     monkeypatch.setattr(user_config_module, "_CONFIG_PATH", tmp_path / "config.toml")
     config = user_config_module.get_default_user_config_instance()
     set_user_config_instance(config)
@@ -763,16 +736,21 @@ def onboarding_test_config(tmp_path, monkeypatch) -> Generator[UserConfig, None,
     set_user_config_instance(None)
 
 
-def test_complete_onboarding_backfills_consent_for_anonymous_user(
+def test_put_user_config_passes_through(client: TestClient, onboarding_test_config: UserConfig) -> None:
+    response = client.put(
+        "/api/v1/config",
+        json={"userConfig": {"envVarOverrideEnabled": True}},
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["envVarOverrideEnabled"] is True
+
+
+def test_complete_onboarding_succeeds_for_anonymous_user(
     client: TestClient, onboarding_test_config: UserConfig
 ) -> None:
-    """The new onboarding collects no email or consent, so completing with a
-    fresh anonymous config succeeds and backfills the privacy consent."""
+    """Onboarding completion just persists the current config and returns 200."""
     response = client.post("/api/v1/config/complete")
     assert response.status_code == 200, response.text
-    saved = user_config_module.get_user_config_instance()
-    assert saved.is_privacy_policy_consented is True
-    assert saved.is_telemetry_level_set is True
 
 
 # Agent-type creation path (terminal agents).

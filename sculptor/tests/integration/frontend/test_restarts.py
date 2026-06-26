@@ -7,8 +7,6 @@ agent task-list popover and the rich chat surface do not survive the slim-down,
 so the chat-panel vehicle is replaced by the terminal-agent harness.
 """
 
-import re
-
 import pytest
 from playwright.sync_api import Page
 from playwright.sync_api import expect
@@ -19,6 +17,7 @@ from sculptor.testing.elements.terminal import focus_agent_terminal
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.elements.terminal import wait_for_xterm_substring
 from sculptor.testing.fake_terminal_agent import DEFAULT_DISPLAY_NAME
+from sculptor.testing.fake_terminal_agent import DEFAULT_REGISTRATION_ID
 from sculptor.testing.fake_terminal_agent import register_fake_terminal_agent
 from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
 from sculptor.testing.fake_terminal_agent import write_file
@@ -31,6 +30,9 @@ from sculptor.testing.sculptor_instance import SculptorInstanceFactory
 from sculptor.testing.user_stories import user_story
 
 _TERMINAL_AGENT_TAB_NAME = f"{DEFAULT_DISPLAY_NAME} 1"
+# Mirrors the ``{registration_id}-session`` id the fake runner reports and the
+# resume command renders (see ``register_fake_terminal_agent``).
+_TERMINAL_AGENT_SESSION_ID = f"{DEFAULT_REGISTRATION_ID}-session"
 
 
 def _launch_registered_terminal_agent(instance: SculptorInstance) -> None:
@@ -55,12 +57,14 @@ def _launch_registered_terminal_agent(instance: SculptorInstance) -> None:
     expect(get_agent_terminal_panel(page)).to_be_visible()
     wait_for_xterm_substring(page, "FAKE-TERMINAL-AGENT-READY")
 
-    # The runner reports its session id (via `sculpt signal session-id`) BEFORE
-    # it signals idle, so waiting for the tab dot to settle calm guarantees the
-    # session id reached the backend — otherwise the post-restart resume could
-    # relaunch from scratch (banner FAKE-TERMINAL-AGENT-READY, not RESUMED-...).
-    terminal_tab = agent_tab_bar.get_agent_tab_by_name(_TERMINAL_AGENT_TAB_NAME).first
-    expect(terminal_tab).to_have_attribute("data-dot-status", re.compile(r"^(read|unread)$"))
+    # Wait for the runner's SESSION-REPORTED marker, which it prints only AFTER
+    # its blocking `sculpt signal session-id` call returns. This proves the
+    # session id was persisted before we tear the instance down, so the
+    # post-restart resume can render `RESUMED-<id>` rather than relaunching from
+    # scratch. (Waiting for the tab dot to settle is NOT sufficient: the dot can
+    # read read/unread for reasons unrelated to the session-id signal, racing
+    # teardown against persistence.)
+    wait_for_xterm_substring(page, f"SESSION-REPORTED-{_TERMINAL_AGENT_SESSION_ID}")
 
 
 def _reopen_persisted_workspace(page: Page) -> PlaywrightAgentTabBarElement:
@@ -127,7 +131,7 @@ def test_chats_persist_on_restart(sculptor_instance_factory_: SculptorInstanceFa
         focus_agent_terminal(page)
         # The session id was reported before the restart, so the runner resumes:
         # its rendered resume command echoes "RESUMED-<session id>".
-        wait_for_xterm_substring(page, "RESUMED-fake-terminal-agent-session")
+        wait_for_xterm_substring(page, f"RESUMED-{_TERMINAL_AGENT_SESSION_ID}")
 
         # The relaunched agent is operational, not a dead tab: a fresh DSL
         # command is picked up and run to completion by the resumed runner.

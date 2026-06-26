@@ -139,6 +139,13 @@ def main(argv: list[str] | None = None) -> int:
     # resume) and settle to idle so the tab dot starts calm.
     print(args.banner, flush=True)
     _signal("session-id", args.session_id)
+    # `_signal` blocks until the `sculpt signal` subprocess exits, i.e. until
+    # the session-id POST returned (and was persisted). Printing this marker
+    # afterward gives tests a terminal-output gate that proves the session id
+    # reached the backend before they tear the instance down — the dot settling
+    # to idle alone does NOT guarantee it (the dot can read read/unread for
+    # other reasons, racing teardown against session-id persistence).
+    print(f"SESSION-REPORTED-{args.session_id}", flush=True)
     _signal("idle")
 
     processed: set[str] = set()

@@ -218,6 +218,47 @@ path") — the dead PARSING only, preserving live API fields:
   Message` IS live for file-op highlighting; some fields are "remove breaks
   WorkspacePanelData shape"). A good next chunk.
 
+### Done (2026-06-26, second batch) — frontend plumbing + endpoints
+
+- **Frontend chat-stream plumbing** removed: the dead `TaskDetailState`
+  fields (kept only `inProgressChatMessage` + `artifacts`),
+  `taskDetailReducers.ts`, `suggestionUtils.ts`, `useTaskChatMessages`,
+  `draftQuestionStateAtomFamily`, the dead `utils.ts` helpers
+  (tool-display-name / plan-mode / alpha-chat) and nine unused `Guards.ts`
+  block type-guards, plus `askUserQuestionUtils.ts` / `subagentTree.ts`.
+- **Endpoints** `answer_question` + `clear_context` removed (no live caller;
+  no-ops for terminal agents) + `AnswerQuestionRequest`. `interrupt` kept
+  (live: Stop button + `sculpt agent interrupt`). `UserQuestionAnswerMessage`
+  / `ClearContextUserMessage` kept as inert persisted-schema types.
+
+### NEW, BIGGER finding — the whole `TaskUpdate` streaming subsystem is dead
+
+Tracing the (non-existent) "converter" revealed the real shape: the live
+`StreamingUpdate` builder (`web/streams.py::_convert_to_streaming_update`,
+the `return StreamingUpdate(...)` at ~L791) **never populates
+`task_update_by_task_id`** — it always defaults to `{}`. The only
+`TaskUpdate(...)` constructor in the tree is a test. So:
+- **Backend:** `web/derived.py::TaskUpdate` (the whole class) and
+  `StreamingUpdate.task_update_by_task_id` (web/streams.py) are dead.
+- **Frontend (cascade):** `data.taskUpdateByTaskId` is always empty, so the
+  entire `useUnifiedStream` taskUpdate block, `updateTaskDetail`,
+  the `taskDetails` atoms (`inProgressChatMessage`/`artifacts`),
+  `useTaskDetail`, `useArtifactSync` + the `taskUpdatedArtifacts` atoms, and
+  `useActiveFileOperation` never receive data. The file-op highlighting that
+  `useActiveFileOperation` feeds in `ChangesTreeView.tsx` / `FileTree.tsx`
+  therefore never activates.
+
+This is **deferred as its own pass** — not because it's uncertain (it's
+confirmed dead) but because it's one coupled backend+frontend refactor that
+reaches into live-rendered file-browser components, so it wants a dedicated,
+separately-reviewed removal rather than a tail-end hack. Note this also means
+the `inProgressChatMessage`/`artifacts` fields kept in the previous frontend
+commit are themselves dead (always-empty) and go in this same pass.
+Sequence: (1) backend remove `TaskUpdate` + `task_update_by_task_id`,
+`just generate-api`; (2) frontend remove the `useUnifiedStream` block →
+`taskDetails`/`useTaskDetail`/`useArtifactSync`/`useActiveFileOperation` →
+strip the highlighting from `ChangesTreeView`/`FileTree`.
+
 ---
 
 ## 1. Settings → Agent page + all agent-behavior vestiges

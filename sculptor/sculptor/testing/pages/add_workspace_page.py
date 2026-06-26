@@ -60,9 +60,6 @@ class PlaywrightAddWorkspacePage(PlaywrightProjectLayoutPage):
         expect(branch_option).to_have_count(1)
         branch_option.click()
 
-    def get_chat_panel(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.CHAT_PANEL)
-
     def get_terminal_panel(self) -> Locator:
         """The agent terminal panel — the main pane of a (terminal-only) workspace."""
         return self.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)

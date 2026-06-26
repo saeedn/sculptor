@@ -8,7 +8,6 @@ from sculptor.constants import ElementIDs
 from sculptor.testing.elements.actions_panel import PlaywrightActionsPanelElement
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
 from sculptor.testing.elements.changes_panel import PlaywrightChangesPanelElement
-from sculptor.testing.elements.chat_panel import PlaywrightChatPanelElement
 from sculptor.testing.elements.compaction_header import PlaywrightCompactionBarElement
 from sculptor.testing.elements.compaction_panel import PlaywrightCompactionPanelElement
 from sculptor.testing.elements.diff_panel import PlaywrightDiffPanelElement
@@ -18,10 +17,6 @@ from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
 
 
 class PlaywrightTaskPage(PlaywrightProjectLayoutPage):
-    def get_chat_panel(self) -> PlaywrightChatPanelElement:
-        chat_panel = self.get_by_test_id(ElementIDs.CHAT_PANEL)
-        return PlaywrightChatPanelElement(locator=chat_panel, page=self._page)
-
     def get_terminal_panel(self) -> Locator:
         """Get the agent terminal panel, the main pane of a (terminal-only) workspace.
 

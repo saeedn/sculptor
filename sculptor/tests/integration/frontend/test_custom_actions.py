@@ -9,7 +9,6 @@ All tests use the TestingAgent — no snapshots are needed.
 from playwright.sync_api import expect
 
 from sculptor.testing.elements.action_dialog import get_action_dialog
-from sculptor.testing.elements.base import insert_mention_into_tiptap
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.fake_terminal_agent import add_registered_fake_terminal_agent
 from sculptor.testing.pages.settings_page import PlaywrightSettingsPage
@@ -184,46 +183,6 @@ def test_action_persists_across_page_reload(sculptor_instance_: SculptorInstance
 
     action_row = actions_section.get_action_row_by_name("Persistent Action")
     expect(action_row).to_be_visible()
-
-
-@user_story("to see clean prompt text in settings when an action contains a skill mention")
-def test_action_with_skill_mention_displays_cleanly_in_settings(sculptor_instance_: SculptorInstance) -> None:
-    """Create an action with a slash-command skill mention and verify the
-    settings page shows the prompt as plain text, not raw HTML.
-
-    When the action dialog's TipTap editor serializes a mention node via the
-    tiptap-markdown extension, it should produce clean text (e.g. "/skill-name")
-    rather than raw HTML spans with data attributes.
-    """
-    page = sculptor_instance_.page
-
-    settings_page = navigate_to_settings_page(page=page)
-    actions_section = settings_page.click_on_actions()
-    actions_section.get_add_action_button().click()
-
-    dialog = get_action_dialog(page)
-    expect(dialog).to_be_visible()
-    dialog.fill_name("Skill Action")
-
-    # Insert a mention node directly via TipTap's API (bypasses autocomplete UI).
-    # This simulates what happens when a user selects a skill from the "/" popover.
-    prompt_input = dialog.get_prompt_input()
-    expect(prompt_input).to_be_visible()
-    insert_mention_into_tiptap(prompt_input, "/fix-bug", "/")
-
-    expect(dialog.get_mention_span()).to_be_visible()
-
-    dialog.click_save()
-    expect(dialog).not_to_be_visible()
-
-    expect(settings_page.get_toast()).to_be_visible()
-
-    # The prompt preview must NOT contain raw HTML attributes — if it does,
-    # the tiptap-markdown serializer is leaking HTML into the stored prompt.
-    action_row = actions_section.get_action_row_by_name("Skill Action")
-    expect(action_row).to_be_visible()
-    expect(action_row).not_to_contain_text("data-mention-suggestion-char")
-    expect(action_row).not_to_contain_text("data-label")
 
 
 # Tests: Delete group also deletes actions (SCU-308)

@@ -142,28 +142,6 @@ def type_into_tiptap(page: Page, locator: Locator, text: str) -> None:
     )
 
 
-def insert_mention_into_tiptap(locator: Locator, mention_id: str, suggestion_char: str) -> None:
-    """Insert a mention node into a TipTap editor element.
-
-    Uses TipTap's ``insertContent()`` API to insert a mention node directly,
-    bypassing the autocomplete UI.  This is useful for testing how mention
-    nodes are serialized and stored without depending on the suggestion
-    popover's keyboard interactions.
-    """
-    locator.evaluate(
-        f"""(el, args) => {{
-            const findEditor = (el) => {{ {_FIND_TIPTAP_EDITOR_JS} }};
-            const editor = findEditor(el);
-            editor.commands.focus("end");
-            editor.commands.insertContent({{
-                type: 'mention',
-                attrs: {{ id: args.id, mentionSuggestionChar: args.char }},
-            }});
-        }}""",
-        {"id": mention_id, "char": suggestion_char},
-    )
-
-
 def clear_tiptap(locator: Locator) -> None:
     """Clear all content from a TipTap editor element.
 

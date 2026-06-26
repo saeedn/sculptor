@@ -40,8 +40,3 @@ def _set_user_config_flag(page: Page, field: str, value: object) -> None:
 
     # Wait for Tiptap to re-initialize after reload (if on a workspace page).
     wait_for_tiptap_ready(page)
-
-
-def enable_default_fast_mode(page: Page) -> None:
-    """Enable the default-fast-mode user preference."""
-    _set_user_config_flag(page, "defaultFastMode", True)

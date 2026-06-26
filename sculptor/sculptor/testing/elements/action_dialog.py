@@ -58,10 +58,6 @@ class PlaywrightActionDialogElement(PlaywrightIntegrationTestElement):
         """Get the prompt editor (TipTap contenteditable) locator."""
         return self.get_by_test_id(ElementIDs.ACTION_DIALOG_PROMPT_INPUT)
 
-    def get_mention_span(self) -> Locator:
-        """Get the mention span inside the prompt editor."""
-        return self.get_prompt_input().get_by_test_id(ElementIDs.MENTION_SPAN)
-
     def get_group_select(self) -> Locator:
         """Get the group select trigger."""
         return self.get_by_test_id(ElementIDs.ACTION_DIALOG_GROUP_SELECT)

@@ -54,21 +54,36 @@ by mistake).
   ListContainer/SplitSuggestionLayout, fuzzyFileScorer). `skillBadge`,
   `SkillHoverContent` (live SkillsPanel) and `FileUploadUtils` kept.
 
-**Genuinely remaining (each a bounded, separate follow-up):**
-- **Telemetry-consent fields + `TelemetryInfo`** — kept because the
-  `is_privacy_policy_consented` flag currently doubles as the
-  onboarding-complete marker. Finishing telemetry removal means rewiring
-  the onboarding gate (e.g. gate on `has_project` or an explicit flag) —
-  a deliberate behavior change on the first-run path.
-- **The model-switcher infra** (`ModelOption`, `get_available_models`/
-  `get_selected_model_id`, `AgentTaskStateV2.available_models`/
-  `current_model`, `ModelsAvailableAgentMessage`, the `set_model`
-  endpoint): string-based, doesn't reference the removed enums, now dead
-  (pi is gone). Bounded backend cleanup.
-- **Integration-test triage** for the removed surfaces (mention POMs,
-  Agent/Privacy settings POMs, model selectors) — the unit suite is green;
-  integration tests that exercise removed UI need the slim-down's
-  REQ-TEST delete/rewrite pass.
+**Also done & committed (second pass):**
+- **Telemetry-consent fields + dead telemetry plumbing** — removed the 5
+  consent fields, `PrivacySettings`, `get_privacy_settings_for_telemetry`/
+  `canonicalize_telemetry_flags`, and the orphaned `TelemetryInfo` /
+  `telemetry_info.py`. **Onboarding gate rewired**: completion is now
+  implied by having a project (`RequireOnboarding` gates on `hasProject`;
+  `get_config_status` dropped `has_privacy_consent`).
+- **The model-switcher infra** — removed `ModelOption`, the harness
+  `get_available_models`/`get_selected_model_id` + `supports_model_selection`
+  capability, `AgentTaskStateV2.available_models`/`current_model`,
+  `ModelsAvailableAgentMessage`, `SetModelUserMessage`, the `set_model`
+  endpoint, `TaskService.update_available_models`, the derived task-view
+  fields, and `PiSetModelError`. Frozen schemas refreshed.
+- **Integration suite** — triaged against the removals: deleted dead POMs
+  (`task_starter`, `chat_panel`, `chat_search_bar`, `entity_picker`) and
+  helpers (`insert_mention_into_tiptap`, `get_mention_span`,
+  `expect_chat_replaces_terminal_panel`, `get_chat_panel`,
+  `enable_default_fast_mode`), removed the obsolete skill-mention test and
+  the pi `harness` fixture, and rewrote the onboarding test for the new
+  gate. Collection is clean (435 tests) and the changed-surface tests pass.
+
+**Genuinely remaining (one cohesive follow-up — the dead chat render layer):**
+- The `chat-alpha/` render tree leftovers (`AlphaMarkdownBlock`, the
+  `alpha_chat_view` POM), plan-mode (`enter_plan_mode`/`exit_plan_mode` +
+  `PLAN_MODE_TOGGLE`/`EXIT_PLAN_MODE_TOOL_BLOCK`), and the now-inert
+  ElementId string constants for all the removed chat/mention/model surface
+  (`MODEL_SELECTOR`, `MENTION_*`, `ENTITY_MENTION_*`, `CHAT_PANEL`,
+  `CHAT_SEARCH_*`, `ALPHA_CHAT_*`, etc.). These are inert (enum strings /
+  unmounted components) and entangled with each other, so they want one
+  deliberate leaf-first removal rather than a piecemeal pass.
 
 ---
 

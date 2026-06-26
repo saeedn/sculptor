@@ -104,6 +104,62 @@ by mistake).
 
 ---
 
+## Execution status (2026-06-26) — orphan sweep
+
+A fresh evidence-based dead-code sweep (verifying zero live inbound
+references) cleared the unambiguous, independent leftovers in four
+reviewable commits:
+
+1. **Backend `DefaultAgentWrapper` cluster** — the rich-agent message-loop
+   wrapper is unreachable now the product is terminal-agent-only (nothing
+   constructs/subclasses it outside its own test; the live path is
+   `agents/terminal_agent` + `tasks/handlers/run_terminal_agent`). Deleted
+   `agents/default/{agent_wrapper.py,agent_wrapper_test.py,utils.py,
+   errors.py}` and trimmed `agents/default/constants.py` to just
+   `WORKTREE_MODE_PROMPT` (dropping `ENTITY_MENTIONS_SYSTEM_PROMPT`,
+   `DEFAULT_WAIT_TIMEOUT`, `REMOVED_MESSAGE_IDS_STATE_FILE`,
+   `FILE_CHANGE_TOOL_NAMES`).
+2. **Dead task-capability hooks/atoms** — 12 unused `useTaskHelpers`
+   selectors + their `atoms/tasks.ts` atomFamilies + the orphaned
+   `tasks.test.ts` cases. Kept status/skills/interruption/automated-prompts.
+3. **Dead test POMs + ElementIds** — deleted the unimported
+   `alpha_chat_view` / `alpha_prompt_navigator` / `settings_update` /
+   `agent_tasks_popover` POMs (note: `agent_tasks_popover` was a *fourth*
+   dead POM not previously listed — it was the only referrer of
+   `STATUS_PILL`). Removed the model/effort/fast-mode, mention, and
+   chat-alpha (`ALPHA_CHAT_*`/`STATUS_PILL*`/`TURN_FOOTER*`/
+   `STREAMING_CURSOR`/`TOKEN_POPOVER`/`MENTION_LIST`/`MENTION_SPAN`)
+   ElementIds; kept interleaved live ids (`ALPHA_JUMP_TO_BOTTOM_*`,
+   `SCULPT_SENT_VIA_BADGE`, `DEBUG_CHAT_*`).
+4. **Unused npm deps** — `@sentry/react`, `posthog-js`,
+   `@tiptap/extension-mention`, `@tiptap/suggestion`, `fuse.js`,
+   `remark-emoji`, `change-case` (28 packages total). depcheck
+   false-positives (StarterKit-bundled `@tiptap/extension-*`, fontsource,
+   `@radix-ui/colors`, playwright, electron-forge makers) intentionally kept.
+
+`just format && just check && just test-unit` green after each.
+
+### Plan-mode is NOT cleanly dead — DEFERRED (correction)
+
+The earlier note above lumped plan-mode in with the inert chat surface.
+That is **wrong / too hasty**, and the sweep confirmed why: terminal
+agents have **no message stream** (every `TerminalHarness` capability is
+`False`), so their waiting/busy state — *including plan mode* — is driven
+by shell **hooks** (`claude-code-hooks.json`: `PreToolUse` on
+`ExitPlanMode` → `sculpt signal waiting`), NOT by the Python `Harness`
+message-parsing. The Python plan-mode cluster (`is_exit_plan_mode_tool`
+and the other base-`Harness` stubs, `make_plan_approval_question`,
+`PlanModeAgentMessage`/`is_in_plan_mode`, the `derived.py` WAITING
+branches, the `enter_plan_mode`/`exit_plan_mode` request+message fields,
+`EXIT_PLAN_MODE` tool name, `PLAN_MODE_TOGGLE`/`EXIT_PLAN_MODE_TOOL_BLOCK`
+ElementIds, the `ToolInteractiveRole` "exit_plan_mode" literal) is
+inert-but-entangled with the **live** AskUserQuestion message-parsing path
+and the deferred dead message-parsing layer. It wants the same deliberate
+leaf-first pass as the rest of that layer, not a quick excision — so it
+was left untouched this round.
+
+---
+
 ## 1. Settings → Agent page + all agent-behavior vestiges
 
 We no longer control agent behavior (model, fast mode, thinking effort)

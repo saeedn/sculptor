@@ -102,7 +102,7 @@ export const sharedCss = (root: string): import("vite").CSSOptions => ({
  * was previously only type-imported or consumed transitively, add it here.
  */
 export const sharedOptimizeDeps: { include: Array<string> } = {
-  include: ["marked", "@radix-ui/react-popover", "@tiptap/suggestion"],
+  include: ["marked", "@radix-ui/react-popover"],
 };
 
 /**

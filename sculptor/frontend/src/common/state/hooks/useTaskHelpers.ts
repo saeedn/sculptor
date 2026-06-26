@@ -5,7 +5,6 @@ import {
   taskAcceptsAutomatedPromptsAtomFamily,
   taskAtomFamily,
   taskStatusAtomFamily,
-  taskSupportsInterruptionAtomFamily,
   taskSupportsSkillsAtomFamily,
 } from "../atoms/tasks";
 
@@ -19,10 +18,6 @@ export const useTaskStatus = (taskId: string): TaskStatus | undefined => useAtom
 /** Subscribe to only the task's `supports_skills` capability. */
 export const useTaskSupportsSkills = (taskId: string): boolean | undefined =>
   useAtomValue(taskSupportsSkillsAtomFamily(taskId));
-
-/** Subscribe to only the task's `supports_interruption` capability. */
-export const useTaskSupportsInterruption = (taskId: string): boolean | undefined =>
-  useAtomValue(taskSupportsInterruptionAtomFamily(taskId));
 
 /** Subscribe to only the task's `accepts_automated_prompts` field — true
  * only for registered terminal agents whose registration opted in. */

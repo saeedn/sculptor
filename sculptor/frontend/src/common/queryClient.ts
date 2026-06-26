@@ -89,7 +89,7 @@ export type BackendQueryKeyResult = {
 /**
  * Standard shape every `useQuery`-backed hook returns — workspace-scoped,
  * project-scoped, or otherwise. Keeps the status surface uniform across hooks
- * (`useWorkspaceDiff`, `useWorkspaceFiles`, `useProjectSkills`, …) so consumers
+ * (`useWorkspaceDiff`, `useWorkspaceFiles`, `useWorkspaceSkills`, …) so consumers
  * always know to expect `{ data, isPending, isFetching, isError, error, refetch }`.
  *
  * `isPending` is true whenever the hook has nothing to show — covering both

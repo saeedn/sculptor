@@ -129,15 +129,6 @@ class ElementIDs(StrEnum):
     ASK_USER_QUESTION_ANSWERED_OPTION = "ASK_USER_QUESTION_ANSWERED_OPTION"
     ASK_USER_QUESTION_CUSTOM_TEXT = "ASK_USER_QUESTION_CUSTOM_TEXT"
 
-    # Capability-gated affordances rendered disabled-with-tooltip (the shared
-    # CapabilityGate treatment) when the active task's harness lacks the
-    # capability. One test hook per interactive surface that can host a disabled
-    # state; surfaces that cannot (picker rows, the skills panel, the
-    # model-gated fast-mode toggle) are suppressed and asserted absent instead.
-    CAPABILITY_DISABLED_STOP = "CAPABILITY_DISABLED_STOP"
-    CAPABILITY_DISABLED_QUEUED_INTERRUPT = "CAPABILITY_DISABLED_QUEUED_INTERRUPT"
-    CAPABILITY_DISABLED_MODEL_SELECTION = "CAPABILITY_DISABLED_MODEL_SELECTION"
-
     # Prompt Navigator (dot rail)
     PROMPT_NAVIGATOR_DOT = "PROMPT_NAVIGATOR_DOT"
     PROMPT_NAVIGATOR_UP_BUTTON = "PROMPT_NAVIGATOR_UP_BUTTON"

@@ -98,10 +98,6 @@ export const taskSupportsSkillsAtomFamily = atomFamily<string, Atom<boolean | un
   atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsSkills),
 );
 
-export const taskSupportsInterruptionAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsInterruption),
-);
-
 export const taskAcceptsAutomatedPromptsAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
   atom((get) => get(taskAtomFamily(taskId))?.acceptsAutomatedPrompts),
 );

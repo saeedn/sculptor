@@ -10,15 +10,12 @@ import abc
 import datetime
 from enum import StrEnum
 from typing import Annotated
-from typing import Mapping
 
 from pydantic import Field
 from pydantic import Tag
 
-from sculptor.foundation.pydantic_serialization import MutableModel
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import build_discriminator
-from sculptor.foundation.secrets_utils import Secret
 from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.time_utils import get_current_time
 from sculptor.interfaces.agents.artifacts import FileAgentArtifact
@@ -30,40 +27,8 @@ from sculptor.primitives.ids import TaskID as TaskID
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import Message
 from sculptor.state.messages import PersistentAgentMessage
 from sculptor.state.messages import PersistentMessage
-
-
-class Agent(MutableModel, abc.ABC):
-    @abc.abstractmethod
-    def pop_messages(self) -> list[MessageTypes]: ...
-
-    @abc.abstractmethod
-    def push_message(self, message: Message) -> None: ...
-
-    @abc.abstractmethod
-    def terminate(self, force_kill_seconds: float = 5.0) -> None: ...
-
-    @abc.abstractmethod
-    def poll(self) -> int | None: ...
-
-    @abc.abstractmethod
-    def wait(self, timeout: float) -> int:
-        """
-        Wait for the agent to finish running and return the exit code.
-
-        Raises:
-            AgentCrashed: If some part of the agent code failed with an unexpected exception.
-            WaitTimeoutAgentError: If the agent did not finish within the specified timeout.
-        """
-
-    @abc.abstractmethod
-    def start(
-        self,
-        secrets: Mapping[str, str | Secret],
-    ) -> None: ...
-
 
 EnvironmentTypes = LocalEnvironment
 

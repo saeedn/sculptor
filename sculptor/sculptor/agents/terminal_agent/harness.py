@@ -5,8 +5,7 @@ terminal and Sculptor never parses their output. There is no message
 stream, so every capability — including `supports_chat_interface`, the
 coarse main-panel switch — is uniformly false.
 
-Agent construction never happens for terminal configs: they are dispatched
-to the dedicated terminal task handler, not `create_agent_for_run`.
+Terminal configs are dispatched to the dedicated terminal task handler.
 """
 
 from __future__ import annotations

@@ -1,8 +1,8 @@
 """Tests for the harness registry's read-side resolver.
 
-Terminal-config resolution and the `create_agent_for_run` rejection are
-covered in `agents/terminal_agent/harness_test.py`; this file pins the
-registry's behavior on an unknown config.
+Terminal-config resolution is covered in
+`agents/terminal_agent/harness_test.py`; this file pins the registry's
+behavior on an unknown config.
 """
 
 import pytest

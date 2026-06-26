@@ -10,9 +10,9 @@ what every harness-agnostic consumer reads polymorphically:
   via `Harness.capabilities()`; gated methods stay on the ABC with
   trivial-answer defaults for protocol-level per-call questions no
   bool can express.
-- *polymorphic helpers* — `get_jsonl_path_for_working_directory`,
-  `get_tasks_path`. Both return `None` by default; harnesses with an
-  on-disk session layout override them.
+- *polymorphic helpers* — `get_jsonl_path_for_working_directory`, which
+  returns `None` by default; harnesses with an on-disk session layout
+  override it.
 
 Concrete-harness addresses (binary key, session-directory name, MCP
 identifiers, lifecycle-hook callback id, system-prompt content, etc.) are
@@ -32,18 +32,10 @@ from __future__ import annotations
 
 import abc
 from pathlib import Path
-from typing import Callable
 
 from pydantic import BaseModel
-from pydantic import ConfigDict
 
-from sculptor.database.models import AgentTaskInputsV2
-from sculptor.database.models import AgentTaskStateV2
-from sculptor.database.models import Project
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.interfaces.environments.agent_execution_environment import AgentExecutionEnvironment
-from sculptor.primitives.ids import TaskID
-from sculptor.services.workspace_service.api import WorkspaceService
 
 
 class HarnessCapabilities(SerializableModel):
@@ -85,25 +77,6 @@ class HarnessCapabilities(SerializableModel):
     supports_file_references: bool
 
 
-class AgentRunContext(BaseModel):
-    """Per-run inputs to `create_agent_for_run`.
-
-    Transient value object holding live runtime objects (environment,
-    workspace service); never persisted.
-    """
-
-    model_config = ConfigDict(frozen=True, arbitrary_types_allowed=True, extra="forbid")
-
-    task_data: AgentTaskInputsV2
-    task_state: AgentTaskStateV2
-    environment: AgentExecutionEnvironment
-    project: Project
-    task_id: TaskID
-    workspace_service: WorkspaceService
-    in_testing: bool = False
-    on_diff_needed: Callable[[], None] | None = None
-
-
 class Harness(BaseModel, abc.ABC):
     """The harness-agnostic seam — see this module's docstring and architecture.md §1.1."""
 
@@ -142,14 +115,5 @@ class Harness(BaseModel, abc.ABC):
 
         Resolved polymorphically by harness-agnostic callers that hold a
         host-side working directory (e.g. the web diagnostics endpoint).
-        """
-        return None
-
-    def get_tasks_path(self, environment: AgentExecutionEnvironment, session_id: str) -> Path | None:
-        """Return the per-session tasks directory the harness uses, or
-        `None` when the harness has no on-disk task layout.
-
-        Called from the generic artifact-creation layer with the harness
-        in hand.
         """
         return None

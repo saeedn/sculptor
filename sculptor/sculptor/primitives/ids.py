@@ -122,10 +122,6 @@ class WorkspaceID(ObjectID):
     tag: str = "ws"
 
 
-class ObjectSnapshotID(ObjectID):
-    tag: str = "snap"
-
-
 class LocalEnvironmentID(ExternalID):
     """ID for a local environment (sandbox path)."""
 

@@ -1,36 +1,5 @@
 from typing import Final
 
-from sculptor.interfaces.agents.tool_names import AgentToolName
-
-DEFAULT_WAIT_TIMEOUT: Final[float] = 30.0
-REMOVED_MESSAGE_IDS_STATE_FILE: Final[str] = "removed_message_ids"
-
-
-FILE_CHANGE_TOOL_NAMES: Final[tuple[AgentToolName, ...]] = (
-    AgentToolName.EDIT,
-    AgentToolName.WRITE,
-    AgentToolName.MULTI_EDIT,
-)
-
-
-ENTITY_MENTIONS_SYSTEM_PROMPT: Final[str] = """
-<Entity mentions>
-When a user message contains text of the form %[type:id|display_name], it refers
-to a Sculptor entity:
-- type is one of: repository, workspace, agent
-- id is the opaque backend identifier for that entity
-- display_name is the human-readable name
-
-The id can be used directly with sculpt CLI commands. For example:
-  sculpt workspace show <id>
-  sculpt agent list --workspace <id>
-  sculpt agent show <id>
-
-Do not assume the display_name is a valid argument to sculpt commands — always
-use the id.
-</Entity mentions>
-"""
-
 # Mode-specific system prompt content
 WORKTREE_MODE_PROMPT: Final[str] = """
 <Environment mode>

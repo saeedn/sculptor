@@ -73,7 +73,21 @@ by mistake).
   `expect_chat_replaces_terminal_panel`, `get_chat_panel`,
   `enable_default_fast_mode`), removed the obsolete skill-mention test and
   the pi `harness` fixture, and rewrote the onboarding test for the new
-  gate. Collection is clean (435 tests) and the changed-surface tests pass.
+  gate. Also dropped the obsolete `Cmd+I` focus test (the `focus_input`
+  keybinding was removed) and stripped `--model`/`model` from the sculpt
+  CLI integration tests (the CLI lost its `--model` option). A full
+  `RUN_ALL=1` pass of `frontend` + `regression` (425 tests) is green
+  **except** one pre-existing failure (see below).
+
+**One pre-existing failure (NOT a slim-down regression):**
+- `test_restarts.py::test_chats_persist_on_restart` fails deterministically.
+  Verified it **also fails on the branch base `051228e494`** (a clean
+  checkout, before any of these removals), and git confirms none of the
+  resume-path files (`fake_terminal_agent.py`, `run_terminal_agent/v1.py`,
+  `test_restarts.py`) were touched by this work. The relaunched terminal
+  shows the launch banner instead of `RESUMED-…`, i.e. `terminal_session_id`
+  isn't available on resume — a terminal session-id persistence/timing issue
+  in the (memory-flagged fragile) restart infra, to be tracked separately.
 
 **Genuinely remaining (one cohesive follow-up — the dead chat render layer):**
 - The `chat-alpha/` render tree leftovers (`AlphaMarkdownBlock`, the

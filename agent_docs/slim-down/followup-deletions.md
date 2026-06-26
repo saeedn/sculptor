@@ -611,3 +611,41 @@ bases with live subclasses. Deferred only because it's a large
 discriminated-union + persistence + load-bearing-`derived.py` refactor that
 wants focused attention, not a tail-end rush — it is confirmed dead, not
 uncertain.
+
+---
+
+## Message-model + content-block removal DONE (2026-06-26, fourth batch)
+
+The deferred "dead message-class definitions + content-block layer" is now
+removed in three commits (each `just check` + `just test-unit` green):
+
+1. **Consumer simplification** — dropped the now-impossible isinstance
+   branches in the live code that referenced never-constructed types:
+   `derived.py` (`_is_content_message`, `error_detail`, removed the
+   always-false `is_auto_compacting` field), `runner_support.py`
+   (`_is_truly_processed_completion`), `task_service` queue type signatures,
+   and `SavedAgentMessage.is_partial` (ephemeral partials are never persisted).
+2. **Message classes** — removed the ~25 zero-constructor classes and
+   collapsed the discriminated unions to the live set (ChatInput +
+   Interrupt/RemoveQueued user msgs, runner lifecycle/crash/signal msgs,
+   RequestSuccess + RequestComplete bases, UpdatedArtifact). Frozen JSON
+   schemas refreshed via `bump_migrations.py`; no-op migration stub removed
+   (clean break, old rows not migrated).
+3. **Content-block + SDK layer** — `state/chat_state.py` (ContentBlock/
+   TextBlock/ToolUseBlock/AskUserQuestionData/ChatMessage/TurnMetrics/…) and
+   `state/claude_state.py` (Claude SDK response parser) had no live consumer
+   left; deleted both (+ the unused `ParsedAgentResponseType` alias and
+   `SubmittedQuestionAnswers`). The sculpt CLI's `message_formatting` works on
+   raw dicts, not these types, so it's unaffected.
+
+Net for this batch: ~3200 lines removed. `state/` now holds only the live
+`messages.py` (the message base classes + ChatInputUserMessage).
+
+**Minor vestiges deliberately left** (low value / disproportionate cost):
+- `SavedAgentMessage.is_partial` — a DB column now always False; dropping it
+  is a SQL column migration, not worth it for a bool.
+- `TaskStatus.REQUEST_ERROR` — enum value never returned now (frontend may
+  still map it).
+- A stale `# RequestFailureAgentMessage` mention in
+  `foundation/subprocess_utils.py` documenting genuine shutdown-ordering
+  rationale.

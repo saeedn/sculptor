@@ -21,7 +21,6 @@ from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.services.task_service.api import TaskMessageContainer
 from sculptor.services.terminal_agent_registry.registry import TerminalAgentRegistration
 from sculptor.services.workspace_service.api import GitOperationResult
-from sculptor.state.chat_state import AskUserQuestionData
 from sculptor.state.messages import Message
 
 
@@ -281,13 +280,6 @@ class SendMessageRequest(RequestModel):
     enter_plan_mode: bool = False
     exit_plan_mode: bool = False
     sent_via: str | None = None
-
-
-class AnswerQuestionRequest(RequestModel):
-    answers: dict[str, str]
-    notes: dict[str, str] = Field(default_factory=dict)
-    question_data: AskUserQuestionData
-    tool_use_id: str
 
 
 class WorkspaceSetupCommandRequest(RequestModel):

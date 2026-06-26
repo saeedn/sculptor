@@ -70,7 +70,6 @@ from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.subprocess_utils import ProcessSetupError
 from sculptor.interfaces.agents.agent import AgentConfigTypes
 from sculptor.interfaces.agents.agent import AgentMessageID
-from sculptor.interfaces.agents.agent import ClearContextUserMessage
 from sculptor.interfaces.agents.agent import InterruptProcessUserMessage
 from sculptor.interfaces.agents.agent import PersistentRequestCompleteAgentMessage
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
@@ -78,7 +77,6 @@ from sculptor.interfaces.agents.agent import RemoveQueuedMessageUserMessage
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
-from sculptor.interfaces.agents.agent import UserQuestionAnswerMessage
 from sculptor.interfaces.agents.agent import is_terminal_agent_config
 from sculptor.interfaces.agents.artifacts import ArtifactType
 from sculptor.interfaces.agents.artifacts import DiffArtifact
@@ -151,7 +149,6 @@ from sculptor.web.auth import SessionTokenMiddleware
 from sculptor.web.auth import UserSession
 from sculptor.web.data_types import AgentDiagnosticsResponse
 from sculptor.web.data_types import AgentTypeName
-from sculptor.web.data_types import AnswerQuestionRequest
 from sculptor.web.data_types import ArtifactDataResponse
 from sculptor.web.data_types import BatchUpdateOpenStateRequest
 from sculptor.web.data_types import BranchExistsResponse
@@ -2286,72 +2283,6 @@ def send_workspace_agent_messages(
             task_id=task.object_id,
             transaction=transaction,
         )
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/answer_question")
-def answer_workspace_agent_question(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    answer_request: AnswerQuestionRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Submit answers to an AskUserQuestion tool invocation."""
-    services = get_services_from_request_or_websocket(request)
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-        # Persist the answer message. Since UserQuestionAnswerMessage is a PersistentUserMessage,
-        # the agent runner picks it up and sends it to the agent to resume processing.
-        answer_message = UserQuestionAnswerMessage(
-            message_id=AgentMessageID(),
-            answers=answer_request.answers,
-            notes=answer_request.notes,
-            question_data=answer_request.question_data,
-            tool_use_id=answer_request.tool_use_id,
-        )
-        services.task_service.create_message(
-            message=answer_message,
-            task_id=task.object_id,
-            transaction=transaction,
-        )
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/clear_context")
-def clear_workspace_agent_context(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Clear agent context."""
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-        # Defense-in-depth mirror of the frontend context-reset gate (and the
-        # plan-mode guard on the messages endpoint): a harness that cannot reset
-        # context must not be sent a ClearContextUserMessage.
-        assert isinstance(task.input_data, AgentTaskInputsV2), (
-            f"Expected AgentTaskInputsV2 for clear-context endpoint, got {type(task.input_data).__name__}"
-        )
-        harness = get_harness_for_config(task.input_data.agent_config)
-        if not harness.capabilities().supports_context_reset:
-            raise HTTPException(
-                status_code=400,
-                detail="context reset requires a harness that supports it",
-            )
-
-    message_id = AgentMessageID()
-    with await_message_response(message_id, task.object_id, services):
-        with user_session.open_transaction(services) as transaction:
-            services.task_service.create_message(
-                message=ClearContextUserMessage(message_id=message_id),
-                task_id=task.object_id,
-                transaction=transaction,
-            )
 
 
 @router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/interrupt")

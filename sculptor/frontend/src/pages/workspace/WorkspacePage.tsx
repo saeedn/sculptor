@@ -21,7 +21,6 @@ import { BottomBar } from "./components/BottomBar";
 import { ChatPanelContent } from "./components/ChatPanelContent.tsx";
 import { DiffSplitContainer } from "./components/DiffSplitContainer.tsx";
 import { WorkspaceBanner } from "./components/WorkspaceBanner.tsx";
-import { useArtifactSync } from "./hooks/useArtifactSync";
 import styles from "./WorkspacePage.module.scss";
 
 const ZenTopGradient = (): ReactElement | null => {
@@ -33,8 +32,6 @@ const ZenTopGradient = (): ReactElement | null => {
 const WorkspacePageContent = ({ taskID }: { taskID: string }): ReactElement => {
   const { workspaceID } = useWorkspacePageParams();
 
-  // Sync artifacts for the currently viewed task only
-  useArtifactSync(workspaceID, taskID);
   usePanelLayoutSync();
 
   // Pre-warm the file list cache so @-mention fuzzy search has data ready

@@ -51,7 +51,6 @@ from sculptor.web.data_types import WorkspaceSetupStatus
 from sculptor.web.derived import CodingAgentTaskView
 from sculptor.web.derived import PrStatusInfo
 from sculptor.web.derived import PrStatusInfoCleared
-from sculptor.web.derived import TaskUpdate
 from sculptor.web.derived import UserUpdate
 from sculptor.web.derived import WorkspaceBranchInfo
 from sculptor.web.derived import WorkspaceTargetBranchesInfo
@@ -310,7 +309,6 @@ def resolve_scope(
 
 
 class StreamingUpdate(SerializableModel):
-    task_update_by_task_id: dict[TaskID, TaskUpdate] = Field(default_factory=dict)
     task_views_by_task_id: dict[TaskID, CodingAgentTaskView] = Field(default_factory=dict)
     user_update: UserUpdate = Field(default_factory=UserUpdate)
     workspace_branch_by_workspace_id: dict[WorkspaceID, WorkspaceBranchInfo | None] = Field(default_factory=dict)
@@ -398,10 +396,6 @@ def project_for_scope(
     project — since the per-frame update may not contain enough information
     to derive that mapping itself.
 
-    A TaskUpdate without a corresponding entry in task_views_by_task_id (the
-    view was sent in a prior frame) is dropped under non-`all` scopes. The
-    client rebuilds task state cumulatively, so missing one update for an
-    out-of-scope task is the desired outcome.
     """
     if isinstance(scope, ScopeAll):
         return update
@@ -410,9 +404,6 @@ def project_for_scope(
 
     return StreamingUpdate(
         task_views_by_task_id=proj.view_subset,
-        task_update_by_task_id={
-            tid: tu for tid, tu in update.task_update_by_task_id.items() if tid in proj.view_subset
-        },
         user_update=UserUpdate(),
         workspace_branch_by_workspace_id=_narrow_by_workspace_id(
             update.workspace_branch_by_workspace_id, proj.scoped_workspace_ids

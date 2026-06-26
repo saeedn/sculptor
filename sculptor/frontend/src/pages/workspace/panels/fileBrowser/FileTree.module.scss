@@ -33,14 +33,6 @@
   background-color: var(--gray-3);
 }
 
-.activeFile {
-  background-color: var(--accent-3);
-
-  &:hover {
-    background-color: var(--accent-4);
-  }
-}
-
 .deleted {
   opacity: 50%;
 }

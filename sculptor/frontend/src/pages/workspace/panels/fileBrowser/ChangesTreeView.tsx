@@ -5,7 +5,6 @@ import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { DiffStatus, ElementIds } from "~/api";
-import { useWorkspacePageParams } from "~/common/NavigateUtils.ts";
 import { useWorkspace } from "~/common/state/hooks/useWorkspace.ts";
 import { useWorkspaceDiff } from "~/common/state/hooks/useWorkspaceDiff.ts";
 import { openDiffTabAtom } from "~/pages/workspace/components/diffPanel/atoms.ts";
@@ -18,9 +17,8 @@ import { FlatListRow } from "./FlatListRow.tsx";
 import { useFileTree, usePerFileDiffMap } from "./hooks.ts";
 import { TreeRow } from "./TreeRow.tsx";
 import type { FileStatus, TreeNode, ViewMode } from "./types.ts";
-import { useActiveFileOperation } from "./useActiveFileOperation.ts";
 import { useKeyboardNavigation } from "./useKeyboardNavigation.ts";
-import { useAgentFileTracking, useCollapseChildren, useTreeNodeMap } from "./useTreeView.ts";
+import { useCollapseChildren, useTreeNodeMap } from "./useTreeView.ts";
 import {
   buildChangesTree,
   collectAllFolderPaths,
@@ -66,8 +64,6 @@ export const ChangesTreeView = ({
   const expandFolders = useSetAtom(expandChangesFoldersAtom);
   const openDiffTab = useSetAtom(openDiffTabAtom);
 
-  const { agentID } = useWorkspacePageParams();
-  const activeOperation = useActiveFileOperation(agentID);
   const workspace = useWorkspace(workspaceId);
   const { data: diff } = useWorkspaceDiff(workspaceId);
   const isDiffReady = workspace?.diffStatus === DiffStatus.READY && diff != null;
@@ -134,12 +130,6 @@ export const ChangesTreeView = ({
     estimateSize: () => FILE_TREE_ROW_HEIGHT,
     overscan: FILE_TREE_OVERSCAN,
     paddingStart: FILE_TREE_PADDING_TOP,
-  });
-
-  useAgentFileTracking({
-    activeFilePath: activeOperation?.filePath,
-    workspaceId,
-    expandFolders,
   });
 
   const handleToggleExpand = useCallback(
@@ -331,7 +321,6 @@ export const ChangesTreeView = ({
                   depth={depth}
                   isExpanded={isExpanded}
                   isFocused={virtualItem.index === focusedIndex}
-                  isActiveFile={node.path === activeOperation?.filePath}
                   folderChangeCount={folderChangeCount}
                   addedLines={fileDiff?.addedLines}
                   removedLines={fileDiff?.removedLines}

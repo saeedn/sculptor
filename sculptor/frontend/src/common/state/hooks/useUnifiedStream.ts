@@ -9,7 +9,6 @@ import { notificationsAtom } from "../atoms/notifications";
 import { updateProjectsAtom } from "../atoms/projects";
 import { updatePrStatusAtom } from "../atoms/prStatus";
 import { sculptorSettingsAtom } from "../atoms/sculptorSettings";
-import { getEmptyTaskDetailState, updateTaskDetailAtom, updateTaskUpdatedArtifactsAtom } from "../atoms/taskDetails";
 import { updateTasksAtom } from "../atoms/tasks";
 import { updateWorkspaceBranchAtom } from "../atoms/workspaceBranch";
 import { updateWorkspacesAtom } from "../atoms/workspaces";
@@ -38,8 +37,6 @@ export const useUnifiedStream = (): void => {
   const updateWorkspaces = useSetAtom(updateWorkspacesAtom);
   const setNotifications = useSetAtom(notificationsAtom);
   const setSculptorSettings = useSetAtom(sculptorSettingsAtom);
-  const updateTaskDetail = useSetAtom(updateTaskDetailAtom);
-  const updateTaskUpdatedArtifacts = useSetAtom(updateTaskUpdatedArtifactsAtom);
   const updatePrStatus = useSetAtom(updatePrStatusAtom);
   const updateWorkspaceBranch = useSetAtom(updateWorkspaceBranchAtom);
   const updateWorkspaceTargetBranches = useSetAtom(updateWorkspaceTargetBranchesAtom);
@@ -61,32 +58,6 @@ export const useUnifiedStream = (): void => {
       // Handle task views (for task list/sidebar)
       if (data.taskViewsByTaskId) {
         updateTasks(data.taskViewsByTaskId);
-      }
-
-      // Handle task details (for chat pages)
-      //    Process ALL tasks, even if not currently viewing them
-      // NOTE: This is O(activeTasks) because we only get a task update if something happens
-      if (data.taskUpdateByTaskId && Object.keys(data.taskUpdateByTaskId).length > 0) {
-        Object.entries(data.taskUpdateByTaskId).forEach(([taskId, taskUpdate]) => {
-          updateTaskDetail({
-            taskId,
-            updater: (currentState) => {
-              const state = currentState || getEmptyTaskDetailState();
-              return {
-                ...state,
-                inProgressChatMessage: taskUpdate.inProgressChatMessage,
-              };
-            },
-          });
-
-          // Track which artifacts need fetching
-          if (taskUpdate.updatedArtifacts && taskUpdate.updatedArtifacts.length > 0) {
-            updateTaskUpdatedArtifacts({
-              taskId,
-              artifactTypes: taskUpdate.updatedArtifacts,
-            });
-          }
-        });
       }
 
       // Handle user update
@@ -180,8 +151,6 @@ export const useUnifiedStream = (): void => {
       updateWorkspaces,
       setNotifications,
       setSculptorSettings,
-      updateTaskDetail,
-      updateTaskUpdatedArtifacts,
       updatePrStatus,
       updateWorkspaceBranch,
       updateWorkspaceTargetBranches,

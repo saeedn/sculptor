@@ -14,7 +14,6 @@ type TreeRowProps = {
   depth: number;
   isExpanded: boolean;
   isFocused: boolean;
-  isActiveFile: boolean;
   folderChangeCount: number;
   addedLines?: number;
   removedLines?: number;
@@ -105,7 +104,6 @@ export const TreeRow = memo(function TreeRow({
   depth,
   isExpanded,
   isFocused,
-  isActiveFile,
   folderChangeCount,
   addedLines,
   removedLines,
@@ -129,7 +127,7 @@ export const TreeRow = memo(function TreeRow({
 
   return (
     <div
-      className={`${styles.row} ${isDeleted ? styles.deleted : ""} ${isFocused ? styles.focused : ""} ${isActiveFile ? styles.activeFile : ""}`}
+      className={`${styles.row} ${isDeleted ? styles.deleted : ""} ${isFocused ? styles.focused : ""}`}
       style={{ paddingLeft }}
       onClick={handleClick}
       data-testid={ElementIds.FILE_BROWSER_TREE_ROW}

@@ -51,13 +51,9 @@ from sculptor.interfaces.agents.artifacts import TaskListArtifact
 from sculptor.interfaces.agents.harness import Harness
 from sculptor.interfaces.agents.harness import HarnessCapabilities
 from sculptor.interfaces.agents.tasks import TaskState
-from sculptor.primitives.ids import AgentMessageID
-from sculptor.primitives.ids import AssistantMessageID
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.state.chat_state import AskUserQuestionData
-from sculptor.state.chat_state import ChatMessage
-from sculptor.state.chat_state import TurnMetrics
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import ChatInputUserMessage
 from sculptor.state.messages import Message
@@ -550,73 +546,6 @@ class SubmittedQuestionAnswers(SerializableModel):
     question_data: AskUserQuestionData
     answers: dict[str, str]
     tool_use_id: str
-
-
-class TaskUpdate(SerializableModel):
-    """Represents an incremental update to task state sent to the frontend via SSE/WebSocket.
-
-    Initial Connection:
-    - Sends complete current state (all completed messages, current in-progress message, etc.)
-    - Provides frontend with full context to render the UI
-
-    Subsequent Updates:
-    - Only sends deltas (new messages, changed state, etc.)
-    - Frontend merges updates with existing state
-
-    Field Update Patterns:
-    - chat_messages: Only new completed messages are sent; frontend appends to existing list
-    - in_progress_chat_message: Sent in full each time it changes; frontend replaces previous value
-    - queued_chat_messages: Full list sent each time; frontend replaces entire queue
-    - updated_artifacts: Lists artifacts that changed; frontend fetches updated content
-
-    The frontend is responsible for:
-    - Maintaining cumulative state by merging updates
-    - Replacing vs appending based on field semantics
-    - Fetching artifact data when notified of updates
-    """
-
-    task_id: TaskID
-    chat_messages: tuple[ChatMessage, ...]
-    updated_artifacts: tuple[ArtifactType, ...]
-    in_progress_chat_message: ChatMessage | None
-    queued_chat_messages: tuple[ChatMessage, ...]
-    in_progress_user_message_id: AgentMessageID | None
-    # Track streaming state across updates - index where streaming content starts in in_progress_chat_message
-    streaming_start_index: int
-    is_streaming_active: bool = False
-    # True when in_progress_chat_message content was built via streaming partials.
-    # Used to skip the duplicate full ResponseBlockAgentMessage that the SDK emits
-    # after streaming ends (for DB persistence) — its text/tool_use content is already present.
-    in_progress_message_was_streamed: bool = False
-    # SDK assistant_message_ids delivered via streaming partials this request.
-    # Carried across batches so a late persistence ResponseBlockAgentMessage
-    # still dedupes text/tool_use blocks after UserQuestionAnswerMessage
-    # reset in_progress_message_was_streamed.
-    streamed_assistant_message_ids: frozenset[AssistantMessageID] = frozenset()
-    # first_response_message_id of the partial that built the in-progress
-    # message's current streaming segment. Carried across SSE batches so a new
-    # streamed turn is detected by an id CHANGE between partials, not by comparing
-    # against the in-progress message id (which stays pinned to the first turn's
-    # id). Without this, a turn whose id was re-minted after a subagent context
-    # switch re-ran complete_segment on every growing partial and stacked them —
-    # the chat "double printing" / staircase bug.
-    streamed_segment_first_response_id: AgentMessageID | None = None
-    pending_user_question: AskUserQuestionData | None = None
-    submitted_question_answers: dict[str, SubmittedQuestionAnswers] = {}
-    is_in_plan_mode: bool = False
-    # Buffered TurnMetrics waiting to be stamped onto the message at RequestSuccess/RequestStopped.
-    # Must survive across SSE batches because TurnMetricsAgentMessage and the terminating
-    # RequestSuccess/RequestStopped may arrive in separate calls to convert_agent_messages_to_task_update.
-    pending_turn_metrics: TurnMetrics | None = None
-    # Background tasks (run_in_background Bash, Agent/Task, etc.) whose
-    # ``task_started`` event has arrived but whose ``task_notification`` has
-    # not. When non-empty the harness's output processor is keeping the
-    # parent request alive — even after the agent's own result/success — so
-    # the eventual ``task_notification`` can be delivered to the same turn.
-    # The frontend reads this to distinguish "agent is thinking" from
-    # "harness is idle, waiting for a background task notification"
-    # (SCU-387).
-    pending_background_task_ids: frozenset[str] = frozenset()
 
 
 class UserUpdate(SerializableModel):

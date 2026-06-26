@@ -18,7 +18,6 @@ from sculptor.primitives.ids import WorkspaceID
 from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.services.task_service.api import TaskMessageContainer
 from sculptor.web.derived import CodingAgentTaskView
-from sculptor.web.derived import TaskUpdate
 from sculptor.web.derived import UserUpdate
 from sculptor.web.derived import create_initial_task_view
 from sculptor.web.streams import ScopeAgent
@@ -36,7 +35,6 @@ from sculptor.web.streams import project_for_scope
 # silently leaking past the narrow-scope filter.
 _EXPECTED_STREAMING_UPDATE_FIELDS: frozenset[str] = frozenset(
     {
-        "task_update_by_task_id",
         "task_views_by_task_id",
         "user_update",
         "workspace_branch_by_workspace_id",
@@ -103,18 +101,6 @@ def test_parse_scope_malformed_raises_400(value: str) -> None:
     assert exc_info.value.status_code == 400
 
 
-def _make_task_update(task_id: TaskID) -> TaskUpdate:
-    return TaskUpdate(
-        task_id=task_id,
-        chat_messages=(),
-        updated_artifacts=(),
-        in_progress_chat_message=None,
-        queued_chat_messages=(),
-        in_progress_user_message_id=None,
-        streaming_start_index=0,
-    )
-
-
 def _make_task(*, project_id: ProjectID, workspace_id: WorkspaceID) -> Task:
     return Task(
         object_id=TaskID(),
@@ -164,11 +150,6 @@ def _build_synthetic_update() -> tuple[
     view_b1 = _make_view(task_b1)
 
     update = StreamingUpdate(
-        task_update_by_task_id={
-            task_a1.object_id: _make_task_update(task_a1.object_id),
-            task_a2.object_id: _make_task_update(task_a2.object_id),
-            task_b1.object_id: _make_task_update(task_b1.object_id),
-        },
         task_views_by_task_id={
             task_a1.object_id: view_a1,
             task_a2.object_id: view_a2,
@@ -200,7 +181,6 @@ def test_project_for_scope_project() -> None:
         project_workspace_ids=frozenset({workspace_a1, workspace_a2}),
     )
     assert set(result.task_views_by_task_id.keys()) == {task_a1.object_id, task_a2.object_id}
-    assert set(result.task_update_by_task_id.keys()) == {task_a1.object_id, task_a2.object_id}
     assert set(result.workspace_branch_by_workspace_id.keys()) == {workspace_a1, workspace_a2}
     assert set(result.pr_status_by_workspace_id.keys()) == {workspace_a1, workspace_a2}
     assert result.finished_request_ids == ()
@@ -211,7 +191,6 @@ def test_project_for_scope_workspace() -> None:
     update, project_a, _, workspace_a1, workspace_a2, _, task_a1, _, _ = _build_synthetic_update()
     result = project_for_scope(update, ScopeWorkspace(workspace_id=workspace_a1, project_id=project_a))
     assert set(result.task_views_by_task_id.keys()) == {task_a1.object_id}
-    assert set(result.task_update_by_task_id.keys()) == {task_a1.object_id}
     assert set(result.workspace_branch_by_workspace_id.keys()) == {workspace_a1}
     assert set(result.pr_status_by_workspace_id.keys()) == {workspace_a1}
     assert workspace_a2 not in result.workspace_branch_by_workspace_id
@@ -226,7 +205,6 @@ def test_project_for_scope_agent() -> None:
         ScopeAgent(agent_id=task_a1.object_id, workspace_id=workspace_a1, project_id=project_a),
     )
     assert set(result.task_views_by_task_id.keys()) == {task_a1.object_id}
-    assert set(result.task_update_by_task_id.keys()) == {task_a1.object_id}
     assert result.workspace_branch_by_workspace_id == {}
     assert result.pr_status_by_workspace_id == {}
     assert result.finished_request_ids == ()

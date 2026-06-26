@@ -32,7 +32,9 @@ from sqlalchemy import Engine
 from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy import Index
 from sqlalchemy import UniqueConstraint
+from sqlalchemy import func
 from sqlalchemy import text
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql import select
 from sqlalchemy.sql import update
@@ -44,7 +46,9 @@ from sculptor.config.settings import SculptorSettings
 from sculptor.constants import SCULPTOR_EXIT_CODE_COULD_NOT_ACQUIRE_LOCK
 from sculptor.constants import SCULPTOR_EXIT_CODE_IRRECOVERABLE_ERROR
 from sculptor.constants import SCULPTOR_EXIT_CODE_PARENT_DIED
+from sculptor.database.automanaged import CREATED_AT
 from sculptor.database.automanaged import DatabaseModel
+from sculptor.database.automanaged import OBJECT_ID
 from sculptor.database.automanaged import create_tables
 from sculptor.database.core import MigrationsFailedError
 from sculptor.database.core import create_new_engine
@@ -135,8 +139,6 @@ SAVED_AGENT_MESSAGE_TABLE, _ = create_tables(
     constraints=(
         ForeignKeyConstraint(["task_id"], [f"{TASK_LATEST_TABLE.name}.object_id"], name="foreign_key_task_id"),
     ),
-    # We don't need a latest table for saved agent messages -- it's really just a log
-    is_dual_table=False,
 )
 Index(
     "ix_saved_agent_message_task_id_created_at",
@@ -150,8 +152,6 @@ NOTIFICATION_TABLE, _ = create_tables(
     constraints=(
         ForeignKeyConstraint(["task_id"], [f"{TASK_LATEST_TABLE.name}.object_id"], name="foreign_key_task_id"),
     ),
-    # We don't need a latest table for notifications -- they are not edited
-    is_dual_table=False,
 )
 
 
@@ -203,8 +203,7 @@ class SQLTransaction(BaseDataModelTransaction):
         # runtime; ``_update_model_fields`` wants ``dict[str, Any]``.
         return self._update_model_fields(
             model_cls=Project,
-            snapshot_table=PROJECT_TABLE,
-            latest_table=PROJECT_LATEST_TABLE,
+            table=PROJECT_TABLE,
             object_id=project_id,
             fields={**fields},
         )
@@ -305,11 +304,10 @@ class SQLTransaction(BaseDataModelTransaction):
         # is_deleted is latched on Workspace; refuse writes through tombstones.
         return self._update_model_fields(
             model_cls=Workspace,
-            snapshot_table=WORKSPACE_TABLE,
-            latest_table=WORKSPACE_LATEST_TABLE,
+            table=WORKSPACE_TABLE,
             object_id=workspace_id,
             fields={**fields},
-            latest_where_extra=WORKSPACE_LATEST_TABLE.c.is_deleted.is_(False),
+            where_extra=WORKSPACE_TABLE.c.is_deleted.is_(False),
         )
 
     @overwrite_missing_table_error_for_sentry
@@ -341,9 +339,9 @@ class SQLTransaction(BaseDataModelTransaction):
                         END),
                         w.created_at
                     ) AS last_activity_at
-                FROM workspace_latest w
-                JOIN project_latest p ON w.project_id = p.object_id
-                LEFT JOIN task_latest t ON json_extract(t.current_state, '$.workspace_id') = w.object_id
+                FROM workspace w
+                JOIN project p ON w.project_id = p.object_id
+                LEFT JOIN task t ON json_extract(t.current_state, '$.workspace_id') = w.object_id
                 WHERE w.is_deleted = 0
                   AND p.is_deleted = 0
                 GROUP BY w.object_id
@@ -484,19 +482,15 @@ class SQLTransaction(BaseDataModelTransaction):
     def _update_model_fields(
         self,
         model_cls: type[T4],
-        snapshot_table: Table,
-        latest_table: Table,
+        table: Table,
         object_id: ObjectID,
         fields: dict[str, Any],
-        latest_where_extra: ColumnElement[bool] | None = None,
+        where_extra: ColumnElement[bool] | None = None,
     ) -> T4 | None:
-        """Targeted update: write ONLY the named columns to the ``_latest``
-        table, then write a snapshot row from the resulting post-update
-        values.
+        """Targeted update: write ONLY the named columns to the table.
 
-        ``latest_where_extra`` is AND-ed onto the ``object_id`` filter for
-        the LATEST UPDATE — used to refuse writes through soft-delete
-        tombstones (e.g. ``Workspace.is_deleted``).
+        ``where_extra`` is AND-ed onto the ``object_id`` filter — used to
+        refuse writes through soft-delete tombstones (e.g. ``Workspace.is_deleted``).
 
         Returns the full post-update model, or ``None`` if no row matched.
         """
@@ -517,31 +511,18 @@ class SQLTransaction(BaseDataModelTransaction):
         logger.debug("Updating {} fields: {}", model_cls.__name__, sorted(fields.keys()))
 
         update_stmt = (
-            update(latest_table)
-            .where(latest_table.c.object_id == str(object_id))
-            .values(**serialized_fields)
-            .returning(*latest_table.c)
+            update(table).where(table.c.object_id == str(object_id)).values(**serialized_fields).returning(*table.c)
         )
-        if latest_where_extra is not None:
-            update_stmt = update_stmt.where(latest_where_extra)
+        if where_extra is not None:
+            update_stmt = update_stmt.where(where_extra)
         result = self.connection.execute(update_stmt)
         row = result.fetchone()
         if row is None:
-            # No row matched — row doesn't exist (or was already deleted if
-            # our WHERE had filtered that; currently we don't, but
-            # targeted updaters on a specific table could add such a filter
-            # at the model-specific wrapper above).
+            # No row matched — row doesn't exist (or was filtered by where_extra,
+            # e.g. an update refused through a soft-delete tombstone).
             return None
 
         updated_model = _row_to_pydantic_model(row, model_cls)
-
-        # Write a snapshot row for audit history.  The existing
-        # ``<table>_before_insert`` trigger will fire on this INSERT and
-        # redundantly UPDATE the ``_latest`` row with identical values;
-        # that's a cosmetic cost, not a correctness issue.  See notes.md.
-        snapshot_stmt = snapshot_table.insert().values(**_pydantic_model_to_row_values(updated_model))
-        self.connection.execute(snapshot_stmt)
-
         self._updated_models.append(("UPDATE", updated_model))
         return updated_model
 
@@ -553,23 +534,35 @@ class SQLTransaction(BaseDataModelTransaction):
     ) -> T4:
         logger.debug("Upserting {}", obj.__class__.__name__)
         existing_object = getter(obj.object_id)
-        operation = None
 
         if existing_object is not None:
             if existing_object.is_content_equal(obj):
-                # No operation, so we don't need to make a db call or add this to our updated models.
+                # No change — skip the DB write and don't report an update.
                 return existing_object
-            else:
-                operation = "UPDATE"
+            operation = "UPDATE"
         else:
             operation = "INSERT"
 
-        statement = table.insert().values(**_pydantic_model_to_row_values(obj))
-        result = self.connection.execute(statement)
-        assert result.rowcount == 1, "Expected exactly one row to be inserted"
+        values = _pydantic_model_to_row_values(obj)
+        statement = sqlite_insert(table).values(**values)
+        # Replicate the former trigger's behaviour on conflict: overwrite every
+        # column with the new value, except ``object_id`` (the conflict key),
+        # ``created_at`` (set once, at first insert), and monotonic columns
+        # (which may only increase, e.g. a soft-delete flag that must not flip
+        # back to False under a concurrent stale write).
+        monotonic_columns = table.info.get("monotonic_columns", frozenset())
+        update_set: dict[str, Any] = {}
+        for column_name in values:
+            if column_name in (OBJECT_ID, CREATED_AT):
+                continue
+            if column_name in monotonic_columns:
+                update_set[column_name] = func.max(table.c[column_name], statement.excluded[column_name])
+            else:
+                update_set[column_name] = statement.excluded[column_name]
+        statement = statement.on_conflict_do_update(index_elements=[OBJECT_ID], set_=update_set)
+        self.connection.execute(statement)
 
         self._updated_models.append((operation, obj))
-
         return obj
 
 
@@ -632,19 +625,16 @@ def _pydantic_value_to_row_value(value: Any) -> Any:
     return value
 
 
-# Columns that ``update_*_fields`` refuses to write.  ``object_id`` and
-# ``snapshot_id`` are identity columns; ``created_at`` is populated by the
-# ``AFTER INSERT`` trigger on the snapshot row.  ``is_deleted`` (and
-# ``is_deleting`` on Task) has a latched, separate-path API for deletion —
-# allowing a targeted update to set it would bypass the monotonic
-# semantics and be a footgun.
+# Columns that ``update_*_fields`` refuses to write.  ``object_id`` is the
+# identity column; ``created_at`` is set once at first insert.  ``is_deleted``
+# (and ``is_deleting`` on Task) has a latched, separate-path API for deletion —
+# allowing a targeted update to set it would bypass the monotonic semantics
+# (the upsert's MAX()) and be a footgun.
 #
 # This runtime check is a belt alongside the suspenders of the
 # per-model ``<Model>FieldUpdate`` ``TypedDict``s below, which are the
 # primary (statically-enforced) gate.
-_UPDATE_FIELDS_PROTECTED_COLUMNS: frozenset[str] = frozenset(
-    {"object_id", "snapshot_id", "created_at", "is_deleted", "is_deleting"}
-)
+_UPDATE_FIELDS_PROTECTED_COLUMNS: frozenset[str] = frozenset({"object_id", "created_at", "is_deleted", "is_deleting"})
 
 
 # ``ProjectFieldUpdate`` is the statically-typed allowlist of fields that

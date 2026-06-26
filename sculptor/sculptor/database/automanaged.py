@@ -1,22 +1,17 @@
 """
-Functionality enabling the two-table pattern for our database models.
+Map pydantic database models onto SQLAlchemy tables.
 (Refer to the docstring in core.py for more details.)
 
 To use this:
     - Create a pydantic model that inherits from DatabaseModel.
     - Call create_tables() with the model class.
 
-Under the hood, the `create_tables()` call will:
-    - infer a set of column definitions from the pydantic model.
-    - register the two tables (one for the snapshots and one for the latest versions) with SQLAlchemy.
-    - register a database trigger to automatically update the latest table on insert into the snapshots table.
-
-The actual _creation_ of the tables and the triggers happens later on when the database is initialized. (Via `initialize_db()` in core.py.)
+`create_tables()` infers column definitions from the pydantic model and
+registers a single mutable table (keyed by ``object_id``) with SQLAlchemy.
+The actual _creation_ of the tables happens later, when the database is
+initialized (via `initialize_db()` in core.py).
 
 In case the type of a field in your pydantic model is not supported out of the box, add a new entry in _PYDANTIC_TO_SQLALCHEMY_TYPES.
-
-NOTE: Never update records in the snapshots table. (Only insert.)
-
 """
 
 import inspect
@@ -37,20 +32,17 @@ from sqlalchemy import Integer
 from sqlalchemy import JSON
 from sqlalchemy import String
 from sqlalchemy import Table
-from sqlalchemy.schema import DDL
 
 from sculptor.database.core import METADATA
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.time_utils import get_current_time
 from sculptor.primitives.ids import ObjectID
-from sculptor.primitives.ids import ObjectSnapshotID
 from sculptor.utils.type_utils import extract_leaf_types
 
 OBJECT_ID = "object_id"
-SNAPSHOT_ID = "snapshot_id"
 CREATED_AT = "created_at"
 
-# List of model classes that are automatically managed by the two-table pattern.
+# List of automanaged model classes (those registered via create_tables()).
 # (Gets populated by the create_tables() function, alongside METADATA.)
 AUTOMANAGED_MODEL_CLASSES: set[type["DatabaseModel"]] = set()
 
@@ -135,138 +127,36 @@ def create_tables(
     table_name: str,
     model_cls: type[DatabaseModel],
     constraints: tuple[Constraint, ...] = (),
-    is_dual_table: bool = True,
     monotonic_columns: frozenset[str] = frozenset(),
 ) -> tuple[Table, Table]:
-    """
-    Create the main table with snapshots,
-    as well as the _latest table with the most recent object versions (if is_dual_table is True).
+    """Create a single mutable table for the model, keyed by ``object_id``.
 
-    When is_dual_table is False, only the main table is created.
+    Returns the table twice: callers historically held a (snapshot, _latest)
+    pair, but the two-table append-only pattern was removed — both references
+    now point at the one mutable table.
+
+    ``monotonic_columns`` may only increase (e.g. a soft-delete flag that must
+    never flip back to False under a concurrent stale write); the upsert path
+    enforces that with ``MAX()`` (see ``_upsert_model``).
     """
-    # Iterate over the fields of the Pydantic model and create SQLAlchemy columns.
-    base_columns: list[Column] = []
+    columns: list[Column] = []
     for field_name, field in model_cls.model_fields.items():
         pydantic_type = field.annotation
         assert pydantic_type is not None, f"Field {field_name} has no type annotation"
         column_type, is_nullable = _get_sqlalchemy_type(pydantic_type)
         if field_name == CREATED_AT:
-            # We only need the default factory for CREATED_AT because sqlite cannot set fields in the BEFORE trigger.
             assert not is_nullable
-            base_columns.append(Column(field_name, column_type, nullable=False, default=field.default_factory))
+            columns.append(Column(field_name, column_type, nullable=False, default=field.default_factory))
         else:
-            base_columns.append(Column(field_name, column_type, nullable=is_nullable))
-
-    # when this is a dual table, the constraints are applied to the latest table.
-    if is_dual_table:
-        full_table_constraints: tuple[Constraint, ...] = ()
-        latest_table_constraints = constraints
-    # If this is not a dual table, the constraints are applied to the main table.
-    else:
-        full_table_constraints = constraints
-        latest_table_constraints = ()
-
-    snapshots_table = Table(
-        table_name,
-        METADATA,
-        Column(SNAPSHOT_ID, String, primary_key=True, default=lambda: str(ObjectSnapshotID())),
-        *base_columns,
-        *full_table_constraints,
-    )
-    base_columns_copy = [
-        Column(
-            column.name,
-            column.type,
-            primary_key=column.primary_key,
-            nullable=column.nullable,
-            default=column.default,
-        )
-        for column in base_columns
-    ]
-    for column in base_columns_copy:
-        if column.name == OBJECT_ID:
-            column.primary_key = True
-            break
-    else:
-        raise InvalidFieldsError(f"Field {OBJECT_ID} not found.")
-    if is_dual_table:
-        sqlite_triggers = _get_sqlite_triggers(table_name, tuple(base_columns), monotonic_columns)
-        latest_table = Table(
-            _get_latest_table_name(table_name),
-            METADATA,
-            *base_columns_copy,
-            *latest_table_constraints,
-        )
-        # We used to store this directly in Table.info but that resulted in Alembic dumping the triggers in the migration files.
-        METADATA.info.setdefault("triggers", {})[table_name] = sqlite_triggers
-    else:
-        latest_table = snapshots_table
-    AUTOMANAGED_MODEL_CLASSES.add(model_cls)
-    return snapshots_table, latest_table
-
-
-def _get_latest_table_name(base_table_name: str) -> str:
-    return f"{base_table_name}_latest"
-
-
-def _get_sqlite_triggers(
-    table_name: str, base_columns: tuple[Column, ...], monotonic_columns: frozenset[str] = frozenset()
-) -> tuple[DDL, ...]:
-    base_column_names = ", ".join([col.name for col in base_columns])
-    base_column_values = ", ".join([f"NEW.{col.name}" for col in base_columns])
-    latest_table_name = _get_latest_table_name(table_name)
-    update_parts: list[str] = []
-    for col in base_columns:
-        if col.name in (OBJECT_ID, CREATED_AT):
-            continue
-        if col.name in monotonic_columns:
-            # Monotonic columns can only increase (False→True). This prevents a stale
-            # concurrent transaction from overwriting a committed True back to False.
-            update_parts.append(f"{col.name} = MAX({latest_table_name}.{col.name}, excluded.{col.name})")
-        else:
-            update_parts.append(f"{col.name} = excluded.{col.name}")
-    update_statements = ", ".join(update_parts)
-    # NOTE: The initialization code runs on every server startup, dropping and recreating these triggers.
-    # This is only safe because we assume the sqlite database is not used by multiple processes at the
-    # same time. Do not introduce concurrent writers without changing how trigger/DB state is managed.
-    # NOTE: These triggers reference every column, so they are also dropped before migrations run (see
-    # drop_all_automanaged_triggers in alembic/utils.py) and recreated afterwards. That invariant means a
-    # column-dropping migration never needs to drop triggers itself — do not rely on triggers mid-migration.
-    drop_existing_before_insert_trigger = DDL(f"DROP TRIGGER IF EXISTS {table_name}_before_insert;")
-    before_insert_trigger = DDL(
-        f"""
-        CREATE TRIGGER {table_name}_before_insert
-        BEFORE INSERT ON {table_name}
-        BEGIN
-            INSERT INTO {_get_latest_table_name(table_name)} (
-                {base_column_names}
-            ) VALUES (
-                {base_column_values}
+            columns.append(
+                Column(field_name, column_type, primary_key=(field_name == OBJECT_ID), nullable=is_nullable)
             )
-            ON CONFLICT ({OBJECT_ID}) DO UPDATE SET
-                {update_statements};
-        END;
-        """
-    )
 
-    # Do this to respect the semantics of created_at in the latest table.
-    # (SQLite does not support setting fields in the BEFORE trigger.)
-    drop_existing_after_insert_trigger = DDL(f"DROP TRIGGER IF EXISTS set_{table_name}_created_at;")
-    after_insert_trigger = DDL(
-        f"""
-        CREATE TRIGGER set_{table_name}_created_at
-        AFTER INSERT ON {table_name}
-        FOR EACH ROW
-        BEGIN
-            UPDATE {table_name}
-            SET created_at = datetime('now')
-            WHERE {SNAPSHOT_ID} = NEW.{SNAPSHOT_ID};
-        END;
-        """
-    )
-    return (
-        drop_existing_before_insert_trigger,
-        before_insert_trigger,
-        drop_existing_after_insert_trigger,
-        after_insert_trigger,
-    )
+    if not any(column.name == OBJECT_ID for column in columns):
+        raise InvalidFieldsError(f"Field {OBJECT_ID} not found.")
+
+    table = Table(table_name, METADATA, *columns, *constraints)
+    if monotonic_columns:
+        table.info["monotonic_columns"] = monotonic_columns
+    AUTOMANAGED_MODEL_CLASSES.add(model_cls)
+    return table, table

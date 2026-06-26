@@ -4,13 +4,9 @@ from sculptor.database.alembic.migration_test_utils import MigrationTestFixture
 
 EXPECTED_TABLES = {
     "project",
-    "project_latest",
     "task",
-    "task_latest",
     "workspace",
-    "workspace_latest",
     "user_settings",
-    "user_settings_latest",
     "notification",
     "saved_agent_message",
 }
@@ -21,7 +17,7 @@ class TestInitialMigration(MigrationTestFixture):
 
     @property
     def revision(self) -> str:
-        return "ec85e09e49f5"
+        return "c8985360b2ca"
 
     @property
     def down_revision(self) -> None:

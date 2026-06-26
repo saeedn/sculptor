@@ -8,12 +8,8 @@ Initial design decisions:
         - Reason: we think that ORMs are too heavy-handed and opaque.
         - Also, with an ORM, we lose control over the exposed DB operations.
             - (Having a limited set of specialized functions makes the intended use of the DB clearer.)
-    - Each object type is stored in a pair of tables:
-        - The main table holds immutable "snapshots" of the objects.
-        - The second table stores the most recent version of each object.
-        - The immutable table is the "source of truth". The mutable table exists for convenience to offer a view at the "current" state.
-            - Also, we use the mutable table to define unique constraints, foreign keys, etc.
-        - The mutable table is named <table_name>_latest and is populated automatically using database triggers.
+    - Each object type is stored in a single mutable table keyed by ``object_id``.
+        - Writes upsert (INSERT ... ON CONFLICT DO UPDATE); reads select the row.
         - This setup is achieved through the `database/automanaged.py` module.
 
 """
@@ -95,12 +91,6 @@ def initialize_db_from_connection(connection: Connection, database_url: str) -> 
         # For in-memory SQLite, we have to run migrations directly on the connection.
         # (Otherwise, Alembic would try to create a new in-memory database, which would not have the tables we need.)
         _run_migrations_on_connection(connection)
-    triggers_info = METADATA.info.get("triggers", {})
-    for table in METADATA.tables.values():
-        triggers = triggers_info.get(table.name)
-        if triggers is not None:
-            for trigger in triggers:
-                connection.execute(trigger)
 
 
 def initialize_db(engine: Engine) -> None:

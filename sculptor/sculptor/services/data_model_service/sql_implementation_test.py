@@ -27,8 +27,6 @@ from sculptor.database.alembic.migration_test_utils import MigrationTestFixture
 from sculptor.database.alembic.migration_test_utils import discover_test_fixtures
 from sculptor.database.alembic.utils import get_frozen_database_model_nested_json_schemas
 from sculptor.database.automanaged import AUTOMANAGED_MODEL_CLASSES
-from sculptor.database.automanaged import OBJECT_ID
-from sculptor.database.automanaged import SNAPSHOT_ID
 from sculptor.database.core import IN_MEMORY_SQLITE
 from sculptor.database.core import METADATA
 from sculptor.database.core import create_new_engine
@@ -50,7 +48,6 @@ from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import ObjectID
-from sculptor.primitives.ids import ObjectSnapshotID
 from sculptor.primitives.ids import OrganizationReference
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
@@ -60,11 +57,9 @@ from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.services.data_model_service.data_types import ProjectFieldUpdate
 from sculptor.services.data_model_service.data_types import WORKSPACE_CREATION_ONLY_FIELDS
 from sculptor.services.data_model_service.data_types import WorkspaceFieldUpdate
-from sculptor.services.data_model_service.sql_implementation import PROJECT_LATEST_TABLE
 from sculptor.services.data_model_service.sql_implementation import PROJECT_TABLE
 from sculptor.services.data_model_service.sql_implementation import SQLDataModelService
 from sculptor.services.data_model_service.sql_implementation import SQLTransaction
-from sculptor.services.data_model_service.sql_implementation import WORKSPACE_LATEST_TABLE
 from sculptor.services.data_model_service.sql_implementation import WORKSPACE_TABLE
 from sculptor.services.data_model_service.sql_implementation import _UPDATE_FIELDS_PROTECTED_COLUMNS
 from sculptor.state.messages import ChatInputUserMessage
@@ -428,182 +423,6 @@ def _generate_synthetic_value(field_name: str, pydantic_type: type) -> Any:
     if issubclass(actual_type, str):
         return f"test_{field_name}"
     return f"test_{field_name}"
-
-
-def test_triggers_work_after_migration() -> None:
-    """Verify that after running all migrations and applying triggers, the dual-table pattern works.
-
-    For each model with a dual table, inserting into the snapshots table should cause the row
-    to appear in the _latest table via triggers.
-    """
-    from pydantic.alias_generators import to_snake
-
-    from sculptor.services.data_model_service.sql_implementation import register_all_tables
-
-    register_all_tables()
-
-    # Create engine without the FK enforcement listener — we're testing trigger behavior,
-    # not referential integrity. FK constraints on _latest tables would otherwise require
-    # inserting parent records in dependency order, which is unrelated to what we're testing.
-    from sqlalchemy import create_engine
-    from sqlalchemy.pool import StaticPool
-
-    engine = create_engine(IN_MEMORY_SQLITE, poolclass=StaticPool, connect_args={"check_same_thread": False})
-
-    with engine.begin() as connection:
-        initialize_db_from_connection(connection, IN_MEMORY_SQLITE)
-
-        triggers_info = METADATA.info.get("triggers", {})
-        tables_with_triggers = set(triggers_info.keys())
-        assert len(tables_with_triggers) > 0, "Expected at least one table with triggers"
-
-        for model_cls in AUTOMANAGED_MODEL_CLASSES:
-            table_name = to_snake(model_cls.__name__)
-
-            if table_name not in tables_with_triggers:
-                continue
-
-            latest_table_name = f"{table_name}_latest"
-
-            # Build column values from the model's field definitions
-            field_values: dict[str, Any] = {}
-            for field_name, field in model_cls.model_fields.items():
-                assert field.annotation is not None
-                field_values[field_name] = _generate_synthetic_value(field_name, field.annotation)
-
-            # Insert a row into the snapshots table
-            snapshot_id_1 = str(ObjectSnapshotID())
-            columns = [SNAPSHOT_ID] + list(field_values.keys())
-            placeholders = ", ".join([f":{c}" for c in columns])
-            column_names = ", ".join(columns)
-            insert_params = {SNAPSHOT_ID: snapshot_id_1, **field_values}
-
-            connection.execute(
-                text(f"INSERT INTO {table_name} ({column_names}) VALUES ({placeholders})"),
-                insert_params,
-            )
-
-            # Verify the row appeared in the _latest table
-            result = connection.execute(
-                text(f"SELECT * FROM {latest_table_name} WHERE {OBJECT_ID} = :oid"),
-                {"oid": field_values[OBJECT_ID]},
-            )
-            rows = result.fetchall()
-            assert len(rows) == 1, (
-                f"Expected 1 row in {latest_table_name} after insert into {table_name}, got {len(rows)}"
-            )
-
-            # Insert a second row with the same object_id but different snapshot_id
-            # to verify upsert behavior in _latest
-            insert_params[SNAPSHOT_ID] = str(ObjectSnapshotID())
-
-            connection.execute(
-                text(f"INSERT INTO {table_name} ({column_names}) VALUES ({placeholders})"),
-                insert_params,
-            )
-
-            # Verify still exactly one row in _latest for this object_id
-            result = connection.execute(
-                text(f"SELECT * FROM {latest_table_name} WHERE {OBJECT_ID} = :oid"),
-                {"oid": field_values[OBJECT_ID]},
-            )
-            rows = result.fetchall()
-            assert len(rows) == 1, (
-                f"Expected 1 row in {latest_table_name} after second insert into {table_name}, got {len(rows)}"
-            )
-
-
-def test_drop_all_automanaged_triggers_unblocks_drop_column() -> None:
-    """Encodes the exact failure mode: a trigger referencing a column blocks DROP COLUMN.
-
-    SQLite validates trigger bodies during ALTER TABLE, so dropping a column that an
-    existing trigger references fails. drop_all_automanaged_triggers removes that hazard,
-    which is what makes the whole class of migration failures impossible.
-    """
-    from sqlalchemy import create_engine
-    from sqlalchemy.pool import StaticPool
-
-    from sculptor.database.alembic.utils import drop_all_automanaged_triggers
-
-    engine = create_engine(IN_MEMORY_SQLITE, poolclass=StaticPool, connect_args={"check_same_thread": False})
-    with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE widget (id TEXT, doomed TEXT)"))
-        connection.execute(text("CREATE TABLE widget_latest (id TEXT PRIMARY KEY, doomed TEXT)"))
-        connection.execute(
-            text("""
-                CREATE TRIGGER widget_before_insert BEFORE INSERT ON widget BEGIN
-                    INSERT INTO widget_latest (id, doomed) VALUES (NEW.id, NEW.doomed)
-                    ON CONFLICT (id) DO UPDATE SET doomed = excluded.doomed;
-                END;
-            """)
-        )
-
-    # With the trigger present, dropping the referenced column fails — the exact bug.
-    with pytest.raises(OperationalError):
-        with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE widget DROP COLUMN doomed"))
-
-    # After dropping triggers, the same statement succeeds and no triggers remain.
-    with engine.begin() as connection:
-        drop_all_automanaged_triggers(connection)
-        connection.execute(text("ALTER TABLE widget DROP COLUMN doomed"))
-        remaining = [row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='trigger'"))]
-    assert remaining == []
-
-
-def test_in_memory_migration_runner_drops_preexisting_triggers() -> None:
-    """The in-memory migration runner enforces the no-triggers-during-migration invariant.
-
-    Simulates a real upgrade: a database that already carries auto-managed triggers from a
-    prior startup. Running migrations through the production runner must drop them first
-    (they are recreated afterwards by initialize_db_from_connection, which the bare runner
-    does not do). Guards against the wiring being removed from override_run_env.
-    """
-    from sqlalchemy import create_engine
-    from sqlalchemy.pool import StaticPool
-
-    from sculptor.database.core import _run_migrations_on_connection
-    from sculptor.services.data_model_service.sql_implementation import register_all_tables
-
-    register_all_tables()
-
-    engine = create_engine(IN_MEMORY_SQLITE, poolclass=StaticPool, connect_args={"check_same_thread": False})
-    with engine.begin() as connection:
-        # Full init: migrate to head AND create all auto-managed triggers, as a prior startup would.
-        initialize_db_from_connection(connection, IN_MEMORY_SQLITE)
-        triggers_before = connection.execute(text("SELECT count(*) FROM sqlite_master WHERE type='trigger'")).scalar()
-        assert triggers_before is not None and triggers_before > 0, (
-            "expected auto-managed triggers to exist after initialization"
-        )
-
-        # Re-run migrations through the production runner (a no-op upgrade to head).
-        _run_migrations_on_connection(connection)
-        triggers_after = connection.execute(text("SELECT count(*) FROM sqlite_master WHERE type='trigger'")).scalar()
-    assert triggers_after == 0, "the migration runner must drop all triggers before running migrations"
-
-
-def test_file_migration_runner_drops_preexisting_triggers(tmp_path: Path) -> None:
-    """Same invariant for the file-database runner (the env.py path used in production)."""
-    from sculptor.database.alembic.utils import get_alembic_script_location
-    from sculptor.database.core import _run_migrations_on_database_url
-    from sculptor.database.core import initialize_db
-    from sculptor.services.data_model_service.sql_implementation import register_all_tables
-
-    register_all_tables()
-
-    url = f"sqlite:///{tmp_path / 'database.db'}"
-    engine = create_new_engine(url)
-    # Simulate a prior startup: migrate to head and create triggers.
-    initialize_db(engine)
-    with engine.connect() as connection:
-        before = connection.execute(text("SELECT count(*) FROM sqlite_master WHERE type='trigger'")).scalar()
-    assert before is not None and before > 0, "expected auto-managed triggers to exist after initialization"
-
-    # Run migrations through the file-database runner (env.py).
-    _run_migrations_on_database_url(url, get_alembic_script_location())
-    with engine.connect() as connection:
-        after = connection.execute(text("SELECT count(*) FROM sqlite_master WHERE type='trigger'")).scalar()
-    assert after == 0, "the migration runner must drop all triggers before running migrations"
 
 
 def _get_migration_fixtures() -> list[MigrationTestFixture]:
@@ -1555,8 +1374,7 @@ def test_update_project_fields_rejects_bad_inputs(
         def _exercise(bad_fields: dict[str, Any]) -> None:
             transaction._update_model_fields(
                 model_cls=Project,
-                snapshot_table=PROJECT_TABLE,
-                latest_table=PROJECT_LATEST_TABLE,
+                table=PROJECT_TABLE,
                 object_id=project.object_id,
                 fields=bad_fields,
             )
@@ -1595,39 +1413,6 @@ def test_update_project_fields_emits_single_observer_notification(
         assert isinstance(observed_project, Project)
         assert observed_project.object_id == project.object_id
         assert observed_project.name == "OBSERVED"
-
-
-def test_update_project_fields_writes_exactly_one_snapshot_row(
-    test_db_service_with_user_organization_and_project: tuple[
-        SQLDataModelService, UserReference, OrganizationReference, Project
-    ],
-) -> None:
-    """Audit-log invariant: one targeted update = one new snapshot row.
-
-    Even though the ``<table>_before_insert`` trigger fires on our snapshot
-    INSERT and does a redundant ``ON CONFLICT DO UPDATE`` on ``_latest``,
-    it does NOT insert an extra snapshot row.
-    """
-    service, _, _, project = test_db_service_with_user_organization_and_project
-
-    with service.open_transaction(RequestID()) as transaction:
-        before_rows = transaction.connection.execute(
-            text("SELECT COUNT(*) FROM project WHERE object_id = :oid"), {"oid": str(project.object_id)}
-        ).scalar()
-
-    with service.open_transaction(RequestID()) as transaction:
-        transaction.update_project_fields(project.object_id, name="SNAPSHOTTED")
-
-    with service.open_transaction(RequestID()) as transaction:
-        after_rows = transaction.connection.execute(
-            text("SELECT COUNT(*) FROM project WHERE object_id = :oid"), {"oid": str(project.object_id)}
-        ).scalar()
-
-    # pyrefly: ignore [unsupported-operation]
-    assert after_rows == before_rows + 1, (
-        # pyrefly: ignore [unsupported-operation]
-        f"Expected exactly one new snapshot row; got delta={after_rows - before_rows}"
-    )
 
 
 def test_update_project_fields_disjoint_concurrent_writers_do_not_clobber(
@@ -1966,8 +1751,7 @@ def test_update_workspace_fields_rejects_bad_inputs(
         def _exercise(bad_fields: dict[str, Any]) -> None:
             transaction._update_model_fields(
                 model_cls=Workspace,
-                snapshot_table=WORKSPACE_TABLE,
-                latest_table=WORKSPACE_LATEST_TABLE,
+                table=WORKSPACE_TABLE,
                 object_id=workspace_id,
                 fields=bad_fields,
             )
@@ -2005,37 +1789,6 @@ def test_update_workspace_fields_emits_single_observer_notification(
         assert isinstance(observed_workspace, Workspace)
         assert observed_workspace.object_id == workspace_id
         assert observed_workspace.description == "OBSERVED"
-
-
-def test_update_workspace_fields_writes_exactly_one_snapshot_row(
-    test_db_service_with_user_organization_and_project: tuple[
-        SQLDataModelService, UserReference, OrganizationReference, Project
-    ],
-) -> None:
-    """One targeted update = one new snapshot row, even though the
-    BEFORE INSERT trigger re-fires on the snapshot.
-    """
-    service, _, organization_reference, project = test_db_service_with_user_organization_and_project
-    workspace_id = _seed_workspace(service, project.object_id, organization_reference)
-
-    with service.open_transaction(RequestID()) as transaction:
-        before_rows = transaction.connection.execute(
-            text("SELECT COUNT(*) FROM workspace WHERE object_id = :oid"), {"oid": str(workspace_id)}
-        ).scalar()
-
-    with service.open_transaction(RequestID()) as transaction:
-        transaction.update_workspace_fields(workspace_id, description="SNAPSHOTTED")
-
-    with service.open_transaction(RequestID()) as transaction:
-        after_rows = transaction.connection.execute(
-            text("SELECT COUNT(*) FROM workspace WHERE object_id = :oid"), {"oid": str(workspace_id)}
-        ).scalar()
-
-    # pyrefly: ignore [unsupported-operation]
-    assert after_rows == before_rows + 1, (
-        # pyrefly: ignore [unsupported-operation]
-        f"Expected exactly one new snapshot row; got delta={after_rows - before_rows}"
-    )
 
 
 def test_update_workspace_fields_disjoint_concurrent_writers_do_not_clobber(

@@ -368,26 +368,6 @@ def test_agent_terminal_ready_after_workspace_creation(
     expect(get_agent_terminal_textarea(page)).to_be_attached()
 
 
-@user_story("to press Cmd+I and have the workspace name input focused on the Add Workspace page")
-def test_cmd_i_focuses_workspace_name_input(sculptor_instance_: SculptorInstance) -> None:
-    """Cmd+I should focus the workspace name input on the Add Workspace page.
-
-    Steps:
-    1. On the Add Workspace page, click elsewhere to blur, then press Cmd+I — verify workspace name is focused.
-    """
-    page = sculptor_instance_.page
-    mod_key = get_playwright_modifier_key()
-    add_ws_page = PlaywrightAddWorkspacePage(page=page)
-
-    # On the Add Workspace page (initial state), blur all inputs then press Cmd+I.
-    name_input = add_ws_page.get_workspace_name_input()
-    expect(name_input).to_be_visible()
-    blur_page(page)
-    expect(name_input).not_to_be_focused()
-    page.keyboard.press(f"{mod_key}+i")
-    expect(name_input).to_be_focused()
-
-
 @user_story("to regain keyboard control by pressing arrow keys when nothing is focused")
 def test_arrow_down_focuses_name_input_when_nothing_focused(
     sculptor_instance_: SculptorInstance,

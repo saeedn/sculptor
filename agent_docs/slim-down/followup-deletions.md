@@ -728,3 +728,17 @@ parsing in derived.py, `UpdatedArtifactAgentMessage` + `FileAgentArtifact`
 getWorkspaceAgentArtifact endpoint, and the three derived task-list fields +
 their frontend reads. KEEP `ArtifactType.DIFF` (the live workspace-diff
 artifact, written in workspace_service/default_implementation.py).
+
+### PLAN-artifact / task-list subsystem — REMOVED
+
+The subsystem identified above was removed (one commit, −721 lines, `just check`
++ `just test-unit` green). Confirmed dead by tracing: terminal agents do no
+artifact sync, no PLAN artifact is ever written, the workspace-peek task counts
+were always 0/0, and the `GET .../artifacts/{name}` endpoint had no caller.
+Removed the task-list models, `UpdatedArtifactAgentMessage`/`FileAgentArtifact`
+(ephemeral — no schema impact), the derived task fields + PLAN parser, the
+task_service artifact-cache cluster + the orphaned
+`workspace_service.get_persistent_task_artifacts_dir`, and the artifact-fetch
+endpoint. **Kept `DiffArtifact` + `ArtifactType.DIFF`** — the live workspace-diff
+cache (written + read in workspace_service.default_implementation). Frontend API
+types + sculpt CLI client regenerated.

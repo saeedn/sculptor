@@ -153,10 +153,70 @@ and the other base-`Harness` stubs, `make_plan_approval_question`,
 branches, the `enter_plan_mode`/`exit_plan_mode` request+message fields,
 `EXIT_PLAN_MODE` tool name, `PLAN_MODE_TOGGLE`/`EXIT_PLAN_MODE_TOOL_BLOCK`
 ElementIds, the `ToolInteractiveRole` "exit_plan_mode" literal) is
-inert-but-entangled with the **live** AskUserQuestion message-parsing path
+inert-but-entangled with the AskUserQuestion message-parsing path
 and the deferred dead message-parsing layer. It wants the same deliberate
 leaf-first pass as the rest of that layer, not a quick excision — so it
 was left untouched this round.
+
+### The AskUserQuestion path is ALSO dead — the whole message-parsing layer is (2026-06-26)
+
+The follow-up note above guessed the AUQ path was "live." It is **not**.
+Root cause, traced and confirmed: `AgentConfigTypes` has only
+`TerminalAgentConfig` / `RegisteredTerminalAgentConfig`, so
+`is_terminal_agent_config()` is **always true** and `create_agent_for_run()`
+(harness_registry.py) **always raises** — no chat/message-loop `Agent` is
+ever constructed. A terminal-agent task's stream contains only
+`TerminalAgentSignalRunnerMessage` / `Environment*RunnerMessage` /
+`RequestSuccessAgentMessage` / crash/killed messages / `ChatInputUserMessage`
+/ `UpdatedArtifactAgentMessage`. The rich-loop stream
+(`ResponseBlockAgentMessage`, `AskUserQuestionAgentMessage`,
+`PlanModeAgentMessage`, tool blocks) is never produced. `derived.py::status`
+hard-branches on `is_terminal_agent_config` → `scan_terminal_signal_state`,
+so the AUQ parser (`_ready_or_waiting`) and the `waiting_detail` /
+activity parsers are unreachable. The layer only *looked* alive because the
+deadness is gated behind a runtime `isinstance` (not a removed branch),
+`create_agent_for_run` survives as an always-raising guard, and the base
+`Harness` still declared the (never-overridden) AUQ/plan tool methods.
+
+**Removed this pass** (commit "remove the dead AUQ/plan message-parsing
+path") — the dead PARSING only, preserving live API fields:
+- `derived.py`: the non-terminal `status` branch, `_ready_or_waiting`,
+  `_last_request_failed`, `_find_latest_activity`, `_describe_tool_use`,
+  `_TOOL_DESCRIPTIONS`; `current_activity`/`last_activity`/`waiting_detail`
+  gutted to `return None` (they always were None for terminal agents; the
+  frontend workspace-peek reads the fields with fallbacks, so no API change).
+  Deleted `derived_activity_test.py` (tested the gutted behavior).
+- `interfaces/agents/harness.py`: the 7 AUQ/plan tool-detection methods.
+- `chat_state.py`: `make_plan_approval_question` (tests-only).
+
+**Deliberately NOT removed (different risk class / separate decisions):**
+- **Persisted message-class definitions** (`AskUserQuestionAgentMessage`,
+  `ResponseBlockAgentMessage`, `PlanModeAgentMessage`, the
+  Request*/ContextSummary/Warning/Background/AutoCompacting messages, etc.)
+  and their unions. These are members of `PersistentMessageTypes`, which
+  `SavedAgentMessage` (database/models.py) deserializes from the DB —
+  removing them breaks loading any pre-slim-down rich-agent task history.
+  Inert schema, kept for backward-compatible deserialization. NOTE: a field
+  description on `AskUserQuestionData.plan_file_path` still references the
+  now-removed `make_plan_approval_question`; left as-is to avoid a
+  JSON-schema migration for a doc-only change — clean it up here when these
+  types are eventually removed (with a real migration).
+- **The 4 endpoints** (`answer_question`, `clear_context`, `delete_message`,
+  `interrupt`) — API-contract; need a frontend/CLI cross-check.
+- **The backend stream-converter internals** (`convert_agent_messages_to_
+  task_update` + the `StreamingTaskState` `pending_user_question` etc.) —
+  these handle the dead ResponseBlock/AUQ/PlanMode branches BUT also process
+  the live terminal lifecycle/signal messages, so it's surgical excision
+  from a live function, not a leaf delete.
+- **Frontend dead chat-stream plumbing** (the `taskDetails` atoms/reducers
+  `pendingUserQuestion`/`isInPlanMode`/`completedChatMessages`/
+  `submittedQuestionAnswers`/`pendingBackgroundTaskIds`/`queuedChatMessages`,
+  `useUnifiedStream` processing, and dead utils `askUserQuestionUtils`,
+  `subagentTree`, `getToolDisplayName`/`getToolDisplayNamePresent`, the
+  `Guards` tool-block type guards, `extractUserMessageIds`/`userMessageIds`)
+  — no persistence risk, but per-item ref-checking needed (`inProgressChat
+  Message` IS live for file-op highlighting; some fields are "remove breaks
+  WorkspacePanelData shape"). A good next chunk.
 
 ---
 

@@ -26,12 +26,8 @@ from sculptor.interfaces.agents.messages import EphemeralAgentMessage
 from sculptor.interfaces.agents.messages import EphemeralMessage
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import AgentMessageID
-from sculptor.primitives.ids import AssistantMessageID
 from sculptor.primitives.ids import TaskID as TaskID
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
-from sculptor.state.chat_state import AskUserQuestionData
-from sculptor.state.chat_state import ContentBlockTypes
-from sculptor.state.chat_state import TurnMetrics
 from sculptor.state.claude_state import ParsedAgentResponsePassthrough
 from sculptor.state.claude_state import ParsedToolResultResponse
 from sculptor.state.messages import AgentMessageSource
@@ -39,8 +35,6 @@ from sculptor.state.messages import ChatInputUserMessage
 from sculptor.state.messages import Message
 from sculptor.state.messages import PersistentAgentMessage
 from sculptor.state.messages import PersistentMessage
-from sculptor.state.messages import PersistentUserMessage
-from sculptor.state.messages import ResponseBlockAgentMessage
 
 ParsedAgentResponseType = ParsedAgentResponsePassthrough | ParsedToolResultResponse
 
@@ -98,25 +92,6 @@ class EphemeralUserMessage(EphemeralMessage):
     )
 
 
-class ClearContextUserMessage(PersistentUserMessage):
-    object_type: str = Field(default="ClearContextUserMessage")
-
-
-class UserQuestionAnswerMessage(PersistentUserMessage):
-    object_type: str = Field(default="UserQuestionAnswerMessage")
-    answers: dict[str, str] = Field(description="Map from question text to answer text")
-    notes: dict[str, str] = Field(
-        default_factory=dict,
-        description="Map from question text to the freeform 'Other' text the user typed, when present. Mirrors the native AskUserQuestion tool's per-question `notes` annotation, which the result formatter renders as ` user notes: <text>` after the answer string.",
-    )
-    question_data: AskUserQuestionData = Field(description="The original questions for context")
-    tool_use_id: str = Field(description="The original ToolUseBlock ID")
-
-
-class StopAgentUserMessage(EphemeralUserMessage):
-    object_type: str = Field(default="StopAgentUserMessage")
-
-
 class InterruptProcessUserMessage(EphemeralUserMessage):
     object_type: str = Field(default="InterruptProcessUserMessage")
 
@@ -126,15 +101,10 @@ class RemoveQueuedMessageUserMessage(EphemeralUserMessage):
     target_message_id: AgentMessageID = Field(description="ID of the message to be removed from the queue")
 
 
-PersistentUserMessageUnion = (
-    Annotated[ChatInputUserMessage, Tag("ChatInputUserMessage")]
-    | Annotated[ClearContextUserMessage, Tag("ClearContextUserMessage")]
-    | Annotated[UserQuestionAnswerMessage, Tag("UserQuestionAnswerMessage")]
-)
+PersistentUserMessageUnion = Annotated[ChatInputUserMessage, Tag("ChatInputUserMessage")]
 EphemeralUserMessageUnion = (
     Annotated[InterruptProcessUserMessage, Tag("InterruptProcessUserMessage")]
     | Annotated[RemoveQueuedMessageUserMessage, Tag("RemoveQueuedMessageUserMessage")]
-    | Annotated[StopAgentUserMessage, Tag("StopAgentUserMessage")]
 )
 UserMessageUnion = PersistentUserMessageUnion | EphemeralUserMessageUnion
 
@@ -227,23 +197,11 @@ class TerminalAgentSignalRunnerMessage(EphemeralRunnerMessage):
     signal: TerminalStatusSignal
 
 
-class ResumeAgentResponseRunnerMessage(PersistentRunnerMessage):
-    object_type: str = "ResumeAgentResponseRunnerMessage"
-    for_user_message_id: AgentMessageID
-    error: SerializedException | None = None
-
-
-class WarningMessage(Message):
-    error: SerializedException | None
-    message: str
-
-
 PersistentRunnerMessageUnion = (
     Annotated[KilledAgentRunnerMessage, Tag("KilledAgentRunnerMessage")]
     | Annotated[AgentCrashedRunnerMessage, Tag("AgentCrashedRunnerMessage")]
     | Annotated[EnvironmentCrashedRunnerMessage, Tag("EnvironmentCrashedRunnerMessage")]
     | Annotated[UnexpectedErrorRunnerMessage, Tag("UnexpectedErrorRunnerMessage")]
-    | Annotated[ResumeAgentResponseRunnerMessage, Tag("ResumeAgentResponseRunnerMessage")]
 )
 EphemeralRunnerMessageUnion = (
     Annotated[TaskStatusRunnerMessage, Tag("TaskStatusRunnerMessage")]
@@ -254,54 +212,9 @@ EphemeralRunnerMessageUnion = (
 RunnerMessageUnion = PersistentRunnerMessageUnion | EphemeralRunnerMessageUnion
 
 
-class ContextSummaryMessage(PersistentAgentMessage):
-    object_type: str = "ContextSummaryMessage"
-    content: str
-
-
-class ContextClearedMessage(PersistentAgentMessage):
-    object_type: str = "ContextClearedMessage"
-
-
-class PartialResponseBlockAgentMessage(EphemeralAgentMessage):
-    """Ephemeral message with accumulated streaming content.
-
-    Contains complete accumulated content so far (not just delta).
-    Used for real-time UI updates during streaming.
-    """
-
-    object_type: str = "PartialResponseBlockAgentMessage"
-    content: tuple[ContentBlockTypes, ...] = ()
-    assistant_message_id: AssistantMessageID
-    # The message_id that will be used for the first ResponseBlockAgentMessage of this turn.
-    # Used to ensure ChatMessage.id is stable from the first partial and matches a persisted message.
-    first_response_message_id: AgentMessageID
-    parent_tool_use_id: str | None = None
-
-
-class StreamingMessageCompleteAgentMessage(EphemeralAgentMessage):
-    """Ephemeral marker indicating streaming for one response block is complete.
-
-    Emitted on message_stop from Claude Code. Not persisted to DB - only used
-    for live message_conversion to reset its streaming state.
-    """
-
-    object_type: str = "StreamingMessageCompleteAgentMessage"
-
-
 class UpdatedArtifactAgentMessage(EphemeralAgentMessage):
     object_type: str = "UpdatedArtifactAgentMessage"
     artifact: FileAgentArtifact
-
-
-class RequestStartedAgentMessage(PersistentAgentMessage):
-    object_type: str = "RequestStartedAgentMessage"
-    request_id: AgentMessageID
-
-
-class RemoveQueuedMessageAgentMessage(PersistentAgentMessage):
-    object_type: str = "RemoveQueuedMessageAgentMessage"
-    removed_message_id: AgentMessageID
 
 
 class RequestCompleteAgentMessage(abc.ABC):
@@ -310,14 +223,6 @@ class RequestCompleteAgentMessage(abc.ABC):
 
 
 class PersistentRequestCompleteAgentMessage(PersistentAgentMessage, RequestCompleteAgentMessage, abc.ABC): ...
-
-
-class RequestSkippedAgentMessage(PersistentRequestCompleteAgentMessage):
-    object_type: str = "RequestSkippedAgentMessage"
-    # pyrefly: ignore [bad-override]
-    request_id: AgentMessageID
-    # pyrefly: ignore [bad-override]
-    error: None = None
 
 
 class RequestSuccessAgentMessage(PersistentRequestCompleteAgentMessage):
@@ -329,129 +234,8 @@ class RequestSuccessAgentMessage(PersistentRequestCompleteAgentMessage):
     interrupted: bool = False
 
 
-class RequestFailureAgentMessage(PersistentRequestCompleteAgentMessage, ErrorMessage):
-    object_type: str = "RequestFailureAgentMessage"
-    # pyrefly: ignore [bad-override]
-    request_id: AgentMessageID
-    # pyrefly: ignore [bad-override]
-    error: SerializedException
-
-
-class RequestStoppedAgentMessage(PersistentRequestCompleteAgentMessage):
-    object_type: str = "RequestStoppedAgentMessage"
-    # pyrefly: ignore [bad-override]
-    request_id: AgentMessageID
-    # pyrefly: ignore [bad-override]
-    error: SerializedException
-
-
-ErrorMessageUnion = Annotated[
-    Annotated[RequestFailureAgentMessage, Tag("RequestFailureAgentMessage")]
-    | Annotated[EnvironmentCrashedRunnerMessage, Tag("EnvironmentCrashedRunnerMessage")]
-    | Annotated[UnexpectedErrorRunnerMessage, Tag("UnexpectedErrorRunnerMessage")]
-    | Annotated[AgentCrashedRunnerMessage, Tag("AgentCrashedRunnerMessage")],
-    build_discriminator(),
-]
-
-
-class TurnMetricsAgentMessage(PersistentAgentMessage):
-    """Emitted by the output processor at the end of a turn with per-turn metrics.
-
-    Always arrives on the queue before the corresponding RequestSuccessAgentMessage
-    or RequestStoppedAgentMessage, so message_conversion can attach it to the
-    in-progress chat message before finalizing the request.
-
-    Persistent so that metrics survive server restarts and are available during
-    historical message replay.
-    """
-
-    object_type: str = "TurnMetricsAgentMessage"
-    turn_metrics: TurnMetrics
-
-
-class BackgroundTaskStartedAgentMessage(EphemeralAgentMessage):
-    """Emitted when Claude Code launches a background task (run_in_background)."""
-
-    object_type: str = "BackgroundTaskStartedAgentMessage"
-    background_task_id: str
-    tool_use_id: str
-    description: str = ""
-    task_type: str = ""
-
-
-class BackgroundTaskNotificationAgentMessage(PersistentAgentMessage):
-    """Emitted when a background task completes.
-
-    The assistant turn that follows this message is a response to the background task
-    completion, not a continuation of the previous conversation. message_conversion uses
-    this to separate the background response into its own chat message.
-
-    This is persistent (not ephemeral) because the separation must survive page reloads.
-    The entire background notification cycle (system/task_notification → system/init →
-    assistant streaming → result/success) happens within a single RequestStarted/
-    RequestSuccess pair, so without this persisted marker the background response would
-    be concatenated with the preceding assistant message on replay.
-    """
-
-    object_type: str = "BackgroundTaskNotificationAgentMessage"
-    background_task_id: str
-    tool_use_id: str
-    status: str
-    summary: str = ""
-    # Wallclock run time of the background task, in seconds. Parsed from the
-    # CLI's task_notification `usage.duration_ms` field. Used by message
-    # conversion to compute an accurate subagent-pill duration even when the
-    # subagent's own messages never reach the parent's stream (which is the
-    # common case for Agent-tool background tasks — see SCU-1151).
-    duration_seconds: float | None = None
-
-
-class AutoCompactingAgentMessage(EphemeralAgentMessage):
-    """Ephemeral message indicating the agent has started auto-compacting context.
-
-    Emitted when the PreCompact hook signals that auto-compaction has begun.
-    A corresponding AutoCompactingDoneAgentMessage is emitted when it completes.
-    """
-
-    object_type: str = "AutoCompactingAgentMessage"
-
-
-class AutoCompactingDoneAgentMessage(EphemeralAgentMessage):
-    """Ephemeral message indicating the agent has finished auto-compacting context."""
-
-    object_type: str = "AutoCompactingDoneAgentMessage"
-
-
-class AskUserQuestionAgentMessage(EphemeralAgentMessage):
-    object_type: str = "AskUserQuestionAgentMessage"
-    question_data: AskUserQuestionData
-
-
-class WarningAgentMessage(PersistentAgentMessage, WarningMessage):
-    object_type: str = "WarningAgentMessage"
-
-
-PersistentAgentMessageUnion = (
-    Annotated[RequestSuccessAgentMessage, Tag("RequestSuccessAgentMessage")]
-    | Annotated[RequestFailureAgentMessage, Tag("RequestFailureAgentMessage")]
-    | Annotated[ResponseBlockAgentMessage, Tag("ResponseBlockAgentMessage")]
-    | Annotated[WarningAgentMessage, Tag("WarningAgentMessage")]
-    | Annotated[RequestStartedAgentMessage, Tag("RequestStartedAgentMessage")]
-    | Annotated[RequestSkippedAgentMessage, Tag("RequestSkippedAgentMessage")]
-    | Annotated[RequestStoppedAgentMessage, Tag("RequestStoppedAgentMessage")]
-    | Annotated[ContextSummaryMessage, Tag("ContextSummaryMessage")]
-    | Annotated[ContextClearedMessage, Tag("ContextClearedMessage")]
-    | Annotated[RemoveQueuedMessageAgentMessage, Tag("RemoveQueuedMessageAgentMessage")]
-    | Annotated[BackgroundTaskNotificationAgentMessage, Tag("BackgroundTaskNotificationAgentMessage")]
-    | Annotated[TurnMetricsAgentMessage, Tag("TurnMetricsAgentMessage")]
-)
-EphemeralAgentMessageUnion = (
-    Annotated[PartialResponseBlockAgentMessage, Tag("PartialResponseBlockAgentMessage")]
-    | Annotated[UpdatedArtifactAgentMessage, Tag("UpdatedArtifactAgentMessage")]
-    | Annotated[AskUserQuestionAgentMessage, Tag("AskUserQuestionAgentMessage")]
-    | Annotated[AutoCompactingAgentMessage, Tag("AutoCompactingAgentMessage")]
-    | Annotated[AutoCompactingDoneAgentMessage, Tag("AutoCompactingDoneAgentMessage")]
-)
+PersistentAgentMessageUnion = Annotated[RequestSuccessAgentMessage, Tag("RequestSuccessAgentMessage")]
+EphemeralAgentMessageUnion = Annotated[UpdatedArtifactAgentMessage, Tag("UpdatedArtifactAgentMessage")]
 AgentMessageUnion = PersistentAgentMessageUnion | EphemeralAgentMessageUnion
 # this is necessary because pydantic won't let us use PersistentMessageTypes, which already has a discriminator, to make MessageTypes
 PersistentMessageTypesUnannotated = (

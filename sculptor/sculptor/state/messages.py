@@ -1,14 +1,11 @@
 import datetime
 from enum import StrEnum
-from typing import Literal
 
 from pydantic import Field
 
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.time_utils import get_current_time
 from sculptor.primitives.ids import AgentMessageID
-from sculptor.primitives.ids import AssistantMessageID
-from sculptor.state.chat_state import ContentBlockTypes
 
 
 class AgentMessageSource(StrEnum):
@@ -92,11 +89,3 @@ class PersistentAgentMessage(PersistentMessage):
     """Base class for messages sent from the agent."""
 
     source: AgentMessageSource = AgentMessageSource.AGENT
-
-
-class ResponseBlockAgentMessage(PersistentAgentMessage):
-    object_type: str = "ResponseBlockAgentMessage"
-    role: Literal["user", "assistant", "system"]
-    assistant_message_id: AssistantMessageID
-    content: tuple[ContentBlockTypes, ...]
-    parent_tool_use_id: str | None = None

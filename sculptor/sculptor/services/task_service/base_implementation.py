@@ -33,9 +33,7 @@ from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentReleasedRunnerMessage
 from sculptor.interfaces.agents.agent import EphemeralMessage
 from sculptor.interfaces.agents.agent import MessageTypes
-from sculptor.interfaces.agents.agent import PartialResponseBlockAgentMessage
 from sculptor.interfaces.agents.agent import PersistentMessageTypes
-from sculptor.interfaces.agents.agent import ResumeAgentResponseRunnerMessage
 from sculptor.interfaces.agents.agent import TaskStatusRunnerMessage
 from sculptor.interfaces.agents.agent import UpdatedArtifactAgentMessage
 from sculptor.interfaces.agents.agent import UserMessageUnion
@@ -347,9 +345,7 @@ class BaseTaskService(TaskService, ABC):
         self, user_reference: UserReference
     ) -> Generator[Queue[TaskMessageContainer], None, None]:
         # filter down to just the particular types that are needed here
-        listener: Queue[TaskMessageContainer] = FilteredQueue(
-            lambda x: not isinstance(x, PartialResponseBlockAgentMessage)
-        )
+        listener: Queue[TaskMessageContainer] = FilteredQueue(lambda _: True)
         with self._subscription_lock:
             self._subscriptions_by_user_reference.setdefault(user_reference, []).append(listener)
             # we must query the existing messages for this task inside the lock
@@ -434,9 +430,7 @@ class BaseTaskService(TaskService, ABC):
         registry_key: _RegistryKeyT,
         task_filter: Callable[[Task], bool],
     ) -> Generator[Queue[TaskMessageContainer], None, None]:
-        listener: Queue[TaskMessageContainer] = FilteredQueue(
-            lambda x: not isinstance(x, PartialResponseBlockAgentMessage)
-        )
+        listener: Queue[TaskMessageContainer] = FilteredQueue(lambda _: True)
         with self._subscription_lock:
             registry.setdefault(registry_key, []).append(listener)
             with self.data_model_service.open_transaction(RequestID()) as transaction:
@@ -508,13 +502,13 @@ class BaseTaskService(TaskService, ABC):
     @contextmanager
     def subscribe_to_user_and_sculptor_system_messages(
         self, task_id: TaskID
-    ) -> Generator[Queue[UserMessageUnion | ResumeAgentResponseRunnerMessage], None, None]:
+    ) -> Generator[Queue[UserMessageUnion], None, None]:
         filter_fn = lambda x: x.source in (AgentMessageSource.USER, AgentMessageSource.SCULPTOR_SYSTEM)  # noqa: E731
         with self._subscribe_to_task(task_id, filter_fn) as listener:
             # by message_types_test::test_all_user_message_types_are_in_union and message_types_test::test_all_system_message_types_are_in_union,
             # we know that the listener is a queue of UserMessageUnion.
             # (we must cast rather than assert because we've got parameterized generics)
-            yield cast(Queue[UserMessageUnion | ResumeAgentResponseRunnerMessage], listener)
+            yield cast(Queue[UserMessageUnion], listener)
 
     def _publish_task_update(self, task: Task, message: Message | None = None) -> None:
         """

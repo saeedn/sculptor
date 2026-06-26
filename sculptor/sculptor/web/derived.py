@@ -33,15 +33,10 @@ from sculptor.database.models import Workspace
 from sculptor.foundation.itertools import only
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import build_discriminator
-from sculptor.interfaces.agents.agent import AutoCompactingAgentMessage
-from sculptor.interfaces.agents.agent import AutoCompactingDoneAgentMessage
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentReleasedRunnerMessage
 from sculptor.interfaces.agents.agent import PersistentRequestCompleteAgentMessage
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
-from sculptor.interfaces.agents.agent import RemoveQueuedMessageAgentMessage
-from sculptor.interfaces.agents.agent import RequestFailureAgentMessage
-from sculptor.interfaces.agents.agent import RequestStartedAgentMessage
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
 from sculptor.interfaces.agents.agent import UpdatedArtifactAgentMessage
@@ -190,14 +185,12 @@ def _is_content_message(msg: Message) -> bool:
     Content messages are those that create new visual elements in the chat UI
     (agent responses, errors, warnings, etc.). Non-content messages include:
     - Ephemeral messages (not persisted, recreated on restart)
-    - Request lifecycle bookkeeping (RequestStarted, RequestComplete, RemoveQueued)
+    - Request lifecycle bookkeeping (RequestComplete)
     - User-initiated messages (the user already knows about their own actions)
     """
     if msg.is_ephemeral:
         return False
-    if isinstance(
-        msg, (RequestStartedAgentMessage, PersistentRequestCompleteAgentMessage, RemoveQueuedMessageAgentMessage)
-    ):
+    if isinstance(msg, PersistentRequestCompleteAgentMessage):
         return False
     if msg.source == AgentMessageSource.USER:
         return False
@@ -264,17 +257,6 @@ class TaskView(LimitedBaseTaskView[TaskInputType, TaskStateType], Generic[TaskIn
     @property
     def settings(self) -> SculptorSettings:
         return only(self._settings_container)
-
-    @computed_field
-    @property
-    def is_auto_compacting(self) -> bool:
-        """True when the agent is auto-compacting context (detected via plugin hook)."""
-        for message in reversed(self._messages):
-            if isinstance(message, AutoCompactingDoneAgentMessage):
-                return False
-            if isinstance(message, AutoCompactingAgentMessage):
-                return True
-        return False
 
     @computed_field
     @property
@@ -511,15 +493,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
     @computed_field
     @property
     def error_detail(self) -> str | None:
-        if self.status == TaskStatus.REQUEST_ERROR:
-            for msg in reversed(self._messages):
-                if isinstance(msg, RequestFailureAgentMessage):
-                    if msg.error.args:
-                        first_arg = msg.error.args[0]
-                        if isinstance(first_arg, str):
-                            return first_arg
-                    return msg.error.exception
-            return None
         if self.status != TaskStatus.ERROR:
             return None
         error = self.task.error

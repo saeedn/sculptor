@@ -13,7 +13,6 @@ from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import build_discriminator
 from sculptor.foundation.serialization import SerializedException
 from sculptor.interfaces.agents.agent import AgentConfigTypes
-from sculptor.interfaces.agents.agent import PartialResponseBlockAgentMessage
 from sculptor.interfaces.agents.agent import PersistentMessageTypes
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import AgentMessageID
@@ -286,10 +285,6 @@ class SavedAgentMessage(DatabaseModel):
             raise ValueError(
                 f"SavedAgentMessage source {self.source} does not match message source {self.message.source}."
             )
-        if self.is_partial != isinstance(self.message, PartialResponseBlockAgentMessage):
-            raise ValueError(
-                f"SavedAgentMessage is_partial {self.is_partial} does not match message type {type(self.message)}."
-            )
 
     @classmethod
     def build(cls, message: PersistentMessageTypes, task_id: TaskID) -> "SavedAgentMessage":
@@ -298,7 +293,9 @@ class SavedAgentMessage(DatabaseModel):
             task_id=task_id,
             message=message,
             source=message.source,
-            is_partial=isinstance(message, PartialResponseBlockAgentMessage),
+            # Vestigial: partial (streaming) messages are ephemeral and never persisted,
+            # so a SavedAgentMessage is never partial.
+            is_partial=False,
         )
 
 

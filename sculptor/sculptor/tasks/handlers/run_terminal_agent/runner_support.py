@@ -29,7 +29,6 @@ from sculptor.interfaces.agents.agent import EnvironmentCrashedRunnerMessage
 from sculptor.interfaces.agents.agent import KilledAgentRunnerMessage
 from sculptor.interfaces.agents.agent import PersistentRequestCompleteAgentMessage
 from sculptor.interfaces.agents.agent import PersistentRunnerMessageUnion
-from sculptor.interfaces.agents.agent import RequestStoppedAgentMessage
 from sculptor.interfaces.agents.agent import RequestSuccessAgentMessage
 from sculptor.interfaces.agents.agent import UnexpectedErrorRunnerMessage
 from sculptor.interfaces.agents.errors import AgentCrashed
@@ -67,18 +66,12 @@ class AgentPaused(AgentShutdownCleanly):
 def _is_truly_processed_completion(message: PersistentRequestCompleteAgentMessage) -> bool:
     """True iff this completion represents the agent actually finishing the user message.
 
-    Interrupted / killed completions (``RequestSuccessAgentMessage(interrupted=True)``,
-    ``RequestStoppedAgentMessage`` — always emitted on SIGTERM/SIGINT) do NOT count,
-    because the agent didn't really finish processing the message. If we counted them
-    here, dedup would treat the message as processed and silently drop it on the next
-    run — which loses the user's typed input in the post-answer-shutdown scenario.
-
-    ``RequestFailureAgentMessage`` and ``RequestSkippedAgentMessage`` do count: the
-    agent received the message and reached a terminal state for it (failed or
-    intentionally skipped). Re-delivering would just hit the same outcome.
+    An interrupted completion (``RequestSuccessAgentMessage(interrupted=True)``) does
+    NOT count, because the agent didn't really finish processing the message. If we
+    counted it here, dedup would treat the message as processed and silently drop it on
+    the next run — which loses the user's typed input in the post-answer-shutdown
+    scenario.
     """
-    if isinstance(message, RequestStoppedAgentMessage):
-        return False
     if isinstance(message, RequestSuccessAgentMessage) and message.interrupted:
         return False
     return True

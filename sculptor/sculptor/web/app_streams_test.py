@@ -23,17 +23,14 @@ from sculptor.database.models import Notification
 from sculptor.database.models import NotificationID
 from sculptor.database.models import Project
 from sculptor.foundation.async_monkey_patches import log_exception
-from sculptor.foundation.common import generate_id
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.itertools import only
 from sculptor.foundation.thread_utils import ObservableThread
 from sculptor.primitives.ids import AgentMessageID
-from sculptor.primitives.ids import AssistantMessageID
 from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
-from sculptor.state.chat_state import TextBlock
-from sculptor.state.messages import ResponseBlockAgentMessage
+from sculptor.state.messages import ChatInputUserMessage
 from sculptor.web.app import APP
 from sculptor.web.app_basic_test import _create_task_with_message_in_workspace
 from sculptor.web.app_basic_test import _create_workspace
@@ -189,11 +186,9 @@ def test_unified_stream_emits_task_views(
         with user_session.open_transaction(test_services) as transaction:
             message_id = AgentMessageID()
             test_services.task_service.create_message(
-                ResponseBlockAgentMessage(
+                ChatInputUserMessage(
                     message_id=message_id,
-                    role="assistant",
-                    assistant_message_id=AssistantMessageID(generate_id()),
-                    content=(TextBlock(text="streaming smoke test message"),),
+                    text="streaming smoke test message",
                 ),
                 task.object_id,
                 transaction,

@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: c8985360b2ca
+Revision ID: 4ddee12c1e07
 Revises:
-Create Date: 2026-06-26 13:33:42.721475
+Create Date: 2026-06-26 15:05:03.486524
 
 """
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "c8985360b2ca"
+revision: str = "4ddee12c1e07"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -60,7 +60,7 @@ def upgrade() -> None:
         sa.Column("last_read_at", sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(["project_id"], ["project.object_id"], name="foreign_key_project_id"),
         sa.PrimaryKeyConstraint("object_id"),
-        info={"monotonic_columns": frozenset({"is_deleting", "is_deleted"})},
+        info={"monotonic_columns": frozenset({"is_deleted", "is_deleting"})},
     )
     op.create_table(
         "workspace",
@@ -111,7 +111,6 @@ def upgrade() -> None:
         sa.Column("task_id", sa.String(), nullable=False),
         sa.Column("message", sa.JSON(), nullable=False),
         sa.Column("source", sa.String(), nullable=False),
-        sa.Column("is_partial", sa.Integer(), nullable=False),
         sa.ForeignKeyConstraint(["task_id"], ["task.object_id"], name="foreign_key_task_id"),
         sa.PrimaryKeyConstraint("object_id"),
     )

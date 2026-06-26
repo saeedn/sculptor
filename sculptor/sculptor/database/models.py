@@ -272,9 +272,6 @@ class SavedAgentMessage(DatabaseModel):
     message: PersistentMessageTypes
     # this is taken directly from the Message, so that we can query it more easily.
     source: AgentMessageSource
-    # this is basically just true if the message is a `StreamingChatResponseChunkAgentMessage`
-    # it's here so that we can not bother to include partial messages in some queries.
-    is_partial: bool
 
     def model_post_init(self, context: Any) -> None:
         if self.object_id != self.message.message_id:
@@ -293,9 +290,6 @@ class SavedAgentMessage(DatabaseModel):
             task_id=task_id,
             message=message,
             source=message.source,
-            # Vestigial: partial (streaming) messages are ephemeral and never persisted,
-            # so a SavedAgentMessage is never partial.
-            is_partial=False,
         )
 
 

@@ -11,31 +11,13 @@ Terminal configs are dispatched to the dedicated terminal task handler.
 from __future__ import annotations
 
 from sculptor.interfaces.agents.harness import Harness
-from sculptor.interfaces.agents.harness import HarnessCapabilities
 
 
 class TerminalHarness(Harness):
     name: str = "terminal"
 
-    def capabilities(self) -> HarnessCapabilities:
-        # Uniformly false: terminal agents have no message stream, so no
-        # chat-derived affordance can apply (see module docstring).
-        return HarnessCapabilities(
-            supports_chat_interface=False,
-            supports_interactive_backchannel=False,
-            supports_skills=False,
-            supports_sub_agents=False,
-            supports_image_input=False,
-            supports_fast_mode=False,
-            supports_context_reset=False,
-            supports_compaction=False,
-            supports_background_tasks=False,
-            supports_session_resume=False,
-            supports_tool_use_rendering=False,
-            supports_file_attachments=False,
-            supports_interruption=False,
-            supports_file_references=False,
-        )
+    # capabilities() inherits the base all-False set: terminal agents have no
+    # message stream, so no chat-derived affordance applies.
 
 
 TERMINAL_HARNESS: TerminalHarness = TerminalHarness()

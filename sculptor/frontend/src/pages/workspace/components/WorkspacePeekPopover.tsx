@@ -77,13 +77,11 @@ function formatTimeAgo(dateStr: string): string {
 function getSummary(status: WorkspacePeekAgentStatus, agents: ReadonlyArray<CodingAgentTaskView>): string {
   const totalCompleted = agents.reduce((sum, a) => sum + a.taskCompleted, 0);
   const totalTodos = agents.reduce((sum, a) => sum + a.taskTotal, 0);
-  const firstWorking = agents.find((a) => a.workspacePeekStatus === WorkspacePeekAgentStatus.WORKING);
-  const activity = firstWorking?.currentActivity;
 
   switch (status) {
     case WorkspacePeekAgentStatus.WORKING:
-      if (totalTodos === 0) return activity ? `Just started — ${activity}` : "Just started";
-      return `${totalCompleted} of ${totalTodos} tasks done${activity ? ` — ${activity}` : ""}`;
+      if (totalTodos === 0) return "Just started";
+      return `${totalCompleted} of ${totalTodos} tasks done`;
     case WorkspacePeekAgentStatus.WAITING:
       return totalTodos > 0 ? `${totalCompleted} of ${totalTodos} tasks done — waiting for input` : "Waiting for input";
     case WorkspacePeekAgentStatus.ERROR:
@@ -133,7 +131,7 @@ const AgentRow = ({
 
   switch (status) {
     case WorkspacePeekAgentStatus.WAITING:
-      description = agent.waitingDetail ?? "Waiting for input";
+      description = "Waiting for input";
       break;
     case WorkspacePeekAgentStatus.ERROR:
       description = agent.errorDetail ?? "Error encountered";
@@ -142,14 +140,13 @@ const AgentRow = ({
       description = agent.taskTotal > 0 ? `${agent.taskCompleted}/${agent.taskTotal} done` : "Done";
       break;
     case WorkspacePeekAgentStatus.WORKING:
-      description = agent.currentActivity ?? "Working...";
+      description = "Working...";
       break;
     case WorkspacePeekAgentStatus.IDLE: {
       if (agent.taskTotal > 0) {
         description = `Completed ${agent.taskCompleted} of ${agent.taskTotal} tasks · ${formatTimeAgo(agent.updatedAt)}`;
       } else {
-        const activity = agent.lastActivity ?? agent.currentActivity;
-        description = activity ? `${activity} · ${formatTimeAgo(agent.updatedAt)}` : formatTimeAgo(agent.updatedAt);
+        description = formatTimeAgo(agent.updatedAt);
       }
       break;
     }
@@ -410,13 +407,8 @@ export const WorkspacePeekPopover = ({
 
     if (waitingAgents.length > 0) {
       const names = waitingAgents.map((a) => a.title ?? "Agent").join(", ");
-      const hasApproval = waitingAgents.some((a) => {
-        const detail = a.waitingDetail?.toLowerCase() ?? "";
-        return detail.includes("plan") || detail.includes("approval");
-      });
-      const suffix = hasApproval ? "approval" : "input";
       const verb = waitingAgents.length === 1 ? "needs" : "need";
-      return { message: `${names} ${verb} your ${suffix}`, status: WorkspacePeekAgentStatus.WAITING };
+      return { message: `${names} ${verb} your input`, status: WorkspacePeekAgentStatus.WAITING };
     }
 
     const isAllCompleted =

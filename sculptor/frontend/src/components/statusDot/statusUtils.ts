@@ -21,15 +21,6 @@ export function getAgentDotStatus(status: TaskStatus, lastReadAt: string | null,
     return "error";
   }
 
-  // Request-level errors (e.g. API 429) show as "error" until the user views
-  // the workspace, then clear to "read" — unlike full ERROR which persists.
-  if (status === TaskStatus.REQUEST_ERROR) {
-    if (lastReadAt === null || new Date(updatedAt) > new Date(lastReadAt)) {
-      return "error";
-    }
-    return "read";
-  }
-
   if (lastReadAt === null || new Date(updatedAt) > new Date(lastReadAt)) {
     return "unread";
   }

@@ -65,9 +65,8 @@ class TaskStatus(StrEnum):
     BUILDING = "BUILDING"  # Environment is being set up
     RUNNING = "RUNNING"  # Claude code process is actively running
     READY = "READY"  # Process completed successfully, idle
-    WAITING = "WAITING"  # Agent asked a question or waiting for plan approval
+    WAITING = "WAITING"  # Agent signalled that it is waiting for input
     ERROR = "ERROR"  # Process encountered an error (stderr output)
-    REQUEST_ERROR = "REQUEST_ERROR"  # Last request failed (e.g. API 429) but agent is still usable
 
 
 class WorkspacePeekAgentStatus(StrEnum):
@@ -426,7 +425,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
             TaskStatus.RUNNING: WorkspacePeekAgentStatus.WORKING,
             TaskStatus.WAITING: WorkspacePeekAgentStatus.WAITING,
             TaskStatus.ERROR: WorkspacePeekAgentStatus.ERROR,
-            TaskStatus.REQUEST_ERROR: WorkspacePeekAgentStatus.ERROR,
             TaskStatus.READY: WorkspacePeekAgentStatus.IDLE,
         }
         return status_map[self.status]
@@ -437,20 +435,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
         if "wps" not in self._cache:
             self._cache["wps"] = self._compute_workspace_peek_status()
         return self._cache["wps"]
-
-    # current_activity/last_activity described the agent's latest chat
-    # tool-use/response. Terminal agents emit no such message stream, so both
-    # are always None now; the fields remain because the frontend workspace
-    # peek still reads them (falling back to "Working...").
-    @computed_field
-    @property
-    def current_activity(self) -> str | None:
-        return None
-
-    @computed_field
-    @property
-    def last_activity(self) -> str | None:
-        return None
 
     @computed_field
     @property
@@ -477,16 +461,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
         for task in artifact.tasks:
             if task.status == AgentTaskStatus.IN_PROGRESS:
                 return task.subject
-        return None
-
-    @computed_field
-    @property
-    def waiting_detail(self) -> str | None:
-        # waiting_detail surfaced the specific AskUserQuestion / ExitPlanMode a
-        # chat agent was blocked on. Terminal agents have no message stream and
-        # signal WAITING without a detail, so this is always None now; the field
-        # stays because the frontend workspace peek reads it (falling back to
-        # "Waiting for input").
         return None
 
     @computed_field

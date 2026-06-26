@@ -17,7 +17,7 @@ class TestInitialMigration(MigrationTestFixture):
 
     @property
     def revision(self) -> str:
-        return "c8985360b2ca"
+        return "4ddee12c1e07"
 
     @property
     def down_revision(self) -> None:

@@ -5,8 +5,6 @@ from pathlib import Path
 from queue import Queue
 from typing import Generator
 
-from pydantic import AnyUrl
-
 from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.foundation.pydantic_serialization import FrozenModel
@@ -75,17 +73,6 @@ class TaskService(Service, ABC):
 
     @abstractmethod
     def delete_task(self, task_id: TaskID, transaction: DataModelTransaction) -> None: ...
-
-    @abstractmethod
-    def get_artifact_file_url(self, task_id: TaskID, artifact_name: str) -> AnyUrl: ...
-
-    @abstractmethod
-    def set_artifact_file_data(self, task_id: TaskID, artifact_name: str, artifact_data: str | bytes) -> None: ...
-
-    @abstractmethod
-    def ensure_artifact_cache_populated(self, task_id: TaskID, artifact_name: str) -> bool:
-        """Return True iff the artifact cache file exists, backfilling from the
-        workspace's stable artifacts dir if needed. See SCU-1245."""
 
     @abstractmethod
     def get_saved_messages_for_task(

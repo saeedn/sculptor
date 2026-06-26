@@ -2,19 +2,15 @@ import datetime
 from enum import Enum
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
 from typing import Any
 from typing import Literal
 
 from pydantic import Field
-from pydantic import Tag
 
 from sculptor.config.settings import SculptorSettings
 from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.foundation.pydantic_serialization import build_discriminator
 from sculptor.interfaces.agents.artifacts import DiffArtifact
-from sculptor.interfaces.agents.artifacts import TaskListArtifact
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.services.data_model_service.api import CompletedTransaction
@@ -285,12 +281,6 @@ class WorkspaceSetupCommandRequest(RequestModel):
 
 class NamingPatternRequest(RequestModel):
     naming_pattern: str
-
-
-ArtifactDataResponse = Annotated[
-    Annotated[TaskListArtifact, Tag("TaskListArtifact")] | Annotated[DiffArtifact, Tag("DiffArtifact")],
-    build_discriminator(),
-]
 
 
 class ReadFileRequest(RequestModel):

@@ -378,22 +378,6 @@ class WorkspaceService(Service, ABC):
             The working directory path, or None if the environment isn't ready.
         """
 
-    @abstractmethod
-    def get_persistent_task_artifacts_dir(
-        self,
-        workspace_id: WorkspaceID,
-        task_id: TaskID,
-    ) -> Path | None:
-        """Return the on-disk directory where the agent writes per-task artifact
-        snapshots for the given task, or None if the workspace's environment
-        has not been initialized yet.
-
-        This is the stable, source-of-truth location: {workspace_root}/artifacts/tasks/{task_id}/
-        — distinct from the host-side task_sync cache, which is a latest-only
-        mirror that can be wiped without losing data. Used by the task service
-        to backfill the cache when it is missing (SCU-1245).
-        """
-
     # Workspace Git Operations
 
     @abstractmethod

@@ -1,9 +1,7 @@
 import datetime
-import json
 from abc import ABC
 from collections.abc import Sequence
 from enum import StrEnum
-from pathlib import Path
 from typing import Annotated
 from typing import Any
 from typing import Generic
@@ -12,7 +10,6 @@ from typing import assert_never
 
 from pydantic import PrivateAttr
 from pydantic import Tag
-from pydantic import ValidationError
 from pydantic import computed_field
 
 from sculptor.agents.harness_registry import get_harness_for_config
@@ -39,10 +36,6 @@ from sculptor.interfaces.agents.agent import PersistentRequestCompleteAgentMessa
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
-from sculptor.interfaces.agents.agent import UpdatedArtifactAgentMessage
-from sculptor.interfaces.agents.artifacts import AgentTaskStatus
-from sculptor.interfaces.agents.artifacts import ArtifactType
-from sculptor.interfaces.agents.artifacts import TaskListArtifact
 from sculptor.interfaces.agents.harness import Harness
 from sculptor.interfaces.agents.harness import HarnessCapabilities
 from sculptor.interfaces.agents.tasks import TaskState
@@ -202,38 +195,6 @@ _FRIENDLY_ERROR_NAMES: dict[str, str] = {
 }
 
 
-def _get_last_task_list_artifact(messages: list[Message]) -> TaskListArtifact | None:
-    """Return the most recent v2 TaskListArtifact referenced by a PLAN update.
-
-    Walks the message stream backwards looking for an UpdatedArtifactAgentMessage
-    whose artifact.name == ArtifactType.PLAN, then reads + parses the on-disk
-    file. Skips legacy / unsupported-version files so older artifacts don't
-    masquerade as fresh ones.
-    """
-    for msg in reversed(messages):
-        if not isinstance(msg, UpdatedArtifactAgentMessage):
-            continue
-        if msg.artifact.name != ArtifactType.PLAN:
-            continue
-        url_str = str(msg.artifact.url)
-        if not url_str.startswith("file://"):
-            return None
-        path = Path(url_str.removeprefix("file://"))
-        if not path.exists():
-            continue
-        try:
-            data = json.loads(path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            continue
-        if data.get("object_type") != "TaskListArtifact" or data.get("version") != 2:
-            continue
-        try:
-            return TaskListArtifact.model_validate(data)
-        except ValidationError:
-            continue
-    return None
-
-
 class TaskView(LimitedBaseTaskView[TaskInputType, TaskStateType], Generic[TaskInputType, TaskStateType], ABC):
     """
     This class represents a view of the state of any task that is being executed.
@@ -255,12 +216,6 @@ class TaskView(LimitedBaseTaskView[TaskInputType, TaskStateType], Generic[TaskIn
     @property
     def settings(self) -> SculptorSettings:
         return only(self._settings_container)
-
-    @computed_field
-    @property
-    def artifact_names(self) -> list[str]:
-        artifact_messages = [x for x in self._messages if isinstance(x, UpdatedArtifactAgentMessage)]
-        return list({x.artifact.name for x in artifact_messages})
 
     @computed_field
     @property
@@ -312,12 +267,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
     def add_message(self, message: Message) -> None:
         super().add_message(message)
         self._cache.clear()
-
-    @property
-    def _task_data(self) -> TaskListArtifact | None:
-        if "task" not in self._cache:
-            self._cache["task"] = _get_last_task_list_artifact(self._messages)
-        return self._cache["task"]
 
     @computed_field
     @property
@@ -435,33 +384,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
         if "wps" not in self._cache:
             self._cache["wps"] = self._compute_workspace_peek_status()
         return self._cache["wps"]
-
-    @computed_field
-    @property
-    def task_completed(self) -> int:
-        artifact = self._task_data
-        if artifact is None:
-            return 0
-        return sum(1 for t in artifact.tasks if t.status == AgentTaskStatus.COMPLETED)
-
-    @computed_field
-    @property
-    def task_total(self) -> int:
-        artifact = self._task_data
-        if artifact is None:
-            return 0
-        return len(artifact.tasks)
-
-    @computed_field
-    @property
-    def current_task_subject(self) -> str | None:
-        artifact = self._task_data
-        if artifact is None:
-            return None
-        for task in artifact.tasks:
-            if task.status == AgentTaskStatus.IN_PROGRESS:
-                return task.subject
-        return None
 
     @computed_field
     @property

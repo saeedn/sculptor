@@ -27,8 +27,6 @@ from sculptor.foundation.pydantic_serialization import model_dump
 from sculptor.foundation.pydantic_utils import model_update
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
-from sculptor.interfaces.agents.artifacts import ArtifactType
-from sculptor.interfaces.agents.artifacts import DiffArtifact
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
@@ -431,67 +429,6 @@ def test_get_repo_info_returns_200(client: TestClient, test_project: Project) ->
     data = response.json()
     assert "repo_path" in data
     assert "current_branch" in data
-
-
-def test_get_artifact_data_returns_data_if_they_exist(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-        task = _create_task_with_message_in_workspace(
-            transaction, user_session, test_project, test_services, workspace
-        )
-    artifact_data = DiffArtifact(uncommitted_diff="world").model_dump_json()
-    test_services.task_service.set_artifact_file_data(task.object_id, ArtifactType.DIFF, artifact_data)
-    response = client.get(
-        f"/api/v1/workspaces/{workspace.object_id}/agents/{task.object_id}/artifacts/{ArtifactType.DIFF}",
-    )
-    assert response.status_code == 200
-    data = response.json()
-    validated_data = DiffArtifact.model_validate(data)
-    expected = DiffArtifact.model_validate_json(artifact_data)
-    assert validated_data == expected
-
-
-def test_get_artifact_data_returns_404_if_artifact_does_not_exist(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-        task = _create_task_with_message_in_workspace(
-            transaction, user_session, test_project, test_services, workspace
-        )
-    response = client.get(
-        f"/api/v1/workspaces/{workspace.object_id}/agents/{task.object_id}/artifacts/{ArtifactType.DIFF}",
-    )
-    assert response.status_code == 404
-
-
-def test_get_artifact_data_returns_404_if_agent_does_not_exist(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-    response = client.get(
-        f"/api/v1/workspaces/{workspace.object_id}/agents/{TaskID()}/artifacts/{ArtifactType.DIFF}",
-    )
-    assert response.status_code == 404
-
-
-def test_get_artifact_data_returns_422_if_agent_id_is_not_valid(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    _user_session = authenticate_anonymous(test_services, RequestID())
-    fake_task_id = "tsk_01234567890123456789012345"
-    with _user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-    response = client.get(
-        f"/api/v1/workspaces/{workspace.object_id}/agents/{fake_task_id}/artifacts/{ArtifactType.DIFF}"
-    )
-    assert response.status_code == 404
 
 
 def test_delete_agent_does_not_delete_workspace_when_other_agents_exist(

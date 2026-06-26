@@ -30,9 +30,7 @@ from sculptor.interfaces.agents.agent import EnvironmentTypes
 from sculptor.interfaces.agents.artifacts import ArtifactType
 from sculptor.interfaces.agents.artifacts import DiffArtifact
 from sculptor.interfaces.environments.agent_execution_environment import AgentExecutionEnvironment
-from sculptor.interfaces.environments.base import ARTIFACTS_DIRECTORY
 from sculptor.interfaces.environments.base import Environment
-from sculptor.interfaces.environments.base import TASKS_SUBDIRECTORY
 from sculptor.interfaces.environments.errors import EnvironmentConfigurationChangedError
 from sculptor.interfaces.environments.errors import EnvironmentNotFoundError
 from sculptor.primitives.ids import ProjectID
@@ -761,17 +759,6 @@ class DefaultWorkspaceService(WorkspaceService):
     def _get_workspace_artifact_dir(self, workspace_id: WorkspaceID) -> Path:
         """Get the directory for storing workspace artifacts."""
         return self.workspace_sync_dir / str(workspace_id)
-
-    def get_persistent_task_artifacts_dir(
-        self,
-        workspace_id: WorkspaceID,
-        task_id: TaskID,
-    ) -> Path | None:
-        with self.data_model_service.open_transaction(request_id=RequestID()) as txn:
-            workspace = txn.get_workspace(workspace_id)
-        if workspace is None or workspace.environment_id is None:
-            return None
-        return Path(workspace.environment_id) / ARTIFACTS_DIRECTORY / TASKS_SUBDIRECTORY / str(task_id)
 
     def get_workspace_working_directory(
         self,

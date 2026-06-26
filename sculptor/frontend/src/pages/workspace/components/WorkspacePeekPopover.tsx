@@ -75,19 +75,15 @@ function formatTimeAgo(dateStr: string): string {
 }
 
 function getSummary(status: WorkspacePeekAgentStatus, agents: ReadonlyArray<CodingAgentTaskView>): string {
-  const totalCompleted = agents.reduce((sum, a) => sum + a.taskCompleted, 0);
-  const totalTodos = agents.reduce((sum, a) => sum + a.taskTotal, 0);
-
   switch (status) {
     case WorkspacePeekAgentStatus.WORKING:
-      if (totalTodos === 0) return "Just started";
-      return `${totalCompleted} of ${totalTodos} tasks done`;
+      return "Working...";
     case WorkspacePeekAgentStatus.WAITING:
-      return totalTodos > 0 ? `${totalCompleted} of ${totalTodos} tasks done — waiting for input` : "Waiting for input";
+      return "Waiting for input";
     case WorkspacePeekAgentStatus.ERROR:
-      return totalTodos > 0 ? `${totalCompleted} of ${totalTodos} tasks done — error encountered` : "Error encountered";
+      return "Error encountered";
     case WorkspacePeekAgentStatus.COMPLETED:
-      return `All ${totalTodos} tasks completed successfully. Ready for review.`;
+      return "All tasks completed successfully. Ready for review.";
     case WorkspacePeekAgentStatus.IDLE: {
       if (agents.length === 0) return "No activity yet";
       const mostRecent = agents.reduce((latest, a) => (a.updatedAt > latest.updatedAt ? a : latest));
@@ -137,25 +133,15 @@ const AgentRow = ({
       description = agent.errorDetail ?? "Error encountered";
       break;
     case WorkspacePeekAgentStatus.COMPLETED:
-      description = agent.taskTotal > 0 ? `${agent.taskCompleted}/${agent.taskTotal} done` : "Done";
+      description = "Done";
       break;
     case WorkspacePeekAgentStatus.WORKING:
       description = "Working...";
       break;
-    case WorkspacePeekAgentStatus.IDLE: {
-      if (agent.taskTotal > 0) {
-        description = `Completed ${agent.taskCompleted} of ${agent.taskTotal} tasks · ${formatTimeAgo(agent.updatedAt)}`;
-      } else {
-        description = formatTimeAgo(agent.updatedAt);
-      }
+    case WorkspacePeekAgentStatus.IDLE:
+      description = formatTimeAgo(agent.updatedAt);
       break;
-    }
   }
-
-  const hasTaskLink =
-    status !== WorkspacePeekAgentStatus.WAITING &&
-    status !== WorkspacePeekAgentStatus.ERROR &&
-    agent.currentTaskSubject != null;
 
   return (
     <div
@@ -172,9 +158,8 @@ const AgentRow = ({
         <span className={styles.agentName}>{agent.title ?? "Agent"}</span>
       </div>
       <div className={styles.agentDescription} data-status={status}>
-        {hasTaskLink ? agent.currentTaskSubject : description}
+        {description}
       </div>
-      {hasTaskLink && <div className={styles.agentTask}>↳ {description}</div>}
     </div>
   );
 };

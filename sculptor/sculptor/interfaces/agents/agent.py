@@ -18,8 +18,6 @@ from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import build_discriminator
 from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.time_utils import get_current_time
-from sculptor.interfaces.agents.artifacts import FileAgentArtifact
-from sculptor.interfaces.agents.messages import EphemeralAgentMessage
 from sculptor.interfaces.agents.messages import EphemeralMessage
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import AgentMessageID
@@ -173,11 +171,6 @@ EphemeralRunnerMessageUnion = (
 RunnerMessageUnion = PersistentRunnerMessageUnion | EphemeralRunnerMessageUnion
 
 
-class UpdatedArtifactAgentMessage(EphemeralAgentMessage):
-    object_type: str = "UpdatedArtifactAgentMessage"
-    artifact: FileAgentArtifact
-
-
 class RequestCompleteAgentMessage(abc.ABC):
     request_id: AgentMessageID
     error: SerializedException | None
@@ -196,15 +189,13 @@ class RequestSuccessAgentMessage(PersistentRequestCompleteAgentMessage):
 
 
 PersistentAgentMessageUnion = Annotated[RequestSuccessAgentMessage, Tag("RequestSuccessAgentMessage")]
-EphemeralAgentMessageUnion = Annotated[UpdatedArtifactAgentMessage, Tag("UpdatedArtifactAgentMessage")]
-AgentMessageUnion = PersistentAgentMessageUnion | EphemeralAgentMessageUnion
 # this is necessary because pydantic won't let us use PersistentMessageTypes, which already has a discriminator, to make MessageTypes
 PersistentMessageTypesUnannotated = (
     PersistentAgentMessageUnion | PersistentRunnerMessageUnion | PersistentUserMessageUnion
 )
 PersistentMessageTypes = Annotated[PersistentMessageTypesUnannotated, build_discriminator()]
 
-EphemeralMessageTypes = EphemeralAgentMessageUnion | EphemeralRunnerMessageUnion | EphemeralUserMessageUnion
+EphemeralMessageTypes = EphemeralRunnerMessageUnion | EphemeralUserMessageUnion
 
 MessageTypes = Annotated[
     PersistentMessageTypesUnannotated | EphemeralMessageTypes,

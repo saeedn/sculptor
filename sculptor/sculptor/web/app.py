@@ -41,7 +41,6 @@ from fastapi.responses import StreamingResponse
 from fastapi.websockets import WebSocket
 from fastapi.websockets import WebSocketDisconnect
 from loguru import logger
-from pydantic import ValidationError
 
 from sculptor import version
 from sculptor.agents.harness_registry import get_harness_for_config
@@ -78,9 +77,6 @@ from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
 from sculptor.interfaces.agents.agent import is_terminal_agent_config
-from sculptor.interfaces.agents.artifacts import ArtifactType
-from sculptor.interfaces.agents.artifacts import DiffArtifact
-from sculptor.interfaces.agents.artifacts import TaskListArtifact
 from sculptor.interfaces.environments.base import ARTIFACTS_DIRECTORY
 from sculptor.interfaces.environments.base import STATE_DIRECTORY
 from sculptor.interfaces.environments.base import TASKS_SUBDIRECTORY
@@ -149,7 +145,6 @@ from sculptor.web.auth import SessionTokenMiddleware
 from sculptor.web.auth import UserSession
 from sculptor.web.data_types import AgentDiagnosticsResponse
 from sculptor.web.data_types import AgentTypeName
-from sculptor.web.data_types import ArtifactDataResponse
 from sculptor.web.data_types import BatchUpdateOpenStateRequest
 from sculptor.web.data_types import BranchExistsResponse
 from sculptor.web.data_types import CommitDiffResponse
@@ -2295,24 +2290,6 @@ def interrupt_workspace_agent(
             )
 
 
-@router.get("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/artifacts/{artifact_name}")
-def get_workspace_agent_artifact(
-    workspace_id: str,
-    agent_id: str,
-    artifact_name: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> ArtifactDataResponse:
-    """Get an artifact for an agent."""
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-    return _get_typed_artifact_data(artifact_name, services, agent_id, user_session)
-
-
 @router.delete("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/messages/{message_id}")
 def delete_workspace_agent_message(
     workspace_id: str,
@@ -3359,107 +3336,6 @@ def _get_next_elem_for_websocket(
         else:
             to_yield = entry.model_dump(mode="json", by_alias=True)
         return to_yield
-
-
-def _get_artifact_data(
-    artifact_name: str,
-    services: CompleteServiceCollection,
-    task_id_str: str,
-    user_session: UserSession,
-) -> str:
-    try:
-        task_id = TaskID(task_id_str)
-    except typeid.errors.SuffixValidationException as e:
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["path", "task_id"], "msg": "Invalid task ID format", "type": "value_error"}],
-        ) from e
-    with user_session.open_transaction(services) as transaction:
-        task = services.task_service.get_task(task_id, transaction)
-    if task is None:
-        raise HTTPException(status_code=404, detail="Task not found")
-    # Backfill from the workspace's stable artifacts dir if the cache was wiped
-    # (SCU-1245); returns False only when no snapshot exists anywhere.
-    if not services.task_service.ensure_artifact_cache_populated(task_id, artifact_name):
-        raise HTTPException(status_code=404, detail="Artifact not found")
-    artifact_data_url = services.task_service.get_artifact_file_url(task_id, artifact_name)
-    assert str(artifact_data_url).startswith("file://"), "Only local file artifacts are supported"
-    artifact_data_path = Path(str(artifact_data_url).replace("file://", ""))
-    if not artifact_data_path.exists():
-        raise HTTPException(status_code=404, detail="Artifact not found")
-    artifact_data = artifact_data_path.read_text(encoding="utf-8")
-    logger.debug("Returning artifact at path {}", artifact_data_path)
-    return artifact_data
-
-
-def _get_typed_artifact_data(
-    artifact_name: str,
-    services: CompleteServiceCollection,
-    task_id_str: str,
-    user_session: UserSession,
-) -> ArtifactDataResponse:
-    """Get artifact data and return it with proper typing based on artifact type."""
-    raw_data = _get_artifact_data(artifact_name, services, task_id_str, user_session)
-    try:
-        _artifact_type = ArtifactType(artifact_name)
-    except ValueError as e:
-        logger.error("Unknown artifact type: {}", artifact_name)
-        raise HTTPException(status_code=400, detail=f"Unknown artifact type: {artifact_name}") from e
-
-    # happens occasionally, better to do this than cause flaky test errors
-    if raw_data == "":
-        raise HTTPException(status_code=404, detail="Artifact is empty")
-
-    try:
-        parsed_json = json.loads(raw_data)
-
-        if not isinstance(parsed_json, dict) or "object_type" not in parsed_json:
-            logger.error("Artifact missing object_type field: {}", artifact_name)
-            raise HTTPException(status_code=500, detail="Invalid artifact format")
-
-        object_type = parsed_json["object_type"]
-        version = parsed_json.get("version")
-
-        if object_type == "TaskListArtifact" and version == 2:
-            return TaskListArtifact.model_validate(parsed_json)
-        if object_type == "TaskListArtifact":
-            logger.info(
-                "TaskListArtifact with unsupported version {} for {}; returning empty",
-                version,
-                artifact_name,
-            )
-            return TaskListArtifact(tasks=[])
-        if object_type == "TodoListArtifact":
-            logger.info(
-                "Legacy TodoListArtifact on disk for {}; returning empty TaskListArtifact",
-                artifact_name,
-            )
-            return TaskListArtifact(tasks=[])
-        if object_type == "DiffArtifact":
-            return DiffArtifact.model_validate(parsed_json)
-        logger.error("Unknown object_type: {}", object_type)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Unknown artifact object_type: {object_type}",
-        )
-
-    except json.JSONDecodeError as e:
-        log_exception(
-            e,
-            "Failed to parse artifact JSON",
-            priority=ExceptionPriority.MEDIUM_PRIORITY,
-        )
-        raise HTTPException(status_code=500, detail="Invalid artifact JSON") from e
-    except ValidationError as e:
-        log_exception(
-            e,
-            "Failed to validate artifact data",
-            priority=ExceptionPriority.MEDIUM_PRIORITY,
-        )
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["body"], "msg": "Invalid artifact data", "type": "value_error"}],
-        ) from e
 
 
 @router.get("/api/v1/health")

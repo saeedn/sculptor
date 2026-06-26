@@ -1,5 +1,4 @@
 import datetime
-import shutil
 from abc import ABC
 from abc import abstractmethod
 from contextlib import contextmanager
@@ -13,7 +12,6 @@ from typing import TypeVar
 from typing import cast
 
 from loguru import logger
-from pydantic import AnyUrl
 from pydantic import PrivateAttr
 
 from sculptor.config.settings import SculptorSettings
@@ -35,10 +33,7 @@ from sculptor.interfaces.agents.agent import EphemeralMessage
 from sculptor.interfaces.agents.agent import MessageTypes
 from sculptor.interfaces.agents.agent import PersistentMessageTypes
 from sculptor.interfaces.agents.agent import TaskStatusRunnerMessage
-from sculptor.interfaces.agents.agent import UpdatedArtifactAgentMessage
 from sculptor.interfaces.agents.agent import UserMessageUnion
-from sculptor.interfaces.agents.artifacts import ArtifactType
-from sculptor.interfaces.agents.artifacts import FileAgentArtifact
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.interfaces.environments.base import Environment
 from sculptor.primitives.constants import MESSAGE_LOG_TYPE
@@ -262,73 +257,6 @@ class BaseTaskService(TaskService, ABC):
             # in is_deleting with nothing to complete the transition.
             self._finalize_task_as_deleted(task, transaction)
 
-    def get_artifact_file_url(self, task_id: TaskID, artifact_name: str) -> AnyUrl:
-        output_path = self._get_task_output_path(task_id)
-        return AnyUrl(
-            f"file://{output_path / artifact_name}",
-        )
-
-    def set_artifact_file_data(self, task_id: TaskID, artifact_name: str, artifact_data: str | bytes) -> None:
-        artifact_path = self._get_task_output_path(task_id) / artifact_name
-        logger.debug("writing artifact data to {}", artifact_path)
-        artifact_path.parent.mkdir(parents=True, exist_ok=True)
-        if isinstance(artifact_data, str):
-            artifact_path.write_text(artifact_data)
-        else:
-            artifact_path.write_bytes(artifact_data)
-
-    def ensure_artifact_cache_populated(self, task_id: TaskID, artifact_name: str) -> bool:
-        """Make the cached artifact file for (task_id, artifact_name) readable, or return False.
-
-        Returns True if {task_sync_dir}/{task_id}/{artifact_name} exists after this
-        call. If the cache file is missing — e.g. because the cache was wiped or
-        the task was last touched before the cache existed — looks for the most
-        recent per-emit snapshot in the workspace's stable artifacts dir
-        ({workspace_root}/artifacts/tasks/{task_id}/{artifact_name}-*) and copies
-        it into the cache so subsequent reads succeed via the normal path.
-
-        This is the SCU-1245 backfill path. Both _build_existing_artifact_messages
-        and the web layer's _get_artifact_data go through this before deciding
-        the artifact is gone, so a wiped cache no longer empties the UI as long
-        as the source-of-truth files in the workspace artifacts dir are intact.
-        """
-        cache_path = self._get_task_output_path(task_id) / artifact_name
-        if cache_path.exists():
-            return True
-        snapshot = self._find_latest_workspace_artifact_snapshot(task_id, artifact_name)
-        if snapshot is None:
-            return False
-        try:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(snapshot, cache_path)
-        except OSError as e:
-            # Backfill is best-effort; if the copy fails (disk full, permissions),
-            # the caller treats this as "no artifact" and skips. Debug-level since
-            # it's recoverable on the next successful agent emit.
-            logger.debug("Failed to backfill artifact cache from {} to {}: {}", snapshot, cache_path, e)
-            return False
-        logger.debug("Backfilled {} artifact for task {} from {}", artifact_name, task_id, snapshot)
-        return True
-
-    def _find_latest_workspace_artifact_snapshot(self, task_id: TaskID, artifact_name: str) -> Path | None:
-        task = self._latest_task_by_task_id.get(task_id)
-        if task is None or not isinstance(task.current_state, AgentTaskStateV2):
-            return None
-        persistent_dir = self.workspace_service.get_persistent_task_artifacts_dir(
-            task.current_state.workspace_id, task_id
-        )
-        if persistent_dir is None or not persistent_dir.exists():
-            return None
-        # Per-emit files are named "{artifact_name}-{uuid}" (see _make_file_artifact).
-        candidates = list(persistent_dir.glob(f"{artifact_name}-*"))
-        if not candidates:
-            return None
-        return max(candidates, key=lambda p: p.stat().st_mtime)
-
-    def _get_task_output_path(self, task_id: TaskID) -> Path:
-        sync_dir = self.task_sync_dir / str(task_id)
-        return sync_dir.absolute()
-
     def get_saved_messages_for_task(
         self, task_id: TaskID, transaction: DataModelTransaction
     ) -> tuple[PersistentMessageTypes, ...]:
@@ -364,15 +292,9 @@ class BaseTaskService(TaskService, ABC):
                 (message, task_id) for task_id in task_ids for message in self._messages_by_task_id.get(task_id, [])
             )
 
-            # Ephemeral artifact notifications are lost across restarts because they
-            # are not persisted to the DB.  Check which tasks have artifact files on
-            # disk and inject synthetic UpdatedArtifactAgentMessage entries so the
-            # frontend learns about them in the initial state dump.
-            artifact_messages = self._build_existing_artifact_messages(task_ids)
-
         task_message = TaskMessageContainer(
             tasks=latest_tasks,
-            messages=messages_and_task_ids + artifact_messages,
+            messages=messages_and_task_ids,
         )
         listener.put_nowait(task_message)
 
@@ -447,12 +369,11 @@ class BaseTaskService(TaskService, ABC):
                 for task_id in matching_task_ids
                 for message in self._messages_by_task_id.get(task_id, [])
             )
-            artifact_messages = self._build_existing_artifact_messages(matching_task_ids)
 
         listener.put_nowait(
             TaskMessageContainer(
                 tasks=latest_tasks,
-                messages=messages_and_task_ids + artifact_messages,
+                messages=messages_and_task_ids,
             )
         )
 
@@ -463,36 +384,6 @@ class BaseTaskService(TaskService, ABC):
             listeners.remove(listener)
             if not listeners:
                 del registry[registry_key]
-
-    def _build_existing_artifact_messages(
-        self, task_ids: set[TaskID]
-    ) -> tuple[tuple[UpdatedArtifactAgentMessage, TaskID], ...]:
-        """Build synthetic artifact notifications for artifacts that exist on disk.
-
-        Ephemeral UpdatedArtifactAgentMessage notifications are not persisted to
-        the database, so they are lost across restarts.  This method checks for
-        artifact files on disk and creates notifications so the frontend can
-        fetch them via the normal flow.
-        """
-        result: list[tuple[UpdatedArtifactAgentMessage, TaskID]] = []
-        for task_id in task_ids:
-            for artifact_type in (ArtifactType.PLAN,):
-                # ensure_artifact_cache_populated returns False if neither the
-                # cache nor a workspace-side snapshot is available, which is the
-                # legitimate "no artifact ever emitted" case — skip silently.
-                if not self.ensure_artifact_cache_populated(task_id, artifact_type):
-                    continue
-                artifact_url = self.get_artifact_file_url(task_id, artifact_type)
-                logger.debug("Injecting existing {} artifact notification for task {}", artifact_type, task_id)
-                message = UpdatedArtifactAgentMessage(
-                    message_id=AgentMessageID(),
-                    artifact=FileAgentArtifact(
-                        name=artifact_type,
-                        url=artifact_url,
-                    ),
-                )
-                result.append((message, task_id))
-        return tuple(result)
 
     @contextmanager
     def subscribe_to_task(self, task_id: TaskID) -> Generator[Queue[Message], None, None]:

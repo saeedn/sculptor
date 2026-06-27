@@ -792,3 +792,22 @@ endpoint + `StartTaskRequest`, drop the intro message, remove
 + its `files`/`sent_via` (sent_via is write-only), update the frontend
 display-name fallback to use `title` only, frozen-schema rebase + regen clients.
 Bigger than a leaf delete; not done in this batch.
+
+### Prompt path + ChatInputUserMessage — REMOVED
+
+Completed the deferred item. Terminal agents take no initial prompt, so the
+whole prompt/chat-message path was dead:
+- Deleted the unreachable `start_task` endpoint + `StartTaskRequest`, the dead
+  prompt-delegation + first-run intro message in `create_workspace_agent`, and
+  trimmed `CreateAgentRequest` to {name, agent_type, registration_id}.
+- Deleted `ChatInputUserMessage` + `PersistentUserMessage` base; the persisted
+  message union is now purely runner messages.
+- Dropped `goal`/`initial_prompt`/`title_or_something_like_it` (always empty);
+  frontend agent display name uses `title` → "Untitled agent".
+- `sculpt run` and `sculpt agent send` now deliver the prompt to the agent PTY
+  via `/terminal/input`; `sculpt agent create` dropped `--prompt`.
+Frozen-schema rebased; clients regenerated. check + test-unit green.
+
+Net for the message-subsystem work (chat req/resp + artifacts + prompt path):
+the message layer is now just runner lifecycle/status/crash messages + the diff
+artifact; there is no user-message or agent-message type left.

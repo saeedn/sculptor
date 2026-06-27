@@ -2,9 +2,10 @@
 
 Tests cover:
 - Copy agent name (top-level menu) and Copy agent id (Diagnostics) copy correct values
-- Claude session / transcript copy items are disabled for a terminal agent, which
-  has no Claude on-disk session layout (the diagnostics menu itself survives;
-  only its Claude-specific copy targets are gone for terminal agents)
+- Claude session and Sculptor transcript copy items are disabled for a terminal
+  agent, which has no Claude on-disk session layout and no transcript yet (the
+  diagnostics menu itself survives; only its session-dependent copy targets stay
+  disabled)
 """
 
 from playwright.sync_api import expect
@@ -22,16 +23,17 @@ from sculptor.testing.user_stories import user_story
 def test_agent_diagnostics_claude_items_disabled_for_terminal_agent(
     sculptor_instance_: SculptorInstance,
 ) -> None:
-    """The Claude session / transcript copy items are disabled for a terminal agent.
+    """The Claude session and Sculptor transcript copy items are disabled for a terminal agent.
 
-    Terminal agents have no Claude on-disk session layout, so the diagnostics
-    endpoint returns no session id or transcript path — the menu items render
-    but stay disabled (Radix marks disabled items with a data-disabled attribute).
+    Terminal agents have no Claude on-disk session layout and no transcript yet,
+    so the diagnostics endpoint returns no session id or transcript path — the
+    menu items render but stay disabled (Radix marks disabled items with a
+    data-disabled attribute).
 
     Steps:
     1. Create a workspace with a terminal agent
     2. Right-click the agent tab and open the Diagnostics sub-menu
-    3. Verify Copy session id and Copy transcript path items are disabled
+    3. Verify Copy session id and Copy Sculptor transcript path items are disabled
     """
     page = sculptor_instance_.page
     tab_bar = PlaywrightAgentTabBarElement(page)
@@ -48,10 +50,6 @@ def test_agent_diagnostics_claude_items_disabled_for_terminal_agent(
     copy_session_id = tab_bar.get_copy_session_id_item()
     expect(copy_session_id).to_be_visible()
     expect(copy_session_id).to_have_attribute("data-disabled", "")
-
-    copy_transcript_path = tab_bar.get_copy_transcript_path_item()
-    expect(copy_transcript_path).to_be_visible()
-    expect(copy_transcript_path).to_have_attribute("data-disabled", "")
 
     copy_sculptor_transcript = tab_bar.get_copy_sculptor_transcript_item()
     expect(copy_sculptor_transcript).to_be_visible()

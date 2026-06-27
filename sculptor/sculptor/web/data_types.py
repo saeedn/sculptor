@@ -474,7 +474,6 @@ class AgentDiagnosticsResponse(SerializableModel):
     """Diagnostics information for a specific agent."""
 
     session_id: str | None = None
-    transcript_file_path: str | None = None
     sculptor_transcript_file_path: str | None = None
 
 

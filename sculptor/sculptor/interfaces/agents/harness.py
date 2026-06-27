@@ -10,9 +10,6 @@ what every harness-agnostic consumer reads polymorphically:
   via `Harness.capabilities()`; gated methods stay on the ABC with
   trivial-answer defaults for protocol-level per-call questions no
   bool can express.
-- *polymorphic helpers* — `get_jsonl_path_for_working_directory`, which
-  returns `None` by default; harnesses with an on-disk session layout
-  override it.
 
 Concrete-harness addresses (binary key, session-directory name, MCP
 identifiers, lifecycle-hook callback id, system-prompt content, etc.) are
@@ -31,7 +28,6 @@ and `ClaudeCodeSDKAgent` may declare its `harness` field as
 from __future__ import annotations
 
 import abc
-from pathlib import Path
 
 from pydantic import BaseModel
 
@@ -60,13 +56,3 @@ class Harness(BaseModel, abc.ABC):
         all-`False` set; concrete harnesses override truthfully.
         """
         return HarnessCapabilities(supports_skills=False)
-
-    def get_jsonl_path_for_working_directory(self, home: Path, working_directory: Path) -> Path | None:
-        """Return the per-session JSONL directory the harness uses for a
-        given (home, working_directory) pair, or `None` when the harness has
-        no on-disk session layout.
-
-        Resolved polymorphically by harness-agnostic callers that hold a
-        host-side working directory (e.g. the web diagnostics endpoint).
-        """
-        return None

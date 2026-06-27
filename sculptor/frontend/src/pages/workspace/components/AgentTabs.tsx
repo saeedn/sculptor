@@ -53,7 +53,6 @@ const NO_SESSION_TOOLTIP = "No active session — send a prompt first";
  */
 const DiagnosticsSubMenu = ({ workspaceID, agentId }: { workspaceID: string; agentId: string }): ReactElement => {
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [transcriptPath, setTranscriptPath] = useState<string | null>(null);
   const [sculptorTranscriptPath, setSculptorTranscriptPath] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isDebugView, setIsDebugView] = useAtom(debugViewAtomFamily(agentId));
@@ -65,7 +64,6 @@ const DiagnosticsSubMenu = ({ workspaceID, agentId }: { workspaceID: string; age
     }).then(({ data }) => {
       if (isCancelled) return;
       setSessionId(data.sessionId ?? null);
-      setTranscriptPath(data.transcriptFilePath ?? null);
       setSculptorTranscriptPath(data.sculptorTranscriptFilePath ?? null);
       setIsLoaded(true);
     });
@@ -103,18 +101,6 @@ const DiagnosticsSubMenu = ({ workspaceID, agentId }: { workspaceID: string; age
         }}
       >
         Copy claude session id
-      </ContextMenu.Item>
-      <ContextMenu.Item
-        data-testid={ElementIds.TAB_CONTEXT_MENU_COPY_TRANSCRIPT_PATH}
-        disabled={!transcriptPath}
-        title={!isLoaded || !transcriptPath ? NO_SESSION_TOOLTIP : undefined}
-        onSelect={async () => {
-          if (transcriptPath) {
-            await navigator.clipboard.writeText(transcriptPath);
-          }
-        }}
-      >
-        Copy claude transcript file path
       </ContextMenu.Item>
       <ContextMenu.Item
         data-testid={ElementIds.TAB_CONTEXT_MENU_COPY_SCULPTOR_TRANSCRIPT_PATH}

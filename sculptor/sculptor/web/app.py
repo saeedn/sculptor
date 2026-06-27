@@ -40,7 +40,6 @@ from fastapi.websockets import WebSocketDisconnect
 from loguru import logger
 
 from sculptor import version
-from sculptor.agents.harness_registry import get_harness_for_config
 from sculptor.common.plugin import get_plugin_dirs
 from sculptor.config.settings import SculptorSettings
 from sculptor.config.user_config import UserConfig
@@ -1782,21 +1781,11 @@ def get_workspace_agent_diagnostics(
     state_file = environment_root / STATE_DIRECTORY / TASKS_SUBDIRECTORY / str(task.object_id) / "session_id"
 
     session_id: str | None = None
-    transcript_file_path: str | None = None
 
     try:
         session_id = state_file.read_text().strip()
     except (FileNotFoundError, OSError):
         pass
-
-    if session_id and isinstance(task.input_data, AgentTaskInputsV2):
-        # We don't hold an AgentExecutionEnvironment here (only the host-side
-        # working directory), so call the harness's path-from-primitives
-        # helper instead of the env-bound method.
-        harness = get_harness_for_config(task.input_data.agent_config)
-        jsonl_dir = harness.get_jsonl_path_for_working_directory(Path.home(), working_dir.resolve())
-        if jsonl_dir is not None:
-            transcript_file_path = str(jsonl_dir / f"{session_id}.jsonl")
 
     sculptor_transcript = (
         environment_root / ARTIFACTS_DIRECTORY / TASKS_SUBDIRECTORY / str(task.object_id) / "transcript.jsonl"
@@ -1805,7 +1794,6 @@ def get_workspace_agent_diagnostics(
 
     return AgentDiagnosticsResponse(
         session_id=session_id,
-        transcript_file_path=transcript_file_path,
         sculptor_transcript_file_path=sculptor_transcript_file_path,
     )
 

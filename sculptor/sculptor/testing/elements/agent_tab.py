@@ -79,9 +79,6 @@ class PlaywrightAgentTabBarElement:
     def get_copy_session_id_item(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_COPY_SESSION_ID)
 
-    def get_copy_transcript_path_item(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_COPY_TRANSCRIPT_PATH)
-
     def get_copy_sculptor_transcript_item(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_COPY_SCULPTOR_TRANSCRIPT_PATH)
 

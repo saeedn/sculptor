@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
-from sculptor.interfaces.environments.base import TASKS_SUBDIRECTORY
 from sculptor.primitives.ids import LocalEnvironmentID
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import TaskID
@@ -13,6 +12,7 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
     LocalAgentExecutionEnvironment,
 )
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import TASKS_SUBDIRECTORY
 
 
 def _create_local_environment_from_path(path: Path, concurrency_group: ConcurrencyGroup) -> LocalEnvironment:

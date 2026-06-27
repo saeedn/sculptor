@@ -13,7 +13,6 @@ from sculptor.primitives.constants import ANONYMOUS_ORGANIZATION_REFERENCE
 from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.services.data_model_service.api import TaskDataModelService
-from sculptor.services.workspace_service.environment_manager.api import EnvironmentManager
 from sculptor.services.workspace_service.environment_manager.default_implementation import DefaultEnvironmentManager
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 
@@ -40,10 +39,10 @@ def test_project(test_settings: SculptorSettings, test_service_collection: Compl
 def environment_manager(
     test_settings: SculptorSettings,
     test_service_collection: CompleteServiceCollection,
-) -> EnvironmentManager:
+) -> DefaultEnvironmentManager:
     """Create an EnvironmentManager for testing.
 
-    Note: EnvironmentManager is an internal implementation detail of WorkspaceService.
+    Note: DefaultEnvironmentManager is an internal implementation detail of WorkspaceService.
     These tests exist to verify the low-level environment functionality.
     """
     return DefaultEnvironmentManager(
@@ -53,7 +52,7 @@ def environment_manager(
 
 def test_simple_local_environment_run(
     initial_commit_repo: tuple[Path, str],
-    environment_manager: EnvironmentManager,
+    environment_manager: DefaultEnvironmentManager,
     tmp_path: Path,
     test_project: Project,
     test_root_concurrency_group: ConcurrencyGroup,
@@ -84,7 +83,7 @@ def test_simple_local_environment_run(
 
 def test_simple_local_environment_run_with_content(
     initial_commit_repo: tuple[Path, str],
-    environment_manager: EnvironmentManager,
+    environment_manager: DefaultEnvironmentManager,
     tmp_path: Path,
     test_project: Project,
     test_root_concurrency_group: ConcurrencyGroup,
@@ -122,7 +121,7 @@ def test_simple_local_environment_run_with_content(
 def test_create_environment_directly(
     initial_commit_repo: tuple[Path, str],
     test_root_concurrency_group: ConcurrencyGroup,
-    environment_manager: EnvironmentManager,
+    environment_manager: DefaultEnvironmentManager,
     test_project: Project,
 ) -> None:
     """Test creating an environment directly from a project path."""
@@ -146,7 +145,7 @@ def test_create_environment_directly(
 def test_resume_environment(
     initial_commit_repo: tuple[Path, str],
     test_root_concurrency_group: ConcurrencyGroup,
-    environment_manager: EnvironmentManager,
+    environment_manager: DefaultEnvironmentManager,
     test_project: Project,
 ) -> None:
     """Test resuming an environment from an environment ID."""

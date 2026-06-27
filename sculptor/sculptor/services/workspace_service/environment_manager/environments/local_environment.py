@@ -10,8 +10,10 @@ from typing import Mapping
 from typing import Sequence
 from typing import TYPE_CHECKING
 from typing import Union
+from typing import final
 
 from loguru import logger
+from pydantic import BaseModel
 from pydantic import PrivateAttr
 
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
@@ -21,7 +23,7 @@ from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.processes.local_process import RunningProcess
 from sculptor.foundation.processes.local_process import run_background
 from sculptor.foundation.secrets_utils import Secret
-from sculptor.interfaces.environments.base import Environment
+from sculptor.foundation.subprocess_utils import FinishedProcess
 from sculptor.interfaces.environments.errors import FileOrDirectoryCouldNotBeDeletedError
 from sculptor.primitives.ids import LocalEnvironmentID
 from sculptor.primitives.ids import ProjectID
@@ -41,6 +43,10 @@ from sculptor.utils.build import get_workspaces_folder
 
 # Workspace directory for local environments
 LOCAL_WORKSPACE_DIR = get_workspaces_folder()
+
+STATE_DIRECTORY = "state"
+ARTIFACTS_DIRECTORY = "artifacts"
+TASKS_SUBDIRECTORY = "tasks"
 
 # Budget for polling getpgid() until the child's setsid lands. Under Modal's
 # slow PID namespace the parent can observe the child before setsid runs (see
@@ -64,10 +70,10 @@ if TYPE_CHECKING:
     from _typeshed import OpenTextModeWriting
 
 
-class LocalEnvironment(Environment):
+class LocalEnvironment(BaseModel):
     object_type: str = "LocalEnvironment"
-    # pyrefly: ignore [bad-override-mutable-attribute]
     environment_id: LocalEnvironmentID
+    project_id: ProjectID
     concurrency_group: ConcurrencyGroup
     # The repo host path - points directly to the user's repository.
     # This is always set when creating or resuming an environment.
@@ -192,6 +198,12 @@ class LocalEnvironment(Environment):
         """
         return self.get_workspace_path()
 
+    def get_state_path(self) -> Path:
+        return self.get_root_path() / STATE_DIRECTORY
+
+    def get_artifacts_path(self) -> Path:
+        return self.get_root_path() / ARTIFACTS_DIRECTORY
+
     def get_user_home_directory(self) -> Path:
         """Return the current user's home directory."""
         return Path.home()
@@ -220,6 +232,95 @@ class LocalEnvironment(Environment):
 
     def get_extra_logger_context(self) -> Mapping[str, str | float | int | bool | None]:
         return {"workspace_path": self.workspace_path}
+
+    def run_process_in_background(
+        self,
+        command: Sequence[str],
+        secrets: Mapping[str, str | Secret],
+        cwd: str | None = None,
+        is_interactive: bool = False,
+        run_with_sudo_privileges: bool = False,
+        run_as_root: bool = False,
+        shutdown_event: MutableEvent | None = None,
+        timeout: float | None = None,
+        is_checked_by_group: bool = False,
+        on_output: Callable[[str, bool], None] | None = None,
+        open_stdin: bool = False,
+        isolate_process_group: bool = False,
+    ) -> RunningProcess:
+        """
+        Run a process in the background, returning immediately.
+
+        When `is_checked_by_group` is True, the process will be checked for failure when
+        the environment's concurrency group exits or whenever the group's methods are called.
+        (And also when waited on directly, the default is False)
+
+        When ``isolate_process_group`` is True, the child is spawned with
+        ``start_new_session=True`` and its shutdown signal is broadcast to the
+        whole process group, so descendants are killed too. Used for the
+        agent CLI so Stop cascades to the agent's foreground subprocesses
+        (SCU-211).
+        """
+        return self.concurrency_group.start_background_process_from_factory(
+            lambda: self._run_process_in_background(
+                command=command,
+                secrets=secrets,
+                cwd=cwd,
+                is_interactive=is_interactive,
+                run_with_sudo_privileges=run_with_sudo_privileges,
+                run_as_root=run_as_root,
+                shutdown_event=shutdown_event,
+                timeout=timeout,
+                is_checked=is_checked_by_group,
+                on_output=on_output,
+                open_stdin=open_stdin,
+                isolate_process_group=isolate_process_group,
+            )
+        )
+
+    @final
+    def run_process_to_completion(
+        self,
+        command: Sequence[str],
+        secrets: Mapping[str, str | Secret],
+        cwd: str | None = None,
+        is_interactive: bool = False,
+        run_with_sudo_privileges: bool = False,
+        run_as_root: bool = False,
+        timeout: float | None = None,
+        is_checked_after: bool = True,
+        on_output: Callable[[str, bool], None] | None = None,
+    ) -> FinishedProcess:
+        """
+        Run a process to completion, blocking until it finishes.
+
+        When `is_checked_after` is True (the default), raise a ProcessError if the process exits with a non-zero exit code.
+
+        """
+        process = self.run_process_in_background(
+            command,
+            secrets,
+            cwd,
+            is_interactive,
+            run_with_sudo_privileges,
+            run_as_root,
+            # Never mark the original background process as "checked".
+            # Reason: the concurrency group would raise an exception even if the failure of the process was properly handled by the caller.
+            is_checked_by_group=False,
+            timeout=timeout,
+            on_output=on_output,
+        )
+        process.wait()
+        if is_checked_after:
+            process.check()
+        return FinishedProcess(
+            command=tuple(process.command),
+            returncode=process.returncode,
+            stdout=process.read_stdout(),
+            stderr=process.read_stderr(),
+            is_timed_out=process.get_timed_out(),
+            is_output_already_logged=False,
+        )
 
     def _run_process_in_background(
         self,

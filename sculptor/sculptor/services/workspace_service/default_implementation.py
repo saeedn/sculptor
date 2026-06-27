@@ -22,14 +22,11 @@ from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
 from sculptor.foundation.progress_tracking.progress_tracking import start_finish_context
 from sculptor.foundation.time_utils import get_current_time
-from sculptor.interfaces.agents.agent import EnvironmentTypes
 
 # These artifact types are general-purpose data structures that happen to live under
 # interfaces/agents/. They are used by agents, workspace service, and the web layer.
 from sculptor.interfaces.agents.artifacts import DIFF_ARTIFACT_DIRNAME
 from sculptor.interfaces.agents.artifacts import DiffArtifact
-from sculptor.interfaces.environments.agent_execution_environment import AgentExecutionEnvironment
-from sculptor.interfaces.environments.base import Environment
 from sculptor.interfaces.environments.errors import EnvironmentConfigurationChangedError
 from sculptor.interfaces.environments.errors import EnvironmentNotFoundError
 from sculptor.primitives.ids import ProjectID
@@ -53,11 +50,11 @@ from sculptor.services.workspace_service.api import WorkspaceFilesUnavailableErr
 from sculptor.services.workspace_service.api import WorkspaceNotFoundError
 from sculptor.services.workspace_service.api import WorkspaceService
 from sculptor.services.workspace_service.api import resolve_workspace_setup_command
-from sculptor.services.workspace_service.environment_manager.api import EnvironmentManager
 from sculptor.services.workspace_service.environment_manager.default_implementation import DefaultEnvironmentManager
 from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
     LocalAgentExecutionEnvironment,
 )
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     stop_all_terminals,
 )
@@ -70,7 +67,6 @@ from sculptor.services.workspace_service.setup_command_runner import SetupStateC
 from sculptor.utils.build import build_sculpt_backend_env
 from sculptor.utils.build import get_sculpt_bin_dir
 from sculptor.utils.timeout import timeout_monitor
-from sculptor.utils.type_utils import extract_leaf_types
 
 _ENVIRONMENT_CREATION_TIMEOUT_SECONDS = 60
 _DIFF_METADATA_FILENAME = "DIFF.meta.json"
@@ -100,7 +96,7 @@ class DefaultWorkspaceService(WorkspaceService):
     """
 
     data_model_service: DataModelService
-    environment_manager: EnvironmentManager
+    environment_manager: DefaultEnvironmentManager
     project_service: ProjectService
     workspace_sync_dir: Path
     backend_port: int
@@ -538,7 +534,7 @@ class DefaultWorkspaceService(WorkspaceService):
         concurrency_group: ConcurrencyGroup,
         root_progress_handle: RootProgressHandle,
         task_id: str,
-    ) -> EnvironmentTypes:
+    ) -> LocalEnvironment:
         """Create or resume the environment for a workspace, protected by a per-workspace lock.
 
         The lock ensures that concurrent tasks in the same workspace don't create
@@ -555,7 +551,7 @@ class DefaultWorkspaceService(WorkspaceService):
                 raise WorkspaceNotFoundError(workspace_id)
 
             environment_id_to_resume = workspace.environment_id
-            environment: Environment | None = None
+            environment: LocalEnvironment | None = None
 
             user_config = get_user_config_instance()
             env_var_override = user_config.env_var_override_enabled if user_config is not None else False
@@ -602,8 +598,7 @@ class DefaultWorkspaceService(WorkspaceService):
                 logger.debug("Created new environment {} for workspace {}", environment.environment_id, workspace_id)
 
             # Type narrowing for pycharm/the type checker
-            assert isinstance(environment, extract_leaf_types(EnvironmentTypes))
-            environment = cast(EnvironmentTypes, environment)
+            assert isinstance(environment, LocalEnvironment)
 
             # Expose sculpt CLI env vars in the terminal so bare `sculpt` invocations
             # can reach the backend and resolve the workspace/project without flags.
@@ -638,7 +633,7 @@ class DefaultWorkspaceService(WorkspaceService):
         concurrency_group: ConcurrencyGroup,
         root_progress_handle: RootProgressHandle,
         shutdown_event: ReadOnlyEvent,
-    ) -> Iterator[AgentExecutionEnvironment]:
+    ) -> Iterator[LocalAgentExecutionEnvironment]:
         """Set up the environment for a workspace and wrap it for agent use."""
         environment = self._create_or_resume_environment(
             project=project,

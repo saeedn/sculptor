@@ -8,10 +8,10 @@ from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.interfaces.agents.agent import MessageTypes
-from sculptor.interfaces.environments.base import Environment
 from sculptor.primitives.ids import UserReference
 from sculptor.primitives.service import Service
 from sculptor.services.data_model_service.data_types import DataModelTransaction
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.state.messages import Message
 
 
@@ -43,7 +43,7 @@ class TaskService(Service, ABC):
     def get_task(self, task_id: TaskID, transaction: DataModelTransaction) -> Task | None: ...
 
     @abstractmethod
-    def get_task_environment(self, task_id: TaskID, transaction: DataModelTransaction) -> Environment | None: ...
+    def get_task_environment(self, task_id: TaskID, transaction: DataModelTransaction) -> LocalEnvironment | None: ...
 
     @abstractmethod
     def mark_read(self, task_id: TaskID, transaction: DataModelTransaction) -> Task: ...

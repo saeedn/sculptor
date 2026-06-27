@@ -19,7 +19,6 @@ import datetime
 import shutil
 from typing import Any
 from typing import Callable
-from typing import cast
 
 from loguru import logger
 
@@ -36,7 +35,6 @@ from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentReleasedRunnerMessage
-from sculptor.interfaces.agents.agent import EnvironmentTypes
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.task_service.data_types import ServiceCollectionForTask
@@ -44,6 +42,7 @@ from sculptor.services.task_service.errors import UserPausedTaskError
 from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
     LocalAgentExecutionEnvironment,
 )
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.tasks.handlers.run_terminal_agent.diff_refresh import PeriodicDiffRefresher
 from sculptor.tasks.handlers.run_terminal_agent.runner_support import load_initial_task_state
 from sculptor.tasks.handlers.run_terminal_agent.runner_support import on_exception
@@ -137,7 +136,7 @@ def run_terminal_agent_task_v1(
                 # Emit EnvironmentAcquiredRunnerMessage — the run-start anchor
                 # the terminal status driver keys on for run-scoping.
                 assert isinstance(environment, LocalAgentExecutionEnvironment)
-                underlying_env = cast(EnvironmentTypes, environment.underlying_environment)
+                underlying_env = environment.underlying_environment
                 with services.data_model_service.open_task_transaction() as transaction:
                     services.task_service.create_message(
                         EnvironmentAcquiredRunnerMessage(environment=underlying_env),
@@ -184,7 +183,7 @@ def _run_terminal_agent_in_environment(
     task: Task,
     task_state: AgentTaskStateV2,
     project: Project,
-    underlying_env: EnvironmentTypes,
+    underlying_env: LocalEnvironment,
     environment_concurrency_group: ConcurrencyGroup,
     services: ServiceCollectionForTask,
     settings: SculptorSettings,

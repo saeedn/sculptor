@@ -1,9 +1,8 @@
 """LocalAgentExecutionEnvironment wraps LocalEnvironment for agent use.
 
-This module provides a wrapper around LocalEnvironment that implements the
-AgentExecutionEnvironment protocol. It provides per-task namespaced paths for
-state and artifacts while delegating all other operations to the underlying
-environment.
+This module provides a wrapper around LocalEnvironment that provides per-task
+namespaced paths for state and artifacts while delegating all other operations
+to the underlying environment.
 """
 
 from pathlib import Path
@@ -19,12 +18,11 @@ from sculptor.foundation.event_utils import MutableEvent
 from sculptor.foundation.processes.local_process import RunningProcess
 from sculptor.foundation.secrets_utils import Secret
 from sculptor.foundation.subprocess_utils import FinishedProcess
-from sculptor.interfaces.environments.agent_execution_environment import AgentExecutionEnvironment
-from sculptor.interfaces.environments.base import ARTIFACTS_DIRECTORY
-from sculptor.interfaces.environments.base import Environment
-from sculptor.interfaces.environments.base import STATE_DIRECTORY
-from sculptor.interfaces.environments.base import TASKS_SUBDIRECTORY
 from sculptor.primitives.ids import TaskID
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import ARTIFACTS_DIRECTORY
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import STATE_DIRECTORY
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import TASKS_SUBDIRECTORY
 
 if TYPE_CHECKING:
     from _typeshed import OpenBinaryModeReading
@@ -33,11 +31,11 @@ if TYPE_CHECKING:
     from _typeshed import OpenTextModeWriting
 
 
-class LocalAgentExecutionEnvironment(AgentExecutionEnvironment):
+class LocalAgentExecutionEnvironment:
     """Wrapper around LocalEnvironment that provides per-task namespaced paths.
 
-    This class implements the AgentExecutionEnvironment protocol by wrapping a
-    LocalEnvironment and providing task-specific directories for state and artifacts.
+    This class wraps a LocalEnvironment and provides task-specific directories
+    for state and artifacts.
 
     Per-task namespacing:
     - State path: {workspace_root}/state/tasks/{task_id}/
@@ -46,7 +44,7 @@ class LocalAgentExecutionEnvironment(AgentExecutionEnvironment):
     All other operations are delegated directly to the underlying environment.
     """
 
-    def __init__(self, environment: Environment, task_id: TaskID) -> None:
+    def __init__(self, environment: LocalEnvironment, task_id: TaskID) -> None:
         """Initialize the agent execution environment wrapper.
 
         Args:
@@ -81,7 +79,7 @@ class LocalAgentExecutionEnvironment(AgentExecutionEnvironment):
     # This property exists to support EnvironmentAcquiredRunnerMessage.environment field,
     # which will be removed when workspace-level API endpoints replace task-level access.
     @property
-    def underlying_environment(self) -> Environment:
+    def underlying_environment(self) -> LocalEnvironment:
         """Get the underlying Environment instance.
 
         This is useful for internal operations that need access to the actual

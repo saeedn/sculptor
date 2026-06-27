@@ -13,11 +13,13 @@ from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
 from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.interfaces.agents.artifacts import DiffArtifact
-from sculptor.interfaces.environments.agent_execution_environment import AgentExecutionEnvironment
 from sculptor.primitives.ids import TaskID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.primitives.service import Service
 from sculptor.services.data_model_service.data_types import DataModelTransaction
+from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
+    LocalAgentExecutionEnvironment,
+)
 
 # The default workspace setup command when a project has not configured one.
 # Fetches the origin remote if present; succeeds silently if origin is missing
@@ -208,7 +210,7 @@ class WorkspaceService(Service, ABC):
         concurrency_group: ConcurrencyGroup,
         root_progress_handle: RootProgressHandle,
         shutdown_event: ReadOnlyEvent,
-    ) -> Iterator[AgentExecutionEnvironment]:
+    ) -> Iterator[LocalAgentExecutionEnvironment]:
         """
         Set up the environment for a workspace.
 

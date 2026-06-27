@@ -23,7 +23,6 @@ from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import CompoundEvent
 from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.interfaces.environments.base import STATE_DIRECTORY
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import WorkspaceID
@@ -31,6 +30,7 @@ from sculptor.service_collections.service_collection import CompleteServiceColle
 from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.services.task_service.api import TaskMessageContainer
 from sculptor.services.workspace_service.default_implementation import DefaultWorkspaceService
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import STATE_DIRECTORY
 from sculptor.services.workspace_service.setup_command_runner import SetupCommandRunner
 from sculptor.services.workspace_service.setup_command_runner import SetupOutputChunk
 from sculptor.services.workspace_service.setup_command_runner import SetupStateChanged

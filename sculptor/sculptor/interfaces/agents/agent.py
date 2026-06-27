@@ -21,8 +21,6 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import PersistentMessage
 
-EnvironmentTypes = LocalEnvironment
-
 
 class PersistentRunnerMessage(PersistentMessage):
     """Base class for messages sent from the runner."""
@@ -42,7 +40,7 @@ class EnvironmentAcquiredRunnerMessage(EphemeralRunnerMessage):
     object_type: str = "EnvironmentAcquiredRunnerMessage"
     # TODO(SCU-135): Remove this field when git/diff operations move to workspace level.
     # The environment will be accessed via WorkspaceService instead of this message.
-    environment: EnvironmentTypes
+    environment: LocalEnvironment
 
 
 class EnvironmentReleasedRunnerMessage(EphemeralRunnerMessage):

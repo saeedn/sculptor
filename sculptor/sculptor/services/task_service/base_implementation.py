@@ -29,7 +29,6 @@ from sculptor.interfaces.agents.agent import EphemeralMessage
 from sculptor.interfaces.agents.agent import MessageTypes
 from sculptor.interfaces.agents.agent import TaskStatusRunnerMessage
 from sculptor.interfaces.agents.tasks import TaskState
-from sculptor.interfaces.environments.base import Environment
 from sculptor.primitives.constants import MESSAGE_LOG_TYPE
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import RequestID
@@ -48,6 +47,7 @@ from sculptor.services.task_service.errors import TaskNotFound
 from sculptor.services.task_service.errors import UserPausedTaskError
 from sculptor.services.task_service.errors import UserStoppedTaskError
 from sculptor.services.workspace_service.api import WorkspaceService
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import Message
 from sculptor.state.messages import PersistentMessage
@@ -122,7 +122,7 @@ class BaseTaskService(TaskService, ABC):
     # TODO(SCU-135): Remove this method when git/diff operations move to workspace level.
     # The EnvironmentAcquiredRunnerMessage.environment field and this accessor will be
     # replaced by workspace-level API endpoints.
-    def get_task_environment(self, task_id: TaskID, transaction: DataModelTransaction) -> Environment | None:
+    def get_task_environment(self, task_id: TaskID, transaction: DataModelTransaction) -> LocalEnvironment | None:
         """Get the active environment for a task by checking message history.
 
         Scans the task's in-memory messages for the most recent EnvironmentAcquiredRunnerMessage

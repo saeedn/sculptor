@@ -69,9 +69,6 @@ from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
 from sculptor.interfaces.agents.agent import is_terminal_agent_config
-from sculptor.interfaces.environments.base import ARTIFACTS_DIRECTORY
-from sculptor.interfaces.environments.base import STATE_DIRECTORY
-from sculptor.interfaces.environments.base import TASKS_SUBDIRECTORY
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import TypeIDPrefixMismatchError
@@ -104,6 +101,9 @@ from sculptor.services.workspace_service.branch_naming import resolve_pattern
 from sculptor.services.workspace_service.branch_naming import slugify_workspace_name
 from sculptor.services.workspace_service.default_implementation import DefaultWorkspaceService
 from sculptor.services.workspace_service.environment_manager.env_file_parser import parse_env_file
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import ARTIFACTS_DIRECTORY
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import STATE_DIRECTORY
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import TASKS_SUBDIRECTORY
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     create_terminal_for_environment,
 )

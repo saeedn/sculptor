@@ -6,11 +6,9 @@ from loguru import logger
 
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.pydantic_serialization import MutableModel
-from sculptor.interfaces.environments.base import Environment
 from sculptor.primitives.ids import LocalEnvironmentID
 from sculptor.primitives.ids import ProjectID
 from sculptor.services.data_model_service.api import TaskDataModelService
-from sculptor.services.workspace_service.environment_manager.api import EnvironmentManager
 from sculptor.services.workspace_service.environment_manager.env_file_parser import load_project_env_vars
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.utils.build import get_workspaces_folder
@@ -33,7 +31,7 @@ def _cleanup_workspace(workspace_path: Path) -> None:
         shutil.rmtree(workspace_path, ignore_errors=True)
 
 
-class DefaultEnvironmentManager(MutableModel, EnvironmentManager):
+class DefaultEnvironmentManager(MutableModel):
     """Internal environment manager that creates local environments directly.
 
     This class is an implementation detail of WorkspaceService and should not be
@@ -53,7 +51,7 @@ class DefaultEnvironmentManager(MutableModel, EnvironmentManager):
         source_branch: str | None = None,
         requested_branch_name: str | None = None,
         env_var_override: bool = False,
-    ) -> Environment:
+    ) -> LocalEnvironment:
         """Create a new local environment.
 
         Args:
@@ -88,7 +86,7 @@ class DefaultEnvironmentManager(MutableModel, EnvironmentManager):
         concurrency_group: ConcurrencyGroup,
         env_var_override: bool = False,
         sculptor_folder: Path | None = None,
-    ) -> Environment:
+    ) -> LocalEnvironment:
         """Resume an existing environment by its ID (workspace path).
 
         Args:

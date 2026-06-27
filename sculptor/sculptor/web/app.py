@@ -34,7 +34,6 @@ from fastapi import Response
 from fastapi import UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
 from fastapi.responses import StreamingResponse
 from fastapi.websockets import WebSocket
 from fastapi.websockets import WebSocketDisconnect
@@ -1263,77 +1262,6 @@ def workspace_read_file_at_ref(
     return ReadFileAtRefResponse(content=result.content, encoding=result.encoding)
 
 
-class LocalPluginInfo(SerializableModel):
-    """A frontend plugin discovered in the Sculptor plugins directory.
-
-    That directory is the backend data folder's ``plugins/`` subdirectory (e.g.
-    ``~/.sculptor/plugins``; it varies by build and environment — see
-    ``get_sculptor_folder``).
-
-    ``manifest_url`` is the origin-relative path to the plugin's manifest; the
-    frontend resolves it against the backend origin, registers it as a read-only
-    "local" plugin source, and loads it through the normal plugin loader (the
-    files are served by the ``/plugins/local`` static mount).
-    """
-
-    id: str
-    manifest_url: str
-
-
-@router.get("/api/v1/plugins/local")
-def get_local_plugins() -> list[LocalPluginInfo]:
-    """List frontend plugins the user has dropped into the Sculptor plugins directory.
-
-    The directory is the backend data folder's ``plugins/`` subdirectory (e.g.
-    ``~/.sculptor/plugins``; varies by build/environment).
-    Each immediate subdirectory that contains a ``manifest.json`` is reported as
-    a loadable source, sorted by directory name for a stable order. Returns an
-    empty list when the directory is absent. This only enumerates; the manifest
-    and bundle bytes are served by the ``/plugins/local`` static mount (see
-    ``sculptor.web.middleware.mount_plugin_files``).
-    """
-    plugins_dir = get_sculptor_folder() / "plugins"
-    if not plugins_dir.is_dir():
-        return []
-    try:
-        entries = sorted(plugins_dir.iterdir())
-    except OSError as e:
-        log_exception(e, "Failed to list local plugins directory")
-        return []
-    plugins: list[LocalPluginInfo] = []
-    for entry in entries:
-        if entry.is_dir() and (entry / "manifest.json").is_file():
-            # Percent-encode the directory name: a name with URL-special chars
-            # (#, ?, space) would otherwise corrupt the manifest URL the frontend
-            # fetches. `safe=""` encodes everything but unreserved chars.
-            encoded_name = urllib.parse.quote(entry.name, safe="")
-            plugins.append(LocalPluginInfo(id=entry.name, manifest_url=f"/plugins/local/{encoded_name}/manifest.json"))
-    return plugins
-
-
-class LocalPluginsDirectory(SerializableModel):
-    """The on-disk directory Sculptor scans for drop-in frontend plugins.
-
-    ``path`` is formatted for display — the user's home directory is collapsed to
-    ``~`` (see ``_display_path``), so the settings UI can show e.g.
-    ``~/.sculptor/plugins`` rather than an absolute path that embeds the username.
-    A from-source checkout outside ``$HOME`` shows its full path instead.
-    """
-
-    path: str
-
-
-@router.get("/api/v1/plugins/dir")
-def get_local_plugins_directory() -> LocalPluginsDirectory:
-    """Report where drop-in frontend plugins are loaded from, formatted for display.
-
-    The directory is the backend data folder's ``plugins/`` subdirectory; it need
-    not exist yet (the settings copy tells the user where to create it). This only
-    reports the path — enumerating the plugins inside it is ``get_local_plugins``.
-    """
-    return LocalPluginsDirectory(path=_display_path(get_sculptor_folder() / "plugins"))
-
-
 @router.get("/api/v1/skills")
 def get_skills(
     request: Request,
@@ -2165,76 +2093,6 @@ def update_naming_pattern(
 
     services.project_service.activate_project(updated_project)
     return updated_project.naming_pattern
-
-
-@router.get("/api/v1/projects/{project_id}/files_and_folders")
-def get_files_and_folders(
-    project_id: str,
-    request: Request,
-    directory: str = "",
-    filter: str = "",
-    workspace_id: str | None = None,
-    user_session: UserSession = Depends(get_user_session),
-    settings: SculptorSettings = Depends(get_settings),
-) -> list[str]:
-    """List immediate contents of a directory in the project.
-
-    When ``workspace_id`` is provided the listing is rooted at the workspace's
-    working directory (e.g. a clone); otherwise it falls back to the project's
-    local repo path.  Absolute ``directory`` values bypass the root and list
-    the filesystem directly so users can reference files outside the repo.
-    """
-    services = get_services_from_request_or_websocket(request)
-    with user_session.open_transaction(services) as transaction:
-        project = transaction.get_project(ProjectID(project_id))
-        if project is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        if project.organization_reference != user_session.organization_reference:
-            raise HTTPException(status_code=403, detail="You do not have access to this project")
-
-        root: Path | None = None
-        if workspace_id is not None:
-            validated_workspace_id = validate_workspace_id(workspace_id)
-            workspace = transaction.get_workspace(validated_workspace_id)
-            if workspace is None or workspace.is_deleted:
-                raise HTTPException(status_code=404, detail=f"Workspace {workspace_id} not found")
-            root = services.workspace_service.get_workspace_working_directory(workspace, transaction)
-
-        if root is None:
-            root = project.get_local_user_path()
-
-    try:
-        entries = _list_directory_contents(root, directory)
-        if filter:
-            lower_filter = filter.lower()
-            entries = [e for e in entries if lower_filter in e.lower()]
-        return entries
-
-    except Exception as e:
-        log_exception(e, "Unexpected error getting files and folders")
-        raise HTTPException(status_code=500, detail="Unexpected error getting files and folders") from e
-
-
-def _list_directory_contents(repo_root: Path, directory: str) -> list[str]:
-    """List immediate children of a directory, sorted with folders first.
-
-    If ``directory`` is an absolute path it is used directly, bypassing
-    ``repo_root``.  This lets users browse files outside the repository.
-    """
-    expanded = Path(directory).expanduser()
-    target = expanded if expanded.is_absolute() else repo_root / directory
-    if not target.is_dir():
-        return []
-    dirs: list[str] = []
-    files: list[str] = []
-    for entry in target.iterdir():
-        if entry.is_dir():
-            dirs.append(entry.name + "/")
-        else:
-            files.append(entry.name)
-    dirs.sort()
-    files.sort()
-    return dirs + files
 
 
 _REPO_ACCESS_MAX_RETRIES = 3
@@ -3296,23 +3154,6 @@ def upload_file(
     (upload_dir / file_id).write_bytes(content)
 
     return UploadFileResponse(file_id=file_id)
-
-
-@router.get("/api/v1/uploaded-file/{file_id}")
-def get_uploaded_file(
-    file_id: str,
-    user_session: UserSession = Depends(get_user_session),
-) -> FileResponse:
-    """Serve a previously uploaded file by its file_id."""
-    settings = get_settings()
-    upload_dir = settings.upload_path.resolve()
-    file_path = (upload_dir / file_id).resolve()
-    if not file_path.is_relative_to(upload_dir):
-        raise HTTPException(status_code=400, detail="Invalid file_id")
-    if not file_path.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    return FileResponse(file_path)
 
 
 class TraceBatchRequest(SerializableModel):

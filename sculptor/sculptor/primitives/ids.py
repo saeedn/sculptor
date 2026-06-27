@@ -40,14 +40,6 @@ class ExternalID(NonEmptyStr):
     pass
 
 
-class AssistantMessageID(ExternalID):
-    pass
-
-
-class ToolUseID(ExternalID):
-    pass
-
-
 class TypeIDPrefixMismatchError(Exception):
     pass
 

@@ -53,9 +53,3 @@ class PersistentMessage(Message):
     @property
     def is_ephemeral(self) -> bool:
         return False
-
-
-class PersistentAgentMessage(PersistentMessage):
-    """Base class for messages sent from the agent."""
-
-    source: AgentMessageSource = AgentMessageSource.AGENT

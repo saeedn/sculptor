@@ -8,8 +8,6 @@ from sculptor.constants import ElementIDs
 from sculptor.testing.elements.actions_panel import PlaywrightActionsPanelElement
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
 from sculptor.testing.elements.changes_panel import PlaywrightChangesPanelElement
-from sculptor.testing.elements.compaction_header import PlaywrightCompactionBarElement
-from sculptor.testing.elements.compaction_panel import PlaywrightCompactionPanelElement
 from sculptor.testing.elements.diff_panel import PlaywrightDiffPanelElement
 from sculptor.testing.elements.file_browser import PlaywrightFileBrowserElement
 from sculptor.testing.elements.history_panel import PlaywrightHistoryPanelElement
@@ -171,15 +169,6 @@ class PlaywrightTaskPage(PlaywrightProjectLayoutPage):
     def get_diff_panel(self) -> PlaywrightDiffPanelElement:
         diff_panel = self._page.get_by_test_id(ElementIDs.DIFF_PANEL)
         return PlaywrightDiffPanelElement(locator=diff_panel, page=self._page)
-
-    def get_compaction_bar(self) -> PlaywrightCompactionBarElement:
-        compaction_bar = self._page.get_by_test_id(ElementIDs.COMPACTION_BAR)
-        return PlaywrightCompactionBarElement(locator=compaction_bar, page=self._page)
-
-    def get_compaction_panel(self) -> PlaywrightCompactionPanelElement:
-        # Use page-level locator since Radix popover content renders in a portal
-        compaction_panel = self._page.get_by_test_id(ElementIDs.COMPACTION_PANEL)
-        return PlaywrightCompactionPanelElement(locator=compaction_panel, page=self._page)
 
     def get_diff_summary(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_SUMMARY)

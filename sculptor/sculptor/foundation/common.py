@@ -2,7 +2,6 @@ import functools
 import os
 import platform
 import sys
-import uuid
 from pathlib import Path
 
 
@@ -48,27 +47,3 @@ def get_temp_dir() -> Path:
     temp_dir = get_filesystem_root() / "tmp"
     temp_dir.mkdir(parents=True, exist_ok=True)
     return temp_dir
-
-
-def generate_id() -> str:
-    return uuid.uuid4().hex
-
-
-_TRUNCATION_SUFFIX = "..."
-
-
-def truncate_string(s: str, max_length: int) -> str:
-    if len(s) <= max_length:
-        return s
-    return s[: max_length - len(_TRUNCATION_SUFFIX)] + _TRUNCATION_SUFFIX
-
-
-def parse_bool_environment_variable(var_name: str) -> bool:
-    env_var = os.environ.get(var_name, "0").lower()
-
-    if env_var not in ("0", "1", "true", "false"):
-        raise ValueError(
-            f"{var_name} environment variable must be '0', '1', 'true', or 'false'. Current value: '{env_var}'"
-        )
-
-    return env_var in ("1", "true")

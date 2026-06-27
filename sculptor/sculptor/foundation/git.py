@@ -75,23 +75,6 @@ def get_git_repo_root() -> Path:
     return root_dir
 
 
-def get_repo_url_from_folder(repo_path: Path) -> str:
-    """Return the ``origin`` remote URL for ``repo_path``, normalized to an https URL."""
-    repo_url = subprocess.check_output(
-        ["git", "remote", "get-url", "origin"], cwd=repo_path, universal_newlines=True
-    ).strip()
-    if repo_url.startswith("git@"):
-        # convert ssh url to https
-        repo_url = repo_url.replace(":", "/")
-        repo_url = f"https://{repo_url[4:]}"
-    if "https://oauth2:" in repo_url:
-        # strip the oauth2 credentials left over from an oauth2 clone,
-        # e.g. https://oauth2:{token}@gitlab.com/.../.git -> https://gitlab.com/.../.git
-        suffix = repo_url.split("@")[-1]
-        repo_url = "https://" + suffix
-    return repo_url
-
-
 def get_repo_base_path() -> Path:
     """Return the repo root containing this module, falling back to its grandparent directory."""
     working_directory = Path(__file__).parent

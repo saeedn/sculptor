@@ -8,7 +8,6 @@ from sculptor.testing.elements.command_palette import PlaywrightCommandPaletteEl
 from sculptor.testing.elements.git_init_dialog import PlaywrightGitInitDialogElement
 from sculptor.testing.elements.keyboard_shortcuts_dialog import PlaywrightKeyboardShortcutsDialogElement
 from sculptor.testing.elements.project_path_dialog import PlaywrightProjectPathDialogElement
-from sculptor.testing.elements.skills_panel import PlaywrightSkillsPanelElement
 from sculptor.testing.elements.topbar import PlaywrightTopBarElement
 from sculptor.testing.elements.warning_banner import PlaywrightWarningBannerElement
 from sculptor.testing.elements.workspace_peek import PlaywrightWorkspacePeekElement
@@ -217,24 +216,7 @@ class PlaywrightProjectLayoutPage(PlaywrightIntegrationTestPage):
         dialog_locator = self.get_by_test_id(ElementIDs.PROJECT_PATH_DIALOG)
         return PlaywrightProjectPathDialogElement(locator=dialog_locator, page=self._page)
 
-    def get_skills_panel(self) -> PlaywrightSkillsPanelElement:
-        """Get the SkillsPanel element. Only visible when its zone is open."""
-        return PlaywrightSkillsPanelElement(self.get_by_test_id(ElementIDs.SKILLS_PANEL), page=self._page)
-
     def toggle_theme(self) -> None:
         """Toggle between dark and light theme via Cmd/Ctrl+Shift+D."""
         mod_key = get_playwright_modifier_key()
         self.press_keyboard_shortcut(f"{mod_key}+Shift+d")
-
-    def open_skills_panel(self) -> PlaywrightSkillsPanelElement:
-        """Click the skills sidebar icon and return the visible SkillsPanel.
-
-        The panel lives in the right zone, collapsed by default. Clicking its
-        sidebar icon both reveals the zone and switches to the skills panel.
-        """
-        sidebar_icon = self.get_by_test_id(ElementIDs.PANEL_ICON_SKILLS)
-        expect(sidebar_icon).to_be_visible()
-        sidebar_icon.click()
-        panel = self.get_skills_panel()
-        expect(panel).to_be_visible()
-        return panel

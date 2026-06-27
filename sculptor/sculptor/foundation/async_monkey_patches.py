@@ -1,4 +1,3 @@
-import asyncio
 import traceback
 from typing import Any
 
@@ -6,27 +5,6 @@ from sculptor.foundation.constants import ExceptionPriority
 
 # This is the name of the attribute we set on our exceptions to ensure they are logged (esp. to Sentry) at most once.
 EXCEPTION_LOGGED_FLAG = "_was_logged_by_log_exception"
-
-
-def safe_cancel(task: asyncio.Task, msg: str | None = None) -> None:
-    """
-    Cancels a task in a way that preserves information about who canceled it.
-
-    Without using this, it is hard to figure out why your function is being canceled --
-    you just get a CancelledError with no traceback.
-
-    We try to ensure that *all* of our tasks are canceled in this way, which makes debugging much easier.
-
-    Note that cancellation just enqueues a cancellation; it does not wait for the task to actually be canceled.
-
-    Note also that cancellation is never guaranteed -- all it does is raise a CancelledError in the task.
-    This is why it is so important to never swallow those errors!
-    """
-    message = f"Task canceled by: \n {''.join(traceback.format_stack()[:-1])}"
-    if msg:
-        message += f"\nOriginal message: {msg}"
-
-    task.cancel(message)
 
 
 def pre_filter_exception(exc: BaseException, message: str | None = None) -> bool:

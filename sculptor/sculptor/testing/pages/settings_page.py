@@ -5,7 +5,6 @@ from sculptor.constants import ElementIDs
 from sculptor.testing.elements.base import PlaywrightIntegrationTestElement
 from sculptor.testing.elements.settings_actions import PlaywrightActionsSettingsElement
 from sculptor.testing.elements.settings_ci_babysitter import PlaywrightCIBabysitterSettingsElement
-from sculptor.testing.elements.settings_claude_cli import PlaywrightClaudeCliSettingsElement
 from sculptor.testing.elements.settings_env_vars import PlaywrightEnvVarsSettingsElement
 from sculptor.testing.elements.settings_git import PlaywrightGitSettingsElement
 from sculptor.testing.elements.settings_keybindings import PlaywrightKeybindingsSettingsElement
@@ -24,11 +23,6 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
         expect(toast).to_be_visible()
         toast.get_by_test_id(ElementIDs.TOAST_CLOSE_BUTTON).click()
         expect(toast).not_to_be_visible()
-
-    def click_on_dependencies(self) -> PlaywrightClaudeCliSettingsElement:
-        """Navigate to Dependencies settings and return the section element."""
-        self._get_dependencies_nav().click()
-        return PlaywrightClaudeCliSettingsElement(locator=self._get_settings_content(), page=self._page)
 
     def click_on_general(self) -> PlaywrightIntegrationTestElement:
         """Navigate to General settings and return the section element."""
@@ -96,7 +90,3 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
     def _get_env_vars_nav(self) -> Locator:
         """Get the Environment Variables navigation item."""
         return self.get_by_test_id(ElementIDs.SETTINGS_NAV_PROJECT_ENV_VARS)
-
-    def _get_dependencies_nav(self) -> Locator:
-        """Get the Dependencies navigation item."""
-        return self.get_by_test_id(ElementIDs.SETTINGS_NAV_DEPENDENCIES)

@@ -67,7 +67,6 @@ Avoid using Python's `assert` statements or manual wait loops unless there's an 
 ### Timeout Management
 
 - **Default `expect()` timeout**: Configured in `sculptor/tests/integration/frontend/conftest.py` via the `configure_expect_timeout` autouse fixture — 30 seconds by default.
-- **Task wait helpers**: Use `wait_for_tasks_to_build()` and `wait_for_tasks_to_finish()` from `sculptor.testing.elements.task_list` instead of writing manual timeout logic. These helpers use `BUILD_TIMEOUT_SECS` and `RUNNING_TIMEOUT_SECS` from `sculptor/sculptor/testing/constants.py` internally.
 - Avoid defining custom and hardcoded timeouts unless absolutely necessary.
 
 ### Element Access Hierarchy

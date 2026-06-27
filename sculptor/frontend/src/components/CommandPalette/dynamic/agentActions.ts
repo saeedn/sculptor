@@ -7,8 +7,8 @@ import type { AgentActionRuntime } from "../contextActions/types.ts";
 import type { CommandRuntime } from "../runtime.ts";
 import type { Command, DynamicProvider } from "../types.ts";
 
-const taskDisplayTitle = (task: { title?: string | null; initialPrompt: string }): string => {
-  const display = task.title?.trim() || task.initialPrompt.trim() || "Untitled agent";
+const taskDisplayTitle = (task: { title?: string | null }): string => {
+  const display = task.title?.trim() || "Untitled agent";
   return display.length > 80 ? `${display.slice(0, 77)}...` : display;
 };
 

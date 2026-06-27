@@ -125,6 +125,10 @@ def _mock_preview_branch_name(base_url: str = "http://localhost:5050") -> None:
     )
 
 
+def _mock_terminal_input(agent_id: str = "tsk_abc123def456") -> None:
+    respx.post(f"http://localhost:5050/api/v1/agents/{agent_id}/terminal/input").mock(return_value=Response(204))
+
+
 def _mock_workspace_and_agent() -> None:
     _mock_preview_branch_name()
     respx.post("http://localhost:5050/api/v1/workspaces").mock(
@@ -133,6 +137,7 @@ def _mock_workspace_and_agent() -> None:
     respx.post("http://localhost:5050/api/v1/workspaces/ws_newrun123/agents").mock(
         return_value=Response(200, json=_task_response_dict())
     )
+    _mock_terminal_input()
 
 
 class TestRun:
@@ -176,6 +181,7 @@ class TestRun:
         respx.post("http://localhost:5050/api/v1/workspaces/ws_newrun123/agents").mock(
             return_value=Response(200, json=_task_response_dict())
         )
+        _mock_terminal_input()
 
         result = runner.invoke(
             app,
@@ -218,6 +224,7 @@ class TestRun:
         respx.post("http://localhost:5050/api/v1/workspaces/ws_newrun123/agents").mock(
             return_value=Response(200, json=_task_response_dict())
         )
+        _mock_terminal_input()
 
         result = runner.invoke(
             app,
@@ -253,6 +260,7 @@ class TestRun:
         respx.post("http://localhost:5050/api/v1/workspaces/ws_newrun123/agents").mock(
             return_value=Response(200, json=_task_response_dict())
         )
+        _mock_terminal_input()
 
         result = runner.invoke(
             app,
@@ -272,19 +280,6 @@ class TestRun:
         assert ws_route.called
         request_body = json.loads(ws_route.calls[0].request.content)
         assert request_body["targetBranch"] == "feature"
-
-    @respx.mock
-    def test_run_with_files(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_initialize_project()
-        _mock_workspace_and_agent()
-
-        result = runner.invoke(
-            app,
-            ["run", "Fix the bug", "--repo", "/tmp/test", "--file", "a.py", "--file", "b.py"],
-        )
-
-        assert result.exit_code == 0
 
     @respx.mock
     def test_run_with_branch_and_name(self, runner: CliRunner) -> None:
@@ -387,6 +382,7 @@ class TestRunHarness:
         agent_route = respx.post("http://localhost:5050/api/v1/workspaces/ws_newrun123/agents").mock(
             return_value=Response(200, json=_task_response_dict())
         )
+        _mock_terminal_input()
 
         result = runner.invoke(app, ["run", "Fix the bug", "--repo", "/tmp/test"])
 
@@ -394,25 +390,6 @@ class TestRunHarness:
         # No --harness: the CLI sends no agent type, so the server applies the MRU.
         body = json.loads(agent_route.calls.last.request.content)
         assert "agentType" not in body
-
-    @respx.mock
-    def test_run_with_terminal_harness_is_rejected(self, runner: CliRunner) -> None:
-        _mock_session()
-
-        result = runner.invoke(app, ["run", "Fix the bug", "--repo", "/tmp/test", "--harness", "Terminal"])
-
-        assert result.exit_code == 1
-        assert "sculpt run" in result.stderr
-
-    @respx.mock
-    def test_run_with_registered_harness_is_rejected(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_registrations(_CLAUDE_CLI_REGISTRATION)
-
-        result = runner.invoke(app, ["run", "Fix the bug", "--repo", "/tmp/test", "--harness", "Claude CLI"])
-
-        assert result.exit_code == 1
-        assert "sculpt run" in result.stderr
 
     @respx.mock
     def test_run_with_invalid_harness_errors(self, runner: CliRunner) -> None:

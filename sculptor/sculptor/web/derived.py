@@ -41,9 +41,7 @@ from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.state.messages import AgentMessageSource
-from sculptor.state.messages import ChatInputUserMessage
 from sculptor.state.messages import Message
-from sculptor.utils.functional import first
 from sculptor.web.data_types import PrApproval  # noqa: F401 — re-exported for existing import sites
 from sculptor.web.data_types import PrComment  # noqa: F401 — re-exported for existing import sites
 from sculptor.web.data_types import PrStatusInfo  # noqa: F401 — re-exported for existing import sites
@@ -266,16 +264,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
 
     @computed_field
     @property
-    def initial_prompt(self) -> str:
-        return self.goal
-
-    @computed_field
-    @property
-    def title_or_something_like_it(self) -> str:
-        return self.title or self.initial_prompt
-
-    @computed_field
-    @property
     def interface(self) -> TaskInterface:
         return TaskInterface.API
 
@@ -335,18 +323,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
     def _resolve_harness(self) -> Harness:
         """Return the `Harness` this task's config resolves to."""
         return get_harness_for_config(self.task_input.agent_config)
-
-    @computed_field
-    @property
-    def goal(self) -> str:
-        # Get the first ChatInputUserMessage
-        goal = first(x.text for x in self._messages if isinstance(x, ChatInputUserMessage))
-
-        # NOTE: this is due to a quirk in the task subscription system.
-        # goal should *rarely* be None, but it will be None for a single frame when the task is first created.
-        if goal is None:
-            return ""
-        return goal
 
     @computed_field
     @property

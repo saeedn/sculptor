@@ -45,6 +45,7 @@ from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches_test import expect_exact_logged_errors
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.pydantic_serialization import SerializableModel
+from sculptor.interfaces.agents.agent import KilledAgentRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import ObjectID
@@ -62,7 +63,6 @@ from sculptor.services.data_model_service.sql_implementation import SQLDataModel
 from sculptor.services.data_model_service.sql_implementation import SQLTransaction
 from sculptor.services.data_model_service.sql_implementation import WORKSPACE_TABLE
 from sculptor.services.data_model_service.sql_implementation import _UPDATE_FIELDS_PROTECTED_COLUMNS
-from sculptor.state.messages import ChatInputUserMessage
 from sculptor.utils.type_utils import extract_leaf_types
 
 
@@ -241,7 +241,7 @@ def test_get_tasks_for_project_excludes_deleting_tasks(
 def test_foreign_constraints_are_being_enforced(test_db_service: SQLDataModelService, tmp_path: Path) -> None:
     message_id = AgentMessageID()
     saved_agent_message = SavedAgentMessage.build(
-        message=ChatInputUserMessage(message_id=message_id, text="Hello, world!"),
+        message=KilledAgentRunnerMessage(message_id=message_id),
         task_id=TaskID(),
     )
     with pytest.raises(IntegrityError):
@@ -645,7 +645,7 @@ def test_observer_notification_saved_agent_message_insert_NOT_observed(
 
             message_id = AgentMessageID()
             message = SavedAgentMessage.build(
-                message=ChatInputUserMessage(message_id=message_id, text="Test message"),
+                message=KilledAgentRunnerMessage(message_id=message_id),
                 task_id=task.object_id,
             )
             transaction.insert_message(message)

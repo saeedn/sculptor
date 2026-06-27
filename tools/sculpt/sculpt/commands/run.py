@@ -5,10 +5,11 @@ from sculpt.auth import get_authenticated_client
 from sculpt.auth import get_default_base_url
 from sculpt.client.api.default import create_workspace_agent
 from sculpt.client.api.default import create_workspace_v2
-from sculpt.client.models.agent_type_name import AgentTypeName
+from sculpt.client.api.default import post_agent_terminal_input
 from sculpt.client.models.create_agent_request import CreateAgentRequest
 from sculpt.client.models.create_workspace_request_v2 import CreateWorkspaceRequestV2
 from sculpt.client.models.http_validation_error import HTTPValidationError
+from sculpt.client.models.terminal_input_request import TerminalInputRequest
 from sculpt.client.types import UNSET
 from sculpt.commands._follow_helpers import follow_and_stream_messages
 from sculpt.commands._harness_helpers import resolve_harness_selection
@@ -53,33 +54,22 @@ def run_cmd(
         None,
         "--harness",
         help=(
-            "Agent harness to run the prompt with. `sculpt run` always sends a"
-            + " prompt, so an explicit terminal/registered harness is rejected here;"
-            + " use `sculpt agent create` for those. If omitted, uses your"
+            "Agent harness to run the prompt with. If omitted, uses your"
             + " most-recently-used harness from the Sculptor app."
         ),
     ),
-    file: list[str] | None = typer.Option(None, "--file", help="Files to include (repeatable)"),
-    follow: bool = typer.Option(False, "--follow", "-f", help="Stream the agent's response after creation"),
+    submit: bool = typer.Option(True, "--submit/--no-submit", help="Press Enter after typing the prompt"),
+    follow: bool = typer.Option(False, "--follow", "-f", help="Stream the agent's activity after creation"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     base_url: str | None = typer.Option(None, "--base-url", "-u", help="The Sculptor server URL"),
 ) -> None:
-    """Create a workspace and agent in one step."""
+    """Create a workspace and terminal agent, then type the prompt into its shell."""
     base_url = base_url or get_default_base_url()
 
     client = get_authenticated_client(base_url)
 
-    # Resolve the harness up front so a bad or terminal choice fails before we
-    # create a workspace. `run` always sends a prompt, so terminal harnesses
-    # (which have no chat stream) are rejected; an omitted harness lets the
-    # server apply the user's most-recently-used one.
+    # An omitted harness lets the server apply the user's most-recently-used one.
     selection = resolve_harness_selection(harness, client, json_output)
-    if selection is not None and selection.agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED):
-        cli_error(
-            "Terminal agents cannot be created with `sculpt run` because it always sends a prompt."
-            + " Use `sculpt agent create --harness ...` to create a terminal agent.",
-            json_output=json_output,
-        )
 
     project_id = resolve_project(repo, client)
 
@@ -117,16 +107,15 @@ def run_cmd(
 
     workspace_id = ws_result.object_id
 
-    # Create agent. An omitted --harness sends no agent type, so the server
+    # Create the agent. An omitted --harness sends no agent type, so the server
     # applies the user's most-recently-used harness (the same default the app's
     # "+" button uses).
     agent_request = CreateAgentRequest(
-        prompt=prompt,
-        interface="API",
-        files=file or [],
         name=name,
-        sent_via="sculpt",
         agent_type=selection.agent_type if selection is not None else UNSET,
+        registration_id=(
+            selection.registration_id if selection is not None and selection.registration_id is not None else UNSET
+        ),
     )
 
     try:
@@ -139,6 +128,20 @@ def run_cmd(
 
     if isinstance(agent_result, HTTPValidationError):
         cli_error("Validation error", detail=str(agent_result), json_output=json_output)
+
+    # Type the prompt into the new agent's terminal (as if the user typed it).
+    try:
+        input_response = post_agent_terminal_input.sync_detailed(
+            agent_id=agent_result.id, client=client, body=TerminalInputRequest(text=prompt, submit=submit)
+        )
+    except httpx.ConnectError:
+        handle_connection_error(json_output)
+
+    if input_response.status_code.value >= 400:
+        cli_error(
+            f"Agent created but failed to deliver the prompt (server returned {input_response.status_code.value})",
+            json_output=json_output,
+        )
 
     if json_output:
         output = RunOutput(

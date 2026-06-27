@@ -27,10 +27,10 @@ from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.itertools import only
 from sculptor.foundation.thread_utils import ObservableThread
+from sculptor.interfaces.agents.agent import KilledAgentRunnerMessage
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
-from sculptor.state.messages import ChatInputUserMessage
 from sculptor.web.app import APP
 from sculptor.web.app_basic_test import _create_task_with_message_in_workspace
 from sculptor.web.app_basic_test import _create_workspace
@@ -186,10 +186,7 @@ def test_unified_stream_emits_task_views(
         with user_session.open_transaction(test_services) as transaction:
             message_id = AgentMessageID()
             test_services.task_service.create_message(
-                ChatInputUserMessage(
-                    message_id=message_id,
-                    text="streaming smoke test message",
-                ),
+                KilledAgentRunnerMessage(message_id=message_id),
                 task.object_id,
                 transaction,
             )

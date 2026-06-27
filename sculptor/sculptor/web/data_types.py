@@ -110,23 +110,6 @@ class RequestModel(SerializableModel):
     pass
 
 
-class StartTaskRequest(RequestModel):
-    prompt: str
-    interface: str = TaskInterface.TERMINAL.value
-    files: list[str] = Field(default_factory=list)
-    initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE
-    name: str | None = None
-    source_branch: str | None = None
-    # Mutually exclusive with initialization_strategy.
-    # When provided, the task will be created in an existing workspace
-    workspace_id: WorkspaceID | None = None
-    sent_via: str | None = None
-    # None means "use the user's most-recently-used harness" (the server
-    # resolves it). Prompt-ful creation is always a chat agent; terminal types
-    # are rejected (422).
-    agent_type: AgentTypeName | None = None
-
-
 class CreateWorkspaceRequestV2(RequestModel):
     """Create workspace request with project_id in body (not URL)."""
 
@@ -153,13 +136,9 @@ class BatchUpdateOpenStateRequest(RequestModel):
 
 
 class CreateAgentRequest(RequestModel):
-    """Create agent request — prompt is optional for the '+' button flow."""
+    """Create agent request for the '+' button flow (terminal agents take no prompt)."""
 
-    prompt: str | None = None
-    interface: str = TaskInterface.TERMINAL.value
-    files: list[str] = Field(default_factory=list)
     name: str | None = None
-    sent_via: str | None = None
     # None means "use the user's most-recently-used harness" (the server
     # resolves it, matching the app's "+" button default).
     agent_type: AgentTypeName | None = None

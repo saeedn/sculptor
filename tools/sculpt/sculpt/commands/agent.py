@@ -89,9 +89,7 @@ def resolve_workspace(workspace: str | None, client: Client, json_output: bool) 
 
 
 def _get_task_title(task: CodingAgentTaskView) -> str:
-    if task.title:
-        return task.title
-    return task.title_or_something_like_it
+    return task.title or "Untitled agent"
 
 
 def _format_snapshot_datetime(iso_str: str) -> str:
@@ -106,39 +104,29 @@ def _format_snapshot_datetime(iso_str: str) -> str:
 @agent_app.command("create")
 def create(
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace ID (or set SCULPT_WORKSPACE_ID)"),
-    prompt: str | None = typer.Option(None, "--prompt", "-p", help="The task prompt"),
     name: str | None = typer.Option(None, "--name", help="Agent name"),
     harness: str | None = typer.Option(
         None,
         "--harness",
         help=(
-            "Harness to create: Claude, Pi, Terminal, or a registered terminal agent"
-            + " by name (e.g. 'Claude CLI'). If omitted, the server uses your"
+            "Harness to create: Terminal, or a registered terminal agent by name"
+            + " (e.g. 'Claude CLI'). If omitted, the server uses your"
             + " most-recently-used harness from the Sculptor app."
         ),
     ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     base_url: str | None = typer.Option(None, "--base-url", "-u", help="The Sculptor server URL"),
 ) -> None:
-    """Create a new agent in a workspace."""
+    """Create a new agent in a workspace (use `sculpt run` to also send a prompt)."""
     base_url = base_url or get_default_base_url()
 
     client = get_authenticated_client(base_url)
     workspace_id = resolve_workspace(workspace, client, json_output)
 
     selection = resolve_harness_selection(harness, client, json_output)
-    if (
-        prompt
-        and selection is not None
-        and selection.agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED)
-    ):
-        cli_error("Terminal agents do not take an initial prompt (--prompt)", json_output=json_output)
 
     request = CreateAgentRequest(
-        prompt=prompt,
-        interface="API",
         name=name,
-        sent_via="sculpt",
         agent_type=selection.agent_type if selection is not None else UNSET,
         registration_id=(
             selection.registration_id

@@ -34,14 +34,12 @@ from sculptor.service_collections.service_collection import CompleteServiceColle
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.terminal_agent_registry import registry as registry_module
 from sculptor.services.user_config.user_config import set_user_config_instance
-from sculptor.state.messages import ChatInputUserMessage
 from sculptor.web.app import _agent_config_for_request
 from sculptor.web.auth import SESSION_TOKEN_HEADER_NAME
 from sculptor.web.auth import UserSession
 from sculptor.web.auth import authenticate_anonymous
 from sculptor.web.data_types import AgentTypeName
 from sculptor.web.data_types import CreateAgentRequest
-from sculptor.web.data_types import StartTaskRequest
 
 # Check session token enforcement on a sample authenticated endpoint.
 
@@ -149,48 +147,8 @@ def _create_task_with_message_in_workspace(
     services: CompleteServiceCollection,
     workspace: Workspace,
 ) -> Task:
-    """Create a task with an initial message, associated with a workspace."""
-    task = _create_task_in_workspace(transaction, user_session, project, services, workspace)
-    services.task_service.create_message(
-        ChatInputUserMessage(
-            text="foo",
-        ),
-        task.object_id,
-        transaction=transaction,
-    )
-    return task
-
-
-def test_create_task_creates_task(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    _user_session = authenticate_anonymous(test_services, RequestID())
-    response = client.post(
-        f"/api/v1/projects/{test_project.object_id}/tasks",
-        json=model_dump(
-            StartTaskRequest(
-                prompt="foo",
-            ),
-            is_camel_case=True,
-        ),
-    )
-    if response.status_code == 422:
-        raise AssertionError(f"Validation failed: {response.json()}. ")
-    assert response.status_code == 200
-    workspace_id = response.json()["workspaceId"]
-    response = client.get(f"/api/v1/workspaces/{workspace_id}/agents")
-    assert response.status_code == 200
-    assert len(response.json()) == 1
-
-
-def test_create_task_returns_422_when_missing_required_attribute(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    response = client.post(
-        f"/api/v1/projects/{test_project.object_id}/tasks",
-        json={"requestId": str(RequestID())},
-    )
-    assert response.status_code == 422
+    """Create a task associated with a workspace (create_task emits its QUEUED status message)."""
+    return _create_task_in_workspace(transaction, user_session, project, services, workspace)
 
 
 def test_resolve_agent_by_prefix_unique(
@@ -537,23 +495,6 @@ def test_agent_config_for_request_resolves_each_type() -> None:
     assert exc_info.value.status_code == 422
 
 
-def test_start_task_resolves_agent_type(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    """Prompt-ful creation rejects an explicit terminal agent_type."""
-    response = client.post(
-        f"/api/v1/projects/{test_project.object_id}/tasks",
-        json=model_dump(
-            StartTaskRequest(
-                prompt="hello terminal",
-                agent_type=AgentTypeName.TERMINAL,
-            ),
-            is_camel_case=True,
-        ),
-    )
-    assert response.status_code == 422
-
-
 def _post_agent(client: TestClient, workspace: Workspace, body: dict) -> httpx.Response:
     return client.post(f"/api/v1/workspaces/{workspace.object_id}/agents", json=body)
 
@@ -686,35 +627,6 @@ def test_create_agent_without_type_falls_back_to_terminal_when_bundled_absent(
     response = _post_agent(client, workspace, {})
     assert response.status_code == 200, response.text
     assert isinstance(_agent_config_for_created(response, test_services), TerminalAgentConfig)
-
-
-def test_create_terminal_agent_with_prompt_is_rejected(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-
-    response = _post_agent(client, workspace, {"agentType": "terminal", "prompt": "hi"})
-    assert response.status_code == 422
-    response = _post_agent(client, workspace, {"agentType": "registered", "prompt": "hi"})
-    assert response.status_code == 422
-
-
-def test_first_terminal_agent_gets_no_intro_message(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-
-    response = _post_agent(client, workspace, {"agentType": "terminal"})
-    assert response.status_code == 200, response.text
-    task_id = TaskID(response.json()["id"])
-
-    with user_session.open_transaction(test_services) as transaction:
-        messages = test_services.task_service.get_saved_messages_for_task(task_id, transaction)
-    assert not any(isinstance(m, ChatInputUserMessage) for m in messages)
 
 
 # Terminal-agent registrations.

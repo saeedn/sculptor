@@ -6,51 +6,22 @@ The meaning of each of the message is defined below.
 
 from __future__ import annotations
 
-import datetime
 from enum import StrEnum
 from typing import Annotated
 
-from pydantic import Field
 from pydantic import Tag
 
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import build_discriminator
 from sculptor.foundation.serialization import SerializedException
-from sculptor.foundation.time_utils import get_current_time
 from sculptor.interfaces.agents.messages import EphemeralMessage
 from sculptor.interfaces.agents.tasks import TaskState
-from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import TaskID as TaskID
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.state.messages import AgentMessageSource
-from sculptor.state.messages import ChatInputUserMessage
 from sculptor.state.messages import PersistentMessage
 
 EnvironmentTypes = LocalEnvironment
-
-
-class EphemeralUserMessage(EphemeralMessage):
-    """
-    One of two base classes for messages sent from the user.
-    Ephemeral user messages are not saved to the database.
-    Ephemeral user messages are sent immediately to the agent and are not queued in the task runner.
-    """
-
-    # Override inherited fields
-    object_type: str = Field(description="Type discriminator for user messages")
-    message_id: AgentMessageID = Field(
-        default_factory=AgentMessageID,
-        description="Unique identifier for the user message",
-    )
-    source: AgentMessageSource = Field(default=AgentMessageSource.USER)
-    approximate_creation_time: datetime.datetime = Field(
-        default_factory=get_current_time,
-        description="Approximate UTC timestamp when user message was created",
-    )
-
-
-PersistentUserMessageUnion = Annotated[ChatInputUserMessage, Tag("ChatInputUserMessage")]
-UserMessageUnion = PersistentUserMessageUnion
 
 
 class PersistentRunnerMessage(PersistentMessage):
@@ -157,7 +128,7 @@ RunnerMessageUnion = PersistentRunnerMessageUnion | EphemeralRunnerMessageUnion
 
 
 # this is necessary because pydantic won't let us use PersistentMessageTypes, which already has a discriminator, to make MessageTypes
-PersistentMessageTypesUnannotated = PersistentRunnerMessageUnion | PersistentUserMessageUnion
+PersistentMessageTypesUnannotated = PersistentRunnerMessageUnion
 PersistentMessageTypes = Annotated[PersistentMessageTypesUnannotated, build_discriminator()]
 
 EphemeralMessageTypes = EphemeralRunnerMessageUnion

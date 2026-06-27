@@ -140,21 +140,6 @@ def _mock_workspaces(*object_ids: str) -> None:
 
 class TestAgentCreate:
     @respx.mock
-    def test_create_with_prompt(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123")
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
-            return_value=Response(200, json=_task_response_dict())
-        )
-
-        result = runner.invoke(
-            app, ["agent", "create", "-w", "ws_test123", "-p", "Do something"]
-        )
-
-        assert result.exit_code == 0
-        assert "tsk_abc123def456" in result.output
-
-    @respx.mock
     def test_create_json(self, runner: CliRunner) -> None:
         _mock_session()
         _mock_workspaces("ws_test123")
@@ -162,9 +147,7 @@ class TestAgentCreate:
             return_value=Response(200, json=_task_response_dict())
         )
 
-        result = runner.invoke(
-            app, ["agent", "create", "-w", "ws_test123", "-p", "Do something", "--json"]
-        )
+        result = runner.invoke(app, ["agent", "create", "-w", "ws_test123", "--json"])
 
         assert result.exit_code == 0
         data = json.loads(result.stdout)
@@ -172,7 +155,7 @@ class TestAgentCreate:
         assert data["status"] == "RUNNING"
 
     @respx.mock
-    def test_create_without_prompt(self, runner: CliRunner) -> None:
+    def test_create_succeeds(self, runner: CliRunner) -> None:
         _mock_session()
         _mock_workspaces("ws_test123")
         respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
@@ -182,9 +165,10 @@ class TestAgentCreate:
         result = runner.invoke(app, ["agent", "create", "-w", "ws_test123"])
 
         assert result.exit_code == 0
+        assert "tsk_abc123def456" in result.output
 
     def test_create_missing_workspace(self, runner: CliRunner) -> None:
-        result = runner.invoke(app, ["agent", "create", "-p", "Do something"])
+        result = runner.invoke(app, ["agent", "create"])
 
         assert result.exit_code == 1
 
@@ -197,7 +181,7 @@ class TestAgentCreate:
             return_value=Response(200, json=_task_response_dict())
         )
 
-        result = runner.invoke(app, ["agent", "create", "-p", "Do something"])
+        result = runner.invoke(app, ["agent", "create"])
 
         assert result.exit_code == 0
 
@@ -209,9 +193,7 @@ class TestAgentCreate:
             side_effect=ConnectError("Connection refused")
         )
 
-        result = runner.invoke(
-            app, ["agent", "create", "-w", "ws_test123", "-p", "Do something"]
-        )
+        result = runner.invoke(app, ["agent", "create", "-w", "ws_test123"])
 
         assert result.exit_code == 1
 
@@ -275,17 +257,6 @@ class TestAgentCreateHarness:
         assert result.exit_code == 1
         assert "Terminal" in result.stderr
 
-    @respx.mock
-    def test_create_terminal_harness_with_prompt_is_rejected(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123")
-
-        result = runner.invoke(
-            app, ["agent", "create", "-w", "ws_test123", "--harness", "Terminal", "-p", "Do something"]
-        )
-
-        assert result.exit_code == 1
-        assert "prompt" in result.stderr
 
 
 class TestAgentList:
@@ -1099,7 +1070,7 @@ class TestWorkspacePrefixResolution:
             return_value=Response(200, json=_task_response_dict(workspace_id="ws_test123abc456"))
         )
 
-        result = runner.invoke(app, ["agent", "create", "-w", "ws_test123", "-p", "test"])
+        result = runner.invoke(app, ["agent", "create", "-w", "ws_test123"])
 
         assert result.exit_code == 0
 

@@ -55,36 +55,6 @@ class PersistentMessage(Message):
         return False
 
 
-class PersistentUserMessage(PersistentMessage):
-    """
-    One of two base classes for messages sent from the user.
-    Persistent user messages are saved to the database.
-    Persistent user messages are queued in the task runner before they are sent to the agent.
-    """
-
-    # Override inherited fields
-    object_type: str = Field(description="Type discriminator for user messages")
-    message_id: AgentMessageID = Field(
-        default_factory=AgentMessageID,
-        description="Unique identifier for the user message",
-    )
-    source: AgentMessageSource = Field(default=AgentMessageSource.USER)
-    approximate_creation_time: datetime.datetime = Field(
-        default_factory=get_current_time,
-        description="Approximate UTC timestamp when user message was created",
-    )
-
-
-class ChatInputUserMessage(PersistentUserMessage):
-    object_type: str = Field(default="ChatInputUserMessage")
-    text: str = Field(description="User input text content")
-    files: list[str] = Field(
-        default_factory=list,
-        description="List of file paths (images, PDFs, etc., stored in Electron app folder) attached to this message",
-    )
-    sent_via: str | None = Field(default=None, description="Interface that sent this message, e.g. 'sculpt'")
-
-
 class PersistentAgentMessage(PersistentMessage):
     """Base class for messages sent from the agent."""
 

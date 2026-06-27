@@ -66,7 +66,6 @@ from sculptor.foundation.pydantic_serialization import model_dump
 from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.subprocess_utils import ProcessSetupError
 from sculptor.interfaces.agents.agent import AgentConfigTypes
-from sculptor.interfaces.agents.agent import AgentMessageID
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
@@ -121,7 +120,6 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
     unregister_terminal_manager,
 )
 from sculptor.startup_checks import check_sculptor_directory_writable
-from sculptor.state.messages import ChatInputUserMessage
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import create_agent_terminal
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import make_agent_terminal_id
 from sculptor.utils import build as build_utils
@@ -129,7 +127,6 @@ from sculptor.utils.build import get_install_path
 from sculptor.utils.build import get_sculptor_folder
 from sculptor.utils.build import is_packaged
 from sculptor.utils.errors import is_irrecoverable_exception
-from sculptor.utils.timeout import log_runtime
 from sculptor.utils.tracing import ELECTRON_MAIN_PID
 from sculptor.utils.tracing import RENDERER_PID
 from sculptor.utils.tracing import add_external_events
@@ -175,7 +172,6 @@ from sculptor.web.data_types import RenameAgentRequest
 from sculptor.web.data_types import RepoInfo
 from sculptor.web.data_types import SignalEventRequest
 from sculptor.web.data_types import SkillInfo
-from sculptor.web.data_types import StartTaskRequest
 from sculptor.web.data_types import TerminalInputRequest
 from sculptor.web.data_types import ToolAvailability
 from sculptor.web.data_types import UpdateUserConfigRequest
@@ -191,7 +187,6 @@ from sculptor.web.data_types import WorkspaceResponse
 from sculptor.web.data_types import WorkspaceSetupCommandRequest
 from sculptor.web.data_types import WorkspaceSetupSnapshot
 from sculptor.web.derived import CodingAgentTaskView
-from sculptor.web.derived import TaskInterface
 from sculptor.web.derived import TaskViewTypes
 from sculptor.web.derived import create_initial_task_view
 from sculptor.web.middleware import App
@@ -426,187 +421,6 @@ def set_session_token_cookie(
         samesite="strict",
         httponly=True,
     )
-
-
-@router.post("/api/v1/projects/{project_id}/tasks")
-def start_task(
-    project_id: ProjectID,
-    request: Request,
-    task_request: StartTaskRequest,
-    user_session: UserSession = Depends(get_user_session),
-    settings: SculptorSettings = Depends(get_settings),
-) -> CodingAgentTaskView:
-    """Start a new task with the given prompt"""
-    prompt = task_request.prompt
-    interface = task_request.interface
-    initialization_strategy = task_request.initialization_strategy
-    task_name = task_request.name
-    source_branch = task_request.source_branch
-    workspace_id = task_request.workspace_id
-    task_id = TaskID()
-
-    with logger.contextualize(task_id=task_id), log_runtime("start_task"):
-        if not prompt:
-            logger.error("Start task request without prompt")
-            raise HTTPException(
-                status_code=422,
-                detail=[{"loc": ["body", "prompt"], "msg": "Prompt is required", "type": "value_error.missing"}],
-            )
-
-        services = get_services_from_request_or_websocket(request)
-        _prevent_action_if_out_of_free_space(services)
-
-        try:
-            interface = TaskInterface(interface)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid interface: {interface}. Must be 'terminal' or 'api'",
-            ) from e
-
-        logger.info(
-            "Starting new task with interface {} and initialization_strategy {}", interface, initialization_strategy
-        )
-
-        # little transaction here -- we don't want to span the whole thing bc then it will be slow
-        with user_session.open_transaction(services) as transaction:
-            project = transaction.get_project(project_id)
-            assert project is not None, f"Project {project_id} not found"
-
-            if workspace_id is not None:
-                # Use existing workspace
-                workspace = transaction.get_workspace(workspace_id)
-                if workspace is None or workspace.is_deleted:
-                    raise HTTPException(status_code=404, detail=f"Workspace {workspace_id} not found")
-                if workspace.project_id != project_id:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Workspace {workspace_id} belongs to a different project",
-                    )
-                logger.debug("Using existing workspace {} for task {}", workspace.object_id, task_id)
-            else:
-                # Create implicit workspace for this task
-                workspace = services.workspace_service.create_workspace(
-                    project=project,
-                    initialization_strategy=initialization_strategy,
-                    source_branch=source_branch,
-                    requested_branch_name=None,
-                    description=task_name,
-                    transaction=transaction,
-                )
-                logger.debug("Created workspace {} for task {}", workspace.object_id, task_id)
-
-            # Reject an EXPLICIT terminal/registered type with an initial prompt:
-            # the prompt-ful create path delivers a chat message, which a terminal
-            # agent has no stream to consume. An OMITTED type still resolves to the
-            # user's MRU (defaulting to the bundled registered terminal agent) and
-            # proceeds — only an explicit request is rejected here. The resolver
-            # supplies the registration_id for a registered default; StartTaskRequest
-            # has no registration_id of its own.
-            if task_request.agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED):
-                raise HTTPException(status_code=422, detail="terminal agents do not take an initial prompt")
-            resolved_agent_type, resolved_registration_id = _resolve_requested_agent_type(
-                task_request.agent_type, None, has_prompt=True
-            )
-            agent_config = _agent_config_for_request(resolved_agent_type, resolved_registration_id)
-            if task_request.agent_type is not None:
-                _record_most_recently_used_agent_type(resolved_agent_type, resolved_registration_id)
-
-            # Auto-assign a type-derived name (e.g. "Terminal N") when no
-            # explicit name is provided.
-            if not task_name:
-                workspace_tasks = _get_tasks_for_workspace(workspace, transaction)
-                task_name = _compute_next_agent_name(workspace_tasks, _default_agent_name_prefix(agent_config))
-
-        with services.git_repo_service.open_local_user_git_repo_for_read(project) as repo:
-            # Get the current commit hash to use as the starting point for diffs
-            initial_commit_hash = repo.get_current_commit_hash()
-
-        max_seconds = None
-
-        # Create initial task state with workspace_id
-        initial_task_state = AgentTaskStateV2(
-            title=task_name,
-            workspace_id=workspace.object_id,
-        )
-
-        task = Task(
-            object_id=task_id,
-            max_seconds=max_seconds,
-            organization_reference=user_session.organization_reference,
-            user_reference=user_session.user_reference,
-            project_id=project.object_id,
-            input_data=AgentTaskInputsV2(
-                agent_config=agent_config,
-                git_hash=initial_commit_hash,
-                system_prompt=project.default_system_prompt,
-            ),
-            current_state=initial_task_state,
-        )
-
-        logger.debug("Creating root concurrency group and opening transaction.")
-        root_concurrency_group = get_root_concurrency_group(request)
-        with (
-            root_concurrency_group.make_concurrency_group(name="start_task") as _concurrency_group,
-            user_session.open_transaction(services) as transaction,
-        ):
-            logger.debug("Creating task and inserting it into the database.")
-            inserted_task = services.task_service.create_task(task, transaction)
-            task_id = inserted_task.object_id
-
-            logger.debug("Creating initial messages...")
-            messages = []
-            input_user_message = ChatInputUserMessage(
-                text=prompt,
-                message_id=AgentMessageID(),
-                files=task_request.files,
-                sent_via=task_request.sent_via,
-            )
-            messages.append(input_user_message)
-            services.task_service.create_message(
-                message=input_user_message,
-                task_id=task_id,
-                transaction=transaction,
-            )
-
-        logger.debug("Creating initial task view.")
-        task_view = create_initial_task_view(task, settings)
-        assert isinstance(task_view, CodingAgentTaskView)
-        logger.debug("Adding messages to task view.")
-        for message in messages:
-            task_view.add_message(message)
-        logger.debug("Done adding messages to task view.")
-        return task_view
-
-
-def _cleanup_task_file_attachments(
-    task_id: TaskID,
-    services: CompleteServiceCollection,
-    transaction: DataModelTransaction,
-) -> None:
-    """Clean up files associated with a task.
-
-    Collects all file paths from ChatInputUserMessage messages and deletes them from disk.
-    """
-    messages = services.task_service.get_saved_messages_for_task(task_id, transaction)
-    file_paths: set[str] = set()
-
-    for message in messages:
-        if isinstance(message, ChatInputUserMessage) and message.files:
-            file_paths.update(message.files)
-
-    if not file_paths:
-        return
-
-    for file_path in file_paths:
-        try:
-            file_file = Path(file_path)
-            if file_file.exists():
-                file_file.unlink()
-                logger.debug("Deleted file: {}", file_path)
-        except Exception as e:
-            log_exception(e, "Failed to delete {file_path}", file_path=file_path)
-    logger.info("Cleaned up {} file(s) for task {}", len(file_paths), task_id)
 
 
 @router.post("/api/v1/workspaces")
@@ -931,7 +745,6 @@ def delete_workspace(
         # Cascade delete: clean up all agents in the workspace
         workspace_tasks = _get_tasks_for_workspace(workspace, transaction)
         for task in workspace_tasks:
-            _cleanup_task_file_attachments(task.object_id, services, transaction)
             try:
                 services.task_service.delete_task(task.object_id, transaction)
                 logger.debug("Cascade-deleted agent {} from workspace {}", task.object_id, workspace_id)
@@ -1822,28 +1635,8 @@ def create_workspace_agent(
         if project is None:
             raise HTTPException(status_code=404, detail="Workspace project not found")
 
-        if agent_request.prompt:
-            if agent_request.agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED):
-                raise HTTPException(status_code=422, detail="terminal agents do not take an initial prompt")
-            # Delegate to existing start_task logic
-            task_request = StartTaskRequest(
-                prompt=agent_request.prompt,
-                interface=agent_request.interface,
-                files=agent_request.files,
-                name=agent_request.name,
-                workspace_id=validated_workspace_id,
-                sent_via=agent_request.sent_via,
-                agent_type=agent_request.agent_type,
-            )
-            return start_task(
-                project_id=workspace.project_id,
-                request=request,
-                task_request=task_request,
-                user_session=user_session,
-                settings=settings,
-            )
-
-        # No prompt — create agent in waiting state
+        # Create the agent in a waiting state. Terminal agents take no initial
+        # prompt — input is typed into the PTY after creation.
         _prevent_action_if_out_of_free_space(services)
 
         workspace_tasks = _get_tasks_for_workspace(workspace, transaction)
@@ -1860,20 +1653,6 @@ def create_workspace_agent(
             workspace_tasks, _default_agent_name_prefix(agent_config)
         )
         task_id = TaskID()
-
-        # Check if this is the user's very first agent ever (including deleted ones).
-        # get_all_tasks() includes deleted tasks, so this stays False once any agent
-        # has ever been created — even if all workspaces were later deleted.
-        # Skip during integration tests to avoid injecting unexpected messages.
-        # Terminal agents (resolved config, so registered ones too) have no chat
-        # stream — an intro message would sit in their queue forever, so skip it.
-        is_first_agent = (
-            not settings.TESTING.INTEGRATION_ENABLED
-            and not is_terminal_agent_config(agent_config)
-            and len(workspace_tasks) == 0
-            # pyrefly: ignore [missing-attribute]
-            and len(transaction.get_all_tasks()) == 0
-        )
 
         with services.git_repo_service.open_local_user_git_repo_for_read(project) as repo:
             initial_commit_hash = repo.get_current_commit_hash()
@@ -1898,29 +1677,14 @@ def create_workspace_agent(
         )
 
     root_concurrency_group = get_root_concurrency_group(request)
-    intro_message = None
     with (
         root_concurrency_group.make_concurrency_group(name="create_agent") as _concurrency_group,
         user_session.open_transaction(services) as transaction,
     ):
         inserted_task = services.task_service.create_task(task, transaction)
 
-        # Auto-send intro help message for first-time users
-        if is_first_agent:
-            intro_message = ChatInputUserMessage(
-                text="/sculptor:help I just set up Sculptor for the first time. What should I know to get started?",
-                message_id=AgentMessageID(),
-            )
-            services.task_service.create_message(
-                message=intro_message,
-                task_id=inserted_task.object_id,
-                transaction=transaction,
-            )
-
     task_view = create_initial_task_view(inserted_task, settings)
     assert isinstance(task_view, CodingAgentTaskView)
-    if intro_message is not None:
-        task_view.add_message(intro_message)
     return task_view
 
 
@@ -2065,8 +1829,6 @@ def delete_workspace_agent(
     with user_session.open_transaction(services) as transaction:
         workspace = _get_workspace_or_404(workspace_id, transaction)
         task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-        _cleanup_task_file_attachments(task.object_id, services, transaction)
 
         try:
             services.task_service.delete_task(task.object_id, transaction)

@@ -498,7 +498,7 @@ class LocalEnvironment(Environment):
 
             self._is_closed = True
 
-    def destroy(self, is_killing: bool = False) -> None:
+    def destroy(self) -> None:
         # Stop all terminals (all indices) before closing — terminals only die when workspace is destroyed.
         stop_terminals_for_environment(str(self.environment_id))
         self.close()

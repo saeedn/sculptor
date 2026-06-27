@@ -334,7 +334,7 @@ class Environment(BaseModel, abc.ABC):
         """
 
     @abc.abstractmethod
-    def destroy(self, is_killing: bool = False) -> None:
+    def destroy(self) -> None:
         """
         Destroy the environment, releasing any resources it holds.
 

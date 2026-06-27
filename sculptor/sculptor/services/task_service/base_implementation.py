@@ -154,9 +154,7 @@ class BaseTaskService(TaskService, ABC):
         assert isinstance(transaction, SQLTransaction)
 
         # Use _subscribe_to_task to access the in-memory message history
-        with self._subscribe_to_task(
-            task_id, lambda m: m.source == AgentMessageSource.RUNNER, is_history_included=True
-        ) as listener:
+        with self._subscribe_to_task(task_id, lambda m: m.source == AgentMessageSource.RUNNER) as listener:
             # Iterate in reverse to find the most recent state
             for message in reversed(list(listener.queue)):
                 # If a released message arrived after all acquired messages, there is no environment
@@ -427,7 +425,6 @@ class BaseTaskService(TaskService, ABC):
         self,
         task_id: TaskID,
         filter_fn: Callable[[Message], bool] | None,
-        is_history_included: bool = True,
     ) -> Generator[Queue[Message], None, None]:
         listener: Queue[Message] = FilteredQueue(filter_fn) if filter_fn else Queue()
         with self._subscription_lock:
@@ -439,9 +436,8 @@ class BaseTaskService(TaskService, ABC):
             messages = self._messages_by_task_id.get(task_id, [])
 
         # we make sure that any existing messages are here, thus the subscriber will get all messages
-        if is_history_included:
-            for message in messages:
-                listener.put_nowait(message)
+        for message in messages:
+            listener.put_nowait(message)
 
         yield listener
 

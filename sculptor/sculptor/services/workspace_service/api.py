@@ -10,7 +10,6 @@ from sculptor.database.models import Workspace
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.errors import ExpectedError
 from sculptor.foundation.event_utils import ReadOnlyEvent
-from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
 from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.interfaces.agents.artifacts import DiffArtifact
 from sculptor.primitives.ids import TaskID
@@ -208,7 +207,6 @@ class WorkspaceService(Service, ABC):
         workspace_id: WorkspaceID,
         task_id: TaskID,
         concurrency_group: ConcurrencyGroup,
-        root_progress_handle: RootProgressHandle,
         shutdown_event: ReadOnlyEvent,
     ) -> Iterator[LocalAgentExecutionEnvironment]:
         """
@@ -234,7 +232,6 @@ class WorkspaceService(Service, ABC):
             workspace_id: The workspace to set up environment for.
             task_id: The task requesting the environment (for per-task namespacing).
             concurrency_group: Concurrency group for process management.
-            root_progress_handle: Progress handle for tracking setup.
             shutdown_event: Event to signal shutdown.
 
         Yields:

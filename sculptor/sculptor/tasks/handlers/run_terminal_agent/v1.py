@@ -32,7 +32,6 @@ from sculptor.database.models import TaskID
 from sculptor.foundation.concurrency_group import ConcurrencyExceptionGroup
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import ReadOnlyEvent
-from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentReleasedRunnerMessage
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
@@ -113,8 +112,6 @@ def run_terminal_agent_task_v1(
     user_reference = task.user_reference
     task_id = task.object_id
 
-    root_progress_handle = RootProgressHandle()
-
     try:
         with logger.contextualize(task_id=task_id):
             logger.debug("running terminal agent task {} for user {}", task_id, user_reference)
@@ -129,7 +126,6 @@ def run_terminal_agent_task_v1(
                     workspace_id=task_state.workspace_id,
                     task_id=task.object_id,
                     concurrency_group=environment_concurrency_group,
-                    root_progress_handle=root_progress_handle,
                     shutdown_event=shutdown_event,
                 ) as environment,
             ):

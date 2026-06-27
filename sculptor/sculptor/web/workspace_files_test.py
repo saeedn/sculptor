@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 
 from sculptor.database.models import Project
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
-from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
 from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import TaskID
 from sculptor.primitives.ids import WorkspaceID
@@ -72,7 +71,6 @@ def _create_worktree_workspace_with_env(
             workspace_id=workspace_id,
             task_id=TaskID(),
             concurrency_group=env_concurrency_group,
-            root_progress_handle=RootProgressHandle(),
             shutdown_event=GLOBAL_SHUTDOWN_EVENT,
         ):
             pass  # Just need the environment (and its worktree checkout) created

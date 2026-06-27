@@ -17,7 +17,6 @@ from sculptor.database.models import Project
 from sculptor.database.workspace_enums import DiffStatus
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.git import get_repo_base_path
-from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
 from sculptor.primitives.constants import ANONYMOUS_ORGANIZATION_REFERENCE
 from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import TaskID
@@ -129,7 +128,6 @@ def _create_worktree_workspace_with_env(
             workspace_id=workspace_id,
             task_id=TaskID(),
             concurrency_group=env_concurrency_group,
-            root_progress_handle=RootProgressHandle(),
             shutdown_event=GLOBAL_SHUTDOWN_EVENT,
         ):
             pass  # Just need the environment (and its worktree checkout) created
@@ -583,7 +581,6 @@ def test_delete_workspace_removes_environment_directory(
             workspace_id=workspace_id,
             task_id=TaskID(),
             concurrency_group=concurrency_group,
-            root_progress_handle=RootProgressHandle(),
             shutdown_event=GLOBAL_SHUTDOWN_EVENT,
         ):
             pass  # Just need the environment created
@@ -660,7 +657,6 @@ def test_delete_workspace_offloads_environment_teardown_off_request_thread(
             workspace_id=workspace_id,
             task_id=TaskID(),
             concurrency_group=concurrency_group,
-            root_progress_handle=RootProgressHandle(),
             shutdown_event=GLOBAL_SHUTDOWN_EVENT,
         ):
             pass  # Just need the environment created
@@ -856,7 +852,6 @@ def test_concurrent_setup_creates_single_environment(
                     workspace_id=workspace_id,
                     task_id=TaskID(),
                     concurrency_group=concurrency_group,
-                    root_progress_handle=RootProgressHandle(),
                     shutdown_event=GLOBAL_SHUTDOWN_EVENT,
                 ) as agent_env:
                     environment_ids.append(agent_env.get_root_path().as_posix())

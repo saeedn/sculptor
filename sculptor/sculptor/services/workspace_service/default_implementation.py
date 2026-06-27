@@ -19,8 +19,6 @@ from sculptor.database.models import Workspace
 from sculptor.database.workspace_enums import DiffStatus
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import ReadOnlyEvent
-from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
-from sculptor.foundation.progress_tracking.progress_tracking import start_finish_context
 from sculptor.foundation.time_utils import get_current_time
 
 # These artifact types are general-purpose data structures that happen to live under
@@ -532,7 +530,6 @@ class DefaultWorkspaceService(WorkspaceService):
         project: Project,
         workspace_id: WorkspaceID,
         concurrency_group: ConcurrencyGroup,
-        root_progress_handle: RootProgressHandle,
         task_id: str,
     ) -> LocalEnvironment:
         """Create or resume the environment for a workspace, protected by a per-workspace lock.
@@ -573,19 +570,14 @@ class DefaultWorkspaceService(WorkspaceService):
             except (EnvironmentNotFoundError, EnvironmentConfigurationChangedError) as e:
                 logger.debug("Unable to resume environment: {}", e)
 
-                with (
-                    timeout_monitor(
-                        concurrency_group,
-                        timeout=_ENVIRONMENT_CREATION_TIMEOUT_SECONDS,
-                        on_timeout=lambda timeout: logger.warning(
-                            "Environment creation is taking longer than expected ({}s) for workspace {}",
-                            timeout,
-                            workspace_id,
-                        ),
+                with timeout_monitor(
+                    concurrency_group,
+                    timeout=_ENVIRONMENT_CREATION_TIMEOUT_SECONDS,
+                    on_timeout=lambda timeout: logger.warning(
+                        "Environment creation is taking longer than expected ({}s) for workspace {}",
+                        timeout,
+                        workspace_id,
                     ),
-                    start_finish_context(
-                        root_progress_handle.track_environment_setup(task_id)
-                    ) as environment_setup_handle,  # noqa: F841
                 ):
                     environment = self.environment_manager.create_environment(
                         project_path=project_path,
@@ -631,7 +623,6 @@ class DefaultWorkspaceService(WorkspaceService):
         workspace_id: WorkspaceID,
         task_id: TaskID,
         concurrency_group: ConcurrencyGroup,
-        root_progress_handle: RootProgressHandle,
         shutdown_event: ReadOnlyEvent,
     ) -> Iterator[LocalAgentExecutionEnvironment]:
         """Set up the environment for a workspace and wrap it for agent use."""
@@ -639,7 +630,6 @@ class DefaultWorkspaceService(WorkspaceService):
             project=project,
             workspace_id=workspace_id,
             concurrency_group=concurrency_group,
-            root_progress_handle=root_progress_handle,
             task_id=str(task_id),
         )
 

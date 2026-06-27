@@ -5,19 +5,7 @@ import { pathToFileURL } from "node:url";
 
 import { randomBytes } from "crypto";
 import type { MenuItemConstructorOptions } from "electron";
-import {
-  app,
-  BrowserWindow,
-  clipboard,
-  dialog,
-  globalShortcut,
-  ipcMain,
-  Menu,
-  net,
-  protocol,
-  shell,
-  webContents,
-} from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, net, protocol, shell } from "electron";
 import Store from "electron-store";
 
 import type { AnyBackendStatus, SculptorDevInfo } from "../shared/types";
@@ -26,9 +14,7 @@ import type { ZoomCommand } from "./constants";
 import {
   BACKEND_PORT_CHANNEL_NAME,
   BACKEND_STATUS_CHANGE_CHANNEL_NAME,
-  BROWSER_PANEL_CAPTURE_TO_CLIPBOARD_CHANNEL_NAME,
   BROWSER_PANEL_OPEN_IN_PANEL_CHANNEL_NAME,
-  CAPTURE_SCREENSHOT_CHANNEL_NAME,
   GET_APP_VERSION_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
@@ -875,24 +861,6 @@ app.whenReady().then(async () => {
   ipcMain.handle(GET_DEV_INFO_CHANNEL_NAME, () => getDevInfo());
   ipcMain.handle(GET_APP_VERSION_CHANNEL_NAME, () => app.getVersion());
   ipcMain.handle("get-backend-url", () => backendUrlReady);
-
-  ipcMain.handle(CAPTURE_SCREENSHOT_CHANNEL_NAME, async () => {
-    if (!window) {
-      throw new Error("No window available for screenshot capture");
-    }
-    const image = await window.webContents.capturePage();
-    const png = image.toPNG();
-    return png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength);
-  });
-
-  ipcMain.handle(BROWSER_PANEL_CAPTURE_TO_CLIPBOARD_CHANNEL_NAME, async (_event, webContentsId: number) => {
-    const contents = webContents.fromId(webContentsId);
-    if (!contents) {
-      throw new Error(`No webContents with id ${webContentsId}`);
-    }
-    const image = await contents.capturePage();
-    clipboard.writeImage(image);
-  });
 
   if (isInPytest) {
     registerTestIpcHandlers(ipcMain);

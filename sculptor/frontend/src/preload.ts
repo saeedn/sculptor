@@ -4,9 +4,7 @@ import type { ZoomCommand } from "./electron/constants.ts";
 import {
   BACKEND_PORT_CHANNEL_NAME,
   BACKEND_STATUS_CHANGE_CHANNEL_NAME,
-  BROWSER_PANEL_CAPTURE_TO_CLIPBOARD_CHANNEL_NAME,
   BROWSER_PANEL_OPEN_IN_PANEL_CHANNEL_NAME,
-  CAPTURE_SCREENSHOT_CHANNEL_NAME,
   GET_APP_VERSION_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
@@ -56,11 +54,6 @@ contextBridge.exposeInMainWorld("sculptor", {
   getFileData: (filePath: string): Promise<string> => ipcRenderer.invoke(GET_FILE_DATA_CHANNEL_NAME, filePath),
   getBackendUrl: (): Promise<string | null> => ipcRenderer.invoke("get-backend-url"),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke(GET_APP_VERSION_CHANNEL_NAME),
-  // Screenshot capture for feedback reports
-  captureScreenshot: (): Promise<ArrayBuffer> => ipcRenderer.invoke(CAPTURE_SCREENSHOT_CHANNEL_NAME),
-  // Browser panel: capture the given webview's viewport to the system clipboard.
-  captureBrowserPanelToClipboard: (webContentsId: number): Promise<void> =>
-    ipcRenderer.invoke(BROWSER_PANEL_CAPTURE_TO_CLIPBOARD_CHANNEL_NAME, webContentsId),
   // Browser panel: subscribe to popup-redirect events so the renderer can
   // navigate the matching panel's webview when the guest page opens a popup.
   onBrowserPanelOpenInPanel: (

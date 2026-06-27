@@ -41,10 +41,6 @@ export type SculptorElectronAPI = {
   getFileData: (filePath: string) => Promise<string>;
   getBackendUrl: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
-  // Screenshot capture for feedback reports
-  captureScreenshot: () => Promise<ArrayBuffer>;
-  // Browser panel: capture the given webview's viewport to the system clipboard.
-  captureBrowserPanelToClipboard: (webContentsId: number) => Promise<void>;
   // Browser panel: subscribe to popup-redirect events fired when a webview
   // tries to open a popup (target="_blank" / window.open). The renderer
   // navigates the matching panel's webview instead of spawning a new window.

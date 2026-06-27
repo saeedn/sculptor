@@ -98,7 +98,6 @@ class Workspace(DatabaseModel):
     source_git_hash: str | None = None
     is_deleted: bool = False
     is_open: bool = True
-    setup_command_triggered: bool = False
     setup_status: str = "pending"
     setup_run_id: str | None = None
     setup_command: str | None = None

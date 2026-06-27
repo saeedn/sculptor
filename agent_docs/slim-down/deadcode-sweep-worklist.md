@@ -96,4 +96,22 @@ Status legend: `[ ]` pending · `[x]` done · `[~]` partial/superseded
 - [ ] always-true params: `is_history_included`, `get_current_git_branch(is_detached_head_ok)`, `LocalEnvironment.destroy(is_killing)`, `sculptor_folder`, `from_new_repository(user_email,user_name)`
 
 ## Batch 9 — second scan
-- [ ] Re-run dead-code fan-out after batches 1-8, build new worklist, iterate.
+- [x] Re-run dead-code fan-out after batches 1-8 (backend + frontend scans done).
+
+### Second-pass iteration (9.x)
+Done concurrently (disjoint FE/BE trees), one combined gate:
+- [x] 9-FE: electron <webview> infra; copyImageToClipboard; DIFF_TOOLS/ensureWorkspaceFiles/
+      fetchFreshWorkspaceSkills/ZONE_DISPLAY_NAMES/getAncestorPaths/SHIKI_THEME_PAIR_NAMES;
+      test-only useIsWorkspaceDeleted/usePanelEnabled/isZoneMoveDisabled/TaskID; folder-reveal-highlight chain.
+- [x] 9-BE: H1 KilledAgentRunnerMessage, H2 RunnerMessageUnion, H4 get_messages_for_task(singular),
+      H5 Workspace.setup_command_triggered (+migration), H6 TASK_SYNC_DIR, M2 stop_terminal_manager,
+      M4 ErrorMessage base, M5 restore_workspace_agent endpoint (+restore_task), InvalidTaskOperation.
+
+### Remaining second-scan items (9.y)
+- [ ] H3 setup-reminder provider cluster (setup_command_runner SetupStateProvider slice + make_setup_state_provider + test file)
+- [ ] 2a narrow-scope streaming subsystem (streams.py Scope*/parse/resolve/projection + middleware resolve_stream_scope + app.py scope param + scope tests) — collapse to ScopeAll-only (~700 LOC)
+- [ ] 2c/item3 transcript chain: get_jsonl_path_for_working_directory + app.py block + AgentDiagnosticsResponse.transcript_file_path + AgentTabs transcriptPath/menu item + TAB_CONTEXT_MENU_COPY_TRANSCRIPT_PATH ElementID + POM (needs generate-api)
+- [ ] 2d/M1 no-op task handler (noop/v1, NoOpTaskView, NoOpTaskInputsV1/MustBeShutDownTaskInputsV1) — test-entangled union collapse
+- [ ] M3 git-retry machinery (never retries; is_retry_safe inert across ~18 sites) — RISK: behavior-adjacent refactor, flag for decision
+- [ ] LOW: single-value enums (WorkspaceInitializationStrategy, ArtifactType), Task.max_seconds writer-only, TESTING/TestingConfig, env helpers (get_system_prompt/get_attachments_path/to_environment_path), NotificationImportance unused arms, dead SCSS class names
+- [ ] Third scan after 9.y

@@ -26,8 +26,9 @@ from sculptor.foundation.async_monkey_patches import log_exception
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.itertools import only
+from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.thread_utils import ObservableThread
-from sculptor.interfaces.agents.agent import KilledAgentRunnerMessage
+from sculptor.interfaces.agents.agent import UnexpectedErrorRunnerMessage
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
@@ -186,7 +187,10 @@ def test_unified_stream_emits_task_views(
         with user_session.open_transaction(test_services) as transaction:
             message_id = AgentMessageID()
             test_services.task_service.create_message(
-                KilledAgentRunnerMessage(message_id=message_id),
+                UnexpectedErrorRunnerMessage(
+                    message_id=message_id,
+                    error=SerializedException(exception="builtins.Exception", args=("test",), traceback_dict=None),
+                ),
                 task.object_id,
                 transaction,
             )

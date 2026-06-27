@@ -9,10 +9,6 @@ class TaskNotFound(ExpectedError):
     pass
 
 
-class InvalidTaskOperation(ExpectedError):
-    pass
-
-
 class TaskError(ExpectedError):
     def __init__(
         self, transaction_callback: Callable[[DataModelTransaction], Any] | None, is_user_notified: bool

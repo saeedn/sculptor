@@ -131,11 +131,6 @@ class ConcurrentTaskService(BaseTaskService, ABC):
             self._has_outstanding_work = True
             self._new_or_restored_task_condition.notify_all()
 
-    def on_restore_task(self, task: Task) -> None:
-        with self._new_or_restored_task_condition:
-            self._has_outstanding_work = True
-            self._new_or_restored_task_condition.notify_all()
-
     def _spawn_run_tasks(self, shutdown_flag: Event) -> None:
         logger.info("Started task spawning thread")
         # continue scheduling tasks until the shutdown flag is set

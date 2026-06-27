@@ -225,10 +225,3 @@ class AgentExecutionEnvironment(Protocol):
                 lifecycle management. Should outlive individual agent runs.
         """
         ...
-
-    def stop_terminal_manager(self) -> None:
-        """Stop the terminal manager for this environment.
-
-        Safe to call even if no terminal manager was started.
-        """
-        ...

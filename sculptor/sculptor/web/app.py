@@ -87,7 +87,6 @@ from sculptor.services.git_repo_service.error_types import GitRepoNotFoundError
 from sculptor.services.git_repo_service.git_commands import run_git_command_local
 from sculptor.services.project_service.default_implementation import get_most_recently_used_project_id
 from sculptor.services.project_service.default_implementation import update_most_recently_used_project
-from sculptor.services.task_service.errors import InvalidTaskOperation
 from sculptor.services.task_service.errors import TaskNotFound
 from sculptor.services.terminal_agent_registry.bundled import install_bundled_registrations
 from sculptor.services.terminal_agent_registry.registry import get_registration
@@ -1758,28 +1757,6 @@ def mark_workspace_agent_unread(
             raise HTTPException(status_code=404, detail="Agent not found") from e
 
     return True
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/restore")
-def restore_workspace_agent(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Restore a failed agent."""
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-        try:
-            services.task_service.restore_task(task.object_id, transaction)
-        except TaskNotFound as e:
-            raise HTTPException(status_code=404, detail="Agent not found") from e
-        except InvalidTaskOperation as e:
-            raise HTTPException(status_code=400, detail="Agent is not in a failed state - cannot restore") from e
 
 
 @router.get("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/diagnostics")

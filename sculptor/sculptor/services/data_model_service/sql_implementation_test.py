@@ -45,8 +45,9 @@ from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches_test import expect_exact_logged_errors
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.interfaces.agents.agent import KilledAgentRunnerMessage
+from sculptor.foundation.serialization import SerializedException
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
+from sculptor.interfaces.agents.agent import UnexpectedErrorRunnerMessage
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import ObjectID
 from sculptor.primitives.ids import OrganizationReference
@@ -241,7 +242,10 @@ def test_get_tasks_for_project_excludes_deleting_tasks(
 def test_foreign_constraints_are_being_enforced(test_db_service: SQLDataModelService, tmp_path: Path) -> None:
     message_id = AgentMessageID()
     saved_agent_message = SavedAgentMessage.build(
-        message=KilledAgentRunnerMessage(message_id=message_id),
+        message=UnexpectedErrorRunnerMessage(
+            message_id=message_id,
+            error=SerializedException(exception="builtins.Exception", args=("test",), traceback_dict=None),
+        ),
         task_id=TaskID(),
     )
     with pytest.raises(IntegrityError):
@@ -645,7 +649,10 @@ def test_observer_notification_saved_agent_message_insert_NOT_observed(
 
             message_id = AgentMessageID()
             message = SavedAgentMessage.build(
-                message=KilledAgentRunnerMessage(message_id=message_id),
+                message=UnexpectedErrorRunnerMessage(
+                    message_id=message_id,
+                    error=SerializedException(exception="builtins.Exception", args=("test",), traceback_dict=None),
+                ),
                 task_id=task.object_id,
             )
             transaction.insert_message(message)

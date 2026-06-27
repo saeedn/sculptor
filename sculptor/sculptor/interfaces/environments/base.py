@@ -9,7 +9,6 @@ from typing import TYPE_CHECKING
 from typing import final
 
 from pydantic import BaseModel
-from pydantic import PrivateAttr
 
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import MutableEvent
@@ -17,7 +16,6 @@ from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.processes.local_process import RunningProcess
 from sculptor.foundation.secrets_utils import Secret
 from sculptor.foundation.subprocess_utils import FinishedProcess
-from sculptor.interfaces.terminal_manager import TerminalManager
 from sculptor.primitives.ids import ProjectID
 
 # https://github.com/python/typeshed/tree/main/stdlib/_typeshed
@@ -39,7 +37,6 @@ class Environment(BaseModel, abc.ABC):
     environment_id: str
     project_id: ProjectID
     concurrency_group: ConcurrencyGroup
-    _terminal_manager: TerminalManager | None = PrivateAttr(default=None)
 
     # Code should check these capability properties instead of using isinstance() checks.
 
@@ -124,16 +121,6 @@ class Environment(BaseModel, abc.ABC):
             NotImplementedError: If this environment doesn't support terminals.
         """
         raise NotImplementedError(f"start_terminal_manager is not supported for {type(self).__name__}")
-
-    def stop_terminal_manager(self) -> None:
-        """Stop the terminal manager for this environment.
-
-        Stops the terminal session and cleans up resources. Safe to call even if
-        no terminal manager was started or if the environment doesn't support terminals.
-        """
-        if self._terminal_manager is not None:
-            self._terminal_manager.stop()
-            self._terminal_manager = None
 
     def to_host_path(self, path: Path) -> Path:
         """

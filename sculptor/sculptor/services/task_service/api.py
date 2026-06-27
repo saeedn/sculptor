@@ -64,9 +64,6 @@ class TaskService(Service, ABC):
         (SCU-1531)."""
 
     @abstractmethod
-    def restore_task(self, task_id: TaskID, transaction: DataModelTransaction) -> Task: ...
-
-    @abstractmethod
     def delete_task(self, task_id: TaskID, transaction: DataModelTransaction) -> None: ...
 
     @abstractmethod

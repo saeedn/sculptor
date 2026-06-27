@@ -106,7 +106,6 @@ class WorkspaceFieldUpdate(TypedDict, total=False):
     target_branch: str | None
     environment_id: str | None
     is_open: bool
-    setup_command_triggered: bool
     setup_status: str
     setup_run_id: str | None
     setup_command: str | None
@@ -250,9 +249,6 @@ class TaskAndDataModelTransaction(DataModelTransaction, ABC):
 
     @abstractmethod
     def get_stuck_deleting_tasks(self) -> tuple[Task, ...]: ...
-
-    @abstractmethod
-    def get_messages_for_task(self, task_id: TaskID) -> tuple[SavedAgentMessage, ...]: ...
 
     @abstractmethod
     def get_messages_for_tasks(self, task_ids: Collection[TaskID]) -> dict[TaskID, tuple[SavedAgentMessage, ...]]: ...

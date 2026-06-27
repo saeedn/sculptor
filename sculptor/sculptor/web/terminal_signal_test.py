@@ -108,7 +108,7 @@ def test_status_events_become_ephemeral_signal_messages(
     user_session = authenticate_anonymous(services, RequestID())
     with user_session.open_transaction(services) as transaction:
         # pyrefly: ignore [missing-attribute]
-        saved = tuple(x.message for x in transaction.get_messages_for_task(task.object_id))
+        saved = tuple(x.message for x in transaction.get_messages_for_tasks([task.object_id]).get(task.object_id, ()))
     assert not any(isinstance(m, TerminalAgentSignalRunnerMessage) for m in saved)
 
 

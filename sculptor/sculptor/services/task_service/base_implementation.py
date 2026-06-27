@@ -46,7 +46,6 @@ from sculptor.services.project_service.api import ProjectService
 from sculptor.services.task_service.api import TaskMessageContainer
 from sculptor.services.task_service.api import TaskService
 from sculptor.services.task_service.data_types import ServiceCollectionForTask
-from sculptor.services.task_service.errors import InvalidTaskOperation
 from sculptor.services.task_service.errors import TaskError
 from sculptor.services.task_service.errors import TaskNotFound
 from sculptor.services.task_service.errors import UserPausedTaskError
@@ -109,10 +108,6 @@ class BaseTaskService(TaskService, ABC):
         if task.object_id in self._task_ids_pending_creation:
             self._task_ids_pending_creation.remove(task.object_id)
 
-    @abstractmethod
-    def on_restore_task(self, task: Task) -> None:
-        raise NotImplementedError()
-
     def create_task(self, task: Task, transaction: DataModelTransaction) -> Task:
         assert isinstance(transaction, SQLTransaction)
         upserted_task = transaction.upsert_task(task)
@@ -166,14 +161,6 @@ class BaseTaskService(TaskService, ABC):
 
         return None
 
-    def _check_workspace_not_deleted(self, task: Task, transaction: DataModelTransaction) -> None:
-        """Raise InvalidTaskOperation if the task's workspace has been deleted."""
-        if not isinstance(task.current_state, AgentTaskStateV2):
-            return
-        workspace = transaction.get_workspace_include_deleted(task.current_state.workspace_id)
-        if workspace is None or workspace.is_deleted:
-            raise InvalidTaskOperation("Cannot restore task: its workspace has been deleted")
-
     def mark_read(self, task_id: TaskID, transaction: DataModelTransaction) -> Task:
         assert isinstance(transaction, SQLTransaction)
         task = self.get_task(task_id, transaction)
@@ -211,21 +198,6 @@ class BaseTaskService(TaskService, ABC):
         # it, an idle terminal agent (no message activity to piggyback on) keeps
         # its old tab name until a tab switch forces a re-fetch (SCU-1531).
         transaction.add_callback(lambda: self._publish_task_update(task=updated_task))
-        return updated_task
-
-    def restore_task(self, task_id: TaskID, transaction: DataModelTransaction) -> Task:
-        assert isinstance(transaction, SQLTransaction)
-        task = self.get_task(task_id, transaction)
-        if not task:
-            raise TaskNotFound(f"{task_id} not found")
-        if task.outcome != TaskState.FAILED:
-            raise InvalidTaskOperation("Task is not in a failed state - cannot restore")
-        self._check_workspace_not_deleted(task, transaction)
-        updated_task = task.evolve(task.ref().outcome, TaskState.QUEUED)
-        updated_task = transaction.upsert_task(updated_task)
-        message = TaskStatusRunnerMessage(outcome=TaskState.QUEUED, message_id=AgentMessageID())
-        self.create_message(message=message, task_id=updated_task.object_id, transaction=transaction)
-        transaction.add_callback(lambda: self.on_restore_task(task=updated_task))
         return updated_task
 
     def delete_task(self, task_id: TaskID, transaction: DataModelTransaction) -> None:

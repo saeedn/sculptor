@@ -380,17 +380,6 @@ class SQLTransaction(BaseDataModelTransaction):
         self._insert_model(message, SAVED_AGENT_MESSAGE_TABLE)
         return message
 
-    def get_messages_for_task(self, task_id: TaskID) -> tuple[SavedAgentMessage, ...]:
-        query = (
-            select(SAVED_AGENT_MESSAGE_TABLE)
-            .where(SAVED_AGENT_MESSAGE_TABLE.c.task_id == str(task_id))
-            # FIXME: ordering by created_at alone is non-deterministic when two messages share a
-            #  timestamp; this log needs a monotonic/auto-incrementing ordering key.
-            .order_by(SAVED_AGENT_MESSAGE_TABLE.c.created_at)
-        )
-        result = self.connection.execute(query)
-        return tuple(_row_to_pydantic_model(row, SavedAgentMessage) for row in result.all())
-
     def get_messages_for_tasks(self, task_ids: Collection[TaskID]) -> dict[TaskID, tuple[SavedAgentMessage, ...]]:
         if not task_ids:
             return {}

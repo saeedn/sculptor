@@ -27,7 +27,6 @@ from sculptor.foundation.pydantic_serialization import model_dump
 from sculptor.foundation.pydantic_utils import model_update
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
-from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
@@ -339,32 +338,6 @@ def test_delete_last_agent_preserves_workspace(
         assert not remaining_workspace.is_deleted
 
 
-def test_restore_agent_fails_when_workspace_deleted(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    """Agent in FAILED state, delete workspace directly, attempt restore. Verify HTTP 404."""
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project, description="restore test workspace")
-        task = _create_task_in_workspace(transaction, user_session, test_project, test_services, workspace)
-
-    with user_session.open_transaction(test_services) as transaction:
-        fetched_task = test_services.task_service.get_task(task.object_id, transaction)
-        assert fetched_task is not None
-        updated_task = fetched_task.evolve(fetched_task.ref().outcome, TaskState.FAILED)
-        # pyrefly: ignore [missing-attribute]
-        transaction.upsert_task(updated_task)
-
-    with user_session.open_transaction(test_services) as transaction:
-        test_services.workspace_service.delete_workspace(workspace.object_id, transaction)
-
-    # Restore should fail with 404 because the workspace is gone.
-    response = client.post(
-        f"/api/v1/workspaces/{workspace.object_id}/agents/{task.object_id}/restore",
-    )
-    assert response.status_code == 404
-
-
 def test_mark_read_sets_last_read_at(
     client: TestClient, test_services: CompleteServiceCollection, test_project: Project
 ) -> None:
@@ -451,7 +424,7 @@ def test_create_agent_does_not_send_intro_message_when_agents_exist(
 
     with user_session.open_transaction(test_services) as transaction:
         # pyrefly: ignore [missing-attribute]
-        saved_messages = transaction.get_messages_for_task(TaskID(agent_id))
+        saved_messages = transaction.get_messages_for_tasks([TaskID(agent_id)]).get(TaskID(agent_id), ())
     assert len(saved_messages) == 0
 
 

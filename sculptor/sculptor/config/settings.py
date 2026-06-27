@@ -41,7 +41,6 @@ class SculptorSettings(BaseSettings):
     BACKEND_PORT: int = Field(default=DEFAULT_BACKEND_PORT, validation_alias="SCULPTOR_API_PORT")
     DATABASE_URL: str = "sqlite:///" + str(get_internal_folder() / "database.db")
     LOG_LEVEL: str = "DEBUG"
-    TASK_SYNC_DIR: str = str(get_internal_folder() / "artifacts" / "task_sync")
     WORKSPACE_SYNC_DIR: str = str(get_internal_folder() / "artifacts" / "workspace_sync")
     SERVE_STATIC_FILES_DIR: str | None = None
     TESTING: TestingConfig = TestingConfig()

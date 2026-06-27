@@ -157,9 +157,6 @@ class _StubTaskService(TaskService):
     def rename_task(self, task_id: TaskID, title: str, transaction: DataModelTransaction) -> Task:
         return _stub(task_id, title, transaction)
 
-    def restore_task(self, task_id: TaskID, transaction: DataModelTransaction) -> Task:
-        return _stub(task_id, transaction)
-
     def delete_task(self, task_id: TaskID, transaction: DataModelTransaction) -> None:
         _stub(task_id, transaction)
 

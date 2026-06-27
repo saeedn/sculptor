@@ -240,43 +240,6 @@
         "title": "EnvironmentCrashedRunnerMessage",
         "type": "object"
       },
-      "KilledAgentRunnerMessage": {
-        "$defs": {
-          "AgentMessageSource": {
-            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), and RUNNER (the process controlling a task on the server.)",
-            "enum": [
-              "AGENT",
-              "USER",
-              "RUNNER"
-            ],
-            "title": "AgentMessageSource",
-            "type": "string"
-          }
-        },
-        "additionalProperties": true,
-        "properties": {
-          "approximateCreationTime": {
-            "format": "date-time",
-            "title": "Approximatecreationtime",
-            "type": "string"
-          },
-          "messageId": {
-            "title": "Messageid",
-            "type": "string"
-          },
-          "objectType": {
-            "default": "KilledAgentRunnerMessage",
-            "title": "Objecttype",
-            "type": "string"
-          },
-          "source": {
-            "$ref": "#/$defs/AgentMessageSource",
-            "default": "RUNNER"
-          }
-        },
-        "title": "KilledAgentRunnerMessage",
-        "type": "object"
-      },
       "UnexpectedErrorRunnerMessage": {
         "$defs": {
           "AgentMessageSource": {

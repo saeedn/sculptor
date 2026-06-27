@@ -51,18 +51,7 @@ class EnvironmentReleasedRunnerMessage(EphemeralRunnerMessage):
     object_type: str = "EnvironmentReleasedRunnerMessage"
 
 
-class KilledAgentRunnerMessage(PersistentRunnerMessage):
-    object_type: str = "KilledAgentRunnerMessage"
-
-
-class ErrorMessage(SerializableModel):
-    pass
-    # TODO: remove the `error` field from the subclasses and enable it here.
-    # this will require a schema migration
-    # error: SerializedException
-
-
-class AgentCrashedRunnerMessage(PersistentRunnerMessage, ErrorMessage):
+class AgentCrashedRunnerMessage(PersistentRunnerMessage):
     """
     Note that (like EnvironmentCrashedRunnerMessage and UnexpectedErrorRunnerMessage),
     this can happen before *or after* the agent has finished processing a given message.
@@ -73,12 +62,12 @@ class AgentCrashedRunnerMessage(PersistentRunnerMessage, ErrorMessage):
     error: SerializedException
 
 
-class EnvironmentCrashedRunnerMessage(PersistentRunnerMessage, ErrorMessage):
+class EnvironmentCrashedRunnerMessage(PersistentRunnerMessage):
     object_type: str = "EnvironmentCrashedRunnerMessage"
     error: SerializedException
 
 
-class UnexpectedErrorRunnerMessage(PersistentRunnerMessage, ErrorMessage):
+class UnexpectedErrorRunnerMessage(PersistentRunnerMessage):
     object_type: str = "UnexpectedErrorRunnerMessage"
     error: SerializedException
 
@@ -113,8 +102,7 @@ class TerminalAgentSignalRunnerMessage(EphemeralRunnerMessage):
 
 
 PersistentRunnerMessageUnion = (
-    Annotated[KilledAgentRunnerMessage, Tag("KilledAgentRunnerMessage")]
-    | Annotated[AgentCrashedRunnerMessage, Tag("AgentCrashedRunnerMessage")]
+    Annotated[AgentCrashedRunnerMessage, Tag("AgentCrashedRunnerMessage")]
     | Annotated[EnvironmentCrashedRunnerMessage, Tag("EnvironmentCrashedRunnerMessage")]
     | Annotated[UnexpectedErrorRunnerMessage, Tag("UnexpectedErrorRunnerMessage")]
 )
@@ -124,9 +112,6 @@ EphemeralRunnerMessageUnion = (
     | Annotated[EnvironmentReleasedRunnerMessage, Tag("EnvironmentReleasedRunnerMessage")]
     | Annotated[TerminalAgentSignalRunnerMessage, Tag("TerminalAgentSignalRunnerMessage")]
 )
-RunnerMessageUnion = PersistentRunnerMessageUnion | EphemeralRunnerMessageUnion
-
-
 # this is necessary because pydantic won't let us use PersistentMessageTypes, which already has a discriminator, to make MessageTypes
 PersistentMessageTypesUnannotated = PersistentRunnerMessageUnion
 PersistentMessageTypes = Annotated[PersistentMessageTypesUnannotated, build_discriminator()]

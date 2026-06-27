@@ -226,7 +226,3 @@ class LocalAgentExecutionEnvironment(AgentExecutionEnvironment):
     ) -> None:
         """Start the terminal manager for this environment."""
         return self._environment.start_terminal_manager(concurrency_group)
-
-    def stop_terminal_manager(self) -> None:
-        """Stop the terminal manager for this environment."""
-        return self._environment.stop_terminal_manager()

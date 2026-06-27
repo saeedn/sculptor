@@ -129,36 +129,6 @@ def test_delete_idle_task_finalizes_immediately(
         assert not deleted_task.is_deleting, "is_deleting should be cleared after finalization"
 
 
-def test_subscribe_to_user_messages(
-    test_service_collection: CompleteServiceCollection, specimen_project: Project
-) -> None:
-    user_session = authenticate_anonymous(test_service_collection, RequestID())
-    service = test_service_collection.task_service
-    task = get_simple_task(user_session, specimen_project)
-    with user_session.open_transaction(test_service_collection) as transaction:
-        service.create_task(task, transaction)
-    first_user_message = get_user_input_message(task.object_id, "Hello, world!")
-    with user_session.open_transaction(test_service_collection) as transaction:
-        service.create_message(cast(MessageTypes, first_user_message), task.object_id, transaction)
-    with service.subscribe_to_user_and_sculptor_system_messages(task_id=task.object_id) as message_queue:
-        # Ignore any sculptor system messages and wait for the first user message.
-        for _ in range(99):
-            message = message_queue.get(timeout=1)
-            if message == first_user_message:
-                break
-        else:
-            assert False, "Did not receive the first user message."
-        second_user_message = get_user_input_message(task.object_id, "Goodbye, world!")
-        with user_session.open_transaction(test_service_collection) as transaction:
-            service.create_message(cast(MessageTypes, second_user_message), task.object_id, transaction)
-        for _ in range(99):
-            message = message_queue.get(timeout=1)
-            if message == second_user_message:
-                break
-        else:
-            assert False, "Did not receive the second user message."
-
-
 def test_subscribe_to_complete_tasks_for_user(
     test_service_collection: CompleteServiceCollection,
     specimen_project: Project,

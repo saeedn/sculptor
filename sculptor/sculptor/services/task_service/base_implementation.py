@@ -9,7 +9,6 @@ from threading import Lock
 from typing import Callable
 from typing import Generator
 from typing import TypeVar
-from typing import cast
 
 from loguru import logger
 from pydantic import PrivateAttr
@@ -33,7 +32,6 @@ from sculptor.interfaces.agents.agent import EphemeralMessage
 from sculptor.interfaces.agents.agent import MessageTypes
 from sculptor.interfaces.agents.agent import PersistentMessageTypes
 from sculptor.interfaces.agents.agent import TaskStatusRunnerMessage
-from sculptor.interfaces.agents.agent import UserMessageUnion
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.interfaces.environments.base import Environment
 from sculptor.primitives.constants import MESSAGE_LOG_TYPE
@@ -389,17 +387,6 @@ class BaseTaskService(TaskService, ABC):
     def subscribe_to_task(self, task_id: TaskID) -> Generator[Queue[Message], None, None]:
         with self._subscribe_to_task(task_id, filter_fn=None) as listener:
             yield listener
-
-    @contextmanager
-    def subscribe_to_user_and_sculptor_system_messages(
-        self, task_id: TaskID
-    ) -> Generator[Queue[UserMessageUnion], None, None]:
-        filter_fn = lambda x: x.source in (AgentMessageSource.USER, AgentMessageSource.SCULPTOR_SYSTEM)  # noqa: E731
-        with self._subscribe_to_task(task_id, filter_fn) as listener:
-            # by message_types_test::test_all_user_message_types_are_in_union and message_types_test::test_all_system_message_types_are_in_union,
-            # we know that the listener is a queue of UserMessageUnion.
-            # (we must cast rather than assert because we've got parameterized generics)
-            yield cast(Queue[UserMessageUnion], listener)
 
     def _publish_task_update(self, task: Task, message: Message | None = None) -> None:
         """

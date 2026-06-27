@@ -10,7 +10,6 @@ from sculptor.database.models import TaskID
 from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.interfaces.agents.agent import MessageTypes
 from sculptor.interfaces.agents.agent import PersistentMessageTypes
-from sculptor.interfaces.agents.agent import UserMessageUnion
 from sculptor.interfaces.environments.base import Environment
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import UserReference
@@ -124,9 +123,3 @@ class TaskService(Service, ABC):
     @abstractmethod
     @contextmanager
     def subscribe_to_task(self, task_id: TaskID) -> Generator[Queue[Message], None, None]: ...
-
-    @abstractmethod
-    @contextmanager
-    def subscribe_to_user_and_sculptor_system_messages(
-        self, task_id: TaskID
-    ) -> Generator[Queue[UserMessageUnion], None, None]: ...

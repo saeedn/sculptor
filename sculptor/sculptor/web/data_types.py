@@ -268,12 +268,6 @@ class ListWorkspacesResponse(SerializableModel):
     workspaces: list[RecentWorkspaceResponse]
 
 
-class SendMessageRequest(RequestModel):
-    message: str
-    files: list[str] = Field(default_factory=list)
-    sent_via: str | None = None
-
-
 class WorkspaceSetupCommandRequest(RequestModel):
     # None resets to the current default; "" means the user explicitly wants no command.
     workspace_setup_command: str | None

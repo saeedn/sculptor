@@ -621,6 +621,8 @@ class TestAgentRename:
 
 
 class TestAgentSend:
+    _INPUT_URL = "http://localhost:5050/api/v1/agents/tsk_abc123def456/terminal/input"
+
     @respx.mock
     def test_send_success(self, runner: CliRunner) -> None:
         _mock_session()
@@ -628,16 +630,12 @@ class TestAgentSend:
         respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
             return_value=Response(200, json=[_task_response_dict()])
         )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/messages").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
-        )
+        respx.post(self._INPUT_URL).mock(return_value=Response(204))
 
-        result = runner.invoke(
-            app, ["agent", "send", "tsk_abc123def456", "Fix the bug", "-w", "ws_test123"]
-        )
+        result = runner.invoke(app, ["agent", "send", "tsk_abc123def456", "Fix the bug", "-w", "ws_test123"])
 
         assert result.exit_code == 0
-        assert "Message sent" in result.output
+        assert "Sent to agent" in result.output
 
     @respx.mock
     def test_send_json(self, runner: CliRunner) -> None:
@@ -646,41 +644,14 @@ class TestAgentSend:
         respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
             return_value=Response(200, json=[_task_response_dict()])
         )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/messages").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
-        )
+        respx.post(self._INPUT_URL).mock(return_value=Response(204))
 
-        result = runner.invoke(
-            app, ["agent", "send", "tsk_abc123def456", "Fix the bug", "-w", "ws_test123", "--json"]
-        )
+        result = runner.invoke(app, ["agent", "send", "tsk_abc123def456", "Fix the bug", "-w", "ws_test123", "--json"])
 
         assert result.exit_code == 0
         data = json.loads(result.stdout)
         assert data["sent"] is True
         assert data["agent_id"] == "tsk_abc123def456"
-
-    @respx.mock
-    def test_send_with_files(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123")
-        respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
-            return_value=Response(200, json=[_task_response_dict()])
-        )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/messages").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
-        )
-
-        result = runner.invoke(
-            app,
-            [
-                "agent", "send", "tsk_abc123def456", "Fix it",
-                "-w", "ws_test123",
-                "--file", "path/to/file1.py",
-                "--file", "path/to/file2.py",
-            ],
-        )
-
-        assert result.exit_code == 0
 
     def test_send_missing_workspace(self, runner: CliRunner) -> None:
         result = runner.invoke(app, ["agent", "send", "tsk_abc123", "hello"])
@@ -694,13 +665,9 @@ class TestAgentSend:
         respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
             return_value=Response(200, json=[_task_response_dict()])
         )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/messages").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
-        )
+        respx.post(self._INPUT_URL).mock(return_value=Response(204))
 
-        result = runner.invoke(
-            app, ["agent", "send", "tsk_abc", "Fix it", "-w", "ws_test123"]
-        )
+        result = runner.invoke(app, ["agent", "send", "tsk_abc", "Fix it", "-w", "ws_test123"])
 
         assert result.exit_code == 0
 
@@ -711,37 +678,28 @@ class TestAgentSend:
         respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
             return_value=Response(200, json=[_task_response_dict()])
         )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/messages").mock(
-            side_effect=ConnectError("Connection refused")
-        )
+        respx.post(self._INPUT_URL).mock(side_effect=ConnectError("Connection refused"))
 
-        result = runner.invoke(
-            app, ["agent", "send", "tsk_abc123def456", "Fix it", "-w", "ws_test123"]
-        )
+        result = runner.invoke(app, ["agent", "send", "tsk_abc123def456", "Fix it", "-w", "ws_test123"])
 
         assert result.exit_code == 1
 
     @respx.mock
     def test_send_http_error_exits_nonzero(self, runner: CliRunner) -> None:
-        """When the backend returns a non-200 status (e.g. 409), the CLI must fail."""
+        """When the backend returns a non-2xx status (e.g. 409), the CLI must fail."""
         _mock_session()
         _mock_workspaces("ws_test123")
         respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
             return_value=Response(200, json=[_task_response_dict()])
         )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/messages").mock(
-            return_value=Response(
-                409,
-                json={"detail": "Cannot send a message while the agent is waiting for a response to AskUserQuestion."},
-            )
+        respx.post(self._INPUT_URL).mock(
+            return_value=Response(409, json={"detail": "Terminal agent is not accepting input."})
         )
 
-        result = runner.invoke(
-            app, ["agent", "send", "tsk_abc123def456", "Fix it", "-w", "ws_test123"]
-        )
+        result = runner.invoke(app, ["agent", "send", "tsk_abc123def456", "Fix it", "-w", "ws_test123"])
 
         assert result.exit_code == 1, f"Expected exit code 1 but got {result.exit_code}; output: {result.output}"
-        assert "Message sent" not in result.output
+        assert "Sent to agent" not in result.output
 
     @respx.mock
     def test_send_http_error_json_mode(self, runner: CliRunner) -> None:
@@ -751,19 +709,14 @@ class TestAgentSend:
         respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
             return_value=Response(200, json=[_task_response_dict()])
         )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/messages").mock(
-            return_value=Response(
-                409,
-                json={"detail": "Cannot send a message while the agent is waiting for a response to AskUserQuestion."},
-            )
+        respx.post(self._INPUT_URL).mock(
+            return_value=Response(409, json={"detail": "Terminal agent is not accepting input."})
         )
 
-        result = runner.invoke(
-            app, ["agent", "send", "tsk_abc123def456", "Fix it", "-w", "ws_test123", "--json"]
-        )
+        result = runner.invoke(app, ["agent", "send", "tsk_abc123def456", "Fix it", "-w", "ws_test123", "--json"])
 
         assert result.exit_code == 1
-        assert "Message sent" not in result.output
+        assert "Sent to agent" not in result.output
 
 
 def _make_snapshot(
@@ -1124,122 +1077,6 @@ class TestAgentMessages:
         assert msg_line["data"]["role"] == "assistant"
 
 
-class TestAgentInterrupt:
-    @respx.mock
-    def test_interrupt_success(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123")
-        respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
-            return_value=Response(200, json=[_task_response_dict()])
-        )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/interrupt").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
-        )
-
-        result = runner.invoke(app, ["agent", "interrupt", "tsk_abc123def456", "-w", "ws_test123"])
-
-        assert result.exit_code == 0
-        assert "interrupted" in result.output
-
-    @respx.mock
-    def test_interrupt_json(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123")
-        respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
-            return_value=Response(200, json=[_task_response_dict()])
-        )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/interrupt").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
-        )
-
-        result = runner.invoke(app, ["agent", "interrupt", "tsk_abc123def456", "-w", "ws_test123", "--json"])
-
-        assert result.exit_code == 0
-        data = json.loads(result.stdout)
-        assert data["interrupted"] is True
-        assert data["id"] == "tsk_abc123def456"
-
-    @respx.mock
-    def test_interrupt_prefix_matching(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123")
-        respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
-            return_value=Response(200, json=[_task_response_dict()])
-        )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/interrupt").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
-        )
-
-        result = runner.invoke(app, ["agent", "interrupt", "tsk_abc", "-w", "ws_test123"])
-
-        assert result.exit_code == 0
-
-    @respx.mock
-    def test_interrupt_connection_error(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123")
-        respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
-            return_value=Response(200, json=[_task_response_dict()])
-        )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/interrupt").mock(
-            side_effect=ConnectError("Connection refused")
-        )
-
-        result = runner.invoke(app, ["agent", "interrupt", "tsk_abc123def456", "-w", "ws_test123"])
-
-        assert result.exit_code == 1
-
-
-class TestAgentSendFollow:
-    @respx.mock
-    @patch("sculpt.commands._follow_helpers.follow_agent")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_send_follow(self, _mock_token: Any, mock_follow: Any, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123")
-        respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
-            return_value=Response(200, json=[_task_response_dict()])
-        )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/messages").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
-        )
-
-        def side_effect(_base_url: str, _token: str, _agent_id: str, _on_status: Any, on_messages: Any, _on_reconnect: Any, **_kwargs: Any) -> ExitReason:
-            on_messages([_chat_message_dict(role="assistant", msg_id="msg_001", text="Done!")])
-            return ExitReason.TERMINAL_STATE
-
-        mock_follow.side_effect = side_effect
-
-        result = runner.invoke(
-            app, ["agent", "send", "tsk_abc123def456", "Fix the bug", "-w", "ws_test123", "--follow"]
-        )
-
-        assert result.exit_code == 0
-        assert "Message sent" in result.stderr
-        assert "Done!" in result.output
-
-    @respx.mock
-    @patch("sculpt.commands._follow_helpers.follow_agent")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_send_follow_waiting_exit_code(self, _mock_token: Any, mock_follow: Any, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123")
-        respx.get("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
-            return_value=Response(200, json=[_task_response_dict()])
-        )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents/tsk_abc123def456/messages").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
-        )
-
-        mock_follow.return_value = ExitReason.WAITING
-
-        result = runner.invoke(
-            app, ["agent", "send", "tsk_abc123def456", "Fix the bug", "-w", "ws_test123", "--follow"]
-        )
-
-        assert result.exit_code == 2
-
-
 class TestWorkspacePrefixResolution:
     @patch("sculpt.commands.agent.fetch_all_agents")
     @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
@@ -1288,8 +1125,8 @@ class TestWorkspacePrefixResolution:
         respx.get("http://localhost:5050/api/v1/workspaces/ws_test123abc456/agents").mock(
             return_value=Response(200, json=[_task_response_dict(workspace_id="ws_test123abc456")])
         )
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123abc456/agents/tsk_abc123def456/messages").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
+        respx.post("http://localhost:5050/api/v1/agents/tsk_abc123def456/terminal/input").mock(
+            return_value=Response(204)
         )
 
         result = runner.invoke(app, ["agent", "send", "tsk_abc123def456", "hello", "-w", "ws_test123"])

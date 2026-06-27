@@ -167,13 +167,6 @@ class AgentStatusOutput(BaseModel):
     current_task_subject: str | None = Field(description="Subject of the in-progress task")
 
 
-class AgentInterruptOutput(BaseModel):
-    """Output of ``sculpt agent interrupt --json``."""
-
-    interrupted: bool = Field(description="Always true on success")
-    id: str = Field(description="Interrupted agent ID")
-
-
 class RunOutput(BaseModel):
     """Output of ``sculpt run --json``."""
 

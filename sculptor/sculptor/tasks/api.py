@@ -48,12 +48,9 @@ def run_task(
             return run_noop_task_v1(data, task, services, task_deadline)
         case MustBeShutDownTaskInputsV1():
             assert is_running_within_a_pytest_tree(), "MustBeShutDownTaskInputsV1 should only be used in testing"
-            with services.task_service.subscribe_to_user_and_sculptor_system_messages(
-                task.object_id
-            ) as _input_message_queue:
-                if on_started is not None:
-                    on_started()
-                shutdown_event.wait()
+            if on_started is not None:
+                on_started()
+            shutdown_event.wait()
             return None
 
         case _ as unreachable:

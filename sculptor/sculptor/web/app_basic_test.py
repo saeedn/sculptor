@@ -41,7 +41,6 @@ from sculptor.web.auth import UserSession
 from sculptor.web.auth import authenticate_anonymous
 from sculptor.web.data_types import AgentTypeName
 from sculptor.web.data_types import CreateAgentRequest
-from sculptor.web.data_types import SendMessageRequest
 from sculptor.web.data_types import StartTaskRequest
 
 # Check session token enforcement on a sample authenticated endpoint.
@@ -283,82 +282,6 @@ def test_delete_agent_returns_422_if_id_is_invalid(
     assert response.status_code == 422
 
 
-def test_send_message_saves_message(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-        task = _create_task_with_message_in_workspace(
-            transaction, user_session, test_project, test_services, workspace
-        )
-    with test_services.task_service.subscribe_to_all_tasks_for_user(
-        user_reference=user_session.user_reference
-    ) as queue:
-        message_container = queue.get(timeout=2)
-        original_message_ids = [
-            message_and_task_id[0].message_id for message_and_task_id in message_container.messages
-        ]
-        original_message_count = len(message_container.messages)
-        # Aside from the first message saved above, various system messages can be present, too.
-        assert original_message_count > 0
-        assert all([message_and_task_id[1] == task.object_id for message_and_task_id in message_container.messages])
-    response = client.post(
-        f"/api/v1/workspaces/{workspace.object_id}/agents/{task.object_id}/messages",
-        json=model_dump(
-            SendMessageRequest(message="This is a test message."),
-            is_camel_case=True,
-        ),
-    )
-    if response.status_code == 422:
-        raise AssertionError(f"Validation failed: {response.json()}. ")
-    assert response.status_code in (200, 204)
-    with test_services.task_service.subscribe_to_all_tasks_for_user(
-        user_reference=user_session.user_reference
-    ) as queue:
-        message_container = queue.get(timeout=2)
-        new_message_count = len(message_container.messages)
-        assert new_message_count > original_message_count
-        assert all([message_and_task_id[1] == task.object_id for message_and_task_id in message_container.messages])
-        for message_and_task_id in message_container.messages:
-            if message_and_task_id[0].message_id not in original_message_ids:
-                assert isinstance(message_and_task_id[0], ChatInputUserMessage)
-                break
-        else:
-            assert False, "New message not found in the message container."
-
-
-def test_send_message_returns_404_if_agent_does_not_exist(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-    response = client.post(
-        f"/api/v1/workspaces/{workspace.object_id}/agents/{TaskID()}/messages",
-        json=model_dump(
-            SendMessageRequest(message="This is a test message."),
-            is_camel_case=True,
-        ),
-    )
-    if response.status_code == 422:
-        raise AssertionError(f"Validation failed: {response.json()}. ")
-    assert response.status_code == 404
-
-
-def test_send_message_returns_422_when_agent_id_is_invalid(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-    response = client.post(
-        f"/api/v1/workspaces/{workspace.object_id}/agents/{{onetwo}}/messages",
-        json={"requestId": str(RequestID()), "message": "This is a test message"},
-    )
-    assert response.status_code == 422
-
-
 def test_manual_422_responses_use_validation_error_list_format(
     client: TestClient, test_services: CompleteServiceCollection, test_project: Project
 ) -> None:
@@ -378,22 +301,6 @@ def test_manual_422_responses_use_validation_error_list_format(
     assert "loc" in error
     assert "msg" in error
     assert "type" in error
-
-
-def test_send_message_returns_422_when_missing_required_attribute(
-    client: TestClient, test_services: CompleteServiceCollection, test_project: Project
-) -> None:
-    user_session = authenticate_anonymous(test_services, RequestID())
-    with user_session.open_transaction(test_services) as transaction:
-        workspace = _create_workspace(transaction, test_services, test_project)
-        task = _create_task_with_message_in_workspace(
-            transaction, user_session, test_project, test_services, workspace
-        )
-    response = client.post(
-        f"/api/v1/workspaces/{workspace.object_id}/agents/{task.object_id}/messages",
-        json={"requestId": str(RequestID())},
-    )
-    assert response.status_code == 422
 
 
 def test_update_naming_pattern_performs_update(

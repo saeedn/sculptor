@@ -13,7 +13,6 @@ from pydantic import BaseModel
 
 from sculpt.commands.data_types import AgentCreateOutput
 from sculpt.commands.data_types import AgentDeleteOutput
-from sculpt.commands.data_types import AgentInterruptOutput
 from sculpt.commands.data_types import AgentListItem
 from sculpt.commands.data_types import AgentRenameOutput
 from sculpt.commands.data_types import AgentSendOutput
@@ -112,10 +111,6 @@ _SCHEMAS: dict[str, dict[str, Any]] = {
     "agent.status": _object_schema(
         AgentStatusOutput,
         "Output of `sculpt agent status --json`",
-    ),
-    "agent.interrupt": _object_schema(
-        AgentInterruptOutput,
-        "Output of `sculpt agent interrupt --json`",
     ),
     "run": _object_schema(
         RunOutput,

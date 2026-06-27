@@ -1,12 +1,10 @@
 import asyncio
 import base64
-import contextlib
 import json
 import logging
 import mimetypes
 import os
 import platform
-import queue
 import re
 import shutil
 import subprocess
@@ -69,10 +67,7 @@ from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.subprocess_utils import ProcessSetupError
 from sculptor.interfaces.agents.agent import AgentConfigTypes
 from sculptor.interfaces.agents.agent import AgentMessageID
-from sculptor.interfaces.agents.agent import InterruptProcessUserMessage
-from sculptor.interfaces.agents.agent import PersistentRequestCompleteAgentMessage
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
-from sculptor.interfaces.agents.agent import RemoveQueuedMessageUserMessage
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
@@ -178,7 +173,6 @@ from sculptor.web.data_types import ReadFileRequest
 from sculptor.web.data_types import RecentWorkspaceResponse
 from sculptor.web.data_types import RenameAgentRequest
 from sculptor.web.data_types import RepoInfo
-from sculptor.web.data_types import SendMessageRequest
 from sculptor.web.data_types import SignalEventRequest
 from sculptor.web.data_types import SkillInfo
 from sculptor.web.data_types import StartTaskRequest
@@ -2224,115 +2218,6 @@ def get_workspace_agent_diagnostics(
         transcript_file_path=transcript_file_path,
         sculptor_transcript_file_path=sculptor_transcript_file_path,
     )
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/messages")
-def send_workspace_agent_messages(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    message_request: SendMessageRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Send a message to an agent via API interface."""
-    services = get_services_from_request_or_websocket(request)
-    _prevent_action_if_out_of_free_space(services)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-        message_str = message_request.message
-        if not message_str:
-            raise HTTPException(
-                status_code=422,
-                detail=[{"loc": ["body", "message"], "msg": "Message required", "type": "value_error.missing"}],
-            )
-
-        message_id = AgentMessageID()
-        logger.info("Sending message {} to agent {}: {}", message_id, agent_id, message_str[:100])
-
-        message = ChatInputUserMessage(
-            message_id=message_id,
-            text=message_str,
-            files=message_request.files,
-            sent_via=message_request.sent_via,
-        )
-
-        services.task_service.create_message(
-            message=message,
-            task_id=task.object_id,
-            transaction=transaction,
-        )
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/interrupt")
-def interrupt_workspace_agent(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Interrupt a running agent."""
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-    message_id = AgentMessageID()
-    with await_message_response(message_id, task.object_id, services):
-        with user_session.open_transaction(services) as transaction:
-            services.task_service.create_message(
-                message=InterruptProcessUserMessage(message_id=message_id),
-                task_id=task.object_id,
-                transaction=transaction,
-            )
-
-
-@router.delete("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/messages/{message_id}")
-def delete_workspace_agent_message(
-    workspace_id: str,
-    agent_id: str,
-    message_id: AgentMessageID,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Delete a message from an agent."""
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-    new_message_id = AgentMessageID()
-    with await_message_response(new_message_id, task.object_id, services):
-        with user_session.open_transaction(services) as transaction:
-            services.task_service.create_message(
-                message=RemoveQueuedMessageUserMessage(message_id=new_message_id, target_message_id=message_id),
-                task_id=task.object_id,
-                transaction=transaction,
-            )
-
-
-@contextlib.contextmanager
-def await_message_response(
-    message_id: AgentMessageID,
-    task_id: TaskID,
-    services: CompleteServiceCollection,
-) -> Iterator[None]:
-    with services.task_service.subscribe_to_task(task_id) as updates_queue:
-        yield
-        logger.debug("Waiting for response to message {} in task {}", message_id, task_id)
-        while True:
-            try:
-                update = updates_queue.get(timeout=1.0)
-            except queue.Empty:
-                pass
-            else:
-                if isinstance(update, PersistentRequestCompleteAgentMessage):
-                    if update.request_id == message_id:
-                        break
 
 
 def _prevent_action_if_out_of_free_space(services: CompleteServiceCollection) -> None:

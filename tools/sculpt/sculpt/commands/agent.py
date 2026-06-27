@@ -15,16 +15,15 @@ from sculpt.auth import get_default_base_url
 from sculpt.client import Client
 from sculpt.client.api.default import create_workspace_agent
 from sculpt.client.api.default import delete_workspace_agent
-from sculpt.client.api.default import interrupt_workspace_agent
 from sculpt.client.api.default import list_workspace_agents
+from sculpt.client.api.default import post_agent_terminal_input
 from sculpt.client.api.default import rename_workspace_agent
-from sculpt.client.api.default import send_workspace_agent_messages
 from sculpt.client.models.agent_type_name import AgentTypeName
 from sculpt.client.models.coding_agent_task_view import CodingAgentTaskView
 from sculpt.client.models.create_agent_request import CreateAgentRequest
 from sculpt.client.models.http_validation_error import HTTPValidationError
 from sculpt.client.models.rename_agent_request import RenameAgentRequest
-from sculpt.client.models.send_message_request import SendMessageRequest
+from sculpt.client.models.terminal_input_request import TerminalInputRequest
 from sculpt.client.models.task_status import TaskStatus
 from sculpt.client.types import UNSET
 from sculpt.commands._follow_helpers import follow_and_stream_messages
@@ -42,7 +41,6 @@ from sculpt.commands._follow_helpers import on_status_json
 from sculpt.commands._harness_helpers import resolve_harness_selection
 from sculpt.commands.data_types import AgentCreateOutput
 from sculpt.commands.data_types import AgentDeleteOutput
-from sculpt.commands.data_types import AgentInterruptOutput
 from sculpt.commands.data_types import AgentListItem
 from sculpt.commands.data_types import AgentRenameOutput
 from sculpt.commands.data_types import AgentSendOutput
@@ -411,14 +409,13 @@ def delete(
 @agent_app.command("send")
 def send(
     agent_id: str = typer.Argument(..., help="Agent ID or prefix"),
-    message: str = typer.Argument(..., help="Message to send"),
+    message: str = typer.Argument(..., help="Text to type into the agent's terminal"),
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace ID (or set SCULPT_WORKSPACE_ID)"),
-    file: list[str] | None = typer.Option(None, "--file", help="Files to include (repeatable)"),
-    follow: bool = typer.Option(False, "--follow", "-f", help="Stream the agent's response after sending"),
+    submit: bool = typer.Option(True, "--submit/--no-submit", help="Press Enter after writing the text"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     base_url: str | None = typer.Option(None, "--base-url", "-u", help="The Sculptor server URL"),
 ) -> None:
-    """Send a message to an agent."""
+    """Type text into a terminal agent's shell (as if the user typed it)."""
     base_url = base_url or get_default_base_url()
 
     client = get_authenticated_client(base_url)
@@ -427,16 +424,10 @@ def send(
     agents = _fetch_agents_for_workspace(client, workspace_id, json_output)
     agent = resolve_by_prefix(agent_id, agents, lambda a: a.id)
 
-    request = SendMessageRequest(
-        message=message,
-        files=file or [],
-        sent_via="sculpt",
-    )
+    request = TerminalInputRequest(text=message, submit=submit)
 
     try:
-        response = send_workspace_agent_messages.sync_detailed(
-            workspace_id=workspace_id, agent_id=agent.id, client=client, body=request
-        )
+        response = post_agent_terminal_input.sync_detailed(agent_id=agent.id, client=client, body=request)
     except httpx.ConnectError:
         handle_connection_error(json_output)
 
@@ -453,17 +444,12 @@ def send(
             json_output=json_output,
         )
 
-    if follow:
-        typer.echo(f"Message sent to agent {agent.id}. Following response...", err=True)
-        follow_and_stream_messages(base_url, agent.id, json_output=json_output)
-        return
-
     if json_output:
         output = AgentSendOutput(sent=True, agent_id=agent.id, message=message[:_MESSAGE_PREVIEW_MAX_LENGTH])
         typer.echo(output.model_dump_json())
         return
 
-    typer.echo(f"Message sent to agent {agent.id}.")
+    typer.echo(f"Sent to agent {agent.id}.")
 
 
 @agent_app.command("status")
@@ -654,33 +640,3 @@ def _on_status_inplace(snapshot: AgentSnapshot, prev_lines: list[int]) -> None:
 def _on_status_append(snapshot: AgentSnapshot) -> None:
     """Print status text (append mode)."""
     typer.echo(_format_status_text(snapshot))
-
-
-@agent_app.command("interrupt")
-def interrupt(
-    agent_id: str = typer.Argument(..., help="Agent ID or prefix"),
-    workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace ID (or set SCULPT_WORKSPACE_ID)"),
-    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
-    base_url: str | None = typer.Option(None, "--base-url", "-u", help="The Sculptor server URL"),
-) -> None:
-    """Interrupt a running agent."""
-    base_url = base_url or get_default_base_url()
-    client = get_authenticated_client(base_url)
-    workspace_id = resolve_workspace(workspace, client, json_output)
-
-    agents = _fetch_agents_for_workspace(client, workspace_id, json_output)
-    agent = resolve_by_prefix(agent_id, agents, lambda a: a.id)
-
-    try:
-        interrupt_workspace_agent.sync(
-            workspace_id=workspace_id, agent_id=agent.id, client=client
-        )
-    except httpx.ConnectError:
-        handle_connection_error(json_output)
-
-    if json_output:
-        output = AgentInterruptOutput(interrupted=True, id=agent.id)
-        typer.echo(output.model_dump_json())
-        return
-
-    typer.echo(f"Agent {agent.id} interrupted.")

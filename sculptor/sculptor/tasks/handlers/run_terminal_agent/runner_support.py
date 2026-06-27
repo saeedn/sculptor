@@ -20,16 +20,11 @@ from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.errors import ExpectedError
 from sculptor.foundation.event_utils import CancelledByEventError
 from sculptor.foundation.event_utils import ReadOnlyEvent
-from sculptor.foundation.nested_evolver import assign
-from sculptor.foundation.nested_evolver import chill
-from sculptor.foundation.nested_evolver import evolver
 from sculptor.foundation.serialization import SerializedException
 from sculptor.interfaces.agents.agent import AgentCrashedRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentCrashedRunnerMessage
 from sculptor.interfaces.agents.agent import KilledAgentRunnerMessage
-from sculptor.interfaces.agents.agent import PersistentRequestCompleteAgentMessage
 from sculptor.interfaces.agents.agent import PersistentRunnerMessageUnion
-from sculptor.interfaces.agents.agent import RequestSuccessAgentMessage
 from sculptor.interfaces.agents.agent import UnexpectedErrorRunnerMessage
 from sculptor.interfaces.agents.errors import AgentCrashed
 from sculptor.interfaces.environments.errors import EnvironmentFailure
@@ -41,7 +36,6 @@ from sculptor.services.task_service.data_types import ServiceCollectionForTask
 from sculptor.services.task_service.errors import TaskError
 from sculptor.services.task_service.errors import UserPausedTaskError
 from sculptor.services.task_service.errors import UserStoppedTaskError
-from sculptor.state.messages import PersistentUserMessage
 from sculptor.utils.shutdown import GLOBAL_SHUTDOWN_EVENT
 
 
@@ -63,64 +57,6 @@ class AgentPaused(AgentShutdownCleanly):
     """
 
 
-def _is_truly_processed_completion(message: PersistentRequestCompleteAgentMessage) -> bool:
-    """True iff this completion represents the agent actually finishing the user message.
-
-    An interrupted completion (``RequestSuccessAgentMessage(interrupted=True)``) does
-    NOT count, because the agent didn't really finish processing the message. If we
-    counted it here, dedup would treat the message as processed and silently drop it on
-    the next run — which loses the user's typed input in the post-answer-shutdown
-    scenario.
-    """
-    if isinstance(message, RequestSuccessAgentMessage) and message.interrupted:
-        return False
-    return True
-
-
-def _reconcile_last_processed_from_history(
-    task_state: AgentTaskStateV2,
-    task_id: TaskID,
-    services: ServiceCollectionForTask,
-) -> AgentTaskStateV2:
-    """Return task_state with last_processed_message_id derived from message history.
-
-    Walks the persisted messages for this task, finds the latest user message whose
-    ``message_id`` matches some ``PersistentRequestCompleteAgentMessage.request_id``
-    where the completion represents truly-finished processing (see
-    ``_is_truly_processed_completion``), and uses that as the effective
-    ``last_processed_message_id``. Only upgrades the cursor (never downgrades), so a
-    stale persisted value heals to the truth from the message log without ever
-    moving backward.
-    """
-    with services.data_model_service.open_task_transaction() as transaction:
-        all_messages = services.task_service.get_saved_messages_for_task(task_id, transaction)
-
-    completed_request_ids: set[AgentMessageID] = set()
-    for message in all_messages:
-        if isinstance(message, PersistentRequestCompleteAgentMessage) and _is_truly_processed_completion(message):
-            completed_request_ids.add(message.request_id)
-
-    latest_completed_user_message_id: AgentMessageID | None = None
-    for message in all_messages:
-        if isinstance(message, PersistentUserMessage) and message.message_id in completed_request_ids:
-            latest_completed_user_message_id = message.message_id
-
-    if latest_completed_user_message_id is None:
-        return task_state
-    current = task_state.last_processed_message_id
-    if current is not None and str(latest_completed_user_message_id) <= str(current):
-        # Don't downgrade — current cursor is already at or ahead of what history shows.
-        return task_state
-    logger.debug(
-        "Reconciled last_processed_message_id from {} to {} based on persisted completions",
-        current,
-        latest_completed_user_message_id,
-    )
-    mutable = evolver(task_state)
-    assign(mutable.last_processed_message_id, lambda: latest_completed_user_message_id)
-    return chill(mutable)
-
-
 def load_initial_task_state(services: ServiceCollectionForTask, task: Task) -> tuple[AgentTaskStateV2, Project]:
     logger.debug("loading initial task state")
     with services.data_model_service.open_task_transaction() as transaction:
@@ -134,16 +70,6 @@ def load_initial_task_state(services: ServiceCollectionForTask, task: Task) -> t
         # load the project so that we can figure out the repo path as well
         project = transaction.get_project(task.project_id)
         assert project is not None, "Project must exist in the database"
-
-        # Reconcile last_processed_message_id with persisted message history.
-        # A SIGKILL / OOM / power loss between the success-path message write and
-        # the cursor write can leave the DB with a persisted completion but a stale
-        # last_processed cursor; reconcile from history so dedup heals.
-        reconciled_state = _reconcile_last_processed_from_history(task_state, task.object_id, services)
-        if reconciled_state.last_processed_message_id != task_state.last_processed_message_id:
-            task_state = reconciled_state
-            task_row = task_row.evolve(task_row.ref().current_state, task_state.model_dump())
-            transaction.upsert_task(task_row)
     return task_state, project
 
 

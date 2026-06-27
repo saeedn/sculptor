@@ -742,3 +742,53 @@ task_service artifact-cache cluster + the orphaned
 endpoint. **Kept `DiffArtifact` + `ArtifactType.DIFF`** — the live workspace-diff
 cache (written + read in workspace_service.default_implementation). Frontend API
 types + sculpt CLI client regenerated.
+
+---
+
+## Dead chat message plumbing (2026-06-26, seventh batch)
+
+Terminal agents never emit a request *completion*, so the whole
+create_message → await-completion model was dead. Removed across two commits
+(check + test-unit green):
+
+1. **Endpoints/CLI/runner code** — the interrupt + delete-message endpoints and
+   `await_message_response` (both looped forever waiting for a completion that is
+   never produced); the runner_support completion-dedup
+   (`_is_truly_processed_completion`, `_reconcile_last_processed_from_history`);
+   the test-only `subscribe_to_user_and_sculptor_system_messages`; the
+   send-message endpoint + `SendMessageRequest`. `sculpt agent send` now writes
+   into the PTY via `/terminal/input` (dropped `--file`/`--follow` and the broken
+   `sculpt agent interrupt` command).
+2. **Persisted classes** — `RequestSuccessAgentMessage` +
+   `PersistentRequestCompleteAgentMessage`/`RequestCompleteAgentMessage` (zero
+   constructors), `InterruptProcessUserMessage`/`RemoveQueuedMessageUserMessage`,
+   and `last_processed_message_id`. The persisted message union is now just
+   runner (lifecycle/status/crash) messages + the user prompt. Frozen JSON-schema
+   rebased; SQL schema unchanged (JSON blobs).
+
+**TaskService stays** — it's the live agent-lifecycle + runner + stream backbone
+(`create_task`, `create_message` for runner messages, the `subscribe_*` stream
+variants). Only the chat request/response half was dead.
+
+### Deferred: ChatInputUserMessage + the whole prompt/start_task path
+
+`ChatInputUserMessage` is NOT trivially deletable — it carries the initial
+prompt that feeds `derived.goal`/`initial_prompt`, which the frontend reads as
+the agent display-name fallback (`agentCommands.ts`/`agentActions.ts`). BUT a
+deeper trace shows the entire prompt path looks dead for terminal agents:
+- `create_workspace_agent` **rejects** an initial prompt for terminal/registered
+  agents (app.py ~1825, "terminal agents do not take an initial prompt"), and
+  those are the only agent types.
+- `start_task` (`POST /projects/{id}/tasks`), which builds the prompt
+  `ChatInputUserMessage`, has **no live caller** — not the frontend (uses
+  `createWorkspaceAgent`), not the CLI; create-agent's delegation to it is the
+  dead prompt branch. So it's reachable only from tests.
+- The remaining `ChatInputUserMessage` is the first-run intro-help message
+  (stored, not rendered).
+
+So the clean removal is a coordinated follow-up: delete the dead `start_task`
+endpoint + `StartTaskRequest`, drop the intro message, remove
+`goal`/`initial_prompt` (always empty for terminal agents) + `ChatInputUserMessage`
++ its `files`/`sent_via` (sent_via is write-only), update the frontend
+display-name fallback to use `title` only, frozen-schema rebase + regen clients.
+Bigger than a leaf delete; not done in this batch.

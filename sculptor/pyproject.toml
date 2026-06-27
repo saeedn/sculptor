@@ -21,7 +21,6 @@ dependencies = [
     # Pyrefly understands @attr.s classes only with the PEP 681 dataclass_transform
     # stubs introduced in attrs 26; older stubs leave it unable to see generated __init__s.
     "attrs>=26.1.0",
-    "boto3>=1.35.0",
     "cachetools",
     "coolname>=2.2.0",
     "email-validator",
@@ -33,7 +32,6 @@ dependencies = [
     "pydantic>=2.11.4",
     "pydantic-settings",
     "pygit2>=1.18.0",
-    "pyjwt[crypto]",
     "python-multipart",
     "python-slugify>=8.0.0",
     "pyyaml>=6.0",
@@ -96,7 +94,6 @@ dev = [
     # extraneous package, which is what let agents silently fall back to the stale
     # packaged CLI (SCU-1360). Excluded from production via `uv sync --no-dev`.
     "sculpt",
-    "boto3-stubs>=1.40.49",
     "filelock>=3.18.0",
     # inline-snapshot, pytest-asyncio and pytest-mock were absorbed from the former
     # imbue_core library (now sculptor.foundation) — its tests need them.

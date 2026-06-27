@@ -39,7 +39,7 @@ def _mock_initialize_project(
 
 
 def _mock_preview_branch_name(base_url: str = "http://localhost:5050") -> None:
-    # The default strategy is WORKTREE, which resolves a branch name via this endpoint.
+    # Without --branch-name, the CLI resolves a branch name via this endpoint.
     respx.get(f"{base_url}/api/v1/workspaces/preview-branch-name").mock(
         return_value=Response(200, json={"branchName": "auto/generated"})
     )
@@ -67,7 +67,6 @@ def _workspace_response_dict(
     object_id: str = "ws_test123",
     project_id: str = "prj_test123",
     description: str = "Test workspace",
-    strategy: str = "WORKTREE",
     source_branch: str | None = "main",
     target_branch: str | None = None,
     requested_branch_name: str | None = None,
@@ -76,7 +75,6 @@ def _workspace_response_dict(
         "objectId": object_id,
         "projectId": project_id,
         "description": description,
-        "initializationStrategy": strategy,
         "sourceBranch": source_branch,
         "targetBranch": target_branch,
         "requestedBranchName": requested_branch_name,
@@ -97,7 +95,6 @@ def _recent_workspace_dict(
         "objectId": object_id,
         "projectId": project_id,
         "description": description,
-        "initializationStrategy": "WORKTREE",
         "sourceBranch": "main",
         "isDeleted": False,
         "createdAt": "2024-01-15T10:30:00Z",
@@ -138,10 +135,9 @@ class TestWorkspaceCreate:
         data = json.loads(result.stdout)
         assert data["id"] == "ws_test123"
         assert data["repo_id"] == "prj_test123"
-        assert data["strategy"] == "WORKTREE"
 
     @respx.mock
-    def test_create_worktree_strategy_with_branch_name(self, runner: CliRunner) -> None:
+    def test_create_with_branch_name(self, runner: CliRunner) -> None:
         """When --branch-name is supplied, the CLI sends it through unchanged and skips the preview call."""
         _mock_session()
         _mock_initialize_project()
@@ -149,7 +145,7 @@ class TestWorkspaceCreate:
             "http://localhost:5050/api/v1/workspaces/preview-branch-name"
         ).mock(return_value=Response(200, json={"branchName": "should-not-be-used"}))
         create_route = respx.post("http://localhost:5050/api/v1/workspaces").mock(
-            return_value=Response(200, json=_workspace_response_dict(strategy="WORKTREE"))
+            return_value=Response(200, json=_workspace_response_dict())
         )
 
         result = runner.invoke(
@@ -159,8 +155,6 @@ class TestWorkspaceCreate:
                 "create",
                 "--repo",
                 "/tmp/test",
-                "--strategy",
-                "worktree",
                 "--branch",
                 "main",
                 "--branch-name",
@@ -173,22 +167,19 @@ class TestWorkspaceCreate:
         assert not preview_route.called, "preview-branch-name should not be called when --branch-name is provided"
         assert create_route.called
         request_body = json.loads(create_route.calls[0].request.content)
-        assert request_body["initializationStrategy"] == "WORKTREE"
         assert request_body["sourceBranch"] == "main"
         assert request_body["requestedBranchName"] == "dev/fix-thing"
-        data = json.loads(result.stdout)
-        assert data["strategy"] == "WORKTREE"
 
     @respx.mock
-    def test_create_worktree_strategy_autogenerates_branch_name(self, runner: CliRunner) -> None:
-        """When --branch-name is omitted for worktree, the CLI auto-fills it via preview-branch-name."""
+    def test_create_autogenerates_branch_name(self, runner: CliRunner) -> None:
+        """When --branch-name is omitted, the CLI auto-fills it via preview-branch-name."""
         _mock_session()
         _mock_initialize_project()
         preview_route = respx.get(
             "http://localhost:5050/api/v1/workspaces/preview-branch-name"
         ).mock(return_value=Response(200, json={"branchName": "dev/auto-generated"}))
         create_route = respx.post("http://localhost:5050/api/v1/workspaces").mock(
-            return_value=Response(200, json=_workspace_response_dict(strategy="WORKTREE"))
+            return_value=Response(200, json=_workspace_response_dict())
         )
 
         result = runner.invoke(
@@ -198,8 +189,6 @@ class TestWorkspaceCreate:
                 "create",
                 "--repo",
                 "/tmp/test",
-                "--strategy",
-                "worktree",
                 "--branch",
                 "main",
                 "--name",
@@ -242,18 +231,6 @@ class TestWorkspaceCreate:
         assert create_route.called
         request_body = json.loads(create_route.calls[0].request.content)
         assert request_body["targetBranch"] == "feature"
-
-    @respx.mock
-    def test_create_invalid_strategy(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_initialize_project()
-
-        result = runner.invoke(
-            app, ["workspace", "create", "--repo", "/tmp/test", "--strategy", "bogus"]
-        )
-
-        assert result.exit_code == 1
-        assert "Invalid strategy 'bogus'" in (result.stderr or result.output)
 
     @respx.mock
     def test_create_connection_error(self, runner: CliRunner) -> None:
@@ -319,7 +296,6 @@ class TestWorkspaceList:
                 200,
                 json=[
                     _workspace_response_dict(
-                        strategy="WORKTREE",
                         source_branch="parent-branch",
                         target_branch="parent-branch",
                         requested_branch_name="child-branch",

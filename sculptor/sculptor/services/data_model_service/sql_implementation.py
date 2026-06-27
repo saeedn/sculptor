@@ -283,7 +283,6 @@ class SQLTransaction(BaseDataModelTransaction):
                     w.object_id,
                     w.project_id,
                     w.description,
-                    w.initialization_strategy,
                     w.source_branch,
                     w.is_deleted,
                     w.is_open,

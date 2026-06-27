@@ -7,7 +7,6 @@ from typing import Literal
 
 from sculptor.database.models import Project
 from sculptor.database.models import Workspace
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.errors import ExpectedError
 from sculptor.foundation.event_utils import ReadOnlyEvent
@@ -132,7 +131,6 @@ class WorkspaceService(Service, ABC):
     def create_workspace(
         self,
         project: Project,
-        initialization_strategy: WorkspaceInitializationStrategy,
         source_branch: str | None,
         requested_branch_name: str | None,
         description: str | None,
@@ -144,7 +142,6 @@ class WorkspaceService(Service, ABC):
 
         Args:
             project: The project to create the workspace for.
-            initialization_strategy: Strategy for workspace initialization (WORKTREE).
             source_branch: Base ref off which to create the worktree branch.
             requested_branch_name: Final branch name; required for WORKTREE.
             description: Optional description for the workspace.

@@ -11,7 +11,6 @@ import {
   ElementIds,
   getActiveProjects,
   getMostRecentlyUsedProject,
-  WorkspaceInitializationStrategy,
 } from "../../api";
 import { HTTPException } from "../../common/Errors.ts";
 import { useImbueNavigate } from "../../common/NavigateUtils.ts";
@@ -233,7 +232,6 @@ export const AddWorkspacePage = (): ReactElement => {
       const wsResponse = await createWorkspaceV2({
         body: {
           projectId: selectedProjectId,
-          initializationStrategy: WorkspaceInitializationStrategy.WORKTREE,
           sourceBranch,
           description: workspaceName.trim() || "Untitled workspace",
           requestedBranchName: trimmedBranch,

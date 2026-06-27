@@ -22,7 +22,6 @@ from sculptor.database.models import Project
 from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.database.models import Workspace
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.pydantic_serialization import model_dump
 from sculptor.foundation.pydantic_utils import model_update
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
@@ -105,7 +104,6 @@ def _create_workspace(
     """Create an IN_PLACE workspace for testing."""
     return services.workspace_service.create_workspace(
         project=project,
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
         source_branch=None,
         requested_branch_name=None,
         description=description,

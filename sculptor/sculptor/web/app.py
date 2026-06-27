@@ -262,7 +262,6 @@ def _workspace_to_response(workspace: Workspace, workspace_setup_command: str | 
         object_id=workspace.object_id,
         project_id=workspace.project_id,
         description=workspace.description,
-        initialization_strategy=workspace.initialization_strategy,
         source_branch=workspace.source_branch,
         target_branch=workspace.target_branch,
         requested_branch_name=workspace.requested_branch_name,
@@ -442,7 +441,6 @@ def create_workspace_v2(
 
         workspace = services.workspace_service.create_workspace(
             project=project,
-            initialization_strategy=workspace_request.initialization_strategy,
             source_branch=workspace_request.source_branch,
             requested_branch_name=branch_name,
             description=workspace_request.description,
@@ -563,7 +561,6 @@ def rerun_workspace_setup(
         environment_id = workspace.environment_id
         project_path = project.get_local_user_path() if project is not None else None
         project_id = project.object_id if project is not None else None
-        initialization_strategy = workspace.initialization_strategy
         # Resolve through the project's tri-state default helper so a `None`
         # stored value runs the current default and `""` (user-cleared) blocks.
         command = resolve_workspace_setup_command(project.workspace_setup_command) if project is not None else None
@@ -580,7 +577,6 @@ def rerun_workspace_setup(
         project_path=project_path,
         project_id=project_id,
         concurrency_group=workspace_service.concurrency_group,
-        initialization_strategy=initialization_strategy,
     )
     state_dir = environment.to_host_path(environment.get_state_path())
     workspace_service.setup_runner.start(
@@ -614,7 +610,6 @@ def list_recent_workspaces(
             object_id=row.object_id,
             project_id=row.project_id,
             description=row.description,
-            initialization_strategy=row.initialization_strategy,
             source_branch=row.source_branch,
             is_deleted=row.is_deleted,
             created_at=row.created_at,

@@ -34,7 +34,6 @@ const mockWorkspace = (overrides: Partial<Workspace> & Pick<Workspace, "objectId
     projectId: "proj-1",
     organizationReference: "org-1",
     description: "",
-    initializationStrategy: "CLONE",
     isOpen: true,
     isDeleted: false,
     ...overrides,

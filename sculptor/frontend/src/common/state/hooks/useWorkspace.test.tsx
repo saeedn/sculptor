@@ -6,7 +6,6 @@ import type { ReactNode } from "react";
 import { describe, expect, it } from "vitest";
 
 import type { Workspace } from "../../../api";
-import { WorkspaceInitializationStrategy } from "../../../api";
 import {
   deletedWorkspaceIdsAtom,
   updateWorkspacesAtom,
@@ -22,7 +21,6 @@ const createMockWorkspace = (overrides: Partial<Workspace> = {}): Workspace => (
   projectId: "proj_test123",
   organizationReference: "org_test",
   description: "Test workspace",
-  initializationStrategy: WorkspaceInitializationStrategy.WORKTREE,
   sourceBranch: "main",
   sourceGitHash: null,
   isDeleted: false,
@@ -84,7 +82,6 @@ describe("useWorkspace", () => {
     });
 
     expect(result.current).toEqual(workspace);
-    expect(result.current?.initializationStrategy).toBe(WorkspaceInitializationStrategy.WORKTREE);
   });
 });
 

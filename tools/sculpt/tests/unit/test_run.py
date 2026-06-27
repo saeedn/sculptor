@@ -41,13 +41,11 @@ def _mock_initialize_project(
 def _workspace_response_dict(
     object_id: str = "ws_newrun123",
     project_id: str = "prj_test123",
-    strategy: str = "WORKTREE",
 ) -> dict[str, Any]:
     return {
         "objectId": object_id,
         "projectId": project_id,
         "description": "My task",
-        "initializationStrategy": strategy,
         "sourceBranch": "main",
         "targetBranch": None,
         "requestedBranchName": None,
@@ -119,7 +117,7 @@ def _task_response_dict(
 
 
 def _mock_preview_branch_name(base_url: str = "http://localhost:5050") -> None:
-    # The default strategy is WORKTREE, which resolves a branch name via this endpoint.
+    # Without --branch-name, the CLI resolves a branch name via this endpoint.
     respx.get(f"{base_url}/api/v1/workspaces/preview-branch-name").mock(
         return_value=Response(200, json={"branchName": "auto/generated"})
     )
@@ -168,15 +166,15 @@ class TestRun:
         assert data["prompt"] == "Fix the bug"
 
     @respx.mock
-    def test_run_with_worktree_strategy_and_branch_name(self, runner: CliRunner) -> None:
-        """sculpt run --strategy worktree --branch-name <name> forwards the name unchanged."""
+    def test_run_with_branch_name(self, runner: CliRunner) -> None:
+        """sculpt run --branch-name <name> forwards the name unchanged."""
         _mock_session()
         _mock_initialize_project()
         preview_route = respx.get(
             "http://localhost:5050/api/v1/workspaces/preview-branch-name"
         ).mock(return_value=Response(200, json={"branchName": "should-not-be-used"}))
         ws_route = respx.post("http://localhost:5050/api/v1/workspaces").mock(
-            return_value=Response(200, json=_workspace_response_dict(strategy="WORKTREE"))
+            return_value=Response(200, json=_workspace_response_dict())
         )
         respx.post("http://localhost:5050/api/v1/workspaces/ws_newrun123/agents").mock(
             return_value=Response(200, json=_task_response_dict())
@@ -190,8 +188,6 @@ class TestRun:
                 "Fix the bug",
                 "--repo",
                 "/tmp/test",
-                "--strategy",
-                "worktree",
                 "--branch",
                 "main",
                 "--branch-name",
@@ -204,22 +200,19 @@ class TestRun:
         assert not preview_route.called
         assert ws_route.called
         request_body = json.loads(ws_route.calls[0].request.content)
-        assert request_body["initializationStrategy"] == "WORKTREE"
         assert request_body["sourceBranch"] == "main"
         assert request_body["requestedBranchName"] == "dev/fix-bug"
-        data = json.loads(result.stdout)
-        assert data["strategy"] == "WORKTREE"
 
     @respx.mock
-    def test_run_with_worktree_strategy_autogenerates_branch_name(self, runner: CliRunner) -> None:
-        """sculpt run --strategy worktree without --branch-name auto-fills via preview-branch-name."""
+    def test_run_autogenerates_branch_name(self, runner: CliRunner) -> None:
+        """sculpt run without --branch-name auto-fills via preview-branch-name."""
         _mock_session()
         _mock_initialize_project()
         preview_route = respx.get(
             "http://localhost:5050/api/v1/workspaces/preview-branch-name"
         ).mock(return_value=Response(200, json={"branchName": "dev/auto-from-name"}))
         ws_route = respx.post("http://localhost:5050/api/v1/workspaces").mock(
-            return_value=Response(200, json=_workspace_response_dict(strategy="WORKTREE"))
+            return_value=Response(200, json=_workspace_response_dict())
         )
         respx.post("http://localhost:5050/api/v1/workspaces/ws_newrun123/agents").mock(
             return_value=Response(200, json=_task_response_dict())
@@ -233,8 +226,6 @@ class TestRun:
                 "Fix the bug",
                 "--repo",
                 "/tmp/test",
-                "--strategy",
-                "worktree",
                 "--branch",
                 "main",
                 "--name",
@@ -332,18 +323,6 @@ class TestRun:
         result = runner.invoke(app, ["run", "Fix the bug", "--repo", "/tmp/test"])
 
         assert result.exit_code == 1
-
-    @respx.mock
-    def test_run_invalid_strategy(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_initialize_project()
-
-        result = runner.invoke(
-            app, ["run", "Fix the bug", "--repo", "/tmp/test", "--strategy", "bogus"]
-        )
-
-        assert result.exit_code == 1
-        assert "Invalid strategy 'bogus'" in (result.stderr or result.output)
 
     def test_run_help_documents_sculpt_project_id(self, runner: CliRunner) -> None:
         """SCU-1309: `sculpt run --help` must surface SCULPT_PROJECT_ID so agents and

@@ -17,7 +17,6 @@ from sculptor.config.settings import SculptorSettings
 from sculptor.database.models import Project
 from sculptor.database.models import Workspace
 from sculptor.database.workspace_enums import DiffStatus
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
@@ -27,7 +26,7 @@ from sculptor.interfaces.agents.agent import EnvironmentTypes
 
 # These artifact types are general-purpose data structures that happen to live under
 # interfaces/agents/. They are used by agents, workspace service, and the web layer.
-from sculptor.interfaces.agents.artifacts import ArtifactType
+from sculptor.interfaces.agents.artifacts import DIFF_ARTIFACT_DIRNAME
 from sculptor.interfaces.agents.artifacts import DiffArtifact
 from sculptor.interfaces.environments.agent_execution_environment import AgentExecutionEnvironment
 from sculptor.interfaces.environments.base import Environment
@@ -339,7 +338,6 @@ class DefaultWorkspaceService(WorkspaceService):
     def create_workspace(
         self,
         project: Project,
-        initialization_strategy: WorkspaceInitializationStrategy,
         source_branch: str | None,
         requested_branch_name: str | None,
         description: str | None,
@@ -376,7 +374,6 @@ class DefaultWorkspaceService(WorkspaceService):
             project_id=project.object_id,
             organization_reference=project.organization_reference,
             description=description,
-            initialization_strategy=initialization_strategy,
             source_branch=source_branch,
             requested_branch_name=requested_branch_name,
             source_git_hash=source_git_hash,
@@ -448,7 +445,6 @@ class DefaultWorkspaceService(WorkspaceService):
         if workspace.environment_id is not None:
             environment_id = workspace.environment_id
             environment_manager = self.environment_manager
-            initialization_strategy = workspace.initialization_strategy
             requested_branch_name = workspace.requested_branch_name
             project = transaction.get_project(workspace.project_id)
             concurrency_group = self.concurrency_group
@@ -470,37 +466,34 @@ class DefaultWorkspaceService(WorkspaceService):
                 # Cancel any in-flight setup-command subprocess before the
                 # environment directory is removed.
                 setup_runner.cancel(str(workspace_id))
-                # For WORKTREE workspaces, run `git worktree remove` in the user's
-                # repo before rmtree so the gitfile entry is cleaned up and the
-                # tri-state branch deletion policy is applied.
-                if initialization_strategy == WorkspaceInitializationStrategy.WORKTREE:
-                    if project is not None and requested_branch_name is not None:
-                        user_config = get_user_config_instance()
-                        deletion_policy = (
-                            user_config.workspace_branch_deletion_policy
-                            if user_config is not None
-                            else "delete_if_safe"
+                # Run `git worktree remove` in the user's repo before rmtree so the
+                # gitfile entry is cleaned up and the tri-state branch deletion
+                # policy is applied.
+                if project is not None and requested_branch_name is not None:
+                    user_config = get_user_config_instance()
+                    deletion_policy = (
+                        user_config.workspace_branch_deletion_policy if user_config is not None else "delete_if_safe"
+                    )
+                    try:
+                        # The worktree checkout lives at `<environment_id>/code/`,
+                        # not at `<environment_id>` itself (which is the workspace dir
+                        # containing state/, artifacts/, and code/).
+                        remove_worktree(
+                            user_repo_path=project.get_local_user_path(),
+                            destination=Path(environment_id) / "code",
+                            branch_name=requested_branch_name,
+                            deletion_policy=deletion_policy,
+                            concurrency_group=concurrency_group,
                         )
-                        try:
-                            # The worktree checkout lives at `<environment_id>/code/`,
-                            # not at `<environment_id>` itself (which is the workspace dir
-                            # containing state/, artifacts/, and code/).
-                            remove_worktree(
-                                user_repo_path=project.get_local_user_path(),
-                                destination=Path(environment_id) / "code",
-                                branch_name=requested_branch_name,
-                                deletion_policy=deletion_policy,
-                                concurrency_group=concurrency_group,
-                            )
-                        except Exception as e:
-                            logger.info("Failed to remove worktree for workspace {}: {}", workspace_id, e)
-                    else:
-                        logger.info(
-                            "Skipping worktree removal for workspace {} (project={}, branch={})",
-                            workspace_id,
-                            project,
-                            requested_branch_name,
-                        )
+                    except Exception as e:
+                        logger.info("Failed to remove worktree for workspace {}: {}", workspace_id, e)
+                else:
+                    logger.info(
+                        "Skipping worktree removal for workspace {} (project={}, branch={})",
+                        workspace_id,
+                        project,
+                        requested_branch_name,
+                    )
                 environment_manager.delete_environment(environment_id)
                 logger.info("Deleted environment {} for workspace {}", environment_id, workspace_id)
 
@@ -576,7 +569,6 @@ class DefaultWorkspaceService(WorkspaceService):
                     project_path=project_path,
                     project_id=project.object_id,
                     concurrency_group=concurrency_group,
-                    initialization_strategy=workspace.initialization_strategy,
                     env_var_override=env_var_override,
                 )
                 logger.debug(
@@ -603,7 +595,6 @@ class DefaultWorkspaceService(WorkspaceService):
                         project_path=project_path,
                         project_id=project.object_id,
                         concurrency_group=concurrency_group,
-                        initialization_strategy=workspace.initialization_strategy,
                         source_branch=workspace.source_branch,
                         requested_branch_name=workspace.requested_branch_name,
                         env_var_override=env_var_override,
@@ -783,7 +774,6 @@ class DefaultWorkspaceService(WorkspaceService):
             project_path=project.get_local_user_path(),
             project_id=project.object_id,
             concurrency_group=self.concurrency_group,
-            initialization_strategy=workspace.initialization_strategy,
         )
         return environment.get_working_directory()
 
@@ -1014,7 +1004,7 @@ class DefaultWorkspaceService(WorkspaceService):
             artifact_dir = self._get_workspace_artifact_dir(workspace_id)
             artifact_dir.mkdir(parents=True, exist_ok=True)
 
-            artifact_path = artifact_dir / ArtifactType.DIFF
+            artifact_path = artifact_dir / DIFF_ARTIFACT_DIRNAME
             artifact_path.write_text(diff_artifact.model_dump_json(indent=2))
 
             metadata = {"generated_at": generated_at.isoformat()}
@@ -1101,7 +1091,7 @@ class DefaultWorkspaceService(WorkspaceService):
             )
 
         artifact_dir = self._get_workspace_artifact_dir(workspace_id)
-        artifact_path = artifact_dir / ArtifactType.DIFF
+        artifact_path = artifact_dir / DIFF_ARTIFACT_DIRNAME
 
         if not artifact_path.exists():
             # Artifact missing — generate on-demand (lazy diff from startup).

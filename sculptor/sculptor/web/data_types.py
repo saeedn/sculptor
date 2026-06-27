@@ -8,7 +8,6 @@ from typing import Literal
 from pydantic import Field
 
 from sculptor.config.settings import SculptorSettings
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.interfaces.agents.artifacts import DiffArtifact
 from sculptor.primitives.ids import ProjectID
@@ -108,7 +107,6 @@ class CreateWorkspaceRequestV2(RequestModel):
     """Create workspace request with project_id in body (not URL)."""
 
     project_id: str
-    initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None = None
     description: str | None = None
     # Final branch name after user edits; required for WORKTREE workspaces.
@@ -177,7 +175,6 @@ class WorkspaceResponse(SerializableModel):
     object_id: WorkspaceID
     project_id: ProjectID
     description: str
-    initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None
     target_branch: str | None
     requested_branch_name: str | None
@@ -225,7 +222,6 @@ class RecentWorkspaceResponse(SerializableModel):
     object_id: WorkspaceID
     project_id: ProjectID
     description: str
-    initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None
     is_deleted: bool
     created_at: datetime.datetime

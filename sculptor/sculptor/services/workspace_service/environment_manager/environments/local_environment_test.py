@@ -11,7 +11,6 @@ from uuid import uuid4
 
 import pytest
 
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches_test import expect_exact_logged_errors
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.primitives.ids import LocalEnvironmentID
@@ -36,7 +35,6 @@ def local_environment(test_root_concurrency_group: ConcurrencyGroup) -> Generato
             project_id=ProjectID(),
             concurrency_group=test_root_concurrency_group,
             repo_host_path=repo_dir,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch="main",
             requested_branch_name="ws/local-env",
         )
@@ -147,7 +145,6 @@ def test_run_setup_subprocess_cwd_is_working_directory(worktree_test_ctx: Worktr
         project_id=ProjectID(),
         concurrency_group=worktree_test_ctx.concurrency_group,
         repo_host_path=worktree_test_ctx.source_repo_path,
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
         source_branch="main",
         requested_branch_name="ws/setup-cwd",
         sculptor_folder=worktree_test_ctx.sculptor_folder,
@@ -340,7 +337,6 @@ def test_project_env_vars_available_in_process(worktree_test_ctx: WorktreeTestCo
         project_id=ProjectID(),
         concurrency_group=worktree_test_ctx.concurrency_group,
         repo_host_path=worktree_test_ctx.source_repo_path,
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
         source_branch="main",
         requested_branch_name="ws/env-vars",
         sculptor_folder=worktree_test_ctx.sculptor_folder,
@@ -391,7 +387,6 @@ def test_create_worktree_happy_path(tmp_path: Path, test_root_concurrency_group:
             project_id=ProjectID(),
             concurrency_group=test_root_concurrency_group,
             repo_host_path=user_repo_path,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch="main",
             requested_branch_name="feat/x",
         )
@@ -419,7 +414,6 @@ def test_create_worktree_missing_branch_name_raises(
                 project_id=ProjectID(),
                 concurrency_group=test_root_concurrency_group,
                 repo_host_path=user_repo_path,
-                initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
                 source_branch="main",
                 requested_branch_name=None,
             )
@@ -441,7 +435,6 @@ def test_create_worktree_missing_source_branch_raises(
                 project_id=ProjectID(),
                 concurrency_group=test_root_concurrency_group,
                 repo_host_path=user_repo_path,
-                initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
                 source_branch=None,
                 requested_branch_name="feat/x",
             )
@@ -463,7 +456,6 @@ def test_create_worktree_branch_exists_raises(tmp_path: Path, test_root_concurre
                     project_id=ProjectID(),
                     concurrency_group=test_root_concurrency_group,
                     repo_host_path=user_repo_path,
-                    initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
                     source_branch="main",
                     requested_branch_name="feat/x",
                 )

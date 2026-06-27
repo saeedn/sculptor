@@ -24,7 +24,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from sculptor.database.models import Project
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
@@ -97,7 +96,6 @@ def test_delete_terminal_kills_shell_and_unregisters(
     with user_session.open_transaction(test_services) as transaction:
         workspace = test_services.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="terminal-close-test",
@@ -154,7 +152,6 @@ def test_delete_terminal_404_when_terminal_not_started(
     with user_session.open_transaction(test_services) as transaction:
         workspace = test_services.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="terminal-close-404-test",

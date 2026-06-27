@@ -40,7 +40,6 @@ const BASE_WORKSPACE: Workspace = {
   projectId: PROJECT_ID,
   organizationReference: "org-1",
   description: "auth-rewrite",
-  initializationStrategy: "CLONE" as Workspace["initializationStrategy"],
 };
 
 const BRANCH_INFO: WorkspaceBranchInfo = {

@@ -30,7 +30,6 @@ from sculptor.database.models import Project
 from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.database.models import Workspace
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches_test import expect_at_least_logged_errors
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
@@ -254,7 +253,6 @@ class _FakeEnv:
             project_id=self.project_id,
             organization_reference=organization_reference,
             description="test workspace",
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
         )
         self.tasks_by_id: dict[TaskID, Task] = {}
         # Most-recent-first agent tasks the resolver sees through the coordinator's

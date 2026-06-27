@@ -4,7 +4,6 @@ import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Workspace } from "~/api";
-import { WorkspaceInitializationStrategy } from "~/api";
 import { workspaceAtomFamily } from "~/common/state/atoms/workspaces";
 
 import { useWorkspaceCodePath } from "./useWorkspaceCodePath";
@@ -20,7 +19,6 @@ const makeWorkspace = (overrides: Partial<Workspace> = {}): Workspace => ({
   projectId: "proj-1",
   organizationReference: "org-1",
   description: "test",
-  initializationStrategy: WorkspaceInitializationStrategy.WORKTREE,
   environmentId: ENVIRONMENT_ID,
   ...overrides,
 });
@@ -42,10 +40,7 @@ afterEach(() => {
 describe("useWorkspaceCodePath", () => {
   it("returns `${environmentId}/code` for WORKTREE workspaces", () => {
     const store = createStore();
-    store.set(
-      workspaceAtomFamily("ws-1"),
-      makeWorkspace({ initializationStrategy: WorkspaceInitializationStrategy.WORKTREE }),
-    );
+    store.set(workspaceAtomFamily("ws-1"), makeWorkspace());
 
     const { result } = renderWithStore(store, "ws-1");
 
@@ -57,7 +52,6 @@ describe("useWorkspaceCodePath", () => {
     store.set(
       workspaceAtomFamily("ws-1"),
       makeWorkspace({
-        initializationStrategy: WorkspaceInitializationStrategy.WORKTREE,
         environmentId: null,
       }),
     );

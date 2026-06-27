@@ -15,7 +15,6 @@ from pydantic import PrivateAttr
 from sculptor.config.settings import SculptorSettings
 from sculptor.database.models import Project
 from sculptor.database.workspace_enums import DiffStatus
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.git import get_repo_base_path
 from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
@@ -117,7 +116,6 @@ def _create_worktree_workspace_with_env(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=source_branch,
             requested_branch_name=requested_branch_name,
             description=description,
@@ -163,7 +161,6 @@ def test_create_workspace(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="Test workspace",
@@ -172,7 +169,6 @@ def test_create_workspace(
 
     assert workspace is not None
     assert workspace.project_id == test_project.object_id
-    assert workspace.initialization_strategy == WorkspaceInitializationStrategy.WORKTREE
     assert workspace.source_branch is None
     assert workspace.description == "Test workspace"
     assert workspace.environment_id is None  # Not yet created
@@ -187,7 +183,6 @@ def test_create_workspace_generates_description_without_prefix(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description=None,  # Should be auto-generated
@@ -207,7 +202,6 @@ def test_delete_workspace(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="To be deleted",
@@ -252,7 +246,6 @@ def test_workspace_lookup_via_transaction(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="Lookup test",
@@ -281,7 +274,6 @@ def test_workspace_list_via_transaction(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace1 = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name="ws/list-1",
             description="Workspace 1",
@@ -289,7 +281,6 @@ def test_workspace_list_via_transaction(
         )
         workspace2 = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch="main",
             requested_branch_name="ws/list-2",
             description="Workspace 2",
@@ -316,7 +307,6 @@ def test_create_workspace_captures_source_git_hash(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="Test workspace",
@@ -579,7 +569,6 @@ def test_delete_workspace_removes_environment_directory(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch="main",
             requested_branch_name=f"ws/env-deletion-{uuid4().hex[:8]}",
             description="Env deletion test",
@@ -658,7 +647,6 @@ def test_delete_workspace_offloads_environment_teardown_off_request_thread(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch="main",
             requested_branch_name=f"ws/teardown-offload-{uuid4().hex[:8]}",
             description="Teardown offload test",
@@ -747,7 +735,6 @@ def test_delete_worktree_workspace_stops_terminals_before_removing_worktree(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch="main",
             requested_branch_name=f"scu-1424-{uuid4().hex[:8]}",
             description="Worktree delete ordering",
@@ -848,7 +835,6 @@ def test_concurrent_setup_creates_single_environment(
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
             project=test_project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch="main",
             requested_branch_name=f"ws/concurrent-{uuid4().hex[:8]}",
             description="Concurrent test workspace",
@@ -955,7 +941,6 @@ def test_create_workspace_auto_resolves_target_branch_with_origin(
         test_service_collection.project_service.activate_project(project)
         workspace = test_service_collection.workspace_service.create_workspace(
             project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="Test workspace",
@@ -982,7 +967,6 @@ def test_create_workspace_uses_explicit_target_branch_over_auto_resolution(
         test_service_collection.project_service.activate_project(project)
         workspace = test_service_collection.workspace_service.create_workspace(
             project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="Test workspace",
@@ -1015,7 +999,6 @@ def test_create_workspace_target_branch_falls_back_to_local_main_without_remote(
         test_service_collection.project_service.activate_project(project)
         workspace = test_service_collection.workspace_service.create_workspace(
             project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=None,
             requested_branch_name=None,
             description="No remote workspace",

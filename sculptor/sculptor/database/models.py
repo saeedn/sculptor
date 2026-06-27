@@ -5,7 +5,6 @@ from typing import Any
 
 from sculptor.database.automanaged import DatabaseModel
 from sculptor.database.workspace_enums import DiffStatus
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.serialization import SerializedException
 from sculptor.interfaces.agents.agent import AgentConfigTypes
@@ -87,7 +86,6 @@ class Workspace(DatabaseModel):
     organization_reference: OrganizationReference
     # User-provided or auto-generated description of the workspace
     description: str
-    initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None = None
     target_branch: str | None = None
     environment_id: str | None = None

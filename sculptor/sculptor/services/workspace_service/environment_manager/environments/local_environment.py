@@ -14,7 +14,6 @@ from typing import Union
 from loguru import logger
 from pydantic import PrivateAttr
 
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import CompoundEvent
 from sculptor.foundation.event_utils import MutableEvent
@@ -73,7 +72,6 @@ class LocalEnvironment(Environment):
     # The repo host path - points directly to the user's repository.
     # This is always set when creating or resuming an environment.
     repo_host_path: Path | None = None
-    initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE
     _processes: list[RunningProcess] = PrivateAttr(default_factory=list)
     _is_closed: bool = PrivateAttr(default=False)
     _closing_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
@@ -130,7 +128,6 @@ class LocalEnvironment(Environment):
         project_id: ProjectID,
         concurrency_group: ConcurrencyGroup,
         repo_host_path: Path,
-        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE,
         source_branch: str | None = None,
         requested_branch_name: str | None = None,
         env_var_override: bool = False,
@@ -147,7 +144,6 @@ class LocalEnvironment(Environment):
             project_id: The project this environment belongs to.
             concurrency_group: Concurrency group for process management.
             repo_host_path: Path to the user's repository.
-            initialization_strategy: Strategy for workspace initialization.
             source_branch: Base ref off which to create the worktree branch.
             requested_branch_name: The new branch name created by `git worktree add -b`.
             sculptor_folder: Override for the sculptor folder path (uses get_workspaces_folder() if None).
@@ -157,7 +153,6 @@ class LocalEnvironment(Environment):
             project_id=project_id,
             concurrency_group=concurrency_group,
             repo_host_path=repo_host_path,
-            initialization_strategy=initialization_strategy,
         )
         # Create state and artifacts directories
         environment.to_host_path(environment.get_state_path()).mkdir(parents=True, exist_ok=True)

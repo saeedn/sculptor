@@ -2,7 +2,6 @@ from abc import ABC
 from abc import abstractmethod
 from pathlib import Path
 
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.interfaces.environments.base import Environment
 from sculptor.primitives.ids import ProjectID
@@ -28,7 +27,6 @@ class EnvironmentManager(ABC):
         project_path: Path,
         project_id: ProjectID,
         concurrency_group: ConcurrencyGroup,
-        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE,
         source_branch: str | None = None,
         requested_branch_name: str | None = None,
         env_var_override: bool = False,
@@ -40,7 +38,6 @@ class EnvironmentManager(ABC):
             project_path: Path to the project's repository.
             project_id: ID of the project.
             concurrency_group: Concurrency group for process management.
-            initialization_strategy: Strategy for workspace initialization.
             source_branch: Base ref off which to create the worktree branch.
             requested_branch_name: The new branch name created by `git worktree add -b`.
             env_var_override: Whether project env vars override os.environ on collision.
@@ -56,7 +53,6 @@ class EnvironmentManager(ABC):
         project_path: Path,
         project_id: ProjectID,
         concurrency_group: ConcurrencyGroup,
-        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE,
         env_var_override: bool = False,
         sculptor_folder: Path | None = None,
     ) -> Environment:
@@ -68,7 +64,6 @@ class EnvironmentManager(ABC):
             project_path: Path to the project's repository.
             project_id: ID of the project.
             concurrency_group: Concurrency group for process management.
-            initialization_strategy: Strategy for workspace initialization.
             env_var_override: Whether project env vars override os.environ on collision.
             sculptor_folder: Override for the sculptor folder path (uses get_workspaces_folder() if None).
 

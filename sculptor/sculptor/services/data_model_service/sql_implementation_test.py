@@ -40,7 +40,6 @@ from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.database.models import Workspace
 from sculptor.database.workspace_enums import DiffStatus
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches_test import expect_exact_logged_errors
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.pydantic_serialization import SerializableModel
@@ -758,7 +757,6 @@ def test_observer_notification_workspace_upsert(
         project_id=project.object_id,
         organization_reference=organization_reference,
         description="Test Workspace",
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
     )
 
     # Create a mock queue to act as an observer
@@ -792,7 +790,6 @@ def test_observer_notification_workspace_update(
         project_id=project.object_id,
         organization_reference=organization_reference,
         description="Test Workspace",
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
     )
 
     # First, create the workspace
@@ -832,7 +829,6 @@ def test_observe_user_changes_includes_workspaces_in_initial_state(
         project_id=project.object_id,
         organization_reference=organization_reference,
         description="Test Workspace",
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
     )
     with service.open_transaction(RequestID()) as transaction:
         transaction.upsert_workspace(workspace)
@@ -868,7 +864,6 @@ def test_workspaces_filtered_by_organization(
         project_id=project.object_id,
         organization_reference=organization_reference,
         description="Workspace in org",
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
     )
 
     # Create a workspace in a different organization
@@ -883,7 +878,6 @@ def test_workspaces_filtered_by_organization(
         project_id=other_project.object_id,
         organization_reference=other_org,
         description="Workspace in other org",
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
     )
 
     with service.open_transaction(RequestID()) as transaction:
@@ -944,7 +938,6 @@ def _seed_workspace(
         project_id=project_id,
         organization_reference=organization_reference,
         description="seed",
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
     )
     with service.open_transaction(RequestID()) as transaction:
         transaction.upsert_workspace(workspace)
@@ -1155,7 +1148,6 @@ def _seed_workspace_with_open_state(
         project_id=project_id,
         organization_reference=organization_reference,
         description="seed",
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
         is_open=is_open,
     )
     with service.open_transaction(RequestID()) as transaction:
@@ -1636,7 +1628,6 @@ def _seed_workspace(
         project_id=project_id,
         organization_reference=organization_reference,
         description="seed",
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
     )
     with service.open_transaction(RequestID()) as transaction:
         transaction.upsert_workspace(workspace)

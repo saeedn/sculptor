@@ -122,7 +122,6 @@ def _mock_workspaces(*object_ids: str) -> None:
             "objectId": oid,
             "projectId": "prj_test123",
             "description": "Test",
-            "initializationStrategy": "WORKTREE",
             "sourceBranch": "main",
             "isDeleted": False,
             "createdAt": "2024-01-15T10:30:00Z",

@@ -13,9 +13,7 @@ from sculpt.client.models.terminal_input_request import TerminalInputRequest
 from sculpt.client.types import UNSET
 from sculpt.commands._follow_helpers import follow_and_stream_messages
 from sculpt.commands._harness_helpers import resolve_harness_selection
-from sculpt.commands._workspace_helpers import STRATEGY_MAPPING
 from sculpt.commands._workspace_helpers import resolve_requested_branch_name
-from sculpt.commands._workspace_helpers import resolve_strategy
 from sculpt.commands.data_types import RunOutput
 from sculpt.formatting import cli_error
 from sculpt.formatting import handle_connection_error
@@ -32,11 +30,6 @@ def run_cmd(
             + " SCULPT_PROJECT_ID env var (set in every Sculptor workspace shell),"
             + " or matched against the current working directory."
         ),
-    ),
-    strategy: str = typer.Option(
-        "worktree",
-        "--strategy",
-        help=f"Initialization strategy ({', '.join(STRATEGY_MAPPING)})",
     ),
     branch: str | None = typer.Option(None, "--branch", help="Source branch"),
     branch_name: str | None = typer.Option(
@@ -73,12 +66,9 @@ def run_cmd(
 
     project_id = resolve_project(repo, client)
 
-    strategy_enum = resolve_strategy(strategy, json_output=json_output)
-
     resolved_branch_name = resolve_requested_branch_name(
         client=client,
         project_id=project_id,
-        strategy=strategy_enum,
         branch_name=branch_name,
         workspace_name=name,
         json_output=json_output,
@@ -87,7 +77,6 @@ def run_cmd(
     # Create workspace
     ws_request = CreateWorkspaceRequestV2(
         project_id=project_id,
-        initialization_strategy=strategy_enum,
         source_branch=branch,
         description=name,
         requested_branch_name=resolved_branch_name,
@@ -147,7 +136,6 @@ def run_cmd(
         output = RunOutput(
             workspace_id=workspace_id,
             agent_id=agent_result.id,
-            strategy=ws_result.initialization_strategy.value,
             prompt=prompt,
         )
         typer.echo(output.model_dump_json(indent=2))

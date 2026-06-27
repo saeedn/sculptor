@@ -17,7 +17,6 @@ from sculptor.database.models import TaskID
 from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
 from sculptor.database.workspace_enums import DiffStatus
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.foundation.pydantic_serialization import MutableModel
 from sculptor.interfaces.agents.tasks import TaskState
@@ -40,7 +39,6 @@ class WorkspaceListingRow(FrozenModel):
     object_id: WorkspaceID
     project_id: ProjectID
     description: str
-    initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None
     is_deleted: bool
     is_open: bool
@@ -87,7 +85,6 @@ WORKSPACE_CREATION_ONLY_FIELDS: frozenset[str] = frozenset(
     {
         "project_id",
         "organization_reference",
-        "initialization_strategy",
         "source_branch",
         "source_git_hash",
         "requested_branch_name",

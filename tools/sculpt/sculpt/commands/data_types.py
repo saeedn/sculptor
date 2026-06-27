@@ -15,7 +15,6 @@ class WorkspaceCreateOutput(BaseModel):
     id: str = Field(description="Unique workspace ID")
     repo_id: str = Field(description="Associated repo/project ID")
     description: str | None = Field(description="User-provided description")
-    strategy: str = Field(description="Workspace initialization strategy (clone, in-place, or worktree)")
     source_branch: str | None = Field(description="Source branch name")
 
 
@@ -26,7 +25,6 @@ class WorkspaceListItem(BaseModel):
     repo_id: str = Field(description="Associated repo/project ID")
     repo_path: str = Field(description="Local filesystem path of the repo")
     description: str | None = Field(description="User-provided description")
-    strategy: str = Field(description="Workspace initialization strategy")
     source_branch: str | None = Field(description="Source branch name")
     agent_count: int = Field(description="Number of agents in the workspace")
     is_open: bool = Field(description="Whether the workspace is open")
@@ -40,7 +38,6 @@ class WorkspaceListProjectItem(BaseModel):
     id: str = Field(description="Unique workspace ID")
     repo_id: str = Field(description="Associated repo/project ID")
     description: str | None = Field(description="User-provided description")
-    strategy: str = Field(description="Workspace initialization strategy")
     source_branch: str | None = Field(description="Source branch the workspace was cut from")
     target_branch: str | None = Field(
         description="Diff/merge target branch (the parent branch for a stacked workspace)"
@@ -56,7 +53,6 @@ class WorkspaceShowOutput(BaseModel):
     repo_id: str = Field(description="Associated repo/project ID")
     repo_path: str = Field(description="Local filesystem path of the repo")
     description: str | None = Field(description="User-provided description")
-    strategy: str = Field(description="Workspace initialization strategy")
     source_branch: str | None = Field(description="Source branch name")
     agent_count: int = Field(description="Number of agents in the workspace")
     is_open: bool = Field(description="Whether the workspace is open")
@@ -159,7 +155,6 @@ class RunOutput(BaseModel):
 
     workspace_id: str = Field(description="Created workspace ID")
     agent_id: str = Field(description="Created agent ID")
-    strategy: str = Field(description="Workspace initialization strategy")
     prompt: str = Field(description="The task prompt")
 
 

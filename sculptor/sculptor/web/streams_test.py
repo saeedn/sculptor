@@ -8,7 +8,6 @@ from sculptor.database.models import NotificationID
 from sculptor.database.models import Project
 from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
-from sculptor.database.models import WorkspaceInitializationStrategy
 from sculptor.primitives.ids import OrganizationReference
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import UserReference
@@ -73,7 +72,6 @@ def _make_terminal_workspace(*, setup_run_id: str | None, setup_log_path: str | 
         project_id=ProjectID(),
         organization_reference=OrganizationReference("org-1"),
         description="ws",
-        initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
         environment_id="env-1",
         setup_status="succeeded",
         setup_run_id=setup_run_id,

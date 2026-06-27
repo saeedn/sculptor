@@ -59,7 +59,6 @@ def test_schema_models_produce_valid_json_roundtrip() -> None:
         id="ws_abc123",
         repo_id="prj_def456",
         description="test",
-        strategy="clone",
         source_branch="main",
     )
     roundtripped = WorkspaceCreateOutput.model_validate_json(output.model_dump_json())

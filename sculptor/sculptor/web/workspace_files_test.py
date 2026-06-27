@@ -14,7 +14,6 @@ from uuid import uuid4
 from fastapi.testclient import TestClient
 
 from sculptor.database.models import Project
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
 from sculptor.primitives.ids import RequestID
@@ -60,7 +59,6 @@ def _create_worktree_workspace_with_env(
     with user_session.open_transaction(services) as transaction:
         workspace = services.workspace_service.create_workspace(
             project=project,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch=source_branch,
             requested_branch_name=requested_branch_name,
             description="file browser test workspace",

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from enum import StrEnum
-
 from pydantic import Field
 
 from sculptor.foundation.pydantic_serialization import SerializableModel
+
+# Directory name under an agent's artifact dir holding the unified diff artifact.
+DIFF_ARTIFACT_DIRNAME = "DIFF"
 
 
 class DiffArtifact(SerializableModel):
@@ -23,9 +24,3 @@ class DiffArtifact(SerializableModel):
         default_factory=dict,
         description="Per-file diff generation errors. Maps relative file path to error message.",
     )
-
-
-class ArtifactType(StrEnum):
-    """Types of artifacts that agents can produce."""
-
-    DIFF = "DIFF"  # Unified diff artifact with all three diff types

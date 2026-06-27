@@ -1424,14 +1424,12 @@ _REGISTERED_AGENT_TYPE_PREFIX = "registered:"
 _BUNDLED_CLAUDE_REGISTRATION_ID = "claude-code"
 
 
-def _default_new_agent_type(*, has_prompt: bool) -> tuple[AgentTypeName, str | None]:
+def _default_new_agent_type() -> tuple[AgentTypeName, str | None]:
     """The harness a create with no usable choice falls back to.
 
-    With the rich chat backends removed there is only one default for both the
-    prompt-ful and prompt-less paths: the bundled ``claude-code`` registered
-    terminal agent when it is installed, and a plain terminal otherwise (so
-    creation never throws on a missing registration). ``has_prompt`` is retained
-    for call-site symmetry but no longer changes the result.
+    The bundled ``claude-code`` registered terminal agent when it is installed,
+    and a plain terminal otherwise (so creation never throws on a missing
+    registration).
     """
     if get_registration(_BUNDLED_CLAUDE_REGISTRATION_ID) is not None:
         return AgentTypeName.REGISTERED, _BUNDLED_CLAUDE_REGISTRATION_ID
@@ -1458,37 +1456,35 @@ def _decode_stored_agent_type(value: str) -> tuple[AgentTypeName, str | None] | 
     return (agent_type, None) if agent_type != AgentTypeName.REGISTERED else None
 
 
-def _resolve_most_recently_used_agent_type(*, has_prompt: bool) -> tuple[AgentTypeName, str | None]:
+def _resolve_most_recently_used_agent_type() -> tuple[AgentTypeName, str | None]:
     """Resolve the harness a create with no explicit ``agent_type`` should use.
 
     Mirrors the app's "+" button default: decode ``UserConfig.last_used_agent_type``
     and apply the same fallbacks so the app and the sculpt CLI agree — a stored
     registered agent may have been unregistered. Defaults to the bundled
     ``claude-code`` registered terminal agent (or a plain terminal if it is
-    absent) when unset. ``has_prompt`` is retained for call-site symmetry.
+    absent) when unset.
     """
     config = get_user_config_instance()
     stored = config.last_used_agent_type
     decoded = _decode_stored_agent_type(stored) if stored else None
     if decoded is None:
-        return _default_new_agent_type(has_prompt=has_prompt)
+        return _default_new_agent_type()
     agent_type, registration_id = decoded
     if agent_type == AgentTypeName.REGISTERED and (
         registration_id is None or get_registration(registration_id) is None
     ):
-        return _default_new_agent_type(has_prompt=has_prompt)
+        return _default_new_agent_type()
     return agent_type, registration_id
 
 
 def _resolve_requested_agent_type(
     agent_type: AgentTypeName | None,
     registration_id: str | None,
-    *,
-    has_prompt: bool,
 ) -> tuple[AgentTypeName, str | None]:
     """Resolve a create request's harness, falling back to the MRU when omitted."""
     if agent_type is None:
-        return _resolve_most_recently_used_agent_type(has_prompt=has_prompt)
+        return _resolve_most_recently_used_agent_type()
     return agent_type, registration_id
 
 
@@ -1644,7 +1640,7 @@ def create_workspace_agent(
         # (the same default the app's "+" button uses); an explicit one is used
         # as-is and recorded as the new MRU once validated.
         resolved_agent_type, resolved_registration_id = _resolve_requested_agent_type(
-            agent_request.agent_type, agent_request.registration_id, has_prompt=False
+            agent_request.agent_type, agent_request.registration_id
         )
         agent_config = _agent_config_for_request(resolved_agent_type, resolved_registration_id)
         if agent_request.agent_type is not None:

@@ -135,15 +135,3 @@ class OrganizationReference(ExternalID):
 def get_deterministic_typeid_suffix(seed: str) -> str:
     raw_digest = hashlib.md5(seed.encode()).hexdigest()
     return "0" + raw_digest[: TYPEID_SUFFIX_LEN - 1].lower()
-
-
-def _create_hash_from_string_seed(key: str) -> str:
-    return hashlib.md5(key.encode()).hexdigest()
-
-
-def create_user_id(email: str) -> str:
-    return _create_hash_from_string_seed(email)
-
-
-def create_organization_id(email: str) -> str:
-    return _create_hash_from_string_seed(f"organization:{email}")

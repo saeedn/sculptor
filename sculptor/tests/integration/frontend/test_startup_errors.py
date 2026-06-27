@@ -16,7 +16,6 @@ import pytest
 import sqlalchemy
 from playwright.sync_api import expect
 
-import sculptor.primitives.ids
 from sculptor.config.user_config import UserConfig
 from sculptor.database.core import create_new_engine
 from sculptor.database.core import initialize_db
@@ -34,8 +33,8 @@ def _make_test_user_config() -> UserConfig:
     test_email = "test@imbue.com"
     return UserConfig(
         user_email=test_email,
-        user_id=sculptor.primitives.ids.create_user_id(test_email),
-        organization_id=sculptor.primitives.ids.create_organization_id(test_email),
+        user_id=hashlib.md5(test_email.encode()).hexdigest(),
+        organization_id=hashlib.md5(f"organization:{test_email}".encode()).hexdigest(),
         instance_id=hashlib.md5(os.urandom(64)).hexdigest(),
     )
 

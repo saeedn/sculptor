@@ -5,7 +5,6 @@ from threading import Lock
 
 from pydantic import PrivateAttr
 
-from sculptor.foundation.errors import ExpectedError
 from sculptor.foundation.pydantic_serialization import MutableModel
 
 # Interval between checks while polling an event that has no native wait primitive.
@@ -95,10 +94,6 @@ class CompoundEvent:
                 return True
             time.sleep(_POLL_INTERVAL_SECONDS)
         return False
-
-
-class CancelledByEventError(ExpectedError):
-    """A generic cancellation error to signal event-triggered cancellations."""
 
 
 MutableEvent = Event | ShutdownEvent

@@ -72,10 +72,6 @@ class UserSession(BaseModel):
         with logger.contextualize(**self.logger_kwargs):
             yield
 
-    @property
-    def is_anonymous(self) -> bool:
-        return self.user_reference == ANONYMOUS_USER_REFERENCE
-
 
 def authenticate_anonymous(services: CompleteServiceCollection, request_id: RequestID) -> UserSession:
     """

@@ -18,7 +18,6 @@ from sculptor.foundation.concurrency_group import ConcurrencyExceptionGroup
 from sculptor.foundation.concurrency_group import ConcurrentShutdownError
 from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.errors import ExpectedError
-from sculptor.foundation.event_utils import CancelledByEventError
 from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.serialization import SerializedException
 from sculptor.interfaces.agents.agent import AgentCrashedRunnerMessage
@@ -81,9 +80,6 @@ def on_exception(
 
     # this "exception" is expected in the sense that it was the user telling the task to stop
     # so it doesn't count as success
-    if isinstance(e, CancelledByEventError) and (shutdown_event.is_set() or GLOBAL_SHUTDOWN_EVENT.is_set()):
-        # Looks like the user cancelled the task even before the agent started.
-        raise UserPausedTaskError() from e
     if isinstance(e, UserPausedTaskError):
         raise UserPausedTaskError() from e
 

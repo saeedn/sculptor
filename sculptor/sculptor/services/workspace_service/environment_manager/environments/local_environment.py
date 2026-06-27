@@ -245,7 +245,6 @@ class LocalEnvironment(BaseModel):
         timeout: float | None = None,
         is_checked_by_group: bool = False,
         on_output: Callable[[str, bool], None] | None = None,
-        open_stdin: bool = False,
         isolate_process_group: bool = False,
     ) -> RunningProcess:
         """
@@ -273,7 +272,6 @@ class LocalEnvironment(BaseModel):
                 timeout=timeout,
                 is_checked=is_checked_by_group,
                 on_output=on_output,
-                open_stdin=open_stdin,
                 isolate_process_group=isolate_process_group,
             )
         )
@@ -334,7 +332,6 @@ class LocalEnvironment(BaseModel):
         timeout: float | None = None,
         is_checked: bool = False,
         on_output: Callable[[str, bool], None] | None = None,
-        open_stdin: bool = False,
         isolate_process_group: bool = False,
     ) -> RunningProcess:
         if run_with_sudo_privileges or run_as_root:
@@ -363,7 +360,6 @@ class LocalEnvironment(BaseModel):
             is_checked=is_checked,
             timeout=timeout,
             shutdown_event=shutdown_event,
-            open_stdin=open_stdin,
             isolate_process_group=isolate_process_group,
         )
         self._processes.append(process)

@@ -12,7 +12,6 @@ from pathlib import Path
 from playwright.sync_api import Page
 from playwright.sync_api import expect
 
-import sculptor.primitives.ids
 from sculptor.config.user_config import UserConfig
 from sculptor.services.user_config.user_config import save_config
 from sculptor.testing.dependency_stubs import DependencyState
@@ -29,8 +28,8 @@ def _make_test_config() -> UserConfig:
     test_email = "test@imbue.com"
     return UserConfig(
         user_email=test_email,
-        user_id=sculptor.primitives.ids.create_user_id(test_email),
-        organization_id=sculptor.primitives.ids.create_organization_id(test_email),
+        user_id=hashlib.md5(test_email.encode()).hexdigest(),
+        organization_id=hashlib.md5(f"organization:{test_email}".encode()).hexdigest(),
         instance_id=hashlib.md5(os.urandom(64)).hexdigest(),
     )
 

@@ -25,7 +25,6 @@ from sculptor.foundation.time_utils import get_current_time
 # interfaces/agents/. They are used by agents, workspace service, and the web layer.
 from sculptor.interfaces.agents.artifacts import DIFF_ARTIFACT_DIRNAME
 from sculptor.interfaces.agents.artifacts import DiffArtifact
-from sculptor.interfaces.environments.errors import EnvironmentConfigurationChangedError
 from sculptor.interfaces.environments.errors import EnvironmentNotFoundError
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
@@ -567,7 +566,7 @@ class DefaultWorkspaceService(WorkspaceService):
                 logger.debug(
                     "Resumed existing environment {} for workspace {}", environment_id_to_resume, workspace_id
                 )
-            except (EnvironmentNotFoundError, EnvironmentConfigurationChangedError) as e:
+            except EnvironmentNotFoundError as e:
                 logger.debug("Unable to resume environment: {}", e)
 
                 with timeout_monitor(

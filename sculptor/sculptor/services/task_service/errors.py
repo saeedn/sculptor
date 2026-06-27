@@ -18,12 +18,10 @@ class TaskError(ExpectedError):
         self.is_user_notified = is_user_notified
 
 
-class UserStoppedTaskError(TaskError):
-    def __init__(self) -> None:
-        super().__init__(transaction_callback=None, is_user_notified=True)
-
-
-class UserPausedTaskError(UserStoppedTaskError):
+class UserPausedTaskError(TaskError):
     """
     Raised when the user pauses the task.
     """
+
+    def __init__(self) -> None:
+        super().__init__(transaction_callback=None, is_user_notified=True)

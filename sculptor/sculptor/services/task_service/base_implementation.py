@@ -45,7 +45,6 @@ from sculptor.services.task_service.data_types import ServiceCollectionForTask
 from sculptor.services.task_service.errors import TaskError
 from sculptor.services.task_service.errors import TaskNotFound
 from sculptor.services.task_service.errors import UserPausedTaskError
-from sculptor.services.task_service.errors import UserStoppedTaskError
 from sculptor.services.workspace_service.api import WorkspaceService
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.state.messages import AgentMessageSource
@@ -367,9 +366,6 @@ class BaseTaskService(TaskService, ABC):
                             outcome = TaskState.DELETED
                         else:
                             outcome = TaskState.QUEUED
-
-                except UserStoppedTaskError:
-                    outcome = TaskState.CANCELLED
 
                 except Exception as e:
                     outcome = TaskState.FAILED

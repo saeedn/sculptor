@@ -1,7 +1,6 @@
 """Shared helpers for --follow streaming across commands."""
 
 import json
-from typing import Any
 from typing import assert_never
 
 import httpx
@@ -10,7 +9,6 @@ import typer
 from sculpt.client import Client
 from sculpt.commands.data_types import AgentStatusOutput
 from sculpt.formatting import cli_error
-from sculpt.message_formatting import format_message
 from sculpt.session import SessionTokenError
 from sculpt.session import get_session_token
 from sculpt.ws_client import AgentSnapshot
@@ -52,13 +50,7 @@ def on_status_json(snapshot: AgentSnapshot) -> None:
         id=snapshot.task_id,
         status=snapshot.status,
         updated_at=snapshot.updated_at,
-        current_activity=snapshot.current_activity,
-        last_activity=snapshot.last_activity,
-        waiting_detail=snapshot.waiting_detail,
         error_detail=snapshot.error_detail,
-        task_completed=snapshot.task_completed,
-        task_total=snapshot.task_total,
-        current_task_subject=snapshot.current_task_subject,
     )
     typer.echo(json.dumps({"type": "status", "data": output.model_dump()}, default=str))
 
@@ -78,78 +70,20 @@ def on_reconnect_separator() -> None:
     typer.echo("--- Reconnected ---")
 
 
-def on_messages_json(msgs: list[dict[str, Any]]) -> None:
-    """Emit message NDJSON envelopes."""
-    for msg in msgs:
-        typer.echo(json.dumps({"type": "message", "data": msg}, default=str))
-
-
-def on_messages_text(msgs: list[dict[str, Any]]) -> None:
-    """Format and print messages."""
-    for msg in msgs:
-        typer.echo(format_message(msg))
-        typer.echo()
-
-
-def on_messages_text_with_limit(
-    msgs: list[dict[str, Any]], effective_limit: int | None, is_first_batch: list[bool]
-) -> None:
-    """Format and print messages, applying limit to the first batch only."""
-    batch = msgs
-    if is_first_batch[0] and effective_limit is not None:
-        batch = msgs[-effective_limit:]
-    is_first_batch[0] = False
-    for msg in batch:
-        typer.echo(format_message(msg))
-        typer.echo()
-
-
-def on_messages_json_with_limit(
-    msgs: list[dict[str, Any]], effective_limit: int | None, is_first_batch: list[bool]
-) -> None:
-    """Emit message NDJSON envelopes, applying limit to the first batch only."""
-    batch = msgs
-    if is_first_batch[0] and effective_limit is not None:
-        batch = msgs[-effective_limit:]
-    is_first_batch[0] = False
-    for msg in batch:
-        typer.echo(json.dumps({"type": "message", "data": msg}, default=str))
-
-
 def noop_status(_snapshot: AgentSnapshot) -> None:
     """Ignore status snapshots (used when status output is not wanted)."""
     pass
 
 
-def noop_messages(_msgs: list[dict[str, Any]]) -> None:
-    """Ignore message batches (used when message output is not wanted)."""
-    pass
-
-
-def on_partial_json(partial: dict[str, Any] | None) -> None:
-    """Emit a partial-message NDJSON envelope.
-
-    Fires while a streaming chat message is in flight (with the message-so-far
-    payload) and once with `null` data to mark stream end. Use this to render
-    streaming text to a `--follow --json` consumer that today only sees
-    completed messages.
-    """
-    typer.echo(json.dumps({"type": "partial", "data": partial}, default=str))
-
-
 def follow_and_stream_messages(base_url: str, agent_id: str, *, json_output: bool) -> None:
-    """Follow an agent and stream its messages. Used by run and send commands."""
+    """Follow an agent until it reaches a terminal/waiting state. Used by run and send commands."""
     session_token = get_session_token_safe(base_url, json_output)
     if json_output:
         status_cb = on_status_json
-        messages_cb = on_messages_json
         reconnect_cb = on_reconnect_json
     else:
         status_cb = noop_status
-        messages_cb = on_messages_text
         reconnect_cb = on_reconnect_separator
 
-    exit_reason = follow_agent(
-        base_url, session_token, agent_id, status_cb, messages_cb, reconnect_cb
-    )
+    exit_reason = follow_agent(base_url, session_token, agent_id, status_cb, reconnect_cb)
     handle_exit_reason(exit_reason, json_output)

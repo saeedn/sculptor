@@ -31,12 +31,6 @@ class AgentSnapshot(pydantic.BaseModel):
     task_id: str
     status: str
     task_status: str
-    current_activity: str | None
-    last_activity: str | None
-    task_completed: int
-    task_total: int
-    current_task_subject: str | None
-    waiting_detail: str | None
     error_detail: str | None
     updated_at: str
     title: str | None
@@ -45,8 +39,6 @@ class AgentSnapshot(pydantic.BaseModel):
     workspace_id: str
     created_at: str
     is_deleted: bool
-    artifact_names: list[str]
-    messages: list[dict[str, Any]]
 
 
 def _build_ws_url(base_url: str, session_token: str, scope: str | None = None) -> str:
@@ -106,20 +98,12 @@ def _is_waiting_state(snapshot: AgentSnapshot) -> bool:
     return snapshot.status == "WAITING"
 
 
-def _snapshot_from_view(
-    task_id: str, view: dict[str, Any], messages: list[dict[str, Any]] | None = None
-) -> AgentSnapshot:
+def _snapshot_from_view(task_id: str, view: dict[str, Any]) -> AgentSnapshot:
     """Build an AgentSnapshot from a single task view dict."""
     return AgentSnapshot(
         task_id=view.get("id", task_id),
         status=view.get("status", "UNKNOWN"),
         task_status=view.get("taskStatus", "UNKNOWN"),
-        current_activity=view.get("currentActivity"),
-        last_activity=view.get("lastActivity"),
-        task_completed=view.get("taskCompleted", 0),
-        task_total=view.get("taskTotal", 0),
-        current_task_subject=view.get("currentTaskSubject"),
-        waiting_detail=view.get("waitingDetail"),
         error_detail=view.get("errorDetail"),
         updated_at=view.get("updatedAt", ""),
         title=view.get("title"),
@@ -128,21 +112,14 @@ def _snapshot_from_view(
         workspace_id=view.get("workspaceId", ""),
         created_at=view.get("createdAt", ""),
         is_deleted=view.get("isDeleted", False),
-        artifact_names=view.get("artifactNames", []),
-        messages=messages or [],
     )
 
 
 def _extract_snapshot(task_id: str, dump: dict[str, Any]) -> AgentSnapshot:
     """Extract an AgentSnapshot from the WebSocket state dump."""
     task_views = dump.get("taskViewsByTaskId", {})
-    task_updates = dump.get("taskUpdateByTaskId", {})
-
     view = task_views[task_id]
-    update = task_updates.get(task_id, {})
-    messages = update.get("chatMessages", [])
-
-    return _snapshot_from_view(task_id, view, messages)
+    return _snapshot_from_view(task_id, view)
 
 
 async def _receive_initial_dump(ws: Any, timeout: float = 30.0) -> dict[str, Any]:
@@ -215,33 +192,16 @@ def _status_signature(snapshot: AgentSnapshot) -> tuple[Any, ...]:
     return (
         snapshot.status,
         snapshot.task_status,
-        snapshot.current_activity,
-        snapshot.last_activity,
-        snapshot.task_completed,
-        snapshot.task_total,
-        snapshot.current_task_subject,
-        snapshot.waiting_detail,
         snapshot.error_detail,
         snapshot.is_deleted,
     )
 
 
-def _partial_signature(partial: dict[str, Any] | None) -> tuple[Any, ...]:
-    """Identity fingerprint of an in-flight (streaming) chat message."""
-    if partial is None:
-        return ()
-    return (partial.get("id"), json.dumps(partial.get("content", []), sort_keys=True, default=str))
-
-
 async def _follow_loop(
     ws: Any,
     task_id: str,
-    seen_message_ids: set[str],
     on_status: Callable[[AgentSnapshot], None],
-    on_messages: Callable[[list[dict[str, Any]]], None],
-    on_partial: Callable[[dict[str, Any] | None], None],
     last_status_sig: list[tuple[Any, ...]],
-    last_partial_sig: list[tuple[Any, ...]],
 ) -> ExitReason:
     """Process incremental WebSocket updates until a terminal/waiting state."""
     while True:
@@ -249,8 +209,6 @@ async def _follow_loop(
         dump = json.loads(raw)
         if dump is None:
             continue
-
-        exit_reason: ExitReason | None = None
 
         task_views = dump.get("taskViewsByTaskId", {})
         if task_id in task_views:
@@ -260,52 +218,22 @@ async def _follow_loop(
                 last_status_sig[0] = sig
                 on_status(snapshot)
             if _is_terminal_state(snapshot):
-                exit_reason = ExitReason.TERMINAL_STATE
-            elif _is_waiting_state(snapshot):
-                exit_reason = ExitReason.WAITING
-
-        task_updates = dump.get("taskUpdateByTaskId", {})
-        if task_id in task_updates:
-            update = task_updates[task_id]
-            all_messages = update.get("chatMessages", [])
-            new_messages = [m for m in all_messages if m.get("id") and m["id"] not in seen_message_ids]
-            for m in new_messages:
-                msg_id = m.get("id")
-                if msg_id:
-                    seen_message_ids.add(msg_id)
-            if new_messages:
-                on_messages(new_messages)
-
-            partial = update.get("inProgressChatMessage")
-            partial_sig = _partial_signature(partial)
-            if partial_sig != last_partial_sig[0]:
-                last_partial_sig[0] = partial_sig
-                on_partial(partial)
-                # The completed message will arrive as a chatMessages entry on a
-                # subsequent frame; emit it via on_messages then so consumers
-                # that don't process partials (text mode, anything that ignores
-                # the new on_partial channel) still get the full assistant turn.
-
-        if exit_reason is not None:
-            return exit_reason
+                return ExitReason.TERMINAL_STATE
+            if _is_waiting_state(snapshot):
+                return ExitReason.WAITING
 
 
 async def _follow_agent_async(
     ws_url: str,
     agent_id: str,
     on_status: Callable[[AgentSnapshot], None],
-    on_messages: Callable[[list[dict[str, Any]]], None],
     on_reconnect: Callable[[], None] | None,
-    on_partial: Callable[[dict[str, Any] | None], None] | None = None,
     max_retries: int = 5,
 ) -> ExitReason:
     """Follow an agent via the scoped WebSocket with reconnection support."""
     retry_count = 0
-    seen_message_ids: set[str] = set()
     task_id = agent_id
     last_status_sig: list[tuple[Any, ...]] = [()]
-    last_partial_sig: list[tuple[Any, ...]] = [()]
-    on_partial_cb: Callable[[dict[str, Any] | None], None] = on_partial or (lambda _p: None)
 
     while True:
         try:
@@ -325,14 +253,6 @@ async def _follow_agent_async(
                 last_status_sig[0] = _status_signature(snapshot)
                 on_status(snapshot)
 
-                new_messages = [m for m in snapshot.messages if m.get("id") and m["id"] not in seen_message_ids]
-                for m in new_messages:
-                    msg_id = m.get("id")
-                    if msg_id:
-                        seen_message_ids.add(msg_id)
-                if new_messages:
-                    on_messages(new_messages)
-
                 retry_count = 0
 
                 if _is_terminal_state(snapshot):
@@ -340,17 +260,7 @@ async def _follow_agent_async(
                 if _is_waiting_state(snapshot):
                     return ExitReason.WAITING
 
-                result = await _follow_loop(
-                    ws,
-                    task_id,
-                    seen_message_ids,
-                    on_status,
-                    on_messages,
-                    on_partial_cb,
-                    last_status_sig,
-                    last_partial_sig,
-                )
-                return result
+                return await _follow_loop(ws, task_id, on_status, last_status_sig)
 
         except websockets.exceptions.InvalidStatus as e:
             raise _wrap_invalid_status(e) from e
@@ -369,16 +279,13 @@ def follow_agent(
     session_token: str,
     agent_id: str,
     on_status: Callable[[AgentSnapshot], None],
-    on_messages: Callable[[list[dict[str, Any]]], None],
     on_reconnect: Callable[[], None] | None = None,
-    on_partial: Callable[[dict[str, Any] | None], None] | None = None,
     max_retries: int = 5,
 ) -> ExitReason:
-    """Follow an agent via the scoped WebSocket, calling callbacks on status/message changes.
+    """Follow an agent via the scoped WebSocket, calling on_status on status changes.
 
     on_status fires only when meaningful fields actually change (not on every
-    server-side task-view bump). on_partial fires with the in-flight streaming
-    chat message as it grows, and once with None when streaming completes.
+    server-side task-view bump).
 
     Returns an ExitReason indicating why the follow loop ended.
     """
@@ -389,9 +296,7 @@ def follow_agent(
                 ws_url,
                 agent_id,
                 on_status,
-                on_messages,
                 on_reconnect,
-                on_partial,
                 max_retries,
             )
         )

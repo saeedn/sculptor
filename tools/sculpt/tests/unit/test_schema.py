@@ -45,7 +45,7 @@ def test_schema_derived_from_pydantic_models() -> None:
     agent_schema = AgentShowOutput.model_json_schema()
     assert "status" in agent_schema["properties"]
     assert "workspace_id" in agent_schema["properties"]
-    assert "current_activity" in agent_schema["properties"]
+    assert "error_detail" in agent_schema["properties"]
 
     run_schema = RunOutput.model_json_schema()
     assert "workspace_id" in run_schema["properties"]

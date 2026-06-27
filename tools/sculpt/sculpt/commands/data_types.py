@@ -120,13 +120,6 @@ class AgentShowOutput(BaseModel):
     repo_id: str = Field(description="Associated repo/project ID")
     workspace_id: str = Field(description="Parent workspace ID")
     is_deleted: bool = Field(description="Whether the agent has been deleted")
-    artifact_names: list[str] = Field(description="Names of artifacts produced by the agent")
-    current_activity: str | None = Field(description="What the agent is currently doing")
-    last_activity: str | None = Field(description="Last recorded activity")
-    task_completed: int = Field(description="Number of completed tasks")
-    task_total: int = Field(description="Total number of tasks")
-    current_task_subject: str | None = Field(description="Subject of the in-progress task")
-    waiting_detail: str | None = Field(description="Detail about what the agent is waiting for")
     error_detail: str | None = Field(description="Error detail if agent is in error state")
 
 
@@ -158,13 +151,7 @@ class AgentStatusOutput(BaseModel):
     id: str = Field(description="Unique agent ID")
     status: str = Field(description="Agent infrastructure status")
     updated_at: str = Field(description="ISO 8601 datetime of last update")
-    current_activity: str | None = Field(description="What the agent is currently doing")
-    last_activity: str | None = Field(description="Last recorded activity")
-    waiting_detail: str | None = Field(description="Detail about what the agent is waiting for")
     error_detail: str | None = Field(description="Error detail if agent is in error state")
-    task_completed: int = Field(description="Number of completed tasks")
-    task_total: int = Field(description="Total number of tasks")
-    current_task_subject: str | None = Field(description="Subject of the in-progress task")
 
 
 class RunOutput(BaseModel):

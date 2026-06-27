@@ -394,9 +394,7 @@ class TestAgentShow:
         assert data["id"] == "tsk_abc123def456"
         assert data["status"] == "RUNNING"
         assert data["workspace_id"] == "ws_test123"
-        assert "last_activity" in data
-        assert "current_activity" in data
-        assert "task_completed" in data
+        assert "error_detail" in data
 
     @patch("sculpt.commands.agent.fetch_agent_state")
     @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
@@ -415,35 +413,6 @@ class TestAgentShow:
         result = runner.invoke(app, ["agent", "show", "nonexistent"])
 
         assert result.exit_code == 1
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_show_with_artifacts(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        mock_fetch.return_value = _make_snapshot(artifact_names=["logs", "diff"])
-
-        result = runner.invoke(app, ["agent", "show", "tsk_abc123def456"])
-
-        assert result.exit_code == 0
-        assert "logs, diff" in result.output
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_show_with_activity_fields(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        mock_fetch.return_value = _make_snapshot(
-            current_activity="Editing main.py",
-            task_completed=2,
-            task_total=5,
-            current_task_subject="Add tests",
-            waiting_detail="Waiting for user input",
-        )
-
-        result = runner.invoke(app, ["agent", "show", "tsk_abc123def456"])
-
-        assert result.exit_code == 0
-        assert "Activity: Editing main.py" in result.output
-        assert "2/5 tasks" in result.output
-        assert "Add tests" in result.output
-        assert "Waiting: Waiting for user input" in result.output
 
 
 class TestAgentDelete:
@@ -693,15 +662,7 @@ class TestAgentSend:
 def _make_snapshot(
     task_id: str = "tsk_abc123def456",
     status: str = "RUNNING",
-    current_activity: str | None = None,
-    last_activity: str | None = None,
-    waiting_detail: str | None = None,
     error_detail: str | None = None,
-    task_completed: int = 0,
-    task_total: int = 0,
-    current_task_subject: str | None = None,
-    artifact_names: list[str] | None = None,
-    messages: list[dict[str, Any]] | None = None,
     workspace_id: str = "ws_test123",
     project_id: str = "prj_test123",
 ) -> AgentSnapshot:
@@ -709,23 +670,14 @@ def _make_snapshot(
         task_id=task_id,
         status=status,
         task_status="RUNNING",
-        current_activity=current_activity,
-        last_activity=last_activity,
-        task_completed=task_completed,
-        task_total=task_total,
-        current_task_subject=current_task_subject,
-        waiting_detail=waiting_detail,
         error_detail=error_detail,
         updated_at="2026-01-15T10:35:00Z",
         title="Test task",
-        model="CLAUDE-4-SONNET",
         interface="TERMINAL",
         project_id=project_id,
         workspace_id=workspace_id,
         created_at="2026-01-15T10:30:00Z",
         is_deleted=False,
-        artifact_names=artifact_names or [],
-        messages=messages or [],
     )
 
 
@@ -753,17 +705,7 @@ class TestAgentStatus:
         data = json.loads(result.stdout)
         assert data["id"] == "tsk_abc123def456"
         assert data["status"] == "RUNNING"
-        assert "last_activity" in data
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_status_with_activity(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        mock_fetch.return_value = _make_snapshot(current_activity="Writing tests")
-
-        result = runner.invoke(app, ["agent", "status", "tsk_abc123def456"])
-
-        assert result.exit_code == 0
-        assert "Writing tests" in result.output
+        assert "error_detail" in data
 
     @patch("sculpt.commands.agent.fetch_agent_state")
     @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
@@ -799,19 +741,6 @@ class TestAgentStatus:
 
     @patch("sculpt.commands.agent.fetch_agent_state")
     @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_status_progress_formatting(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        mock_fetch.return_value = _make_snapshot(
-            task_completed=3, task_total=7, current_task_subject="Implementing feature"
-        )
-
-        result = runner.invoke(app, ["agent", "status", "tsk_abc123def456"])
-
-        assert result.exit_code == 0
-        assert "3/7 tasks" in result.output
-        assert "Implementing feature" in result.output
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
     def test_status_conditional_fields(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
         mock_fetch.return_value = _make_snapshot()
 
@@ -826,7 +755,7 @@ class TestAgentStatus:
     @patch("sculpt.commands.agent.follow_agent")
     @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
     def test_status_follow_terminal_state(self, _mock_token: Any, mock_follow: Any, runner: CliRunner) -> None:
-        def side_effect(_base_url: str, _token: str, _agent_id: str, on_status: Any, _on_messages: Any, _on_reconnect: Any, **_kwargs: Any) -> ExitReason:
+        def side_effect(_base_url: str, _token: str, _agent_id: str, on_status: Any, _on_reconnect: Any, **_kwargs: Any) -> ExitReason:
             on_status(_make_snapshot(status="READY"))
             return ExitReason.TERMINAL_STATE
 
@@ -840,8 +769,8 @@ class TestAgentStatus:
     @patch("sculpt.commands.agent.follow_agent")
     @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
     def test_status_follow_waiting(self, _mock_token: Any, mock_follow: Any, runner: CliRunner) -> None:
-        def side_effect(_base_url: str, _token: str, _agent_id: str, on_status: Any, _on_messages: Any, _on_reconnect: Any, **_kwargs: Any) -> ExitReason:
-            on_status(_make_snapshot(status="WAITING", waiting_detail="User input needed"))
+        def side_effect(_base_url: str, _token: str, _agent_id: str, on_status: Any, _on_reconnect: Any, **_kwargs: Any) -> ExitReason:
+            on_status(_make_snapshot(status="WAITING"))
             return ExitReason.WAITING
 
         mock_follow.side_effect = side_effect
@@ -853,7 +782,7 @@ class TestAgentStatus:
     @patch("sculpt.commands.agent.follow_agent")
     @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
     def test_status_follow_json(self, _mock_token: Any, mock_follow: Any, runner: CliRunner) -> None:
-        def side_effect(_base_url: str, _token: str, _agent_id: str, on_status: Any, _on_messages: Any, _on_reconnect: Any, **_kwargs: Any) -> ExitReason:
+        def side_effect(_base_url: str, _token: str, _agent_id: str, on_status: Any, _on_reconnect: Any, **_kwargs: Any) -> ExitReason:
             on_status(_make_snapshot(status="RUNNING"))
             return ExitReason.TERMINAL_STATE
 
@@ -868,273 +797,3 @@ class TestAgentStatus:
         assert status_line["data"]["status"] == "RUNNING"
         exit_line = json.loads(lines[-1])
         assert exit_line["type"] == "exit"
-
-
-def _chat_message_dict(
-    role: str = "assistant",
-    msg_id: str = "msg_001",
-    text: str = "Hello",
-    timestamp: str = "2026-03-20T19:31:00Z",
-    content: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    return {
-        "role": role,
-        "id": msg_id,
-        "content": content if content is not None else [{"type": "text", "text": text}],
-        "approximateCreationTime": timestamp,
-        "turnMetrics": None,
-        "stopped": False,
-    }
-
-
-class TestAgentMessages:
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_success(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        mock_fetch.return_value = _make_snapshot(messages=[
-            _chat_message_dict(role="user", msg_id="msg_001", text="what is going on"),
-            _chat_message_dict(role="assistant", msg_id="msg_002", text="I am working on it"),
-        ])
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_abc123def456"])
-
-        assert result.exit_code == 0
-        assert "[user]" in result.output
-        assert "[assistant]" in result.output
-        assert "what is going on" in result.output
-        assert "I am working on it" in result.output
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_empty(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        mock_fetch.return_value = _make_snapshot()
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_abc123def456"])
-
-        assert result.exit_code == 0
-        assert "No messages." in result.output
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_json(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        msgs = [
-            _chat_message_dict(role="user", msg_id="msg_001", text="hello"),
-            _chat_message_dict(role="assistant", msg_id="msg_002", text="hi"),
-        ]
-        mock_fetch.return_value = _make_snapshot(messages=msgs)
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_abc123def456", "--json"])
-
-        assert result.exit_code == 0
-        data = json.loads(result.stdout)
-        assert len(data) == 2
-        assert data[0]["role"] == "user"
-        assert data[1]["role"] == "assistant"
-        assert "approximateCreationTime" in data[0]
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_limit(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        msgs = [_chat_message_dict(msg_id=f"msg_{i}", text=f"Message {i}") for i in range(5)]
-        mock_fetch.return_value = _make_snapshot(messages=msgs)
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_abc123def456", "--limit", "2"])
-
-        assert result.exit_code == 0
-        assert "Message 3" in result.output
-        assert "Message 4" in result.output
-        assert "Message 0" not in result.output
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_tail(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        msgs = [_chat_message_dict(msg_id=f"msg_{i}", text=f"Message {i}") for i in range(5)]
-        mock_fetch.return_value = _make_snapshot(messages=msgs)
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_abc123def456", "--tail", "2"])
-
-        assert result.exit_code == 0
-        assert "Message 3" in result.output
-        assert "Message 4" in result.output
-        assert "Message 0" not in result.output
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_not_found(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        mock_fetch.side_effect = AgentNotFoundError("No agent matches prefix 'tsk_nope'")
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_nope"])
-
-        assert result.exit_code == 1
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_timeout(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        mock_fetch.side_effect = asyncio.TimeoutError()
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_abc"])
-
-        assert result.exit_code == 1
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_with_tool_use(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        msg = _chat_message_dict(
-            role="assistant",
-            content=[
-                {"type": "text", "text": "Let me read that file."},
-                {"type": "tool_use", "name": "Read", "id": "tu1", "input": {"file_path": "src/main.py"}},
-            ],
-        )
-        mock_fetch.return_value = _make_snapshot(messages=[msg])
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_abc123def456"])
-
-        assert result.exit_code == 0
-        assert "[Read] src/main.py" in result.output
-
-    @patch("sculpt.commands.agent.fetch_agent_state")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_tool_result_hidden(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        msg = _chat_message_dict(
-            role="assistant",
-            content=[
-                {"type": "tool_use", "name": "Read", "id": "tu1", "input": {"file_path": "src/main.py"}},
-                {"type": "tool_result", "toolUseId": "tu1", "toolName": "Read", "content": {"text": "file contents"}, "isError": False},
-            ],
-        )
-        mock_fetch.return_value = _make_snapshot(messages=[msg])
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_abc123def456"])
-
-        assert result.exit_code == 0
-        assert "[Read] src/main.py" in result.output
-        assert "tool_result" not in result.output
-        assert "file contents" not in result.output
-
-    @patch("sculpt.commands.agent.follow_agent")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_follow(self, _mock_token: Any, mock_follow: Any, runner: CliRunner) -> None:
-        def side_effect(_base_url: str, _token: str, _agent_id: str, _on_status: Any, on_messages: Any, _on_reconnect: Any, **_kwargs: Any) -> ExitReason:
-            on_messages([
-                _chat_message_dict(role="user", msg_id="msg_001", text="hello"),
-                _chat_message_dict(role="assistant", msg_id="msg_002", text="hi there"),
-            ])
-            return ExitReason.TERMINAL_STATE
-
-        mock_follow.side_effect = side_effect
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_abc123def456", "--follow"])
-
-        assert result.exit_code == 0
-        assert "hello" in result.output
-        assert "hi there" in result.output
-
-    @patch("sculpt.commands.agent.follow_agent")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    def test_messages_follow_json(self, _mock_token: Any, mock_follow: Any, runner: CliRunner) -> None:
-        def side_effect(_base_url: str, _token: str, _agent_id: str, _on_status: Any, on_messages: Any, _on_reconnect: Any, **_kwargs: Any) -> ExitReason:
-            on_messages([_chat_message_dict(role="assistant", msg_id="msg_001", text="hi")])
-            return ExitReason.TERMINAL_STATE
-
-        mock_follow.side_effect = side_effect
-
-        result = runner.invoke(app, ["agent", "messages", "tsk_abc123def456", "--follow", "--json"])
-
-        assert result.exit_code == 0
-        lines = result.output.strip().split("\n")
-        msg_line = json.loads(lines[0])
-        assert msg_line["type"] == "message"
-        assert msg_line["data"]["role"] == "assistant"
-
-
-class TestWorkspacePrefixResolution:
-    @patch("sculpt.commands.agent.fetch_all_agents")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    @respx.mock
-    def test_agent_list_workspace_prefix(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123abc456")
-        mock_fetch.return_value = [_make_snapshot(workspace_id="ws_test123abc456")]
-
-        result = runner.invoke(app, ["agent", "list", "-w", "ws_test123"])
-
-        assert result.exit_code == 0
-        assert "tsk_abc123d" in result.output
-
-    @respx.mock
-    def test_agent_create_workspace_prefix(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123abc456")
-        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123abc456/agents").mock(
-            return_value=Response(200, json=_task_response_dict(workspace_id="ws_test123abc456"))
-        )
-
-        result = runner.invoke(app, ["agent", "create", "-w", "ws_test123"])
-
-        assert result.exit_code == 0
-
-    @respx.mock
-    def test_agent_delete_workspace_prefix(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123abc456")
-        respx.get("http://localhost:5050/api/v1/workspaces/ws_test123abc456/agents").mock(
-            return_value=Response(200, json=[_task_response_dict(workspace_id="ws_test123abc456")])
-        )
-        respx.delete("http://localhost:5050/api/v1/workspaces/ws_test123abc456/agents/tsk_abc123def456").mock(
-            return_value=Response(200, text="null", headers={"content-type": "application/json"})
-        )
-
-        result = runner.invoke(app, ["agent", "delete", "tsk_abc123def456", "-w", "ws_test123"])
-
-        assert result.exit_code == 0
-
-    @respx.mock
-    def test_agent_send_workspace_prefix(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123abc456")
-        respx.get("http://localhost:5050/api/v1/workspaces/ws_test123abc456/agents").mock(
-            return_value=Response(200, json=[_task_response_dict(workspace_id="ws_test123abc456")])
-        )
-        respx.post("http://localhost:5050/api/v1/agents/tsk_abc123def456/terminal/input").mock(
-            return_value=Response(204)
-        )
-
-        result = runner.invoke(app, ["agent", "send", "tsk_abc123def456", "hello", "-w", "ws_test123"])
-
-        assert result.exit_code == 0
-
-    @respx.mock
-    def test_workspace_prefix_no_match(self, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_other789")
-
-        result = runner.invoke(app, ["agent", "list", "-w", "ws_nonexistent"])
-
-        assert result.exit_code == 1
-
-    @patch("sculpt.commands.agent.fetch_all_agents")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    @respx.mock
-    def test_workspace_prefix_ambiguous(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        _mock_session()
-        _mock_workspaces("ws_test123abc", "ws_test123def")
-        mock_fetch.return_value = []
-
-        result = runner.invoke(app, ["agent", "list", "-w", "ws_test123"])
-
-        assert result.exit_code == 1
-
-    @patch("sculpt.commands.agent.fetch_all_agents")
-    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
-    @respx.mock
-    def test_workspace_env_var_prefix_resolution(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
-        os.environ["SCULPT_WORKSPACE_ID"] = "ws_test123"
-        _mock_session()
-        _mock_workspaces("ws_test123abc456")
-        mock_fetch.return_value = [_make_snapshot(workspace_id="ws_test123abc456")]
-
-        result = runner.invoke(app, ["agent", "list"])
-
-        assert result.exit_code == 0
-        assert "tsk_abc123d" in result.output

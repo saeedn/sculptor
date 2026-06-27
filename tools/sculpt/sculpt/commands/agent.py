@@ -3,8 +3,6 @@ import datetime
 import functools
 import json
 import os
-from collections.abc import Callable
-from typing import Any
 
 import httpx
 import typer
@@ -18,7 +16,6 @@ from sculpt.client.api.default import delete_workspace_agent
 from sculpt.client.api.default import list_workspace_agents
 from sculpt.client.api.default import post_agent_terminal_input
 from sculpt.client.api.default import rename_workspace_agent
-from sculpt.client.models.agent_type_name import AgentTypeName
 from sculpt.client.models.coding_agent_task_view import CodingAgentTaskView
 from sculpt.client.models.create_agent_request import CreateAgentRequest
 from sculpt.client.models.http_validation_error import HTTPValidationError
@@ -26,16 +23,9 @@ from sculpt.client.models.rename_agent_request import RenameAgentRequest
 from sculpt.client.models.terminal_input_request import TerminalInputRequest
 from sculpt.client.models.task_status import TaskStatus
 from sculpt.client.types import UNSET
-from sculpt.commands._follow_helpers import follow_and_stream_messages
 from sculpt.commands._follow_helpers import get_session_token_safe
 from sculpt.commands._follow_helpers import handle_exit_reason
-from sculpt.commands._follow_helpers import noop_messages
-from sculpt.commands._follow_helpers import noop_status
-from sculpt.commands._follow_helpers import on_messages_json_with_limit
-from sculpt.commands._follow_helpers import on_messages_text_with_limit
-from sculpt.commands._follow_helpers import on_partial_json
 from sculpt.commands._follow_helpers import on_reconnect_json
-from sculpt.commands._follow_helpers import on_reconnect_separator
 from sculpt.commands._follow_helpers import on_reconnect_text
 from sculpt.commands._follow_helpers import on_status_json
 from sculpt.commands._harness_helpers import resolve_harness_selection
@@ -53,7 +43,6 @@ from sculpt.formatting import handle_connection_error
 from sculpt.formatting import is_tty
 from sculpt.formatting import overwrite_lines
 from sculpt.formatting import truncate
-from sculpt.message_formatting import format_message
 from sculpt.resolve import resolve_agent_id
 from sculpt.resolve import resolve_by_prefix
 from sculpt.resolve import resolve_project
@@ -283,13 +272,6 @@ def show(
             repo_id=snapshot.project_id,
             workspace_id=snapshot.workspace_id,
             is_deleted=snapshot.is_deleted,
-            artifact_names=snapshot.artifact_names,
-            current_activity=snapshot.current_activity,
-            last_activity=snapshot.last_activity,
-            task_completed=snapshot.task_completed,
-            task_total=snapshot.task_total,
-            current_task_subject=snapshot.current_task_subject,
-            waiting_detail=snapshot.waiting_detail,
             error_detail=snapshot.error_detail,
         )
         typer.echo(output.model_dump_json(indent=2))
@@ -308,21 +290,8 @@ def show(
         f"Repo ID: {snapshot.project_id}",
         f"Workspace ID: {snapshot.workspace_id}",
     ]
-    if snapshot.current_activity:
-        lines.append(f"Activity: {snapshot.current_activity}")
-    if snapshot.last_activity:
-        lines.append(f"Last Activity: {snapshot.last_activity}")
-    if snapshot.task_total > 0:
-        progress = f"Progress: {snapshot.task_completed}/{snapshot.task_total} tasks"
-        if snapshot.current_task_subject:
-            progress += f" \u2014 {snapshot.current_task_subject}"
-        lines.append(progress)
-    if snapshot.waiting_detail:
-        lines.append(f"Waiting: {snapshot.waiting_detail}")
     if snapshot.error_detail:
         lines.append(f"Error: {snapshot.error_detail}")
-    if snapshot.artifact_names:
-        lines.append(f"Artifacts: {', '.join(snapshot.artifact_names)}")
     typer.echo("\n".join(lines))
 
 
@@ -466,7 +435,7 @@ def status(
             on_reconnect = on_reconnect_text
 
         try:
-            exit_reason = follow_agent(base_url, session_token, agent_id, on_status, noop_messages, on_reconnect)
+            exit_reason = follow_agent(base_url, session_token, agent_id, on_status, on_reconnect)
         except ScopeNotFoundError:
             cli_error(f"Agent not found: {agent_id}", json_output=json_output)
         except ScopeForbiddenError:
@@ -483,80 +452,6 @@ def status(
         return
 
     typer.echo(_format_status_text(snapshot))
-
-
-@agent_app.command("messages")
-def messages(
-    agent_id: str = typer.Argument(..., help="Agent ID or prefix"),
-    limit: int | None = typer.Option(None, "--limit", help="Show only the last N messages"),
-    tail: int | None = typer.Option(None, "--tail", help="Alias for --limit"),
-    follow: bool = typer.Option(False, "--follow", "-f", help="Stream messages in real-time"),
-    timeout: float = typer.Option(10.0, "--timeout", help="Timeout in seconds for WebSocket connection"),
-    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
-    base_url: str | None = typer.Option(None, "--base-url", "-u", help="The Sculptor server URL"),
-) -> None:
-    """Show conversation history for an agent."""
-    base_url = base_url or get_default_base_url()
-    agent_id = resolve_agent_id(base_url, agent_id, json_output)
-
-    effective_limit = limit or tail
-
-    if follow:
-        session_token = get_session_token_safe(base_url, json_output)
-        is_first_batch = [True]
-        on_partial: Callable[[dict[str, Any] | None], None] | None
-        if json_output:
-            on_status = on_status_json
-            on_messages = functools.partial(
-                on_messages_json_with_limit, effective_limit=effective_limit, is_first_batch=is_first_batch
-            )
-            on_reconnect = on_reconnect_json
-            on_partial = on_partial_json
-        else:
-            on_status = noop_status
-            on_messages = functools.partial(
-                on_messages_text_with_limit, effective_limit=effective_limit, is_first_batch=is_first_batch
-            )
-            on_reconnect = on_reconnect_separator
-            on_partial = None
-
-        try:
-            exit_reason = follow_agent(
-                base_url,
-                session_token,
-                agent_id,
-                on_status,
-                on_messages,
-                on_reconnect,
-                on_partial=on_partial,
-            )
-        except ScopeNotFoundError:
-            cli_error(f"Agent not found: {agent_id}", json_output=json_output)
-        except ScopeForbiddenError:
-            cli_error("Not authorized to view this agent", json_output=json_output)
-        except ScopeMalformedError as e:
-            cli_error(f"Invalid agent id: {e}", json_output=json_output)
-        handle_exit_reason(exit_reason, json_output)
-        return
-
-    snapshot = _fetch_snapshot(base_url, agent_id, timeout, json_output)
-
-    msgs = snapshot.messages
-    if effective_limit is not None:
-        msgs = msgs[-effective_limit:]
-
-    if json_output:
-        typer.echo(json.dumps(msgs, indent=2, default=str))
-        return
-
-    if not msgs:
-        typer.echo("No messages.")
-        return
-
-    for i, msg in enumerate(msgs):
-        typer.echo(format_message(msg))
-        if i < len(msgs) - 1:
-            typer.echo()
 
 
 def _fetch_snapshot(base_url: str, agent_id: str, timeout: float, json_output: bool) -> AgentSnapshot:
@@ -585,13 +480,7 @@ def _status_output(snapshot: AgentSnapshot) -> AgentStatusOutput:
         id=snapshot.task_id,
         status=snapshot.status,
         updated_at=snapshot.updated_at,
-        current_activity=snapshot.current_activity,
-        last_activity=snapshot.last_activity,
-        waiting_detail=snapshot.waiting_detail,
         error_detail=snapshot.error_detail,
-        task_completed=snapshot.task_completed,
-        task_total=snapshot.task_total,
-        current_task_subject=snapshot.current_task_subject,
     )
 
 
@@ -601,19 +490,8 @@ def _format_status_text(snapshot: AgentSnapshot) -> str:
         f"Agent: {snapshot.task_id}",
         f"Status: {snapshot.status}",
     ]
-    if snapshot.current_activity:
-        lines.append(f"Activity: {snapshot.current_activity}")
-    elif snapshot.last_activity:
-        lines.append(f"Last Activity: {snapshot.last_activity}")
-    if snapshot.waiting_detail:
-        lines.append(f"Waiting: {snapshot.waiting_detail}")
     if snapshot.error_detail:
         lines.append(f"Error: {snapshot.error_detail}")
-    if snapshot.task_total > 0:
-        progress = f"Progress: {snapshot.task_completed}/{snapshot.task_total} tasks"
-        if snapshot.current_task_subject:
-            progress += f" \u2014 {snapshot.current_task_subject}"
-        lines.append(progress)
     if snapshot.updated_at:
         updated_dt = datetime.datetime.fromisoformat(snapshot.updated_at)
         lines.append(f"Updated: {format_datetime(updated_dt)}")

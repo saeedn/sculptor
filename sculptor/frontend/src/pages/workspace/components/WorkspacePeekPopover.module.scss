@@ -157,13 +157,6 @@
   }
 }
 
-.agentTask {
-  color: var(--gray-8);
-  font-size: 11px; // stylelint-disable-line sculptor/no-hardcoded-values -- v11 mock spec
-  margin-top: 2px;
-  padding-left: 16px; // stylelint-disable-line sculptor/no-hardcoded-values -- align with agent name (8px dot + 8px gap)
-}
-
 .expandControl {
   cursor: pointer;
   font-size: 11px; // stylelint-disable-line sculptor/no-hardcoded-values -- v11 mock spec

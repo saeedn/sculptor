@@ -19,21 +19,6 @@
   }
 }
 
-.sidebarOverlay {
-  background-color: transparent;
-  inset: 0;
-  position: absolute;
-  z-index: 9;
-}
-
-.narrowSidebar {
-  box-shadow: 0 4px 16px -8px rgba(0, 0, 0, 2%), 0 3px 12px -4px rgba(0, 0, 0, 2%), 0 2px 3px -2px var(--neutral-a-3);
-  height: 100%;
-  position: absolute;
-  width: 320px;
-  z-index: var(--z-dropdown);
-}
-
 .zenTitleBar {
   z-index: var(--z-sticky);
 }

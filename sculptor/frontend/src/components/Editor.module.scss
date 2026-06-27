@@ -48,12 +48,6 @@
   padding-block: var(--space-3) var(--space-1);
   padding-inline: var(--space-4);
 
-  &.viewer {
-    min-height: inherit; // Inherit height from parent container
-    padding-block: var(--space-2);
-    padding-inline: inherit; // Inherit padding from parent container
-  }
-
   &:focus {
     outline: none;
   }
@@ -77,31 +71,6 @@
     float: left;
     height: 0;
     pointer-events: none;
-  }
-
-  .mention {
-    background-color: var(--accent-3);
-    border-radius: var(--radius-1);
-    box-decoration-break: clone;
-    color: var(--accent-12);
-    font-family: var(--default-font-family);
-    font-size: var(--font-size-1-5);
-    font-style: normal;
-    font-weight: var(--font-weight-medium);
-    padding: 2px;
-  }
-
-  .skill {
-    background-color: var(--accent-3);
-    border-radius: var(--radius-1);
-    box-decoration-break: clone;
-    color: var(--accent-12);
-    font-family: var(--mono-font-family);
-    font-size: var(--font-size-1-5);
-    font-style: normal;
-    font-weight: var(--font-weight-medium);
-    line-height: 21px;
-    padding: 2px;
   }
 
   p {
@@ -129,10 +98,6 @@
     margin-block: 2px;
     margin-inline: 0;
     padding-left: var(--space-3);
-  }
-
-  .tightList li p {
-    margin: 0;
   }
 }
 

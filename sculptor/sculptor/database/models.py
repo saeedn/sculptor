@@ -204,12 +204,6 @@ class Task(DatabaseModel):
     # the inputs to the task.  Tasks are executed by dispatching on this type.
     input_data: TaskInputTypes
 
-    # Limits
-
-    # may specify a timeout (so that we do not end up with unexpectedly long-running tasks)
-    # note that, for agents, it doesn't make sense to specify a timeout since they are expected to run until completed.
-    max_seconds: float | None = None
-
     # State
 
     # used to track the current state of the task while it is running.
@@ -268,19 +262,13 @@ class NotificationImportance(StrEnum):
     """
     From the Apple Human Interface Guidelines: https://developer.apple.com/design/human-interface-guidelines/managing-notifications
 
-    Passive. Information people can view at their leisure, like a restaurant recommendation.
-
     Active (the default). Information people might appreciate knowing about when it arrives, like a score update on their favorite sports team.
 
     Time Sensitive. Information that directly impacts the person and requires their immediate attention, like an account security issue or a package delivery.
-
-    Critical. Urgent information about health and safety that directly impacts the person and demands their immediate attention. Critical notifications are extremely rare and typically come from governmental and public agencies or apps that help people manage their health or home.
     """
 
-    PASSIVE = "PASSIVE"
     ACTIVE = "ACTIVE"
     TIME_SENSITIVE = "TIME_SENSITIVE"
-    CRITICAL = "CRITICAL"
 
 
 class Notification(DatabaseModel):

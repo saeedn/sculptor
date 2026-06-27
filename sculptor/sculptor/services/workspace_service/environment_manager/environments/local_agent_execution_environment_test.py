@@ -170,15 +170,6 @@ class TestLocalAgentExecutionEnvironmentDelegation:
         agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         assert agent_env.get_root_path() == local_environment.get_root_path()
 
-    def test_get_attachments_path_delegates(
-        self,
-        local_environment: LocalEnvironment,
-        task_id: TaskID,
-    ) -> None:
-        """get_attachments_path should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
-        assert agent_env.get_attachments_path() == local_environment.get_attachments_path()
-
     def test_get_user_home_directory_delegates(
         self,
         local_environment: LocalEnvironment,
@@ -198,17 +189,6 @@ class TestLocalAgentExecutionEnvironmentDelegation:
         test_path = Path("/some/path")
         assert agent_env.to_host_path(test_path) == local_environment.to_host_path(test_path)
 
-    def test_to_environment_path_delegates(
-        self,
-        local_environment: LocalEnvironment,
-        task_id: TaskID,
-    ) -> None:
-        """to_environment_path should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
-        # Use a path under the workspace path, since to_environment_path validates the path is valid
-        test_path = local_environment.get_workspace_path() / "some" / "path"
-        assert agent_env.to_environment_path(test_path) == local_environment.to_environment_path(test_path)
-
     def test_exists_delegates(
         self,
         local_environment: LocalEnvironment,
@@ -218,15 +198,6 @@ class TestLocalAgentExecutionEnvironmentDelegation:
         agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         # Test with a path that doesn't exist
         assert agent_env.exists("/nonexistent/path") == local_environment.exists("/nonexistent/path")
-
-    def test_get_system_prompt_delegates(
-        self,
-        local_environment: LocalEnvironment,
-        task_id: TaskID,
-    ) -> None:
-        """get_system_prompt should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
-        assert agent_env.get_system_prompt() == local_environment.get_system_prompt()
 
 
 class TestLocalAgentExecutionEnvironmentFileOperations:

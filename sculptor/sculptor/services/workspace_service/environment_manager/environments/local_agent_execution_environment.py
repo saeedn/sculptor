@@ -113,10 +113,6 @@ class LocalAgentExecutionEnvironment(AgentExecutionEnvironment):
         """
         return self._environment.get_root_path() / ARTIFACTS_DIRECTORY / TASKS_SUBDIRECTORY / str(self._task_id)
 
-    def get_attachments_path(self) -> Path:
-        """Get the attachments directory path for uploaded files."""
-        return self._environment.get_attachments_path()
-
     def get_user_home_directory(self) -> Path:
         """Get the home directory of the user running code in this environment."""
         return self._environment.get_user_home_directory()
@@ -132,10 +128,6 @@ class LocalAgentExecutionEnvironment(AgentExecutionEnvironment):
     def to_host_path(self, path: Path) -> Path:
         """Convert an environment path to a host filesystem path."""
         return self._environment.to_host_path(path)
-
-    def to_environment_path(self, path: Path) -> Path:
-        """Convert a host filesystem path to an environment path."""
-        return self._environment.to_environment_path(path)
 
     def exists(self, path: str) -> bool:
         """Check if a path exists in the environment."""
@@ -215,10 +207,6 @@ class LocalAgentExecutionEnvironment(AgentExecutionEnvironment):
             is_checked_after=is_checked_after,
             on_output=on_output,
         )
-
-    def get_system_prompt(self) -> str | None:
-        """Get the environment-specific system prompt content."""
-        return self._environment.get_system_prompt()
 
     def start_terminal_manager(
         self,

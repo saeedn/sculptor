@@ -179,29 +179,7 @@ class _StubTaskService(TaskService):
         yield _stub()
 
     @contextmanager
-    def subscribe_to_project_task_containers(self, project_id: Any, user_reference: Any) -> Generator[Any, None, None]:
-        del project_id, user_reference
-        yield _stub()
-
-    @contextmanager
-    def subscribe_to_workspace_task_containers(
-        self, workspace_id: WorkspaceID, user_reference: Any
-    ) -> Generator[Any, None, None]:
-        del workspace_id, user_reference
-        yield _stub()
-
-    @contextmanager
-    def subscribe_to_single_task_container(self, task_id: TaskID, user_reference: Any) -> Generator[Any, None, None]:
-        del task_id, user_reference
-        yield _stub()
-
-    @contextmanager
     def subscribe_to_task(self, task_id: TaskID) -> Generator[Any, None, None]:
-        del task_id
-        yield _stub()
-
-    @contextmanager
-    def subscribe_to_user_and_sculptor_system_messages(self, task_id: TaskID) -> Generator[Any, None, None]:
         del task_id
         yield _stub()
 

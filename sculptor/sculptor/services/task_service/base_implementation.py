@@ -6,7 +6,6 @@ from queue import Queue
 from threading import Lock
 from typing import Callable
 from typing import Generator
-from typing import TypeVar
 
 from loguru import logger
 from pydantic import PrivateAttr
@@ -33,10 +32,8 @@ from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.interfaces.environments.base import Environment
 from sculptor.primitives.constants import MESSAGE_LOG_TYPE
 from sculptor.primitives.ids import AgentMessageID
-from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import UserReference
-from sculptor.primitives.ids import WorkspaceID
 from sculptor.services.data_model_service.api import TaskDataModelService
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.data_model_service.data_types import TaskAndDataModelTransaction
@@ -58,8 +55,6 @@ from sculptor.tasks.api import run_task
 from sculptor.utils.errors import is_irrecoverable_exception
 from sculptor.utils.filtered_queue import FilteredQueue
 
-_RegistryKeyT = TypeVar("_RegistryKeyT")
-
 
 class BaseTaskService(TaskService, ABC):
     """The DefaultTaskService exists to broker requests for tasks running."""
@@ -72,15 +67,6 @@ class BaseTaskService(TaskService, ABC):
 
     _subscriptions_by_task_id: dict[TaskID, list[Queue[Message]]] = PrivateAttr(default_factory=dict)
     _subscriptions_by_user_reference: dict[UserReference, list[Queue[TaskMessageContainer]]] = PrivateAttr(
-        default_factory=dict
-    )
-    _subscriptions_by_project_id: dict[ProjectID, list[Queue[TaskMessageContainer]]] = PrivateAttr(
-        default_factory=dict
-    )
-    _subscriptions_by_workspace_id_for_containers: dict[WorkspaceID, list[Queue[TaskMessageContainer]]] = PrivateAttr(
-        default_factory=dict
-    )
-    _subscriptions_by_task_id_for_containers: dict[TaskID, list[Queue[TaskMessageContainer]]] = PrivateAttr(
         default_factory=dict
     )
     # this is important for robustness -- we want to ensure that no messages are missed when starting a subscription
@@ -265,85 +251,6 @@ class BaseTaskService(TaskService, ABC):
                 del self._subscriptions_by_user_reference[user_reference]
 
     @contextmanager
-    def subscribe_to_project_task_containers(
-        self, project_id: ProjectID, user_reference: UserReference
-    ) -> Generator[Queue[TaskMessageContainer], None, None]:
-        with self._scoped_task_container_subscription(
-            user_reference=user_reference,
-            registry=self._subscriptions_by_project_id,
-            registry_key=project_id,
-            task_filter=lambda t: t.project_id == project_id,
-        ) as listener:
-            yield listener
-
-    @contextmanager
-    def subscribe_to_workspace_task_containers(
-        self, workspace_id: WorkspaceID, user_reference: UserReference
-    ) -> Generator[Queue[TaskMessageContainer], None, None]:
-        with self._scoped_task_container_subscription(
-            user_reference=user_reference,
-            registry=self._subscriptions_by_workspace_id_for_containers,
-            registry_key=workspace_id,
-            task_filter=lambda t: (
-                isinstance(t.current_state, AgentTaskStateV2) and t.current_state.workspace_id == workspace_id
-            ),
-        ) as listener:
-            yield listener
-
-    @contextmanager
-    def subscribe_to_single_task_container(
-        self, task_id: TaskID, user_reference: UserReference
-    ) -> Generator[Queue[TaskMessageContainer], None, None]:
-        with self._scoped_task_container_subscription(
-            user_reference=user_reference,
-            registry=self._subscriptions_by_task_id_for_containers,
-            registry_key=task_id,
-            task_filter=lambda t: t.object_id == task_id,
-        ) as listener:
-            yield listener
-
-    @contextmanager
-    def _scoped_task_container_subscription(
-        self,
-        user_reference: UserReference,
-        registry: dict[_RegistryKeyT, list[Queue[TaskMessageContainer]]],
-        registry_key: _RegistryKeyT,
-        task_filter: Callable[[Task], bool],
-    ) -> Generator[Queue[TaskMessageContainer], None, None]:
-        listener: Queue[TaskMessageContainer] = FilteredQueue(lambda _: True)
-        with self._subscription_lock:
-            registry.setdefault(registry_key, []).append(listener)
-            with self.data_model_service.open_transaction(RequestID()) as transaction:
-                # pyrefly: ignore [missing-attribute]
-                tasks = transaction.get_tasks_for_user(user_reference)
-                matching_task_ids = {task.object_id for task in tasks if task_filter(task)}
-            latest_tasks = tuple(
-                self._latest_task_by_task_id[task_id]
-                for task_id in matching_task_ids
-                if task_id in self._latest_task_by_task_id
-            )
-            messages_and_task_ids = tuple(
-                (message, task_id)
-                for task_id in matching_task_ids
-                for message in self._messages_by_task_id.get(task_id, [])
-            )
-
-        listener.put_nowait(
-            TaskMessageContainer(
-                tasks=latest_tasks,
-                messages=messages_and_task_ids,
-            )
-        )
-
-        yield listener
-
-        with self._subscription_lock:
-            listeners = registry[registry_key]
-            listeners.remove(listener)
-            if not listeners:
-                del registry[registry_key]
-
-    @contextmanager
     def subscribe_to_task(self, task_id: TaskID) -> Generator[Queue[Message], None, None]:
         with self._subscribe_to_task(task_id, filter_fn=None) as listener:
             yield listener
@@ -377,19 +284,6 @@ class BaseTaskService(TaskService, ABC):
 
             user_listeners = self._subscriptions_by_user_reference.get(task.user_reference, ())
             for listener in user_listeners:
-                listener.put_nowait(task_update)
-
-            for listener in self._subscriptions_by_project_id.get(task.project_id, ()):
-                listener.put_nowait(task_update)
-
-            if isinstance(task.current_state, AgentTaskStateV2):
-                workspace_listeners = self._subscriptions_by_workspace_id_for_containers.get(
-                    task.current_state.workspace_id, ()
-                )
-                for listener in workspace_listeners:
-                    listener.put_nowait(task_update)
-
-            for listener in self._subscriptions_by_task_id_for_containers.get(task_id, ()):
                 listener.put_nowait(task_update)
 
     @contextmanager

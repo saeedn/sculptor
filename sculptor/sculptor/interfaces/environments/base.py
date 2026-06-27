@@ -29,7 +29,6 @@ if TYPE_CHECKING:
 
 STATE_DIRECTORY = "state"
 ARTIFACTS_DIRECTORY = "artifacts"
-ATTACHMENTS_DIRECTORY = "attachments"
 TASKS_SUBDIRECTORY = "tasks"
 
 
@@ -87,22 +86,6 @@ class Environment(BaseModel, abc.ABC):
     def get_artifacts_path(self) -> Path:
         return self.get_root_path() / ARTIFACTS_DIRECTORY
 
-    def get_attachments_path(self) -> Path:
-        return self.get_root_path() / ATTACHMENTS_DIRECTORY
-
-    def get_system_prompt(self) -> str | None:
-        """Get the environment-specific system prompt content.
-
-        Returns environment-specific instructions that should be included in the
-        agent's system prompt. Returns None if no environment-specific content
-        is needed.
-
-        Returns:
-            A string containing environment-specific system prompt content,
-            or None if no additional content is needed.
-        """
-        return None
-
     def start_terminal_manager(
         self,
         concurrency_group: ConcurrencyGroup,
@@ -129,13 +112,6 @@ class Environment(BaseModel, abc.ABC):
         For LocalEnvironment, paths under the workspace working directory are returned
         as-is; other absolute paths may be remapped to the workspace root by the
         concrete subclass.
-        """
-        return path
-
-    def to_environment_path(self, path: Path) -> Path:
-        """
-        Inverse of to_host_path: return the path as it would be referred to from
-        environment-side code.
         """
         return path
 

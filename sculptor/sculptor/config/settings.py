@@ -1,8 +1,6 @@
 from pathlib import Path
 from typing import Final
 
-from pydantic import BaseModel
-from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings
@@ -18,12 +16,6 @@ TEST_LOG_PATH: Path = Path("/tmp") / "sculptor_test_logs"
 
 # NOTE: the settings keys are all-caps without a prefix in order to be grep-friendly
 # (when looking for places where they're being set, e.g. via environment variables).
-
-
-class TestingConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    INTEGRATION_ENABLED: bool = False
 
 
 class SculptorSettings(BaseSettings):
@@ -43,7 +35,6 @@ class SculptorSettings(BaseSettings):
     LOG_LEVEL: str = "DEBUG"
     WORKSPACE_SYNC_DIR: str = str(get_internal_folder() / "artifacts" / "workspace_sync")
     SERVE_STATIC_FILES_DIR: str | None = None
-    TESTING: TestingConfig = TestingConfig()
     LOG_PATH: str = str(DEFAULT_LOG_PATH)
 
     # When provided, all requests are expected to have this exact key in the `x-session-token` header (or GET param or cookie).

@@ -11,7 +11,6 @@ from syrupy.assertion import SnapshotAssertion
 
 from sculptor.config.settings import SculptorSettings
 from sculptor.config.settings import TEST_LOG_PATH
-from sculptor.config.settings import TestingConfig
 from sculptor.foundation.async_monkey_patches_test import explode_on_error  # noqa: F401
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.fixtures import empty_temp_git_repo
@@ -211,7 +210,6 @@ def test_settings(database_url: str, tmp_path: Path) -> SculptorSettings:
         LOG_PATH=str(TEST_LOG_PATH),
         LOG_LEVEL="TRACE",
         SESSION_TOKEN=None,
-        TESTING=TestingConfig(),
     )
     return settings
 

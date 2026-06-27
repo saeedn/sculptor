@@ -15,13 +15,10 @@ type NotificationToastState = {
 
 const getToastType = (importance?: NotificationImportance): ToastType => {
   switch (importance) {
-    case NotificationImportance.CRITICAL:
-      return ToastType.ERROR;
     case NotificationImportance.TIME_SENSITIVE:
       return ToastType.WARNING;
     case NotificationImportance.ACTIVE:
       return ToastType.DEFAULT;
-    case NotificationImportance.PASSIVE:
     case undefined:
     default:
       return ToastType.DEFAULT;
@@ -30,12 +27,9 @@ const getToastType = (importance?: NotificationImportance): ToastType => {
 
 const getToastDurationMiliseconds = (importance?: NotificationImportance): number => {
   switch (importance) {
-    case NotificationImportance.CRITICAL:
-      return 10000;
     case NotificationImportance.TIME_SENSITIVE:
       return 5000;
     case NotificationImportance.ACTIVE:
-    case NotificationImportance.PASSIVE:
     case undefined:
     default:
       return 3000;

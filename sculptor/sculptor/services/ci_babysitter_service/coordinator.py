@@ -584,7 +584,6 @@ class CIBabysitterCoordinator(Service):
                 initial_commit_hash = repo.get_current_commit_hash()
             task = Task(
                 object_id=TaskID(),
-                max_seconds=None,
                 organization_reference=workspace.organization_reference,
                 user_reference=ANONYMOUS_USER_REFERENCE,
                 project_id=project.object_id,

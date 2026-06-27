@@ -1513,7 +1513,6 @@ def create_workspace_agent(
 
         task = Task(
             object_id=task_id,
-            max_seconds=None,
             organization_reference=user_session.organization_reference,
             user_reference=user_session.user_reference,
             project_id=project.object_id,

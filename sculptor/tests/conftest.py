@@ -8,7 +8,6 @@ from pytest import Session
 
 from sculptor.config.settings import SculptorSettings
 from sculptor.config.settings import TEST_LOG_PATH
-from sculptor.config.settings import TestingConfig
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.fixtures import initial_commit_repo
 from sculptor.foundation.git import get_repo_base_path
@@ -76,6 +75,5 @@ def test_settings(database_url: str) -> SculptorSettings:
         DATABASE_URL=database_url,
         LOG_PATH=str(TEST_LOG_PATH),
         LOG_LEVEL="TRACE",
-        TESTING=TestingConfig(),
     )
     return settings

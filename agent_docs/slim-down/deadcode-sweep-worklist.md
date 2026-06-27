@@ -107,11 +107,28 @@ Done concurrently (disjoint FE/BE trees), one combined gate:
       H5 Workspace.setup_command_triggered (+migration), H6 TASK_SYNC_DIR, M2 stop_terminal_manager,
       M4 ErrorMessage base, M5 restore_workspace_agent endpoint (+restore_task), InvalidTaskOperation.
 
-### Remaining second-scan items (9.y)
-- [ ] H3 setup-reminder provider cluster (setup_command_runner SetupStateProvider slice + make_setup_state_provider + test file)
-- [ ] 2a narrow-scope streaming subsystem (streams.py Scope*/parse/resolve/projection + middleware resolve_stream_scope + app.py scope param + scope tests) — collapse to ScopeAll-only (~700 LOC)
-- [ ] 2c/item3 transcript chain: get_jsonl_path_for_working_directory + app.py block + AgentDiagnosticsResponse.transcript_file_path + AgentTabs transcriptPath/menu item + TAB_CONTEXT_MENU_COPY_TRANSCRIPT_PATH ElementID + POM (needs generate-api)
-- [ ] 2d/M1 no-op task handler (noop/v1, NoOpTaskView, NoOpTaskInputsV1/MustBeShutDownTaskInputsV1) — test-entangled union collapse
-- [ ] M3 git-retry machinery (never retries; is_retry_safe inert across ~18 sites) — RISK: behavior-adjacent refactor, flag for decision
-- [ ] LOW: single-value enums (WorkspaceInitializationStrategy, ArtifactType), Task.max_seconds writer-only, TESTING/TestingConfig, env helpers (get_system_prompt/get_attachments_path/to_environment_path), NotificationImportance unused arms, dead SCSS class names
-- [ ] Third scan after 9.y
+### Remaining second-scan items (9.y) — DONE
+- [x] H3 setup-reminder provider cluster (batch 9d)
+- [x] 2a narrow-scope streaming subsystem → collapsed to all-user (batch 9c)
+- [x] 2c/item3 transcript chain (batch 9e)
+- [x] 2d no-op task handler (batch 9d)
+- [x] Third scan (cascade + LOW assessment) — done.
+
+### Final cleanup (batch 9f) — DONE
+- [x] H1 task-container subscription cluster (cascade orphan of scope removal)
+- [x] H2 stale SCULPTOR_SYSTEM fake-mock method
+- [x] H3 dead SCSS classes (TitleBar/BranchSelector/RepoPathDialog/VersionPopover)
+- [x] M2 Environment system-prompt chain (get_system_prompt/WORKTREE_MODE_PROMPT/ATTACHMENTS/to_environment_path + agents/default/constants.py)
+- [x] M3 Task.max_seconds column (+migration)
+- [x] M4 settings.TESTING / TestingConfig
+- [x] M5 NotificationImportance.PASSIVE/.CRITICAL (FE+BE)
+
+### Deliberately NOT removed (verified live or refactor-only, not dead code)
+- **git-retry machinery (M1/2a-old): LIVE.** The third-scan "never retries" premise was WRONG — 15+ callers use is_retry_safe=True (default) → RetriableGitCommandFailure + is_transient=True → tenacity retries 3x. Left intact.
+- get_jsonl transcript (E1): removed in 9e after all (was deferred in batch 5).
+- progress_tracking no-op scaffold: live-wired (report_output_line used as on_output callback) — refactor, not delete.
+- Single-impl ABCs (EnvironmentManager/Environment/AgentExecutionEnvironment), single-value enums (WorkspaceInitializationStrategy, ArtifactType), EnvironmentTypes alias: simplifications, not dead code — left for an explicit refactor decision.
+- sculptor_folder / from_new_repository(user_email,user_name) params: test-used.
+
+### Coverage note
+no-op handler removal (9d) dropped 2 task-lifecycle unit tests (idle-finalize, proper-shutdown-kills-runners) that depended on the removed lightweight task type; their assertions (_get_name_for_runner_from_task, stop()-kills-runners) could be re-covered later via a real terminal-agent fixture.

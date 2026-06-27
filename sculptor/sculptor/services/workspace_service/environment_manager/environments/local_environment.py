@@ -14,7 +14,6 @@ from typing import Union
 from loguru import logger
 from pydantic import PrivateAttr
 
-from sculptor.agents.default.constants import WORKTREE_MODE_PROMPT
 from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import CompoundEvent
@@ -124,19 +123,6 @@ class LocalEnvironment(Environment):
         """
         return self.get_workspace_path() / "code"
 
-    def get_system_prompt(self) -> str | None:
-        """Get the environment-specific system prompt content.
-
-        Returns the worktree-mode instructions plus the workspace attachments
-        path for image display.
-        """
-        mode_prompt = WORKTREE_MODE_PROMPT
-
-        attachments_path = self.get_attachments_path()
-        attachments_prompt = f"\nThe workspace attachments directory is: {attachments_path}\nSave any media you want to display (e.g. screenshots, video recordings) to this directory.\n"
-
-        return mode_prompt + attachments_prompt
-
     @classmethod
     def create(
         cls,
@@ -236,38 +222,6 @@ class LocalEnvironment(Environment):
 
         # Other paths map to workspace_path
         return workspace_path / str(path).lstrip("/")
-
-    def to_environment_path(self, path: Path) -> Path:
-        """Convert a host filesystem path to an environment path.
-
-        For LocalEnvironment:
-        - Paths under the working directory are returned as-is
-        - Paths under workspace_path are converted to /... relative paths
-
-        Uses ``Path.resolve()`` so that macOS ``/var`` ↔ ``/private/var``
-        symlinks don't cause spurious mismatches.  The returned path is
-        reconstructed with the original (non-resolved) base so that
-        downstream ``startswith`` checks against ``workspace_path`` remain
-        consistent.
-        """
-        assert path.is_absolute()
-        resolved_path = path.resolve()
-
-        # Check if path is under or equal to the working directory
-        working_dir = self.get_working_directory()
-        resolved_working_dir = working_dir.resolve()
-        if resolved_path.is_relative_to(resolved_working_dir):
-            # Reconstruct using the original working_dir base for consistency
-            return working_dir / resolved_path.relative_to(resolved_working_dir)
-
-        # Paths under workspace_path are converted to /... relative paths
-        workspace_path = self.get_workspace_path()
-        resolved_workspace_path = workspace_path.resolve()
-        assert resolved_path.is_relative_to(resolved_workspace_path), (
-            f"Path {path} is not under working directory or workspace"
-        )
-        relative_path = resolved_path.relative_to(resolved_workspace_path)
-        return Path("/") / relative_path
 
     def get_extra_logger_context(self) -> Mapping[str, str | float | int | bool | None]:
         return {"workspace_path": self.workspace_path}

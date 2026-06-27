@@ -98,7 +98,6 @@ def get_simple_agent_task(
 ) -> Task:
     task = Task(
         object_id=TaskID(),
-        max_seconds=30,
         input_data=AgentTaskInputsV2(
             agent_config=TerminalAgentConfig(),
             git_hash="HEAD",

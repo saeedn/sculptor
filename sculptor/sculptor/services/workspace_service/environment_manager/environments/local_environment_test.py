@@ -293,7 +293,7 @@ def test_write_file_writes_bytes_content(local_environment: LocalEnvironment) ->
     """Test that write_file correctly writes binary content (e.g. images)."""
     # Simulate a PNG file header as binary content
     binary_content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-    file_path = str(local_environment.get_attachments_path() / "test_image.png")
+    file_path = str(local_environment.get_state_path() / "test_image.png")
     local_environment.write_file(path=file_path, content=binary_content, mode="wb")
 
     host_path = local_environment.to_host_path(Path("/" + file_path.lstrip("/")))
@@ -303,7 +303,7 @@ def test_write_file_writes_bytes_content(local_environment: LocalEnvironment) ->
 def test_write_file_raises_type_error_when_bytes_content_with_text_mode(local_environment: LocalEnvironment) -> None:
     """Test that write_file raises TypeError when bytes content is passed with text mode."""
     binary_content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-    file_path = str(local_environment.get_attachments_path() / "should_fail.png")
+    file_path = str(local_environment.get_state_path() / "should_fail.png")
 
     with pytest.raises(TypeError, match="Cannot write bytes content with text mode"):
         local_environment.write_file(path=file_path, content=binary_content)
@@ -378,17 +378,6 @@ def test_env_var_override_true_overrides_existing(
 
     output = _collect_stdout(local_environment, ["printenv", "SCTEST_OVERRIDE"])
     assert "new_value" in output
-
-
-def test_get_system_prompt_returns_worktree_block(local_environment: LocalEnvironment) -> None:
-    """get_system_prompt returns the worktree-mode <Environment mode> block."""
-    local_environment.initialization_strategy = WorkspaceInitializationStrategy.WORKTREE
-    worktree_prompt = local_environment.get_system_prompt()
-    assert worktree_prompt is not None
-    assert "worktree mode" in worktree_prompt
-    assert "`.git`" in worktree_prompt
-    assert "no `local` remote" in worktree_prompt
-    assert "NEVER" in worktree_prompt
 
 
 def test_create_worktree_happy_path(tmp_path: Path, test_root_concurrency_group: ConcurrencyGroup) -> None:

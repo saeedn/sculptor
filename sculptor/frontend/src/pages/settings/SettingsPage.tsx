@@ -52,11 +52,6 @@ export const SettingsPage = (): ReactElement => {
     }
   }, [searchParams, setActiveSection]);
   const [themeSettings, setThemeSettings] = useAtom(themeSettingsAtom);
-  const visibleSections = SETTINGS_SECTIONS;
-  // The mobile Select binds value={activeSection}, so its options must always
-  // include the active section — even one normally hidden — or the trigger
-  // renders blank.
-  const mobileSections = SETTINGS_SECTIONS.filter((s) => visibleSections.includes(s) || s.id === activeSection);
   const [toast, setToast] = useState<ToastContent | null>(null);
 
   const { updateField } = useUserConfig();
@@ -87,7 +82,7 @@ export const SettingsPage = (): ReactElement => {
         <Flex position="relative" flexGrow="1" data-testid={ElementIds.SETTINGS_PAGE} minHeight="0" overflow="hidden">
           <Flex direction="column" px="6" pt="8" pb="4" className={styles.sidebar}>
             <Flex direction="column" gap="2">
-              {visibleSections.map(({ id }) => (
+              {SETTINGS_SECTIONS.map(({ id }) => (
                 <Box key={id}>
                   <Box
                     className={mergeClasses(styles.navItem, optional(activeSection === id, styles.active))}
@@ -107,7 +102,7 @@ export const SettingsPage = (): ReactElement => {
               <Select.Root value={activeSection} onValueChange={(value) => setActiveSection(value as SettingsSection)}>
                 <Select.Trigger variant="soft" />
                 <Select.Content>
-                  {mobileSections.map(({ id }) => (
+                  {SETTINGS_SECTIONS.map(({ id }) => (
                     <Select.Item key={id} value={id} data-testid={SECTION_TEST_IDS[id] ?? ""}>
                       {getDisplayName(id)}
                     </Select.Item>

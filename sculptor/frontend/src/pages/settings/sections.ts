@@ -49,8 +49,8 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
   {
     id: SettingsSection.GENERAL,
     displayName: "General",
-    paletteSubtitle: "Theme, updates",
-    paletteKeywords: ["theme", "updates"],
+    paletteSubtitle: "Theme",
+    paletteKeywords: ["theme"],
     icon: CogIcon,
     testId: ElementIds.SETTINGS_NAV_GENERAL,
   },

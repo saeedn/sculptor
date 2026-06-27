@@ -16,8 +16,6 @@ import { ErrorPage } from "./pages/error/ErrorPage.tsx";
 import { BrowserViewHost } from "./pages/workspace/panels/browser/BrowserViewHost.tsx";
 import { Router } from "./Router.tsx";
 
-const isDebugRoute = (): boolean => window.location.hash.startsWith("#/debug/");
-
 type AppErrorBoundaryProps = { children: ReactNode };
 type AppErrorBoundaryState = { error: Error | null };
 
@@ -44,18 +42,6 @@ class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundary
 
 export const App = (): ReactElement => {
   useAppZoom();
-
-  // Debug routes bypass backend, onboarding, and config loading since they
-  // are self-contained pages that don't need API access.
-  if (isDebugRoute()) {
-    return (
-      <AppErrorBoundary>
-        <QueryClientProvider client={queryClient}>
-          <Router />
-        </QueryClientProvider>
-      </AppErrorBoundary>
-    );
-  }
 
   return (
     <AppErrorBoundary>

@@ -130,5 +130,20 @@ Done concurrently (disjoint FE/BE trees), one combined gate:
 - Single-impl ABCs (EnvironmentManager/Environment/AgentExecutionEnvironment), single-value enums (WorkspaceInitializationStrategy, ArtifactType), EnvironmentTypes alias: simplifications, not dead code — left for an explicit refactor decision.
 - sculptor_folder / from_new_repository(user_email,user_name) params: test-used.
 
-### Coverage note
+## Simplification refactors (follow-up phase) — DONE
+After the dead-code sweep, the deferred "not dead, but single-impl/single-value" refactors were executed:
+- **Single-value enums**: `ArtifactType` (→ `DIFF_ARTIFACT_DIRNAME` constant) and
+  `WorkspaceInitializationStrategy` (removed the enum, the persisted column +migration,
+  the API field, ~40 plumbing sites, and the sculpt `--strategy` flag — all always WORKTREE).
+- **Single-impl environment ABCs**: `EnvironmentManager`→`DefaultEnvironmentManager`,
+  `AgentExecutionEnvironment`→`LocalAgentExecutionEnvironment`, `Environment`→`LocalEnvironment`
+  (merged shared concrete code into the one impl), and dropped the `EnvironmentTypes` single-type alias.
+- **No-op `progress_tracking`**: deleted the placeholder module and unthreaded its handles from
+  workspace_service + concurrency_group (the no-op on_output collapsed to the caller's callback).
+All behavior-preserving; full unit + integration suites green after each.
+
+Integration baseline (before refactors): 103 passed, 3 skipped, 1 xfailed; the lone
+`test_discard_file` "failure" was a load flake (passed in isolation), NOT a sweep regression.
+
+## Coverage note
 no-op handler removal (9d) dropped 2 task-lifecycle unit tests (idle-finalize, proper-shutdown-kills-runners) that depended on the removed lightweight task type; their assertions (_get_name_for_runner_from_task, stop()-kills-runners) could be re-covered later via a real terminal-agent fixture.

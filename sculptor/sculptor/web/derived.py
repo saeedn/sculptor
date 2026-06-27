@@ -32,7 +32,6 @@ from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import build_discriminator
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentReleasedRunnerMessage
-from sculptor.interfaces.agents.agent import PersistentRequestCompleteAgentMessage
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
@@ -176,12 +175,9 @@ def _is_content_message(msg: Message) -> bool:
     Content messages are those that create new visual elements in the chat UI
     (agent responses, errors, warnings, etc.). Non-content messages include:
     - Ephemeral messages (not persisted, recreated on restart)
-    - Request lifecycle bookkeeping (RequestComplete)
     - User-initiated messages (the user already knows about their own actions)
     """
     if msg.is_ephemeral:
-        return False
-    if isinstance(msg, PersistentRequestCompleteAgentMessage):
         return False
     if msg.source == AgentMessageSource.USER:
         return False

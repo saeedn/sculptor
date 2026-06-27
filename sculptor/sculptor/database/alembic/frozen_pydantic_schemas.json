@@ -349,61 +349,6 @@
         "title": "KilledAgentRunnerMessage",
         "type": "object"
       },
-      "RequestSuccessAgentMessage": {
-        "$defs": {
-          "AgentMessageSource": {
-            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), SCULPTOR_SYSTEM (multifaceted sculptor app and service code) and RUNNER (the process controlling a task on the server.)",
-            "enum": [
-              "AGENT",
-              "USER",
-              "SCULPTOR_SYSTEM",
-              "RUNNER"
-            ],
-            "title": "AgentMessageSource",
-            "type": "string"
-          }
-        },
-        "additionalProperties": true,
-        "properties": {
-          "approximateCreationTime": {
-            "format": "date-time",
-            "title": "Approximatecreationtime",
-            "type": "string"
-          },
-          "error": {
-            "default": null,
-            "title": "Error",
-            "type": "null"
-          },
-          "interrupted": {
-            "default": false,
-            "title": "Interrupted",
-            "type": "boolean"
-          },
-          "messageId": {
-            "title": "Messageid",
-            "type": "string"
-          },
-          "objectType": {
-            "default": "RequestSuccessAgentMessage",
-            "title": "Objecttype",
-            "type": "string"
-          },
-          "requestId": {
-            "title": "Requestid",
-            "type": "string"
-          },
-          "source": {
-            "$ref": "#/$defs/AgentMessageSource",
-            "default": "AGENT"
-          }
-        },
-        "required": [
-          "requestId"
-        ],
-        "title": "RequestSuccessAgentMessage",
-        "type": "object"
-      },
       "UnexpectedErrorRunnerMessage": {
         "$defs": {
           "AgentMessageSource": {
@@ -526,18 +471,6 @@
         "additionalProperties": true,
         "description": "The state of a run_agent server task.\nThis is used to snapshot the state of the task at various points in time so that the agent can be resumed.",
         "properties": {
-          "lastProcessedMessageId": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Lastprocessedmessageid"
-          },
           "objectType": {
             "default": "AgentTaskStateV2",
             "title": "Objecttype",

@@ -6,7 +6,6 @@ The meaning of each of the message is defined below.
 
 from __future__ import annotations
 
-import abc
 import datetime
 from enum import StrEnum
 from typing import Annotated
@@ -25,7 +24,6 @@ from sculptor.primitives.ids import TaskID as TaskID
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import PersistentAgentMessage
 from sculptor.state.messages import PersistentMessage
 
 EnvironmentTypes = LocalEnvironment
@@ -51,21 +49,8 @@ class EphemeralUserMessage(EphemeralMessage):
     )
 
 
-class InterruptProcessUserMessage(EphemeralUserMessage):
-    object_type: str = Field(default="InterruptProcessUserMessage")
-
-
-class RemoveQueuedMessageUserMessage(EphemeralUserMessage):
-    object_type: str = Field(default="RemoveQueuedMessageUserMessage")
-    target_message_id: AgentMessageID = Field(description="ID of the message to be removed from the queue")
-
-
 PersistentUserMessageUnion = Annotated[ChatInputUserMessage, Tag("ChatInputUserMessage")]
-EphemeralUserMessageUnion = (
-    Annotated[InterruptProcessUserMessage, Tag("InterruptProcessUserMessage")]
-    | Annotated[RemoveQueuedMessageUserMessage, Tag("RemoveQueuedMessageUserMessage")]
-)
-UserMessageUnion = PersistentUserMessageUnion | EphemeralUserMessageUnion
+UserMessageUnion = PersistentUserMessageUnion
 
 
 class PersistentRunnerMessage(PersistentMessage):
@@ -171,31 +156,11 @@ EphemeralRunnerMessageUnion = (
 RunnerMessageUnion = PersistentRunnerMessageUnion | EphemeralRunnerMessageUnion
 
 
-class RequestCompleteAgentMessage(abc.ABC):
-    request_id: AgentMessageID
-    error: SerializedException | None
-
-
-class PersistentRequestCompleteAgentMessage(PersistentAgentMessage, RequestCompleteAgentMessage, abc.ABC): ...
-
-
-class RequestSuccessAgentMessage(PersistentRequestCompleteAgentMessage):
-    object_type: str = "RequestSuccessAgentMessage"
-    # pyrefly: ignore [bad-override]
-    request_id: AgentMessageID
-    # pyrefly: ignore [bad-override]
-    error: None = None
-    interrupted: bool = False
-
-
-PersistentAgentMessageUnion = Annotated[RequestSuccessAgentMessage, Tag("RequestSuccessAgentMessage")]
 # this is necessary because pydantic won't let us use PersistentMessageTypes, which already has a discriminator, to make MessageTypes
-PersistentMessageTypesUnannotated = (
-    PersistentAgentMessageUnion | PersistentRunnerMessageUnion | PersistentUserMessageUnion
-)
+PersistentMessageTypesUnannotated = PersistentRunnerMessageUnion | PersistentUserMessageUnion
 PersistentMessageTypes = Annotated[PersistentMessageTypesUnannotated, build_discriminator()]
 
-EphemeralMessageTypes = EphemeralRunnerMessageUnion | EphemeralUserMessageUnion
+EphemeralMessageTypes = EphemeralRunnerMessageUnion
 
 MessageTypes = Annotated[
     PersistentMessageTypesUnannotated | EphemeralMessageTypes,

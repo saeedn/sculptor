@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import os
 import shutil
 import sys
@@ -707,9 +706,7 @@ custom_sculptor_folder_populator = pytest.mark.custom_sculptor_folder
 
 def _make_test_user_config(claude_path: str = "claude") -> UserConfig:
     """Create a UserConfig with test defaults."""
-    return UserConfig(
-        instance_id=hashlib.md5(os.urandom(64)).hexdigest(),
-    )
+    return UserConfig()
 
 
 def _default_sculptor_folder_populator(folder_path: Path, claude_path: str = "claude") -> None:

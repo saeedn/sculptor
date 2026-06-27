@@ -93,15 +93,6 @@ class Environment(BaseModel, abc.ABC):
     def get_attachments_path(self) -> Path:
         return self.get_root_path() / ATTACHMENTS_DIRECTORY
 
-    def get_project_env_var_names(self) -> list[str]:
-        """Return the names of project-configured environment variables.
-
-        Names come from `.env` files (`~/.sculptor/.env` and
-        `<repo>/.sculptor/.env`) when the environment supports them.
-        Default: no project env vars.
-        """
-        return []
-
     def get_system_prompt(self) -> str | None:
         """Get the environment-specific system prompt content.
 

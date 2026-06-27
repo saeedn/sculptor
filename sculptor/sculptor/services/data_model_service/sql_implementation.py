@@ -1,6 +1,4 @@
-import functools
 import os
-import re
 import shutil
 import sqlite3
 import time
@@ -16,7 +14,6 @@ from typing import Callable
 from typing import Collection
 from typing import Generator
 from typing import Generic
-from typing import ParamSpec
 from typing import TypeVar
 
 import sqlalchemy
@@ -59,7 +56,6 @@ from sculptor.database.models import SavedAgentMessage
 from sculptor.database.models import Task
 from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
-from sculptor.database.utils import is_read_only_sqlite_url
 from sculptor.database.utils import maybe_get_db_path
 from sculptor.foundation.async_monkey_patches import log_exception
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
@@ -161,30 +157,6 @@ T4 = TypeVar("T4", bound=Project | UserSettings | Notification | Task | Workspac
 _WAIT_FOR_LOCK_TIMEOUT_SEC = 10.0
 
 
-P = ParamSpec("P")
-R = TypeVar("R")
-
-
-def overwrite_missing_table_error_for_sentry(
-    func: Callable[P, R],
-) -> Callable[P, R]:
-    """Replace sqlite3.OperationalError with MissingSQLTableError when it's for a missing table."""
-
-    _missing_table_regex = re.compile(r"no such table: (\w+)")
-
-    @functools.wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        try:
-            return func(*args, **kwargs)
-        except sqlite3.OperationalError as e:
-            match = _missing_table_regex.search(str(e))
-            if match:
-                raise MissingSQLTableError(match.group(1)) from e
-            raise
-
-    return wrapper
-
-
 class SQLTransaction(BaseDataModelTransaction):
     connection: Connection
     # tracks the current stack. Useful for debugging if we get a "database is locked" error.
@@ -223,7 +195,6 @@ class SQLTransaction(BaseDataModelTransaction):
             return None
         return _row_to_pydantic_model(row, Project)
 
-    @overwrite_missing_table_error_for_sentry
     def get_user_settings(self, user_reference: UserReference) -> UserSettings | None:
         statement = select(USER_SETTINGS_LATEST_TABLE).where(
             USER_SETTINGS_LATEST_TABLE.c.user_reference == str(user_reference)
@@ -234,7 +205,6 @@ class SQLTransaction(BaseDataModelTransaction):
             return None
         return _row_to_pydantic_model(row, UserSettings)
 
-    @overwrite_missing_table_error_for_sentry
     def get_or_create_user_settings(self, user_reference: UserReference) -> UserSettings:
         user_settings = self.get_user_settings(user_reference)
         if user_settings is not None:
@@ -256,7 +226,6 @@ class SQLTransaction(BaseDataModelTransaction):
         self._insert_model(notification, NOTIFICATION_TABLE)
         return notification
 
-    @overwrite_missing_table_error_for_sentry
     def get_workspace(self, workspace_id: WorkspaceID) -> Workspace | None:
         statement = (
             select(WORKSPACE_LATEST_TABLE)
@@ -269,7 +238,6 @@ class SQLTransaction(BaseDataModelTransaction):
             return None
         return _row_to_pydantic_model(row, Workspace)
 
-    @overwrite_missing_table_error_for_sentry
     def get_workspace_include_deleted(self, workspace_id: WorkspaceID) -> Workspace | None:
         """Get workspace by ID including soft-deleted ones. Used for deletion state checks."""
         statement = select(WORKSPACE_LATEST_TABLE).where(WORKSPACE_LATEST_TABLE.c.object_id == str(workspace_id))
@@ -279,7 +247,6 @@ class SQLTransaction(BaseDataModelTransaction):
             return None
         return _row_to_pydantic_model(row, Workspace)
 
-    @overwrite_missing_table_error_for_sentry
     def get_workspaces(
         self,
         project_id: ProjectID | None = None,
@@ -293,11 +260,9 @@ class SQLTransaction(BaseDataModelTransaction):
         result = self.connection.execute(statement)
         return tuple(_row_to_pydantic_model(row, Workspace) for row in result.all())
 
-    @overwrite_missing_table_error_for_sentry
     def upsert_workspace(self, workspace: Workspace) -> Workspace:
         return self._upsert_model(workspace, WORKSPACE_TABLE, self.get_workspace)
 
-    @overwrite_missing_table_error_for_sentry
     def update_workspace_fields(
         self, workspace_id: WorkspaceID, **fields: Unpack[WorkspaceFieldUpdate]
     ) -> Workspace | None:
@@ -310,7 +275,6 @@ class SQLTransaction(BaseDataModelTransaction):
             where_extra=WORKSPACE_TABLE.c.is_deleted.is_(False),
         )
 
-    @overwrite_missing_table_error_for_sentry
     def get_all_workspaces(self) -> list[WorkspaceListingRow]:
         """Get cross-project workspace listing with denormalized fields, ordered by recent activity."""
         rows = self.connection.execute(
@@ -351,11 +315,9 @@ class SQLTransaction(BaseDataModelTransaction):
 
         return [WorkspaceListingRow(**{str(k): v for k, v in row._mapping.items()}) for row in rows]
 
-    @overwrite_missing_table_error_for_sentry
     def upsert_task(self, task: Task) -> Task:
         return self._upsert_model(task, TASK_TABLE, self.get_task)
 
-    @overwrite_missing_table_error_for_sentry
     def get_task(self, task_id: TaskID) -> Task | None:
         statement = (
             select(TASK_LATEST_TABLE)
@@ -368,7 +330,6 @@ class SQLTransaction(BaseDataModelTransaction):
             return None
         return _row_to_pydantic_model(row, Task)
 
-    @overwrite_missing_table_error_for_sentry
     def get_tasks_for_project(
         self,
         project_id: ProjectID,
@@ -393,13 +354,6 @@ class SQLTransaction(BaseDataModelTransaction):
         result = self.connection.execute(query)
         return tuple(_row_to_pydantic_model(row, Task) for row in result.all())
 
-    @overwrite_missing_table_error_for_sentry
-    def get_all_tasks(self) -> tuple[Task, ...]:
-        query = select(TASK_LATEST_TABLE).order_by(TASK_LATEST_TABLE.c.created_at)
-        result = self.connection.execute(query)
-        return tuple(_row_to_pydantic_model(row, Task) for row in result.all())
-
-    @overwrite_missing_table_error_for_sentry
     def get_stuck_deleting_tasks(self) -> tuple[Task, ...]:
         query = (
             select(TASK_LATEST_TABLE)
@@ -410,7 +364,6 @@ class SQLTransaction(BaseDataModelTransaction):
         result = self.connection.execute(query)
         return tuple(_row_to_pydantic_model(row, Task) for row in result.all())
 
-    @overwrite_missing_table_error_for_sentry
     def get_active_tasks(self, input_data_classes: tuple[type, ...] = ()) -> tuple[Task, ...]:
         query = (
             select(TASK_LATEST_TABLE)
@@ -453,7 +406,6 @@ class SQLTransaction(BaseDataModelTransaction):
             messages_by_task.setdefault(msg.task_id, []).append(msg)
         return {tid: tuple(msgs) for tid, msgs in messages_by_task.items()}
 
-    @overwrite_missing_table_error_for_sentry
     def get_tasks_for_user(self, user_reference: UserReference) -> tuple[Task, ...]:
         """Get all non-deleted tasks for a user in a project."""
         query = (
@@ -655,8 +607,6 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
     # _observers_by_user_reference must hold this lock.
     _observers_lock: Lock = PrivateAttr(default_factory=Lock)
     _is_started: bool = PrivateAttr(default=False)
-    # Use this flag to skip initialization if the service is running in read-only mode.
-    _is_read_only: bool = PrivateAttr(default=False)
     # we track the currently active transactions for debugging -- we want to know what takes a long time when the DB is locked
     _active_transaction_by_id: dict[TransactionID, SQLTransaction] = PrivateAttr(default_factory=dict)
     # ensure that our parent process doesn't disappear. If it does, we must exit
@@ -679,7 +629,6 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
         return data_model_service
 
     def _initialize(self) -> None:
-        assert not self._is_read_only, "SQLDataModelService should not be initialized in the read-only mode."
         db_path = maybe_get_db_path(str(self._engine.url))
 
         if db_path is not None:
@@ -760,13 +709,7 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
 
     def start(self) -> None:
         assert not self._is_started, "SQLDataModelService can only be started once."
-        if self._is_read_only:
-            if not is_read_only_sqlite_url(str(self._engine.url)):
-                raise ReadOnlyConnectionStringExpectedError(
-                    "SQLDataModelService is configured to be read-only, but the database URL is not a read-only SQLite URL."
-                )
-        else:
-            self._initialize()
+        self._initialize()
         self._is_started = True
 
     def stop(self) -> None:
@@ -955,20 +898,7 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
                     del self._observers_by_user_reference[user_reference]
 
 
-class MissingSQLTableError(sqlite3.OperationalError):
-    """Raised when an SQLite operation fails because a table is missing."""
-
-    def __init__(self, table: str):
-        # just put the table name in args
-        super().__init__(table)
-        self.table = table
-
-
 class AttemptedOperationBeforeStartError(Exception):
-    pass
-
-
-class ReadOnlyConnectionStringExpectedError(Exception):
     pass
 
 

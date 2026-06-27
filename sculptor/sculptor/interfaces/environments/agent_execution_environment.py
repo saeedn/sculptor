@@ -211,15 +211,6 @@ class AgentExecutionEnvironment(Protocol):
         """
         ...
 
-    def get_project_env_var_names(self) -> list[str]:
-        """Return the names of project-configured environment variables.
-
-        Names come from `.env` files (`~/.sculptor/.env` and
-        `<repo>/.sculptor/.env`) that the user explicitly configured for the
-        agent. Values are intentionally not exposed.
-        """
-        ...
-
     def start_terminal_manager(
         self,
         concurrency_group: ConcurrencyGroup,

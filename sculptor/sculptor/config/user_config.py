@@ -18,13 +18,6 @@ from sculptor.foundation.pydantic_serialization import build_discriminator
 _FREE_DISK_GB_WARN_LIMIT_MULTIPLIER: float = 3.0
 
 
-class UpdateChannel(StrEnum):
-    """Update channel for receiving Sculptor updates."""
-
-    STABLE = "STABLE"
-    ALPHA = "ALPHA"
-
-
 class PanelLayoutConfig(SerializableModel):
     """Panel layout preferences for the workspace page."""
 
@@ -93,14 +86,9 @@ class UserConfig(SerializableModel):
     When you add a new field, you should add it as a field with a default value so that it is backwards compatible.
     """
 
-    instance_id: str = Field(default=..., description="Instance ID")
     # App configuration:
     keybindings: dict[str, str | None] = Field(
         default_factory=dict, description="User-customized keybinding overrides"
-    )
-    update_channel: UpdateChannel = Field(
-        default=UpdateChannel.STABLE,
-        description="Update channel for receiving Sculptor updates (stable or alpha)",
     )
     min_free_disk_gb: float = Field(
         default=2.0,

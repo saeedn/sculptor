@@ -366,7 +366,6 @@ def _make_user_config(
 ) -> UserConfig:
     """Build a UserConfig with only the polling-relevant fields set."""
     return UserConfig(
-        instance_id="test_instance",
         pr_polling_enabled=pr_polling_enabled,
         pr_poll_interval_seconds=pr_poll_interval_seconds,
         pr_poll_closed_multiplier=pr_poll_closed_multiplier,

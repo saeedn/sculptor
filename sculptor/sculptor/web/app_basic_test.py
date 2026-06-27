@@ -450,7 +450,8 @@ def test_create_agent_does_not_send_intro_message_when_agents_exist(
     agent_id = response.json()["id"]
 
     with user_session.open_transaction(test_services) as transaction:
-        saved_messages = test_services.task_service.get_saved_messages_for_task(TaskID(agent_id), transaction)
+        # pyrefly: ignore [missing-attribute]
+        saved_messages = transaction.get_messages_for_task(TaskID(agent_id))
     assert len(saved_messages) == 0
 
 

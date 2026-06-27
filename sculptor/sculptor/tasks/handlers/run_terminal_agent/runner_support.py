@@ -23,7 +23,6 @@ from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.serialization import SerializedException
 from sculptor.interfaces.agents.agent import AgentCrashedRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentCrashedRunnerMessage
-from sculptor.interfaces.agents.agent import KilledAgentRunnerMessage
 from sculptor.interfaces.agents.agent import PersistentRunnerMessageUnion
 from sculptor.interfaces.agents.agent import UnexpectedErrorRunnerMessage
 from sculptor.interfaces.agents.errors import AgentCrashed
@@ -35,26 +34,11 @@ from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.task_service.data_types import ServiceCollectionForTask
 from sculptor.services.task_service.errors import TaskError
 from sculptor.services.task_service.errors import UserPausedTaskError
-from sculptor.services.task_service.errors import UserStoppedTaskError
 from sculptor.utils.shutdown import GLOBAL_SHUTDOWN_EVENT
 
 
 class AgentTaskFailure(TaskError):
     pass
-
-
-class AgentHardKilled(ExpectedError):
-    pass
-
-
-class AgentShutdownCleanly(ExpectedError):
-    pass
-
-
-class AgentPaused(AgentShutdownCleanly):
-    """
-    The agent was paused by the user (typically via ctrl-c) and will be resumed when the process restarts.
-    """
 
 
 def load_initial_task_state(services: ServiceCollectionForTask, task: Task) -> tuple[AgentTaskStateV2, Project]:
@@ -91,7 +75,7 @@ def on_exception(
         e = e.exceptions[0]
 
     # ConcurrentShutdownError is raised when the ConcurrencyGroup is torn down during server
-    # shutdown.  Treat it the same as AgentPaused so the task is re-queued, not failed.
+    # shutdown.  Treat it as a pause so the task is re-queued, not failed.
     if isinstance(e, ConcurrentShutdownError):
         raise UserPausedTaskError() from e
 
@@ -100,10 +84,8 @@ def on_exception(
     if isinstance(e, CancelledByEventError) and (shutdown_event.is_set() or GLOBAL_SHUTDOWN_EVENT.is_set()):
         # Looks like the user cancelled the task even before the agent started.
         raise UserPausedTaskError() from e
-    if isinstance(e, (AgentPaused, UserPausedTaskError)):
+    if isinstance(e, UserPausedTaskError):
         raise UserPausedTaskError() from e
-    if isinstance(e, AgentShutdownCleanly):
-        raise UserStoppedTaskError() from e
 
     # if the agent has failed, we should notify the user
     is_expected = isinstance(e, ExpectedError)
@@ -128,10 +110,6 @@ def on_exception(
     is_worth_notifying = True
     agent_error_message: PersistentRunnerMessageUnion
     match error:
-        case AgentHardKilled():
-            agent_error_message = KilledAgentRunnerMessage(message_id=AgentMessageID())
-            # not worth notifying the user about this, they told it to stop
-            is_worth_notifying = False
         case AgentCrashed():
             agent_error_message = AgentCrashedRunnerMessage(
                 message_id=AgentMessageID(),

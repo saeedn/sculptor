@@ -1,5 +1,3 @@
-import hashlib
-import os
 import tomllib
 from collections.abc import Mapping
 from pathlib import Path
@@ -48,22 +46,6 @@ def set_user_config_instance(config: UserConfig | None) -> None:
     _CONFIG_INSTANCE = config
 
 
-def _create_random_hash() -> str:
-    return hashlib.md5(os.urandom(64)).hexdigest()
-
-
-_EXECUTION_INSTANCE_ID: str = _create_random_hash()
-
-
-def get_execution_instance_id() -> str:
-    """Get the current execution instance ID.
-
-    It is used to identify this unique run of Sculptor and is additionally persisted as an installation identifier
-    the first time we generate user config.
-    """
-    return _EXECUTION_INSTANCE_ID
-
-
 def _generate_default_config_path() -> Path:
     return get_internal_folder() / "config.toml"
 
@@ -85,10 +67,6 @@ def load_config(config_path: Path) -> UserConfig:
             config_data = tomllib.load(f)
 
             config_dict = dict(config_data)
-
-            if "instance_id" not in config_dict:
-                # populate the persistent instance id with the execution one if missing
-                config_dict["instance_id"] = get_execution_instance_id()
 
             config = UserConfig(**config_dict)
             return config
@@ -128,8 +106,8 @@ def save_config(config: UserConfig, config_path: Path) -> None:
 
 
 def _generate_default_user_config_instance() -> UserConfig:
-    """Generates a default user config instance with an instance id."""
-    return UserConfig(instance_id=get_execution_instance_id())
+    """Generates a default user config instance."""
+    return UserConfig()
 
 
 _DEFAULT_CONFIG_INSTANCE: UserConfig = _generate_default_user_config_instance()

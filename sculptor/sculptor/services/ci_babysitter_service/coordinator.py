@@ -458,7 +458,6 @@ class CIBabysitterCoordinator(Service):
                     messages.append(queue.get(timeout=_TERMINAL_READINESS_POLL_SECONDS))
                 except Empty:
                     continue
-        return False  # unreachable: the loop only exits via return
 
     def _resolve_babysitter_agent(
         self,

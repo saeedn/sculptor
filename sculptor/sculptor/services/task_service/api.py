@@ -1,7 +1,6 @@
 from abc import ABC
 from abc import abstractmethod
 from contextlib import contextmanager
-from pathlib import Path
 from queue import Queue
 from typing import Generator
 
@@ -9,7 +8,6 @@ from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.interfaces.agents.agent import MessageTypes
-from sculptor.interfaces.agents.agent import PersistentMessageTypes
 from sculptor.interfaces.environments.base import Environment
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import UserReference
@@ -36,8 +34,6 @@ class TaskService(Service, ABC):
     but the `Task` itself is saved to the database, and thus is persisted indefinitely.
     When the server is restarted, the TaskService will restore the state of all previously running `Task`s
     """
-
-    task_sync_dir: Path
 
     @abstractmethod
     def create_task(self, task: Task, transaction: DataModelTransaction) -> Task: ...
@@ -74,15 +70,10 @@ class TaskService(Service, ABC):
     def delete_task(self, task_id: TaskID, transaction: DataModelTransaction) -> None: ...
 
     @abstractmethod
-    def get_saved_messages_for_task(
-        self, task_id: TaskID, transaction: DataModelTransaction
-    ) -> tuple[PersistentMessageTypes, ...]: ...
-
-    @abstractmethod
     def get_live_messages_for_task(self, task_id: TaskID) -> tuple[Message, ...]:
         """Snapshot of the task's in-memory messages, INCLUDING ephemeral
-        run-scoped ones (e.g. terminal-agent signals) that
-        get_saved_messages_for_task never sees."""
+        run-scoped ones (e.g. terminal-agent signals) that are never persisted
+        to the database."""
 
     @abstractmethod
     @contextmanager

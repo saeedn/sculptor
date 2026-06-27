@@ -220,10 +220,6 @@ class LocalAgentExecutionEnvironment(AgentExecutionEnvironment):
         """Get the environment-specific system prompt content."""
         return self._environment.get_system_prompt()
 
-    def get_project_env_var_names(self) -> list[str]:
-        """Get the names of project-configured environment variables."""
-        return self._environment.get_project_env_var_names()
-
     def start_terminal_manager(
         self,
         concurrency_group: ConcurrencyGroup,

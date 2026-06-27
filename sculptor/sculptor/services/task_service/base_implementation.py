@@ -1,8 +1,6 @@
-import datetime
 from abc import ABC
 from abc import abstractmethod
 from contextlib import contextmanager
-from datetime import timedelta
 from pathlib import Path
 from queue import Queue
 from threading import Lock
@@ -30,7 +28,6 @@ from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentReleasedRunnerMessage
 from sculptor.interfaces.agents.agent import EphemeralMessage
 from sculptor.interfaces.agents.agent import MessageTypes
-from sculptor.interfaces.agents.agent import PersistentMessageTypes
 from sculptor.interfaces.agents.agent import TaskStatusRunnerMessage
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.interfaces.environments.base import Environment
@@ -74,7 +71,6 @@ class BaseTaskService(TaskService, ABC):
     project_service: ProjectService
     workspace_service: WorkspaceService
 
-    _completion_deadline: dict[TaskID, datetime.datetime] = PrivateAttr(default_factory=dict)
     _subscriptions_by_task_id: dict[TaskID, list[Queue[Message]]] = PrivateAttr(default_factory=dict)
     _subscriptions_by_user_reference: dict[UserReference, list[Queue[TaskMessageContainer]]] = PrivateAttr(
         default_factory=dict
@@ -254,12 +250,6 @@ class BaseTaskService(TaskService, ABC):
             # Task is idle (no runner) — finalize immediately to avoid getting stuck
             # in is_deleting with nothing to complete the transition.
             self._finalize_task_as_deleted(task, transaction)
-
-    def get_saved_messages_for_task(
-        self, task_id: TaskID, transaction: DataModelTransaction
-    ) -> tuple[PersistentMessageTypes, ...]:
-        assert isinstance(transaction, SQLTransaction)
-        return tuple(x.message for x in transaction.get_messages_for_task(task_id))
 
     def get_live_messages_for_task(self, task_id: TaskID) -> tuple[Message, ...]:
         # Same lock as create_message's append so the snapshot is consistent.
@@ -490,14 +480,6 @@ class BaseTaskService(TaskService, ABC):
                 # if possible, set this even if there was an exception so that we know what happened
                 outcome: TaskState | None = None
 
-                # make a note of when the task should be completed by (if any)
-                max_seconds = task.max_seconds
-                if max_seconds is None:
-                    deadline = None
-                else:
-                    deadline = get_current_time() + timedelta(seconds=max_seconds)
-                    self._completion_deadline[task.object_id] = deadline
-
                 maybe_transaction_callback = None
                 is_user_notified = False
                 shutdown_flag = ShutdownEvent.from_parent(self._shutdown_flag)
@@ -506,7 +488,7 @@ class BaseTaskService(TaskService, ABC):
                     maybe_transaction_callback = run_task(
                         task=task,
                         services=services,
-                        task_deadline=deadline,
+                        task_deadline=None,
                         settings=settings,
                         concurrency_group=concurrency_group,
                         shutdown_event=shutdown_flag,

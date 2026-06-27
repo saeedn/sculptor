@@ -4,11 +4,10 @@
       "AgentCrashedRunnerMessage": {
         "$defs": {
           "AgentMessageSource": {
-            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), SCULPTOR_SYSTEM (multifaceted sculptor app and service code) and RUNNER (the process controlling a task on the server.)",
+            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), and RUNNER (the process controlling a task on the server.)",
             "enum": [
               "AGENT",
               "USER",
-              "SCULPTOR_SYSTEM",
               "RUNNER"
             ],
             "title": "AgentMessageSource",
@@ -131,11 +130,10 @@
       "EnvironmentCrashedRunnerMessage": {
         "$defs": {
           "AgentMessageSource": {
-            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), SCULPTOR_SYSTEM (multifaceted sculptor app and service code) and RUNNER (the process controlling a task on the server.)",
+            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), and RUNNER (the process controlling a task on the server.)",
             "enum": [
               "AGENT",
               "USER",
-              "SCULPTOR_SYSTEM",
               "RUNNER"
             ],
             "title": "AgentMessageSource",
@@ -245,11 +243,10 @@
       "KilledAgentRunnerMessage": {
         "$defs": {
           "AgentMessageSource": {
-            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), SCULPTOR_SYSTEM (multifaceted sculptor app and service code) and RUNNER (the process controlling a task on the server.)",
+            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), and RUNNER (the process controlling a task on the server.)",
             "enum": [
               "AGENT",
               "USER",
-              "SCULPTOR_SYSTEM",
               "RUNNER"
             ],
             "title": "AgentMessageSource",
@@ -283,11 +280,10 @@
       "UnexpectedErrorRunnerMessage": {
         "$defs": {
           "AgentMessageSource": {
-            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), SCULPTOR_SYSTEM (multifaceted sculptor app and service code) and RUNNER (the process controlling a task on the server.)",
+            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), and RUNNER (the process controlling a task on the server.)",
             "enum": [
               "AGENT",
               "USER",
-              "SCULPTOR_SYSTEM",
               "RUNNER"
             ],
             "title": "AgentMessageSource",

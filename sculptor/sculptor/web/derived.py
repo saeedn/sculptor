@@ -46,7 +46,6 @@ from sculptor.web.data_types import PrApproval  # noqa: F401 — re-exported for
 from sculptor.web.data_types import PrComment  # noqa: F401 — re-exported for existing import sites
 from sculptor.web.data_types import PrStatusInfo  # noqa: F401 — re-exported for existing import sites
 from sculptor.web.data_types import PrStatusInfoCleared  # noqa: F401 — re-exported for existing import sites
-from sculptor.web.data_types import TaskInterface
 from sculptor.web.data_types import WorkspaceBranchInfo  # noqa: F401 — re-exported for existing import sites
 from sculptor.web.data_types import WorkspaceTargetBranchesInfo  # noqa: F401 — re-exported for existing import sites
 
@@ -261,11 +260,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
     def add_message(self, message: Message) -> None:
         super().add_message(message)
         self._cache.clear()
-
-    @computed_field
-    @property
-    def interface(self) -> TaskInterface:
-        return TaskInterface.API
 
     @computed_field
     @property

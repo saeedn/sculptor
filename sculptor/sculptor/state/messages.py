@@ -10,7 +10,7 @@ from sculptor.primitives.ids import AgentMessageID
 
 class AgentMessageSource(StrEnum):
     """
-    Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), SCULPTOR_SYSTEM (multifaceted sculptor app and service code) and RUNNER (the process controlling a task on the server.)
+    Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), and RUNNER (the process controlling a task on the server.)
     """
 
     # Messages coming directly from the agent from inside the environment.
@@ -19,12 +19,7 @@ class AgentMessageSource(StrEnum):
     # Messages coming directly from a user interacting with the interface, ie chat
     USER = "USER"
 
-    # Messages coming from sculptor-mediated actions and automations, like local sync updates or manual sync operations.
-    # If there is ambiguity, (ie, "the user _did_ click a button but we did a lot of magic in the resolution") prefer SCULPTOR_SYSTEM.
-    SCULPTOR_SYSTEM = "SCULPTOR_SYSTEM"
-
     # Messages coming from the task runner wrapper, such as environment shutdown.
-    # conceptually a subset of SCULPTOR_SYSTEM
     RUNNER = "RUNNER"
 
 

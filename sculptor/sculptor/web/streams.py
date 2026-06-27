@@ -767,8 +767,6 @@ def _convert_to_streaming_update(
         elif isinstance(model, WebviewCommandUiAction):
             updated_ui_webview_command_by_workspace_id[model.workspace_id] = model
 
-        elif isinstance(model, Message):
-            raise TypeError("should not have Message models in streaming update")
         else:
             assert_never(model)
 

@@ -6,7 +6,6 @@ import type {
   CodingAgentTaskView,
   Project,
   PrStatusInfo,
-  TaskInterface,
   TaskState,
   TaskStatus,
   Workspace,
@@ -68,7 +67,6 @@ function makeTask(overrides: Partial<CodingAgentTaskView> & { id: string }): Cod
     updatedAt: "2026-03-05T01:30:00Z",
     initialPrompt: "Do something",
     titleOrSomethingLikeIt: "Task",
-    interface: "TERMINAL" as TaskInterface,
     systemPrompt: null,
     harnessCapabilities: {
       supportsChatInterface: true,

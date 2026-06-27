@@ -6,9 +6,7 @@ from sculptor.config.user_config import UserConfigField
 
 
 def test_ci_babysitter_defaults() -> None:
-    config = UserConfig(
-        instance_id="inst123",
-    )
+    config = UserConfig()
     assert isinstance(config.ci_babysitter, CIBabysitterConfig)
     assert config.ci_babysitter.enabled is False
     assert config.ci_babysitter.retry_cap == 3
@@ -73,7 +71,6 @@ def test_user_config_silently_ignores_removed_chat_view_legacy_field() -> None:
             "userEmail": "test@example.com",
             "userId": "user123",
             "organizationId": "org123",
-            "instanceId": "inst123",
             "chatViewLegacy": True,
         }
     )

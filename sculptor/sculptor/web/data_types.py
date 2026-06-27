@@ -17,12 +17,6 @@ from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.services.task_service.api import TaskMessageContainer
 from sculptor.services.terminal_agent_registry.registry import TerminalAgentRegistration
 from sculptor.services.workspace_service.api import GitOperationResult
-from sculptor.state.messages import Message
-
-
-class TaskInterface(StrEnum):
-    TERMINAL = "TERMINAL"
-    API = "API"
 
 
 class AgentTypeName(StrEnum):
@@ -547,7 +541,7 @@ class DirectoryEntry(SerializableModel):
     path: str
 
 
-TaskUpdateTypes = Message | CompletedTransaction
+TaskUpdateTypes = CompletedTransaction
 UserUpdateSourceTypes = CompletedTransaction | SculptorSettings
 StreamingUpdateSourceTypes = (
     TaskMessageContainer

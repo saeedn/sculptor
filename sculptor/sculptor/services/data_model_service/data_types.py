@@ -249,9 +249,6 @@ class TaskAndDataModelTransaction(DataModelTransaction, ABC):
     def get_active_tasks(self, input_data_classes: tuple[type, ...] = ()) -> tuple[Task, ...]: ...
 
     @abstractmethod
-    def get_all_tasks(self) -> tuple[Task, ...]: ...
-
-    @abstractmethod
     def get_stuck_deleting_tasks(self) -> tuple[Task, ...]: ...
 
     @abstractmethod

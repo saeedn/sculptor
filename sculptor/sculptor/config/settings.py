@@ -54,10 +54,6 @@ class SculptorSettings(BaseSettings):
     SESSION_TOKEN: SecretStr | None = None
 
     @property
-    def task_sync_path(self) -> Path:
-        return Path(self.TASK_SYNC_DIR)
-
-    @property
     def workspace_sync_path(self) -> Path:
         return Path(self.WORKSPACE_SYNC_DIR)
 

@@ -39,9 +39,6 @@ class ThreadRunner(Runner):
             return False
         return self._thread.is_alive()
 
-    def stop(self) -> None:
-        pass
-
     def join(self, timeout: float | None = None) -> None:
         assert self._thread is not None
         self._thread.join(timeout)

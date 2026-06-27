@@ -335,7 +335,7 @@ async def lifespan(app: App):
                 #
                 # Setting the concurrency group's shutdown_event globally is
                 # too broad — it makes the v1 agent loop short-circuit via
-                # ``AgentPaused`` before the wrapper can emit
+                # ``UserPausedTaskError`` before the wrapper can emit
                 # ``RequestStoppedAgentMessage``, which the replay-on-restart
                 # regression tests rely on to advance the dedup cursor.
                 terminate_isolated_process_groups(signal.SIGTERM)

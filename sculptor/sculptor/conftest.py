@@ -95,7 +95,6 @@ def _test_task_service(
         project_service=_test_project_service,
         workspace_service=_test_workspace_service,
         concurrency_group=test_root_concurrency_group.make_concurrency_group("task_service"),
-        task_sync_dir=test_settings.task_sync_path,
     )
 
 

@@ -89,9 +89,6 @@ class LocalEnvironment(Environment):
     # internals; SCULPT_* vars are injected via extra_env so the sculpt CLI works.
     _sculpt_terminal_env_vars: dict[str, str] = PrivateAttr(default_factory=dict)
 
-    def get_project_env_var_names(self) -> list[str]:
-        return list(self._project_env_vars.keys())
-
     def set_sculpt_terminal_env_vars(self, env_vars: dict[str, str]) -> None:
         """Set SCULPT_* env vars that should be available in terminal sessions.
 

@@ -11,7 +11,6 @@ import datetime
 import threading
 import time
 from contextlib import contextmanager
-from pathlib import Path
 from queue import Queue
 from typing import Any
 from typing import Generator
@@ -173,9 +172,6 @@ class _StubTaskService(TaskService):
     def ensure_artifact_cache_populated(self, task_id: TaskID, artifact_name: str) -> bool:
         _stub(task_id, artifact_name)
         return False
-
-    def get_saved_messages_for_task(self, task_id: TaskID, transaction: DataModelTransaction) -> Any:
-        return _stub(task_id, transaction)
 
     def get_live_messages_for_task(self, task_id: TaskID) -> Any:
         return _stub(task_id)
@@ -344,7 +340,7 @@ class _FakeTaskService(_StubTaskService):
     _live_terminal_queue: "Queue[Message] | None" = PrivateAttr(default=None)
 
     def __init__(self, env: _FakeEnv, concurrency_group: ConcurrencyGroup) -> None:
-        super().__init__(concurrency_group=concurrency_group, task_sync_dir=Path("/tmp"))
+        super().__init__(concurrency_group=concurrency_group)
         self._env = env
         self._seeded_terminal_messages = _ready_terminal_messages()
 
@@ -420,7 +416,6 @@ def _make_user_config(
     conflict_prompt: str = "CONFLICT_PROMPT",
 ) -> UserConfig:
     return UserConfig(
-        instance_id="i",
         ci_babysitter=CIBabysitterConfig(
             enabled=enabled,
             retry_cap=retry_cap,
@@ -969,7 +964,6 @@ def _driveable_terminal_config(registration_id: str = "claude-code") -> Register
 
 def _make_config_with_agent(agent: Any) -> UserConfig:
     return UserConfig(
-        instance_id="i",
         ci_babysitter=CIBabysitterConfig(enabled=True, agent=agent),
     )
 
@@ -1124,7 +1118,6 @@ def test_deliver_prompt_to_agent_writes_to_terminal_via_helper(
 
 def _make_terminal_config(failed_prompt: str = "FAILED_PROMPT", retry_cap: int = 3) -> UserConfig:
     return UserConfig(
-        instance_id="i",
         ci_babysitter=CIBabysitterConfig(
             enabled=True,
             retry_cap=retry_cap,

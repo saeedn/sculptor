@@ -22,7 +22,6 @@ const createMockTask = (overrides: Partial<CodingAgentTaskView> = {}): CodingAge
     artifactNames: [],
     initialPrompt: "Test prompt",
     titleOrSomethingLikeIt: "Test task",
-    interface: "API",
     systemPrompt: null,
     model: "CLAUDE_4_SONNET",
     harnessCapabilities: {

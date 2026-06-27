@@ -19,7 +19,6 @@ def get_task_service_collection(
         settings=settings,
         data_model_service=cast(TaskDataModelService, services.data_model_service),
         git_repo_service=services.git_repo_service,
-        task_sync_dir=settings.task_sync_path,
         project_service=services.project_service,
         workspace_service=services.workspace_service,
     )

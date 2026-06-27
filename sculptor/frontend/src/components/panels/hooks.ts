@@ -9,7 +9,6 @@ import {
   focusModeActiveAtom,
   focusModeSavedVisibilityAtom,
   isSideVisibleAtom,
-  panelEnabledAtom,
   panelRegistryAtom,
   panelShortcutsAtom,
   panelsInZoneAtom,
@@ -43,52 +42,6 @@ export const usePanelsByZone = (): Partial<Record<ZoneId, ReadonlyArray<PanelId>
     return result;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, zonePanelArrays);
-};
-
-type UsePanelEnabledResult = {
-  enabled: Record<PanelId, boolean>;
-  setEnabled: (id: PanelId, value: boolean) => void;
-};
-
-/** Per-panel on/off state. Builtin panels cannot be disabled. */
-export const usePanelEnabled = (): UsePanelEnabledResult => {
-  const [enabled, setEnabledState] = useAtom(panelEnabledAtom);
-  const registry = useAtomValue(panelRegistryAtom);
-  const zoneAssignments = useAtomValue(zoneAssignmentsAtom);
-  const panelsByZone = usePanelsByZone();
-  const setActivePanelPerZone = useSetAtom(activePanelPerZoneAtom);
-
-  const setEnabled = useCallback(
-    (id: PanelId, value: boolean): void => {
-      const def = registry.find((p) => p.id === id);
-      if ((def?.isBuiltin ?? false) && !value) return;
-
-      // When disabling the active panel in a zone, rotate to the next enabled
-      // sibling (in zoneOrder) so ZoneContent doesn't keep rendering the
-      // now-disabled panel. panelsByZone[zone] is enabled-filtered and ordered.
-      if (!value) {
-        const zone = zoneAssignments[id];
-        if (zone !== undefined) {
-          setActivePanelPerZone((prev) => {
-            if (prev[zone] !== id) return prev;
-            const sibling = (panelsByZone[zone] ?? []).find((pid) => pid !== id);
-            const next = { ...prev };
-            if (sibling !== undefined) {
-              next[zone] = sibling;
-            } else {
-              delete next[zone];
-            }
-            return next;
-          });
-        }
-      }
-
-      setEnabledState((prev) => ({ ...prev, [id]: value }));
-    },
-    [registry, zoneAssignments, panelsByZone, setActivePanelPerZone, setEnabledState],
-  );
-
-  return { enabled, setEnabled };
 };
 
 type UsePanelActionsResult = {

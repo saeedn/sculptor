@@ -4,7 +4,7 @@ import { getWorkspaceFiles } from "../../../api";
 import { HTTPException } from "../../../common/Errors.ts";
 import type { FileListEntry } from "../../../pages/workspace/panels/fileBrowser/types.ts";
 import type { BackendQueryKeyResult, BackendQueryResult } from "../../queryClient.ts";
-import { queryClient, SCULPTOR_QUERY_KEY_PREFIX } from "../../queryClient.ts";
+import { SCULPTOR_QUERY_KEY_PREFIX } from "../../queryClient.ts";
 
 // The backend returns 503 with a `Retry-After` header on transient git
 // failures (e.g. index lock contention). Retry locally so the user doesn't see
@@ -53,17 +53,4 @@ export const useWorkspaceFiles = (
     error: query.error,
     refetch: query.refetch,
   };
-};
-
-/**
- * Get the cached file list for a workspace if present, otherwise fetch it.
- * Useful for non-React callers (e.g. tiptap suggestion plugins) that want to
- * piggyback on the cache populated by `useWorkspaceFiles` observers without
- * subscribing.
- */
-export const ensureWorkspaceFiles = async (workspaceId: string): Promise<ReadonlyArray<FileListEntry>> => {
-  return await queryClient.ensureQueryData({
-    queryKey: workspaceFilesQueryKey(workspaceId).key,
-    queryFn: ({ signal }) => fetchFiles(workspaceId, signal),
-  });
 };

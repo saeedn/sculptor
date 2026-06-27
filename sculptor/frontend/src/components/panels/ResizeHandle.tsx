@@ -3,30 +3,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import styles from "./DockingLayout.module.scss";
 
-// Native Electron <webview> elements run in a separate render process, so
-// pointer events that occur over them are delivered to the embedded
-// WebContents — not the host window. While a resize drag is active that
-// would freeze the drag the moment the cursor crossed into a webview.
-// We mark <body> with this class for the lifetime of the drag so global
-// CSS can disable pointer events on webviews until the drag ends.
-const BODY_RESIZING_CLASS = "sculptor-resizing";
-
-// Counter so concurrent drags (e.g. nested ResizeHandles) don't clear
-// the class until the last one finishes.
-let activeDragCount = 0;
-
-const beginGlobalDrag = (): void => {
-  activeDragCount += 1;
-  document.body.classList.add(BODY_RESIZING_CLASS);
-};
-
-const endGlobalDrag = (): void => {
-  activeDragCount = Math.max(0, activeDragCount - 1);
-  if (activeDragCount === 0) {
-    document.body.classList.remove(BODY_RESIZING_CLASS);
-  }
-};
-
 type ResizeHandleProps = {
   axis: "x" | "y";
   /** Called at pointer-down; returns the current size (in px) so drag deltas
@@ -73,7 +49,6 @@ export const ResizeHandle = ({
       const startCoord = axis === "x" ? e.clientX : e.clientY;
       const startSize = getSize();
       setIsDragging(true);
-      beginGlobalDrag();
 
       const handlePointerMove = (ev: PointerEvent): void => {
         const now = axis === "x" ? ev.clientX : ev.clientY;
@@ -85,7 +60,6 @@ export const ResizeHandle = ({
         window.removeEventListener("pointerup", endDrag);
         activeDragCleanupRef.current = null;
         setIsDragging(false);
-        endGlobalDrag();
       };
       window.addEventListener("pointermove", handlePointerMove);
       window.addEventListener("pointerup", endDrag);

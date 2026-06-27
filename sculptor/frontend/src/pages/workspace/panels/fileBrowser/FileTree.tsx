@@ -13,7 +13,6 @@ import styles from "./FileTree.module.scss";
 import { useFileTree } from "./hooks.ts";
 import { TreeRow } from "./TreeRow.tsx";
 import type { FlatFileEntry, TreeNode, ViewMode } from "./types.ts";
-import { useFocusFolderHighlight } from "./useFocusFolderHighlight.ts";
 import { useKeyboardNavigation } from "./useKeyboardNavigation.ts";
 import { useCollapseChildren, useSearchAutoExpand, useTreeNodeMap } from "./useTreeView.ts";
 import {
@@ -152,13 +151,6 @@ export const FileTree = ({ workspaceId, viewMode, searchMatchingPaths }: FileTre
       setFileBrowserState((prev) => ({ ...prev, scrollPosition: scrollTop }));
     }, SCROLL_SAVE_DEBOUNCE_MS);
   }, [setFileBrowserState]);
-
-  useFocusFolderHighlight({
-    workspaceId,
-    flatRows,
-    virtualizer,
-    scrollContainerRef,
-  });
 
   const handleToggleExpand = useCallback(
     (path: string): void => {

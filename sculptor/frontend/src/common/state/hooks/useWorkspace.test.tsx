@@ -11,10 +11,9 @@ import {
   deletedWorkspaceIdsAtom,
   updateWorkspacesAtom,
   workspaceAtomFamily,
-  workspaceIdsAtom,
   workspacesArrayAtom,
 } from "../atoms/workspaces";
-import { useIsWorkspaceDeleted, useWorkspace } from "./useWorkspace";
+import { useWorkspace } from "./useWorkspace";
 
 const createMockWorkspace = (overrides: Partial<Workspace> = {}): Workspace => ({
   objectId: "ws_test123",
@@ -173,40 +172,5 @@ describe("updateWorkspacesAtom", () => {
     // with their own workspace lists (e.g. RecentWorkspaces) can filter it out
     expect(result.current.deletedIds.has("ws_1")).toBe(true);
     expect(result.current.deletedIds.has("ws_2")).toBe(false);
-  });
-});
-
-describe("useIsWorkspaceDeleted", () => {
-  it("returns false when workspaceId is null", () => {
-    const { result } = renderHook(() => useIsWorkspaceDeleted(null), {
-      wrapper: createWrapper([[workspaceIdsAtom, []]]),
-    });
-    expect(result.current).toBe(false);
-  });
-
-  it("returns false before workspaces have loaded", () => {
-    // Default workspaceIdsAtom is undefined — workspaces not yet streamed
-    const { result } = renderHook(() => useIsWorkspaceDeleted("ws_123"), {
-      wrapper: createWrapper(),
-    });
-    expect(result.current).toBe(false);
-  });
-
-  it("returns true when workspaces have loaded but workspace is missing", () => {
-    const { result } = renderHook(() => useIsWorkspaceDeleted("ws_gone"), {
-      wrapper: createWrapper([[workspaceIdsAtom, []]]),
-    });
-    expect(result.current).toBe(true);
-  });
-
-  it("returns false when workspace exists", () => {
-    const workspace = createMockWorkspace({ objectId: "ws_exists" });
-    const { result } = renderHook(() => useIsWorkspaceDeleted("ws_exists"), {
-      wrapper: createWrapper([
-        [workspaceIdsAtom, ["ws_exists"]],
-        [workspaceAtomFamily("ws_exists"), workspace],
-      ]),
-    });
-    expect(result.current).toBe(false);
   });
 });

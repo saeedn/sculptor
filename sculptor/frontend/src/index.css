@@ -32,15 +32,6 @@ button {
   cursor: pointer;
 }
 
-/* While a panel resize drag is active, route every pointer event back to the
-   host window. Native Electron <webview> elements run in a separate render
-   process and would otherwise swallow pointermove/pointerup the moment the
-   cursor crossed into them, freezing the drag. ResizeHandle adds and removes
-   the .sculptor-resizing class on <body> for the lifetime of the drag. */
-body.sculptor-resizing webview {
-  pointer-events: none;
-}
-
 #root {
   width: 100%;
   height: var(--app-height);

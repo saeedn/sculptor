@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { getSkills } from "../../../api";
 import type { SkillType } from "../../../components/skillBadge";
 import type { BackendQueryKeyResult, BackendQueryResult } from "../../queryClient.ts";
-import { queryClient, SCULPTOR_QUERY_KEY_PREFIX } from "../../queryClient.ts";
+import { SCULPTOR_QUERY_KEY_PREFIX } from "../../queryClient.ts";
 
 /**
  * A skill entry as exposed to consumers. The hook never produces `type:
@@ -86,24 +86,4 @@ export const useWorkspaceSkills = (
     error: query.error,
     refetch: query.refetch,
   };
-};
-
-/**
- * Get fresh workspace skills, returning the cached value if it's within the
- * stale window and refetching otherwise. Used by non-React callers (the tiptap
- * `/`-suggestion plugin) so every editor instance shares a single fetch with
- * the panel. Goes through `fetchQuery` rather than `ensureQueryData` because
- * the latter returns *any* cached data regardless of age — it only consults
- * `staleTime` when paired with `revalidateIfStale`, and even then only as a
- * fire-and-forget background hint. `fetchQuery` actually awaits the refetch
- * when stale, which is what `/`-press freshness needs.
- */
-export const fetchFreshWorkspaceSkills = async (workspaceId: string | null): Promise<ReadonlyArray<SkillEntry>> => {
-  const { key, isValid } = workspaceSkillsQueryKey(workspaceId);
-  if (!isValid) return [];
-  return await queryClient.fetchQuery({
-    queryKey: key,
-    queryFn: ({ signal }) => fetchWorkspaceSkills(workspaceId!, signal),
-    staleTime: WORKSPACE_SKILLS_STALE_TIME_MS,
-  });
 };

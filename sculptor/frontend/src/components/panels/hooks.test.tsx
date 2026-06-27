@@ -13,18 +13,11 @@ import {
   focusModeActiveAtom,
   focusModeSavedVisibilityAtom,
   panelEnabledAtom,
-  panelsInZoneAtom,
   savedSideVisibilityAtom,
   zenModeActiveAtom,
   zoneVisibilityAtom,
 } from "~/components/panels/atoms.ts";
-import {
-  useFocusMode,
-  usePanelEnabled,
-  usePanelKeyboardShortcuts,
-  useSideToggle,
-  useZenMode,
-} from "~/components/panels/hooks.ts";
+import { useFocusMode, usePanelKeyboardShortcuts, useSideToggle, useZenMode } from "~/components/panels/hooks.ts";
 import { PanelRegistryProvider } from "~/components/panels/PanelRegistryProvider";
 import type { LayoutSide, PanelDefinition } from "~/components/panels/types.ts";
 import { ZONE_IDS } from "~/components/panels/types.ts";
@@ -659,42 +652,6 @@ describe("useZenMode", () => {
       expect(store.get(focusModeActiveAtom)).toBe(false);
       expect(store.get(didZenImplyFocusModeAtom)).toBe(false);
     });
-  });
-});
-
-const renderPanelEnabled = (
-  store: ReturnType<typeof createStore>,
-  panels: ReadonlyArray<PanelDefinition> = TEST_PANELS,
-): ReturnType<typeof renderHook<ReturnType<typeof usePanelEnabled>, unknown>> => {
-  const wrapper = ({ children }: { children: ReactNode }): ReactElement => (
-    <Provider store={store}>
-      <PanelRegistryProvider panels={panels}>{children}</PanelRegistryProvider>
-    </Provider>
-  );
-  return renderHook(() => usePanelEnabled(), { wrapper });
-};
-
-describe("usePanelEnabled", () => {
-  it("setEnabled persists state and updates panelsInZoneAtom reactively", () => {
-    const store = createPanelStore(TEST_PANELS, { useDefaultLayout: true });
-    expect(store.get(panelsInZoneAtom("top-left"))).toEqual(["info"]);
-
-    const { result } = renderPanelEnabled(store);
-    act(() => result.current.setEnabled("info", false));
-
-    expect(store.get(panelsInZoneAtom("top-left"))).toEqual([]);
-  });
-
-  it("is a no-op when called for builtin panels", () => {
-    const builtinPanels: ReadonlyArray<PanelDefinition> = TEST_PANELS.map((p) =>
-      p.id === "info" ? { ...p, isBuiltin: true } : p,
-    );
-    const store = createPanelStore(builtinPanels, { useDefaultLayout: true });
-
-    const { result } = renderPanelEnabled(store, builtinPanels);
-    act(() => result.current.setEnabled("info", false));
-
-    expect(store.get(panelsInZoneAtom("top-left"))).toEqual(["info"]);
   });
 });
 

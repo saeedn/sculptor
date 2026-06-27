@@ -14,7 +14,6 @@ import type { ZoomCommand } from "./constants";
 import {
   BACKEND_PORT_CHANNEL_NAME,
   BACKEND_STATUS_CHANGE_CHANNEL_NAME,
-  BROWSER_PANEL_OPEN_IN_PANEL_CHANNEL_NAME,
   GET_APP_VERSION_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
@@ -27,7 +26,6 @@ import { createDevIcon } from "./devIcon";
 import { PORT } from "./electronOnlyUtils";
 import { migrateLocalStorageToAppScheme, MIGRATION_BLANK_PATH } from "./localStorageMigration";
 import { finalizeLogger, getSculptorFolder, logger } from "./logger";
-import { registerTestIpcHandlers } from "./testIpcHandlers";
 import {
   flushTracingBeforeExit,
   initializeElectronTracing,
@@ -573,7 +571,6 @@ const createWindow = async (): Promise<void> => {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: true,
-      webviewTag: true,
     },
   });
 
@@ -661,54 +658,6 @@ const createWindow = async (): Promise<void> => {
   window.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url);
     return { action: "deny" };
-  });
-
-  // Browser panel <webview> elements. Keep `target="_blank"` links and
-  // `window.open` calls inside the same panel instead of spawning an OS
-  // window. Two layers:
-  //
-  // 1. setWindowOpenHandler on the guest webContents catches window.open()
-  //    and form-submit popups; we deny the popup and tell the renderer to
-  //    navigate the matching panel.
-  // 2. A small script injected on every dom-ready intercepts clicks on
-  //    `<a target="_blank">` links before Chromium's popup blocker can
-  //    decide they came without user activation. It rewrites them to
-  //    navigate the same frame, which keeps the panel pointed at the
-  //    expected URL even for synthetic clicks. (`allowpopups` on the
-  //    <webview> tag is not enough — verified empirically:
-  //    test_browser_panel_navigation_tour fails on the synthetic
-  //    `popup-link.click()` without this interceptor.)
-  window.webContents.on("did-attach-webview", (_event, attachedContents) => {
-    attachedContents.setWindowOpenHandler(({ url }) => {
-      window?.webContents.send(BROWSER_PANEL_OPEN_IN_PANEL_CHANNEL_NAME, {
-        webContentsId: attachedContents.id,
-        url,
-      });
-      return { action: "deny" };
-    });
-    const injectTargetBlankInterceptor = (): void => {
-      void attachedContents
-        .executeJavaScript(
-          `
-          (() => {
-            if (window.__sculptorBrowserPanelHooksInstalled) return;
-            window.__sculptorBrowserPanelHooksInstalled = true;
-            document.addEventListener("click", (event) => {
-              const link = event.target instanceof Element ? event.target.closest("a[target=_blank]") : null;
-              if (!link) return;
-              const href = link.href;
-              if (!href) return;
-              event.preventDefault();
-              window.location.href = href;
-            }, true);
-          })();
-          `,
-        )
-        .catch(() => {
-          // Swallow: the page may have navigated away before we could inject.
-        });
-    };
-    attachedContents.on("dom-ready", injectTargetBlankInterceptor);
   });
 
   // This handles other links.
@@ -861,10 +810,6 @@ app.whenReady().then(async () => {
   ipcMain.handle(GET_DEV_INFO_CHANNEL_NAME, () => getDevInfo());
   ipcMain.handle(GET_APP_VERSION_CHANNEL_NAME, () => app.getVersion());
   ipcMain.handle("get-backend-url", () => backendUrlReady);
-
-  if (isInPytest) {
-    registerTestIpcHandlers(ipcMain);
-  }
 
   ipcMain.handle(SAVE_FILE_CHANNEL_NAME, async (_event, fileData: ArrayBuffer, originalFilename: string) => {
     try {

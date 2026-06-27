@@ -9,7 +9,6 @@ import { useActiveProjectID } from "../common/NavigateUtils.ts";
 import { backendStatusAtom } from "../common/state/atoms/backend.ts";
 import {
   deleteErrorToastAtom,
-  mentionChipUnreachableToastAtom,
   terminalPromptRejectedToastAtom,
   workspaceDeleteErrorToastAtom,
   workspaceOpenCloseErrorToastAtom,
@@ -47,8 +46,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
   const setWorkspaceDeleteErrorToast = useSetAtom(workspaceDeleteErrorToastAtom);
   const workspaceOpenCloseErrorToast = useAtomValue(workspaceOpenCloseErrorToastAtom);
   const setWorkspaceOpenCloseErrorToast = useSetAtom(workspaceOpenCloseErrorToastAtom);
-  const mentionChipUnreachableToast = useAtomValue(mentionChipUnreachableToastAtom);
-  const setMentionChipUnreachableToast = useSetAtom(mentionChipUnreachableToastAtom);
   const terminalPromptRejectedToast = useAtomValue(terminalPromptRejectedToastAtom);
   const setTerminalPromptRejectedToast = useSetAtom(terminalPromptRejectedToastAtom);
   const projectID = useActiveProjectID();
@@ -74,12 +71,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
       if (!open) setWorkspaceOpenCloseErrorToast(null);
     },
     [setWorkspaceOpenCloseErrorToast],
-  );
-  const handleMentionChipUnreachableOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) setMentionChipUnreachableToast(null);
-    },
-    [setMentionChipUnreachableToast],
   );
   const handleTerminalPromptRejectedOpenChange = useCallback(
     (open: boolean) => {
@@ -176,12 +167,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
         type={workspaceOpenCloseErrorToast?.type}
         action={workspaceOpenCloseErrorToast?.action ?? undefined}
         duration={10000}
-      />
-      <Toast
-        open={mentionChipUnreachableToast !== null}
-        onOpenChange={handleMentionChipUnreachableOpenChange}
-        title={mentionChipUnreachableToast?.title}
-        description={mentionChipUnreachableToast?.description}
       />
       <Toast
         open={terminalPromptRejectedToast !== null}

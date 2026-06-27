@@ -41,13 +41,6 @@ export type SculptorElectronAPI = {
   getFileData: (filePath: string) => Promise<string>;
   getBackendUrl: () => Promise<string | null>;
   getAppVersion: () => Promise<string>;
-  // Browser panel: subscribe to popup-redirect events fired when a webview
-  // tries to open a popup (target="_blank" / window.open). The renderer
-  // navigates the matching panel's webview instead of spawning a new window.
-  onBrowserPanelOpenInPanel: (
-    callback: (payload: { webContentsId: number; url: string }) => void,
-  ) => (...args: Array<unknown>) => void;
-  removeBrowserPanelOpenInPanelListener: (wrappedCallback: (...args: Array<unknown>) => void) => void;
   // Dev-mode metadata: resolves to null in packaged builds.
   getDevInfo: () => Promise<SculptorDevInfo | null>;
   // Zoom commands forwarded from the main process (View menu / accelerators
@@ -57,11 +50,6 @@ export type SculptorElectronAPI = {
   onZoomCommand: (callback: (command: ZoomCommand) => void) => (...args: Array<unknown>) => void;
   removeZoomCommandListener: (wrappedCallback: (...args: Array<unknown>) => void) => void;
   setZoomFactor: (factor: number) => void;
-  // TEST-ONLY: runs JS inside a Browser panel webview's guest page via its
-  // webContentsId. Undefined outside of pytest runs.
-  __testBrowserWebviewExecute?: (webContentsId: number, code: string) => Promise<unknown>;
-  // TEST-ONLY: reads the system clipboard's PNG image bytes. Undefined outside of pytest runs.
-  __testReadClipboardPng?: () => Promise<ArrayBuffer | null>;
 };
 
 export type ZoomCommand = { kind: "in" } | { kind: "out" } | { kind: "reset" } | { kind: "setFactor"; factor: number };

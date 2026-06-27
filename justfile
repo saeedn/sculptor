@@ -597,40 +597,6 @@ frontend:
     env SCULPTOR_ICON_LABEL="src" \
       npm run electron:start -- --  --unhandled-rejections=strict --trace-warnings
 
-# Start Electron with the backend running in a Docker container (dev mode).
-# Requires: Docker, ANTHROPIC_API_KEY (or ~/anthropic_key.txt).
-# Usage:  just frontend-container
-[group("dev")]
-frontend-container:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    REPO_ROOT="{{justfile_directory()}}"
-    IMAGE_NAME="sculptor-backend-dev"
-    SCRIPT="$REPO_ROOT/container/run-backend-in-container.sh"
-
-    # Build the Docker image if it doesn't exist
-    if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-      echo "Building Docker image $IMAGE_NAME ..."
-      docker build -f "$REPO_ROOT/container/container-backend-dev.dockerfile" -t "$IMAGE_NAME" "$REPO_ROOT"
-    fi
-
-    # Resolve ANTHROPIC_API_KEY
-    if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f "$HOME/anthropic_key.txt" ]; then
-      export ANTHROPIC_API_KEY="$(cat "$HOME/anthropic_key.txt")"
-    fi
-
-    # Generate a shared SESSION_TOKEN so backend and frontend agree on CSRF
-    export SESSION_TOKEN="${SESSION_TOKEN:-$(uuidgen)}"
-
-    # Tell Electron to spawn the container and where to proxy
-    export SCULPTOR_CUSTOM_BACKEND_CMD="$SCRIPT --dev"
-    export SCULPTOR_CUSTOM_BACKEND_URL="http://localhost:${HOST_PORT:-8080}"
-
-    just _patch-electron-app-name "Sculptor (from source)"
-    export SCULPTOR_ICON_LABEL="src"
-    cd "$REPO_ROOT/sculptor/frontend"
-    exec npm run electron:start -- --  --unhandled-rejections=strict --trace-warnings
-
 # Start Electron in custom-command mode WITHOUT Docker.
 # Runs the backend from source via uv, but exercises the full custom-command
 # code path (stdout URL parsing, HTTP file uploads, capabilities flags).

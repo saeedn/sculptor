@@ -176,8 +176,6 @@ from sculptor.web.data_types import ToolAvailability
 from sculptor.web.data_types import UpdateUserConfigRequest
 from sculptor.web.data_types import UpdateWorkspaceRequest
 from sculptor.web.data_types import UploadFileResponse
-from sculptor.web.data_types import WebviewCommandUiAction
-from sculptor.web.data_types import WebviewNavigateRequest
 from sculptor.web.data_types import WorkspaceDiffResponse
 from sculptor.web.data_types import WorkspaceFileEntry
 from sculptor.web.data_types import WorkspaceFileListResponse
@@ -209,7 +207,6 @@ from sculptor.web.streams import StreamingUpdate
 from sculptor.web.streams import stream_everything
 from sculptor.web.terminal_input import TerminalDeliveryResult
 from sculptor.web.terminal_input import deliver_prompt_to_terminal_agent
-from sculptor.web.ui_actions import next_webview_seq
 from sculptor.web.ui_actions import publish_ui_action
 
 UpdateT = TypeVar("UpdateT", bound=StreamingUpdate)
@@ -988,74 +985,6 @@ def workspace_ui_open_file(
         )
     )
 
-    return Response(status_code=204)
-
-
-def _ensure_webview_target_workspace(
-    workspace_id: str,
-    request: Request,
-    user_session: UserSession,
-) -> WorkspaceID:
-    validated_workspace_id = validate_workspace_id(workspace_id)
-    services = get_services_from_request_or_websocket(request)
-    with user_session.open_transaction(services) as transaction:
-        workspace = transaction.get_workspace(validated_workspace_id)
-        if workspace is None or workspace.is_deleted:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "workspace_not_found", "message": f"workspace {workspace_id} not found"},
-            )
-        if not workspace.is_open:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "workspace_not_open",
-                    "message": f"workspace {workspace_id} is not open (is_open=False); cannot drive the webview in a closed workspace",
-                },
-            )
-        return workspace.object_id
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/ui/webview/navigate")
-def workspace_ui_webview_navigate(
-    workspace_id: str,
-    request: Request,
-    navigate_request: WebviewNavigateRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> Response:
-    """Drive the in-app Browser panel for this workspace to navigate to a URL.
-
-    Emits a WebviewCommandUiAction event over the per-user WebSocket fan-out so
-    connected frontends update their per-workspace browser-panel atoms.
-    """
-    target_workspace_id = _ensure_webview_target_workspace(workspace_id, request, user_session)
-    publish_ui_action(
-        WebviewCommandUiAction(
-            workspace_id=target_workspace_id,
-            seq=next_webview_seq(target_workspace_id),
-            kind="navigate",
-            url=navigate_request.url,
-        )
-    )
-    return Response(status_code=204)
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/ui/webview/refresh")
-def workspace_ui_webview_refresh(
-    workspace_id: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> Response:
-    """Drive the in-app Browser panel for this workspace to reload the current URL."""
-    target_workspace_id = _ensure_webview_target_workspace(workspace_id, request, user_session)
-    publish_ui_action(
-        WebviewCommandUiAction(
-            workspace_id=target_workspace_id,
-            seq=next_webview_seq(target_workspace_id),
-            kind="refresh",
-            url=None,
-        )
-    )
     return Response(status_code=204)
 
 

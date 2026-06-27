@@ -44,7 +44,6 @@ _EXPECTED_STREAMING_UPDATE_FIELDS: frozenset[str] = frozenset(
         "workspace_setup_status_by_workspace_id",
         "workspace_setup_output_by_workspace_id",
         "ui_open_file_by_workspace_id",
-        "ui_webview_command_by_workspace_id",
     }
 )
 

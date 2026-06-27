@@ -259,10 +259,6 @@ class OpenFileUiRequest(RequestModel):
     mode: Literal["auto", "diff", "file"]
 
 
-class WebviewNavigateRequest(RequestModel):
-    url: str = Field(min_length=1)
-
-
 class DiscardFileRequest(RequestModel):
     """Request to discard changes for a single file in a workspace."""
 
@@ -524,13 +520,6 @@ class OpenFileUiAction(SerializableModel):
     mode: Literal["auto", "diff", "file"]
 
 
-class WebviewCommandUiAction(SerializableModel):
-    workspace_id: WorkspaceID
-    seq: int
-    kind: Literal["navigate", "refresh"]
-    url: str | None = None
-
-
 # Generic system dependency models for unified frontend rendering
 
 
@@ -554,5 +543,4 @@ StreamingUpdateSourceTypes = (
     | PrStatusInfo
     | PrStatusInfoCleared
     | OpenFileUiAction
-    | WebviewCommandUiAction
 )

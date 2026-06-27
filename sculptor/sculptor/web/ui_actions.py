@@ -15,18 +15,13 @@ from typing import Callable
 
 from loguru import logger
 
-from sculptor.primitives.ids import WorkspaceID
 from sculptor.web.data_types import OpenFileUiAction
-from sculptor.web.data_types import WebviewCommandUiAction
 
-UiAction = OpenFileUiAction | WebviewCommandUiAction
+UiAction = OpenFileUiAction
 UiActionSubscriber = Callable[[UiAction], object]
 
 _subscribers: set[UiActionSubscriber] = set()
 _lock = Lock()
-
-_webview_seq_by_workspace_id: dict[WorkspaceID, int] = {}
-_seq_lock = Lock()
 
 
 def add_subscriber(subscriber: UiActionSubscriber) -> None:
@@ -51,14 +46,3 @@ def publish_ui_action(action: UiAction) -> None:
                 type(action).__name__,
                 action.workspace_id,
             )
-
-
-def next_webview_seq(workspace_id: WorkspaceID) -> int:
-    """Allocate a per-workspace monotonically increasing sequence number for
-    webview commands. Lets the frontend distinguish a fresh command from a
-    stale rerender even when consecutive commands are otherwise identical.
-    """
-    with _seq_lock:
-        seq = _webview_seq_by_workspace_id.get(workspace_id, 0) + 1
-        _webview_seq_by_workspace_id[workspace_id] = seq
-    return seq

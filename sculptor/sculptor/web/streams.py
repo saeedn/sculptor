@@ -45,7 +45,6 @@ from sculptor.web.auth import UserSession
 from sculptor.web.data_types import OpenFileUiAction
 from sculptor.web.data_types import StreamingUpdateSourceTypes
 from sculptor.web.data_types import UserUpdateSourceTypes
-from sculptor.web.data_types import WebviewCommandUiAction
 from sculptor.web.data_types import WorkspaceSetupOutputChunk
 from sculptor.web.data_types import WorkspaceSetupStatus
 from sculptor.web.derived import CodingAgentTaskView
@@ -322,7 +321,6 @@ class StreamingUpdate(SerializableModel):
         default_factory=dict
     )
     ui_open_file_by_workspace_id: dict[WorkspaceID, OpenFileUiAction] = Field(default_factory=dict)
-    ui_webview_command_by_workspace_id: dict[WorkspaceID, WebviewCommandUiAction] = Field(default_factory=dict)
 
 
 _WorkspaceValueT = TypeVar("_WorkspaceValueT")
@@ -421,9 +419,6 @@ def project_for_scope(
         ),
         ui_open_file_by_workspace_id=_narrow_by_workspace_id(
             update.ui_open_file_by_workspace_id, proj.scoped_workspace_ids
-        ),
-        ui_webview_command_by_workspace_id=_narrow_by_workspace_id(
-            update.ui_webview_command_by_workspace_id, proj.scoped_workspace_ids
         ),
     )
 
@@ -720,7 +715,6 @@ def _convert_to_streaming_update(
     updated_workspace_setup_output_by_workspace_id: dict[WorkspaceID, list[WorkspaceSetupOutputChunk]] = {}
     updated_pr_status_by_workspace_id: dict[WorkspaceID, PrStatusInfo | None] = {}
     updated_ui_open_file_by_workspace_id: dict[WorkspaceID, OpenFileUiAction] = {}
-    updated_ui_webview_command_by_workspace_id: dict[WorkspaceID, WebviewCommandUiAction] = {}
 
     for model in all_data:
         if model is None:
@@ -764,9 +758,6 @@ def _convert_to_streaming_update(
         elif isinstance(model, OpenFileUiAction):
             updated_ui_open_file_by_workspace_id[model.workspace_id] = model
 
-        elif isinstance(model, WebviewCommandUiAction):
-            updated_ui_webview_command_by_workspace_id[model.workspace_id] = model
-
         else:
             assert_never(model)
 
@@ -787,7 +778,6 @@ def _convert_to_streaming_update(
         workspace_setup_status_by_workspace_id=updated_workspace_setup_status_by_workspace_id,
         workspace_setup_output_by_workspace_id=updated_workspace_setup_output_by_workspace_id,
         ui_open_file_by_workspace_id=updated_ui_open_file_by_workspace_id,
-        ui_webview_command_by_workspace_id=updated_ui_webview_command_by_workspace_id,
     )
 
 

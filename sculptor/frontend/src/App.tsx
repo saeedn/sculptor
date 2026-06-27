@@ -13,7 +13,6 @@ import { ThemeProvider } from "./components/ThemeProvider.tsx";
 import { ToastProvider } from "./components/Toast.tsx";
 import { useAppZoom } from "./hooks/useAppZoom.ts";
 import { ErrorPage } from "./pages/error/ErrorPage.tsx";
-import { BrowserViewHost } from "./pages/workspace/panels/browser/BrowserViewHost.tsx";
 import { Router } from "./Router.tsx";
 
 type AppErrorBoundaryProps = { children: ReactNode };
@@ -53,7 +52,6 @@ export const App = (): ReactElement => {
                 <RequireOnboarding>
                   <ConfigLoader>
                     <Router />
-                    <BrowserViewHost />
                   </ConfigLoader>
                 </RequireOnboarding>
               </BackendStatusBoundary>

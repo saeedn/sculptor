@@ -1,8 +1,7 @@
-import { useSetAtom, useStore } from "jotai";
+import { useSetAtom } from "jotai";
 import { useCallback } from "react";
 
 import { openFileFromUiEventAtom } from "~/pages/workspace/components/diffPanel/atoms.ts";
-import { agentWebviewStateAtomFamily } from "~/pages/workspace/panels/browser/atoms.ts";
 
 import type { StreamingUpdate } from "../../../api";
 import { notificationsAtom } from "../atoms/notifications";
@@ -43,7 +42,6 @@ export const useUnifiedStream = (): void => {
   const updateWorkspaceSetupStatus = useSetAtom(updateWorkspaceSetupStatusAtom);
   const appendSetupOutputChunk = useSetAtom(appendSetupOutputChunkAtom);
   const openFileFromUiEvent = useSetAtom(openFileFromUiEventAtom);
-  const store = useStore();
 
   const onOpen = useCallback(() => {
     updateActiveWebsockets(true);
@@ -137,13 +135,6 @@ export const useUnifiedStream = (): void => {
           });
         });
       }
-
-      // Handle agent webview commands (sculpt ui webview-navigate / webview-refresh)
-      if (data.uiWebviewCommandByWorkspaceId && Object.keys(data.uiWebviewCommandByWorkspaceId).length > 0) {
-        Object.entries(data.uiWebviewCommandByWorkspaceId).forEach(([workspaceId, action]) => {
-          store.set(agentWebviewStateAtomFamily(workspaceId), (prev) => ({ ...prev, command: action }));
-        });
-      }
     },
     [
       updateTasks,
@@ -157,7 +148,6 @@ export const useUnifiedStream = (): void => {
       updateWorkspaceSetupStatus,
       appendSetupOutputChunk,
       openFileFromUiEvent,
-      store,
     ],
   );
 

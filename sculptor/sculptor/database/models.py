@@ -1,16 +1,12 @@
 import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
 from typing import Any
-
-from pydantic import Tag
 
 from sculptor.database.automanaged import DatabaseModel
 from sculptor.database.workspace_enums import DiffStatus
 from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.foundation.pydantic_serialization import build_discriminator
 from sculptor.foundation.serialization import SerializedException
 from sculptor.interfaces.agents.agent import AgentConfigTypes
 from sculptor.interfaces.agents.agent import PersistentMessageTypes
@@ -144,27 +140,9 @@ class AgentTaskInputsV2(TaskInputs):
     system_prompt: str | None = None
 
 
-class NoOpTaskInputsV1(TaskInputs):
-    """Test-only task input that runs a no-op handler and completes immediately.
-
-    Used by the task-service tests to exercise the non-agent task path.
-    """
-
-    object_type: str = "NoOpTaskInputsV1"
-
-
-class MustBeShutDownTaskInputsV1(TaskInputs):
-    """Used in testing to make sure we can shut down tasks that do nothing but wait."""
-
-    object_type: str = "MustBeShutDownTaskInputsV1"
-
-
-TaskInputTypes = Annotated[
-    Annotated[AgentTaskInputsV2, Tag("AgentTaskInputsV2")]
-    | Annotated[NoOpTaskInputsV1, Tag("NoOpTaskInputsV1")]
-    | Annotated[MustBeShutDownTaskInputsV1, Tag("MustBeShutDownTaskInputsV1")],
-    build_discriminator(),
-]
+# Terminal agents are the only surviving task backend, so this is a single-member
+# alias rather than a discriminated union.
+TaskInputTypes = AgentTaskInputsV2
 
 
 class BaseTaskState(SerializableModel):
@@ -189,16 +167,7 @@ class AgentTaskStateV2(BaseTaskState):
     terminal_shell_pid: int | None = None
 
 
-class NoOpTaskStateV1(BaseTaskState):
-    """Test-only task state paired with NoOpTaskInputsV1."""
-
-    object_type: str = "NoOpTaskStateV1"
-
-
-TaskStateTypes = Annotated[
-    Annotated[AgentTaskStateV2, Tag("AgentTaskStateV2")] | Annotated[NoOpTaskStateV1, Tag("NoOpTaskStateV1")],
-    build_discriminator(),
-]
+TaskStateTypes = AgentTaskStateV2
 
 
 class Task(DatabaseModel):

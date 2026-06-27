@@ -14,8 +14,6 @@ from collections import deque
 from pathlib import Path
 from typing import Callable
 from typing import Literal
-from typing import Protocol
-from typing import runtime_checkable
 
 from loguru import logger
 
@@ -31,13 +29,6 @@ HEAD_BYTES = 512 * 1024
 TAIL_BYTES = 512 * 1024
 TRUNCATION_MARKER = b"\n--- output truncated ---\n"
 LOG_FILENAME = "setup_log.txt"
-# Upper bound on how long DefaultSetupStateProvider will block on
-# wait_for_pid before giving up and skipping the reminder. The bash PID is
-# recorded synchronously right after Popen succeeds — typically within
-# milliseconds of the worker thread starting — so half a second is already
-# generous. Anything past this is a stuck slot, and we'd rather drop the
-# reminder than block the agent's first message.
-PROVIDER_WAIT_FOR_PID_TIMEOUT_SECONDS = 0.5
 
 
 @dataclasses.dataclass(frozen=True)
@@ -52,28 +43,6 @@ class SetupStateChanged:
     log_truncated: bool
     log_path: str | None
     pid: int | None = None
-
-
-@dataclasses.dataclass(frozen=True)
-class RunningSetup:
-    command: str
-    pid: int
-    log_path: str
-
-
-@dataclasses.dataclass(frozen=True)
-class FailedSetup:
-    command: str
-    exit_code: int
-    log_path: str
-
-
-SetupReminderState = RunningSetup | FailedSetup
-
-
-@runtime_checkable
-class SetupStateProvider(Protocol):
-    def get_reminder_state(self) -> SetupReminderState | None: ...
 
 
 @dataclasses.dataclass(frozen=True)
@@ -326,21 +295,6 @@ class SetupCommandRunner:
         with slot.lock:
             return slot.pid
 
-    def get_log_path(self, workspace_id: str) -> Path | None:
-        """Absolute host path to the workspace's persisted setup log.
-
-        Returns ``None`` if no slot exists for the workspace or the slot
-        never recorded a ``state_dir`` (e.g. a reconcile-only slot). The
-        ``SetupCommandRunner`` is the single source of truth for this path
-        so callers never have to recompute the workspace state directory.
-        """
-        with self._lock:
-            slot = self._slots.get(workspace_id)
-            if slot is None or slot.state_dir is None:
-                return None
-            filename = slot.log_path or LOG_FILENAME
-            return slot.state_dir / filename
-
     def stop_all(self) -> None:
         with self._lock:
             slots = list(self._slots.values())
@@ -389,53 +343,6 @@ class _ChunkHandler:
                 data=data,
             )
         self._runner._notify_output(event)
-
-
-class DefaultSetupStateProvider:
-    def __init__(self, runner: "SetupCommandRunner", workspace_id: str) -> None:
-        self._runner = runner
-        self._workspace_id = workspace_id
-
-    def _absolute_log_path(self) -> str | None:
-        path = self._runner.get_log_path(self._workspace_id)
-        return None if path is None else str(path)
-
-    def get_reminder_state(self) -> SetupReminderState | None:
-        state = self._runner.get_state(self._workspace_id)
-        if state is None:
-            return None
-        if state.status in ("not_configured", "succeeded", "pending", "legacy"):
-            return None
-        if state.status == "failed":
-            if state.command is None or state.exit_code is None:
-                return None
-            log_path = self._absolute_log_path()
-            if log_path is None:
-                return None
-            return FailedSetup(command=state.command, exit_code=state.exit_code, log_path=log_path)
-        if state.status == "running":
-            pid = self._runner.wait_for_pid(self._workspace_id, timeout=PROVIDER_WAIT_FOR_PID_TIMEOUT_SECONDS)
-            snapshot = self._runner.get_state(self._workspace_id)
-            if snapshot is None:
-                return None
-            if pid is None or snapshot.status != "running":
-                # The slot transitioned during the wait (or never recorded a
-                # PID). Dispatch on the new status.
-                if snapshot.status == "failed":
-                    if snapshot.command is None or snapshot.exit_code is None:
-                        return None
-                    log_path = self._absolute_log_path()
-                    if log_path is None:
-                        return None
-                    return FailedSetup(command=snapshot.command, exit_code=snapshot.exit_code, log_path=log_path)
-                return None
-            if snapshot.command is None:
-                return None
-            log_path = self._absolute_log_path()
-            if log_path is None:
-                return None
-            return RunningSetup(command=snapshot.command, pid=pid, log_path=log_path)
-        return None
 
 
 class _PidHandler:

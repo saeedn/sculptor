@@ -32,7 +32,6 @@ from sculptor.database.core import METADATA
 from sculptor.database.core import create_new_engine
 from sculptor.database.core import initialize_db_from_connection
 from sculptor.database.models import AgentTaskInputsV2
-from sculptor.database.models import MustBeShutDownTaskInputsV1
 from sculptor.database.models import Notification
 from sculptor.database.models import NotificationID
 from sculptor.database.models import Project
@@ -112,23 +111,6 @@ def get_simple_agent_task(
     return task
 
 
-def get_simple_non_agent_task(
-    code_directory: Path,
-    user_reference: UserReference,
-    organization_reference: OrganizationReference,
-    project: Project,
-) -> Task:
-    task = Task(
-        object_id=TaskID(),
-        max_seconds=30,
-        input_data=MustBeShutDownTaskInputsV1(),
-        organization_reference=organization_reference,
-        user_reference=user_reference,
-        project_id=project.object_id,
-    )
-    return task
-
-
 def test_write_and_read_task(
     test_db_service_with_user_organization_and_project: tuple[
         SQLDataModelService, UserReference, OrganizationReference, Project
@@ -157,20 +139,19 @@ def test_get_active_tasks(
     tmp_path: Path,
 ) -> None:
     service, user_reference, organization_reference, project = test_db_service_with_user_organization_and_project
-    agent_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
-    non_agent_task = get_simple_non_agent_task(tmp_path, user_reference, organization_reference, project)
+    first_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
+    second_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
     with service.open_task_transaction() as transaction:
-        transaction.upsert_task(agent_task)
-        transaction.upsert_task(non_agent_task)
+        transaction.upsert_task(first_task)
+        transaction.upsert_task(second_task)
     with service.open_task_transaction() as transaction:
         tasks = transaction.get_active_tasks()
         assert len(tasks) == 2
-        tasks = transaction.get_active_tasks(input_data_classes=(type(agent_task.input_data),))
-        assert len(tasks) == 1
-        assert tasks[0].object_id == agent_task.object_id
-        tasks = transaction.get_active_tasks(input_data_classes=(type(non_agent_task.input_data),))
-        assert len(tasks) == 1
-        assert tasks[0].object_id == non_agent_task.object_id
+        # Terminal agents are the only task type, so the input_data_classes filter
+        # matches every active task.
+        tasks = transaction.get_active_tasks(input_data_classes=(AgentTaskInputsV2,))
+        assert len(tasks) == 2
+        assert {task.object_id for task in tasks} == {first_task.object_id, second_task.object_id}
 
 
 def test_get_active_tasks_excludes_deleting_tasks(
@@ -200,23 +181,19 @@ def test_get_tasks_for_project(
     tmp_path: Path,
 ) -> None:
     service, user_reference, organization_reference, project = test_db_service_with_user_organization_and_project
-    agent_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
-    non_agent_task = get_simple_non_agent_task(tmp_path, user_reference, organization_reference, project)
+    first_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
+    second_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
     with service.open_task_transaction() as transaction:
-        transaction.upsert_task(agent_task)
-        transaction.upsert_task(non_agent_task)
+        transaction.upsert_task(first_task)
+        transaction.upsert_task(second_task)
     with service.open_task_transaction() as transaction:
         tasks = transaction.get_tasks_for_project(project_id=project.object_id)
         assert len(tasks) == 2
         tasks = transaction.get_tasks_for_project(project_id=ProjectID())
         assert len(tasks) == 0
-        tasks = transaction.get_active_tasks(input_data_classes=(type(agent_task.input_data),))
-        assert len(tasks) == 1
-        assert tasks[0].object_id == agent_task.object_id
-        tasks = transaction.get_active_tasks(
-            input_data_classes=(type(non_agent_task.input_data), type(agent_task.input_data))
-        )
+        tasks = transaction.get_active_tasks(input_data_classes=(AgentTaskInputsV2,))
         assert len(tasks) == 2
+        assert {task.object_id for task in tasks} == {first_task.object_id, second_task.object_id}
 
 
 def test_get_tasks_for_project_excludes_deleting_tasks(

@@ -19,7 +19,6 @@ from sculptor.primitives.ids import TaskID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.primitives.service import Service
 from sculptor.services.data_model_service.data_types import DataModelTransaction
-from sculptor.services.workspace_service.setup_command_runner import SetupStateProvider
 
 # The default workspace setup command when a project has not configured one.
 # Fetches the origin remote if present; succeeds silently if origin is missing
@@ -155,15 +154,6 @@ class WorkspaceService(Service, ABC):
 
         Returns:
             The created Workspace.
-        """
-
-    @abstractmethod
-    def make_setup_state_provider(self, workspace_id: str) -> SetupStateProvider:
-        """Build a workspace-scoped provider for the agent setup-reminder feature.
-
-        The provider asks ``SetupCommandRunner`` for the absolute setup-log
-        path internally — callers never need to compute workspace state
-        directories themselves.
         """
 
     @abstractmethod

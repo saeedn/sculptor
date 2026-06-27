@@ -412,19 +412,6 @@
         ],
         "title": "AgentTaskStateV2",
         "type": "object"
-      },
-      "NoOpTaskStateV1": {
-        "additionalProperties": true,
-        "description": "Test-only task state paired with NoOpTaskInputsV1.",
-        "properties": {
-          "objectType": {
-            "default": "NoOpTaskStateV1",
-            "title": "Objecttype",
-            "type": "string"
-          }
-        },
-        "title": "NoOpTaskStateV1",
-        "type": "object"
       }
     },
     "error": {
@@ -608,32 +595,6 @@
           "gitHash"
         ],
         "title": "AgentTaskInputsV2",
-        "type": "object"
-      },
-      "MustBeShutDownTaskInputsV1": {
-        "additionalProperties": true,
-        "description": "Used in testing to make sure we can shut down tasks that do nothing but wait.",
-        "properties": {
-          "objectType": {
-            "default": "MustBeShutDownTaskInputsV1",
-            "title": "Objecttype",
-            "type": "string"
-          }
-        },
-        "title": "MustBeShutDownTaskInputsV1",
-        "type": "object"
-      },
-      "NoOpTaskInputsV1": {
-        "additionalProperties": true,
-        "description": "Test-only task input that runs a no-op handler and completes immediately.\n\nUsed by the task-service tests to exercise the non-agent task path.",
-        "properties": {
-          "objectType": {
-            "default": "NoOpTaskInputsV1",
-            "title": "Objecttype",
-            "type": "string"
-          }
-        },
-        "title": "NoOpTaskInputsV1",
         "type": "object"
       }
     }

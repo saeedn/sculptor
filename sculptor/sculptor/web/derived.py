@@ -2,14 +2,11 @@ import datetime
 from abc import ABC
 from collections.abc import Sequence
 from enum import StrEnum
-from typing import Annotated
 from typing import Any
 from typing import Generic
 from typing import TypeVar
-from typing import assert_never
 
 from pydantic import PrivateAttr
-from pydantic import Tag
 from pydantic import computed_field
 
 from sculptor.agents.harness_registry import get_harness_for_config
@@ -17,9 +14,6 @@ from sculptor.config.settings import SculptorSettings
 from sculptor.database.models import AgentTaskInputsV2
 from sculptor.database.models import AgentTaskStateV2
 from sculptor.database.models import BaseTaskState
-from sculptor.database.models import MustBeShutDownTaskInputsV1
-from sculptor.database.models import NoOpTaskInputsV1
-from sculptor.database.models import NoOpTaskStateV1
 from sculptor.database.models import Notification
 from sculptor.database.models import Project
 from sculptor.database.models import Task
@@ -29,7 +23,6 @@ from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
 from sculptor.foundation.itertools import only
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.foundation.pydantic_serialization import build_discriminator
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentReleasedRunnerMessage
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
@@ -366,14 +359,9 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
         return None
 
 
-class NoOpTaskView(TaskView[NoOpTaskInputsV1, NoOpTaskStateV1]):
-    object_type: str = "NoOpTaskView"
-
-
-TaskViewTypes = Annotated[
-    Annotated[CodingAgentTaskView, Tag("CodingAgentTaskView")] | Annotated[NoOpTaskView, Tag("NoOpTaskView")],
-    build_discriminator(),
-]
+# Terminal agents are the only surviving task backend, so this is a single-member
+# alias rather than a discriminated union.
+TaskViewTypes = CodingAgentTaskView
 
 
 class UserUpdate(SerializableModel):
@@ -388,17 +376,10 @@ def create_initial_task_view(
     task: Task,
     settings: SculptorSettings,
 ) -> TaskViewTypes:
-    task_view_class: type[TaskViewTypes]
-    match task.input_data:
-        case AgentTaskInputsV2():
-            task_view_class = CodingAgentTaskView
-        case NoOpTaskInputsV1():
-            task_view_class = NoOpTaskView
-        case MustBeShutDownTaskInputsV1():
-            assert False, "MustBeShutDownTaskInputsV1 should only occur in testing"
-        case _ as unreachable:
-            assert_never(unreachable)
-    instance = task_view_class()
+    assert isinstance(task.input_data, AgentTaskInputsV2), (
+        f"Only agent task inputs are supported; got {type(task.input_data).__name__}"
+    )
+    instance = CodingAgentTaskView()
     instance._task_container.append(task)
     instance._settings_container.append(settings)
     return instance

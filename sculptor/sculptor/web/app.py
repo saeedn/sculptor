@@ -195,12 +195,10 @@ from sculptor.web.middleware import get_user_session
 from sculptor.web.middleware import get_user_session_for_websocket
 from sculptor.web.middleware import lifespan
 from sculptor.web.middleware import register_on_startup
-from sculptor.web.middleware import resolve_stream_scope
 from sculptor.web.middleware import run_sync_function_with_debugging_support_if_enabled
 from sculptor.web.middleware import shutdown_event as shutdown_event_impl
 from sculptor.web.open_with import open_path_in_external_app
 from sculptor.web.skills import discover_skills
-from sculptor.web.streams import Scope
 from sculptor.web.streams import ServerStopped
 from sculptor.web.streams import StreamingUpdate
 from sculptor.web.streams import stream_everything
@@ -2237,7 +2235,6 @@ async def stream_everything_websocket(
     websocket: WebSocket,
     user_session: UserSession = Depends(get_user_session_for_websocket),
     shutdown_event: Event = Depends(shutdown_event_impl),
-    scope: Scope = Depends(resolve_stream_scope),
 ) -> None:
     """Unified stream for all updates: tasks, task details, user data, notifications.
 
@@ -2250,7 +2247,6 @@ async def stream_everything_websocket(
             user_session,
             stream_everything(
                 user_session=user_session,
-                scope=scope,
                 shutdown_event=shutdown_event,
                 services=services,
                 concurrency_group=stream_concurrency_group,

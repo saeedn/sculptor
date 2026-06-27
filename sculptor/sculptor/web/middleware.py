@@ -37,9 +37,7 @@ from sculptor.utils.tracing import is_tracing_enabled
 from sculptor.utils.tracing import stop_and_write_trace
 from sculptor.web.auth import UserSession
 from sculptor.web.auth import authenticate_anonymous
-from sculptor.web.streams import Scope
 from sculptor.web.streams import ServerStopped
-from sculptor.web.streams import resolve_scope
 
 
 def mount_static_files(app: FastAPI, static_directory: str) -> None:
@@ -87,24 +85,6 @@ def get_user_session_for_websocket(
 ) -> UserSession:
     services = get_services_from_request_or_websocket(websocket)
     return _get_user_session(request=websocket, services=services)
-
-
-def resolve_stream_scope(websocket: WebSocket) -> Scope:
-    """FastAPI Depends-able wrapper around `streams.resolve_scope`.
-
-    Lives here (not in `streams.py`) because `streams` cannot import the
-    middleware functions it needs — `middleware` already imports
-    `ServerStopped` from `streams`, and a top-level import the other way
-    would be a cycle. Keeping the WS-extraction shim alongside the other
-    request-bound helpers avoids that cycle without function-local imports.
-    """
-    user_session = get_user_session_for_websocket(websocket)
-    services = get_services_from_request_or_websocket(websocket)
-    return resolve_scope(
-        scope_values=websocket.query_params.getlist("scope"),
-        user_session=user_session,
-        services=services,
-    )
 
 
 def _get_user_session(

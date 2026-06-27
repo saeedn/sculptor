@@ -9,14 +9,11 @@ from typing import TypeVar
 from typing import assert_never
 from typing import cast
 
-from fastapi import HTTPException
 from loguru import logger
 from pydantic import Field
-from typeid.errors import TypeIDException
 
 from sculptor.config.settings import SculptorSettings
 from sculptor.database.models import AgentTaskInputsV2
-from sculptor.database.models import AgentTaskStateV2
 from sculptor.database.models import Notification
 from sculptor.database.models import Project
 from sculptor.database.models import TaskID
@@ -25,12 +22,10 @@ from sculptor.database.models import Workspace
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import CompoundEvent
 from sculptor.foundation.event_utils import ReadOnlyEvent
-from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.interfaces.environments.base import STATE_DIRECTORY
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
-from sculptor.primitives.ids import TypeIDPrefixMismatchError
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.services.data_model_service.api import CompletedTransaction
@@ -207,106 +202,6 @@ def _read_persisted_setup_log(environment_id: str, relative_log_path: str) -> by
         return None
 
 
-class ScopeAll(SerializableModel):
-    pass
-
-
-class ScopeProject(SerializableModel):
-    project_id: ProjectID
-
-
-class ScopeWorkspace(SerializableModel):
-    workspace_id: WorkspaceID
-    project_id: ProjectID | None = None
-
-
-class ScopeAgent(SerializableModel):
-    agent_id: TaskID
-    workspace_id: WorkspaceID | None = None
-    project_id: ProjectID | None = None
-
-
-Scope = ScopeAll | ScopeProject | ScopeWorkspace | ScopeAgent
-
-
-def parse_scope_query_param(value: str | None) -> Scope:
-    if value is None or value == "":
-        return ScopeAll()
-    if value == "all":
-        return ScopeAll()
-    if ":" not in value:
-        raise HTTPException(status_code=400, detail=f"invalid scope: '{value}'")
-    kind, _, remainder = value.partition(":")
-    if kind == "" or remainder == "":
-        raise HTTPException(status_code=400, detail=f"invalid scope: '{value}'")
-    try:
-        if kind == "project":
-            return ScopeProject(project_id=ProjectID(remainder))
-        if kind == "workspace":
-            return ScopeWorkspace(workspace_id=WorkspaceID(remainder))
-        if kind == "agent":
-            return ScopeAgent(agent_id=TaskID(remainder))
-    except (TypeIDException, TypeIDPrefixMismatchError) as e:
-        raise HTTPException(status_code=400, detail=f"invalid scope: '{value}'") from e
-    raise HTTPException(status_code=400, detail=f"invalid scope: '{value}'")
-
-
-def resolve_scope(
-    scope_values: list[str],
-    user_session: UserSession,
-    services: CompleteServiceCollection,
-) -> Scope:
-    """Parse the raw ?scope= query values, authorize the user against the
-    referenced entity, and return the resolved (enriched) Scope.
-
-    Pure of FastAPI / WebSocket. The HTTP shim that extracts these arguments
-    from a `starlette.websockets.WebSocket` lives in `middleware.py` to
-    keep this module free of the cyclic import with middleware.
-
-    Raises HTTPException(400/403/404) so callers wired through FastAPI
-    surface the right HTTP status during the upgrade.
-    """
-    if len(scope_values) > 1:
-        raise HTTPException(status_code=400, detail="multiple scope parameters")
-    raw = scope_values[0] if scope_values else None
-    parsed = parse_scope_query_param(raw)
-    if isinstance(parsed, ScopeAll):
-        return parsed
-    with services.data_model_service.open_transaction(RequestID()) as transaction:
-        if isinstance(parsed, ScopeProject):
-            project = transaction.get_project(parsed.project_id)
-            if project is None or project.is_deleted:
-                raise HTTPException(status_code=404, detail=f"project {parsed.project_id} not found")
-            if project.organization_reference != user_session.organization_reference:
-                raise HTTPException(status_code=403, detail="forbidden")
-            return parsed
-        if isinstance(parsed, ScopeWorkspace):
-            workspace = transaction.get_workspace(parsed.workspace_id)
-            if workspace is None or workspace.is_deleted:
-                raise HTTPException(status_code=404, detail=f"workspace {parsed.workspace_id} not found")
-            if workspace.organization_reference != user_session.organization_reference:
-                raise HTTPException(status_code=403, detail="forbidden")
-            return parsed.model_copy(update={"project_id": workspace.project_id})
-        if isinstance(parsed, ScopeAgent):
-            task = services.task_service.get_task(parsed.agent_id, transaction)
-            if task is None or task.is_deleted:
-                raise HTTPException(status_code=404, detail=f"agent {parsed.agent_id} not found")
-            current_state = task.current_state
-            if not isinstance(current_state, AgentTaskStateV2):
-                raise HTTPException(status_code=404, detail=f"agent {parsed.agent_id} not found")
-            if (
-                task.user_reference != user_session.user_reference
-                or task.organization_reference != user_session.organization_reference
-            ):
-                raise HTTPException(status_code=403, detail="forbidden")
-            workspace_id = current_state.workspace_id
-            workspace = transaction.get_workspace(workspace_id)
-            if workspace is None or workspace.is_deleted:
-                raise HTTPException(status_code=404, detail=f"agent {parsed.agent_id} not found")
-            return parsed.model_copy(update={"workspace_id": workspace_id, "project_id": workspace.project_id})
-        assert_never(parsed)
-
-
 class StreamingUpdate(SerializableModel):
     task_views_by_task_id: dict[TaskID, CodingAgentTaskView] = Field(default_factory=dict)
     user_update: UserUpdate = Field(default_factory=UserUpdate)
@@ -323,175 +218,23 @@ class StreamingUpdate(SerializableModel):
     ui_open_file_by_workspace_id: dict[WorkspaceID, OpenFileUiAction] = Field(default_factory=dict)
 
 
-_WorkspaceValueT = TypeVar("_WorkspaceValueT")
-
-
-def _narrow_by_workspace_id(
-    d: dict[WorkspaceID, _WorkspaceValueT],
-    scoped_workspace_ids: frozenset[WorkspaceID],
-) -> dict[WorkspaceID, _WorkspaceValueT]:
-    """Filter a workspace-id-keyed dict to only entries in the scoped set."""
-    return {wid: v for wid, v in d.items() if wid in scoped_workspace_ids}
-
-
-class _ScopeProjection(FrozenModel):
-    """Pre-computed projection state for a non-`all` scope.
-
-    All three narrow scopes reduce to the same shape: a subset of task views
-    and a set of in-scope workspace ids. Once you have one of these, building
-    the narrowed StreamingUpdate is a single uniform pass — workspace-keyed
-    fields run through `_narrow_by_workspace_id`, task-keyed fields filter on
-    `view_subset`.
-    """
-
-    view_subset: dict[TaskID, CodingAgentTaskView]
-    scoped_workspace_ids: frozenset[WorkspaceID]
-
-
-def _compute_projection(
-    update: StreamingUpdate,
-    scope: ScopeProject | ScopeWorkspace | ScopeAgent,
-    project_workspace_ids: frozenset[WorkspaceID],
-) -> _ScopeProjection:
-    if isinstance(scope, ScopeProject):
-        view_subset: dict[TaskID, CodingAgentTaskView] = {
-            tid: v for tid, v in update.task_views_by_task_id.items() if v.project_id == scope.project_id
-        }
-        return _ScopeProjection(
-            view_subset=view_subset,
-            scoped_workspace_ids=project_workspace_ids,
-        )
-    if isinstance(scope, ScopeWorkspace):
-        view_subset = {
-            tid: v for tid, v in update.task_views_by_task_id.items() if v.workspace_id == scope.workspace_id
-        }
-        return _ScopeProjection(
-            view_subset=view_subset,
-            scoped_workspace_ids=frozenset({scope.workspace_id}),
-        )
-    if isinstance(scope, ScopeAgent):
-        view_subset = (
-            {scope.agent_id: update.task_views_by_task_id[scope.agent_id]}
-            if scope.agent_id in update.task_views_by_task_id
-            else {}
-        )
-        return _ScopeProjection(
-            view_subset=view_subset,
-            scoped_workspace_ids=frozenset(),
-        )
-    assert_never(scope)
-
-
-def project_for_scope(
-    update: StreamingUpdate,
-    scope: Scope,
-    project_workspace_ids: frozenset[WorkspaceID] = frozenset(),
-) -> StreamingUpdate:
-    """Return a StreamingUpdate narrowed to the data permitted by the scope.
-
-    Pure: no DB / service calls. For ScopeProject, the caller MUST supply
-    `project_workspace_ids` — the set of workspace ids belonging to the
-    project — since the per-frame update may not contain enough information
-    to derive that mapping itself.
-
-    """
-    if isinstance(scope, ScopeAll):
-        return update
-
-    proj = _compute_projection(update, scope, project_workspace_ids)
-
-    return StreamingUpdate(
-        task_views_by_task_id=proj.view_subset,
-        user_update=UserUpdate(),
-        workspace_branch_by_workspace_id=_narrow_by_workspace_id(
-            update.workspace_branch_by_workspace_id, proj.scoped_workspace_ids
-        ),
-        workspace_target_branches_by_workspace_id=_narrow_by_workspace_id(
-            update.workspace_target_branches_by_workspace_id, proj.scoped_workspace_ids
-        ),
-        pr_status_by_workspace_id=_narrow_by_workspace_id(update.pr_status_by_workspace_id, proj.scoped_workspace_ids),
-        finished_request_ids=(),
-        workspace_setup_status_by_workspace_id=_narrow_by_workspace_id(
-            update.workspace_setup_status_by_workspace_id, proj.scoped_workspace_ids
-        ),
-        workspace_setup_output_by_workspace_id=_narrow_by_workspace_id(
-            update.workspace_setup_output_by_workspace_id, proj.scoped_workspace_ids
-        ),
-        ui_open_file_by_workspace_id=_narrow_by_workspace_id(
-            update.ui_open_file_by_workspace_id, proj.scoped_workspace_ids
-        ),
-    )
-
-
 def stream_everything(
     user_session: UserSession,
     shutdown_event: ReadOnlyEvent,
     services: CompleteServiceCollection,
     concurrency_group: ConcurrencyGroup,
-    scope: Scope = ScopeAll(),
     pr_polling_service: PrPollingService | None = None,
 ) -> Generator[StreamingUpdate | None, None, None]:
-    """Emit unified task/user updates for a user."""
-    logger.debug("stream_everything scope: {}", scope)
+    """Emit unified task/user updates for a user.
+
+    Streams every task, workspace, and user-level change for the authenticated
+    user — there is no narrowing. Polling managers and the full user-changes
+    observer always run; single-entity deletions never close the stream.
+    """
     # Shut down if either a global or local shutdown is requested.
     combined_event = CompoundEvent([concurrency_group.shutdown_event, shutdown_event])
-    project_workspace_ids: set[WorkspaceID] = set()
-    if isinstance(scope, ScopeProject):
-        with services.data_model_service.open_transaction(RequestID()) as transaction:
-            workspaces = transaction.get_workspaces()
-        project_workspace_ids = {
-            w.object_id for w in workspaces if w.project_id == scope.project_id and not w.is_deleted
-        }
-    # Scope-conditional wiring. For each scope variant the elif chain below records:
-    #
-    # - task_subscription_cm: which TaskService subscription to open
-    #   (one of subscribe_to_all_tasks_for_user / project / workspace / single).
-    # - workspace_branch_workspace_filter, workspace_branch_project_filter:
-    #   narrowing args passed into the branch polling manager. None means
-    #   "no narrowing — poll everything".
-    # - polling_enabled: whether to attach the polling managers at all.
-    #   False only for ScopeAgent — project_for_scope drops every workspace-
-    #   and project-keyed field for that scope anyway, so polling is pure waste.
-    # - attach_full_user_observers: gates the full user-changes observer. True
-    #   only for ScopeAll, since project_for_scope drops user_update for narrower
-    #   scopes (no client will ever see them).
-    # - attach_user_changes_for_close_on_delete: also attaches
-    #   data_model_service.observe_user_changes, but solely to feed
-    #   entity-deletion events into the close-on-delete check.
-    #   True for ScopeProject and ScopeWorkspace. ScopeAgent gets deletion
-    #   signals from its single-task subscription instead, so it leaves this
-    #   observer detached entirely.
-    workspace_branch_workspace_filter: WorkspaceID | None = None
-    workspace_branch_project_filter: ProjectID | None = None
-    attach_full_user_observers = False
-    polling_enabled = False
-    attach_user_changes_for_close_on_delete = False
-    if isinstance(scope, ScopeAll):
-        task_subscription_cm = services.task_service.subscribe_to_all_tasks_for_user(user_session.user_reference)
-        attach_full_user_observers = True
-        polling_enabled = True
-    elif isinstance(scope, ScopeProject):
-        task_subscription_cm = services.task_service.subscribe_to_project_task_containers(
-            scope.project_id, user_session.user_reference
-        )
-        workspace_branch_project_filter = scope.project_id
-        polling_enabled = True
-        attach_user_changes_for_close_on_delete = True
-    elif isinstance(scope, ScopeWorkspace):
-        task_subscription_cm = services.task_service.subscribe_to_workspace_task_containers(
-            scope.workspace_id, user_session.user_reference
-        )
-        workspace_branch_workspace_filter = scope.workspace_id
-        polling_enabled = True
-        attach_user_changes_for_close_on_delete = True
-    elif isinstance(scope, ScopeAgent):
-        task_subscription_cm = services.task_service.subscribe_to_single_task_container(
-            scope.agent_id, user_session.user_reference
-        )
-    else:
-        assert_never(scope)
-    pr_polling_service_for_notify = pr_polling_service if polling_enabled else None
-    register_pr_observer = polling_enabled and pr_polling_service is not None
+    task_subscription_cm = services.task_service.subscribe_to_all_tasks_for_user(user_session.user_reference)
+    register_pr_observer = pr_polling_service is not None
 
     with task_subscription_cm as updates_queue:
         updates_queue_loosely_typed = cast(Queue[StreamingUpdateSourceTypes], updates_queue)
@@ -507,25 +250,22 @@ def stream_everything(
         add_ui_action_subscriber(updates_queue_loosely_typed.put_nowait)
         try:
             with ExitStack() as stack:
-                if attach_full_user_observers or attach_user_changes_for_close_on_delete:
-                    stack.enter_context(
-                        services.data_model_service.observe_user_changes(
-                            user_reference=user_session.user_reference,
-                            organization_reference=user_session.organization_reference,
-                            queue=updates_queue_loosely_typed,
-                        )
+                stack.enter_context(
+                    services.data_model_service.observe_user_changes(
+                        user_reference=user_session.user_reference,
+                        organization_reference=user_session.organization_reference,
+                        queue=updates_queue_loosely_typed,
                     )
-                workspace_branch_manager = None
-                if polling_enabled:
-                    workspace_branch_manager = stack.enter_context(
-                        manage_workspace_branch_polling(
-                            services=services,
-                            queue=updates_queue_loosely_typed,
-                            concurrency_group=concurrency_group,
-                            workspace_filter=workspace_branch_workspace_filter,
-                            project_filter=workspace_branch_project_filter,
-                        )
+                )
+                workspace_branch_manager = stack.enter_context(
+                    manage_workspace_branch_polling(
+                        services=services,
+                        queue=updates_queue_loosely_typed,
+                        concurrency_group=concurrency_group,
+                        workspace_filter=None,
+                        project_filter=None,
                     )
+                )
                 # Initialize state tracking
                 task_views_by_task_id: dict[TaskID, CodingAgentTaskView] = {}
                 pr_poll_last_branch: dict[WorkspaceID, str] = {}
@@ -551,13 +291,12 @@ def stream_everything(
                     )
 
                 # We yield the initial state before starting the background watchers to minimize time to first message for the frontend
-                yield project_for_scope(initial_update, scope, frozenset(project_workspace_ids))
+                yield initial_update
 
                 # Start background watchers after emitting the initial state
-                if workspace_branch_manager is not None:
-                    workspace_branch_manager.initialize()
-                    workspace_branch_manager.update_pollers_based_on_stream(initial_data)
-                _notify_pr_polling_service(pr_polling_service_for_notify, initial_data, pr_poll_last_branch)
+                workspace_branch_manager.initialize()
+                workspace_branch_manager.update_pollers_based_on_stream(initial_data)
+                _notify_pr_polling_service(pr_polling_service, initial_data, pr_poll_last_branch)
 
                 # Now continuously yield incremental updates
                 while not combined_event.is_set():
@@ -566,27 +305,11 @@ def stream_everything(
                         shutdown_event=combined_event,
                         is_blocking_allowed=True,
                     )
-                    if workspace_branch_manager is not None:
-                        workspace_branch_manager.update_pollers_based_on_stream(new_data)
-                    _notify_pr_polling_service(pr_polling_service_for_notify, new_data, pr_poll_last_branch)
-
-                    if isinstance(scope, ScopeProject):
-                        for item in new_data:
-                            if isinstance(item, CompletedTransaction):
-                                for model in item.updated_models:
-                                    if not isinstance(model, Workspace):
-                                        continue
-                                    if model.project_id == scope.project_id and not model.is_deleted:
-                                        project_workspace_ids.add(model.object_id)
-                                    else:
-                                        # Workspace was deleted OR reassigned to a different
-                                        # project; either way, drop it from our set so its
-                                        # branch / setup-status / pr-status events stop
-                                        # leaking into this scope's frames.
-                                        project_workspace_ids.discard(model.object_id)
+                    workspace_branch_manager.update_pollers_based_on_stream(new_data)
+                    _notify_pr_polling_service(pr_polling_service, new_data, pr_poll_last_branch)
 
                     if len(new_data) == 0:
-                        yield project_for_scope(StreamingUpdate(), scope, frozenset(project_workspace_ids))
+                        yield StreamingUpdate()
                     else:
                         loosely_typed_new_data = cast(list[StreamingUpdateSourceTypes | None], new_data)
                         incremental_update = _convert_to_streaming_update(
@@ -594,11 +317,7 @@ def stream_everything(
                             task_views_by_task_id=task_views_by_task_id,
                             settings=services.settings,
                         )
-                        yield project_for_scope(incremental_update, scope, frozenset(project_workspace_ids))
-
-                    if _scope_subscribed_entity_was_deleted(scope, new_data):
-                        yield None
-                        return
+                        yield incremental_update
         finally:
             if setup_runner is not None:
                 setup_runner.remove_state_observer(setup_state_observer)
@@ -606,51 +325,6 @@ def stream_everything(
             if pr_polling_service is not None:
                 pr_polling_service.remove_observer(updates_queue_loosely_typed)
             remove_ui_action_subscriber(updates_queue_loosely_typed.put_nowait)
-
-
-def _scope_subscribed_entity_was_deleted(
-    scope: Scope,
-    data: list[StreamingUpdateSourceTypes],
-) -> bool:
-    """Return True iff `data` contains a deletion event for `scope`'s entity.
-
-    For ScopeAgent: a TaskMessageContainer carrying the agent task with
-    is_deleted=True. For ScopeWorkspace: a CompletedTransaction carrying the
-    workspace (or its parent project) with is_deleted=True. For ScopeProject:
-    a CompletedTransaction carrying the project with is_deleted=True. For
-    ScopeAll: never (single-entity deletion does not close all-scope).
-    """
-    if isinstance(scope, ScopeAll):
-        return False
-    if isinstance(scope, ScopeAgent):
-        for item in data:
-            if isinstance(item, TaskMessageContainer):
-                for task in item.tasks:
-                    if task.object_id == scope.agent_id and task.is_deleted:
-                        return True
-        return False
-    if isinstance(scope, ScopeWorkspace):
-        for item in data:
-            if isinstance(item, CompletedTransaction):
-                for model in item.updated_models:
-                    if isinstance(model, Workspace) and model.object_id == scope.workspace_id and model.is_deleted:
-                        return True
-                    if (
-                        isinstance(model, Project)
-                        and scope.project_id is not None
-                        and model.object_id == scope.project_id
-                        and model.is_deleted
-                    ):
-                        return True
-        return False
-    if isinstance(scope, ScopeProject):
-        for item in data:
-            if isinstance(item, CompletedTransaction):
-                for model in item.updated_models:
-                    if isinstance(model, Project) and model.object_id == scope.project_id and model.is_deleted:
-                        return True
-        return False
-    assert_never(scope)
 
 
 def _notify_pr_polling_service(

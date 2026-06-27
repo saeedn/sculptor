@@ -2,10 +2,7 @@
 
 Runs a fixed-size worker pool that pulls poll jobs from a priority queue,
 executes CLI calls (gh/glab) to fetch PR status, caches results, and fans
-changes out to all registered observer queues. Per-connection scope
-filtering is the caller's responsibility — see `project_for_scope` in
-`streams.py`, which drops out-of-scope `pr_status_by_workspace_id` entries
-from every yielded `StreamingUpdate`.
+changes out to all registered observer queues.
 
 Replaces the previous thread-per-workspace PrStatusPollingManager.
 """
@@ -304,10 +301,7 @@ class PrPollingService(Service):
         """Register an observer queue.
 
         Every cached PR status is immediately pushed to the new observer so
-        it sees current state. Per-connection scope filtering is the
-        caller's job — `project_for_scope` in `streams.py` drops
-        out-of-scope `pr_status_by_workspace_id` entries from every yielded
-        `StreamingUpdate`.
+        it sees current state.
         """
         with self._observer_lock:
             self._observers.append(queue)

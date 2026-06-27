@@ -322,10 +322,7 @@ def test_notify_none_service_is_noop() -> None:
 
 
 def test_add_observer_pushes_all_cached_results() -> None:
-    """A new observer receives every cached PR status. Per-connection scope
-    filtering is the caller's job (project_for_scope drops out-of-scope
-    pr_status_by_workspace_id entries from every yielded StreamingUpdate).
-    """
+    """A new observer receives every cached PR status."""
     svc = _make_service()
     ws1 = WorkspaceID()
     ws2 = WorkspaceID()

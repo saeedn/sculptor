@@ -315,6 +315,16 @@ export const shouldClearActiveTerminal = (
   return container != null && container.contains(document.activeElement);
 };
 
+/** The live state of a terminal's WebSocket connection.
+ *
+ * - `connecting`: opening the initial connection, nothing shown yet.
+ * - `connected`: the socket is open and the terminal is interactive.
+ * - `reconnecting`: the socket dropped from a recoverable close and a retry is
+ *   pending/in flight — the terminal is temporarily frozen but will self-heal.
+ * - `disconnected`: the socket closed in a way we don't retry (a normal close,
+ *   or a rejected session token), so the terminal won't recover on its own. */
+export type TerminalConnectionStatus = "connecting" | "connected" | "reconnecting" | "disconnected";
+
 type UseTerminalArgs = {
   /** The backend WebSocket path for this terminal's PTY, e.g.
    * `/api/v1/workspaces/{id}/terminal/{index}/ws` (workspace terminals) or
@@ -322,6 +332,9 @@ type UseTerminalArgs = {
   terminalPath: string;
   isVisible: boolean;
   onOutput?: () => void;
+  /** Notified whenever the WebSocket connection state changes, so a parent can
+   * surface it (e.g. a status indicator on the terminal tab). */
+  onConnectionStatusChange?: (status: TerminalConnectionStatus) => void;
   /** Font size in px (default 12). Fixed at mount. */
   fontSize?: number;
   /** Cell-height multiplier (default 1). Fixed at mount. xterm's
@@ -344,6 +357,7 @@ export const useTerminal = ({
   terminalPath,
   isVisible,
   onOutput,
+  onConnectionStatusChange,
   fontSize = 12,
   lineHeight = 1,
   focusOnVisible = false,
@@ -359,6 +373,11 @@ export const useTerminal = ({
   const hasReceivedReplayRef = useRef<boolean>(false);
   const onOutputRef = useRef(onOutput);
   onOutputRef.current = onOutput;
+  // Same ref pattern for the connection-status callback: the WebSocket effect
+  // reads it at event time, so syncing it here avoids re-establishing the
+  // connection when only the callback identity changes.
+  const onConnectionStatusChangeRef = useRef(onConnectionStatusChange);
+  onConnectionStatusChangeRef.current = onConnectionStatusChange;
   const appTheme = useResolvedTheme();
   const grayColor = useThemeGrayColor();
   const accentColor = useThemeAccentColor();
@@ -517,6 +536,14 @@ export const useTerminal = ({
 
     let isCleanedUp = false;
 
+    const updateConnectionStatus = (status: TerminalConnectionStatus): void => {
+      // Guard centrally so a late event (e.g. an onopen that fires after this
+      // effect was torn down by unmount / terminalPath change) can't fire the
+      // callback post-cleanup.
+      if (isCleanedUp) return;
+      onConnectionStatusChangeRef.current?.(status);
+    };
+
     const connectWebSocket = async (wsUrl: string): Promise<void> => {
       if (isCleanedUp) return;
 
@@ -533,6 +560,7 @@ export const useTerminal = ({
       lastLiveQueryAtRef.current = Number.NEGATIVE_INFINITY;
 
       ws.onopen = (): void => {
+        updateConnectionStatus("connected");
         handleResize();
       };
 
@@ -587,9 +615,15 @@ export const useTerminal = ({
       // terminalPath change, via isCleanedUp) and the non-retryable close codes
       // (a normal 1000 close, or a 4401 rejected session token that would loop).
       ws.onclose = (event: CloseEvent): void => {
-        if (isCleanedUp || TERMINAL_NON_RETRYABLE_CLOSE_CODES.has(event.code)) {
+        // Our own teardown — don't touch status; the hook is unmounting.
+        if (isCleanedUp) return;
+
+        if (TERMINAL_NON_RETRYABLE_CLOSE_CODES.has(event.code)) {
+          updateConnectionStatus("disconnected");
           return;
         }
+
+        updateConnectionStatus("reconnecting");
         setTimeout(() => {
           if (!isCleanedUp) {
             connectWebSocket(wsUrl);

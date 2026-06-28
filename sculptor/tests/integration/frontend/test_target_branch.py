@@ -16,7 +16,7 @@ from sculptor.testing.user_stories import user_story
 
 @user_story("to see that the All scope button is enabled when a target branch is auto-resolved")
 def test_all_scope_enabled_with_auto_resolved_target_branch(sculptor_instance_: SculptorInstance) -> None:
-    """The test repo has a 'main' branch, so clone workspaces resolve
+    """The test repo has a 'main' branch, so workspaces resolve
     target_branch to 'origin/main'. The All scope button should be enabled."""
     page = sculptor_instance_.page
     agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"

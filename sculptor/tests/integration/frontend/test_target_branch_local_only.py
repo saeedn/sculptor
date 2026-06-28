@@ -4,7 +4,7 @@ Two related bugs:
 
 1. The "All" sub-tab is missing on WORKTREE workspaces created from a
    local-only source repo. ``_resolve_default_target_branch`` only falls
-   back to the local ``main``/``master`` ref for CLONE workspaces, so
+   back to the local ``main``/``master`` ref for workspaces, so
    WORKTREE leaves ``target_branch=None`` and ``DiffScopePicker`` hides
    the "All" item.
 

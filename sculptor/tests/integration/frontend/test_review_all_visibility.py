@@ -81,7 +81,7 @@ def test_no_review_all_button_with_no_changes(sculptor_instance_: SculptorInstan
     page = sculptor_instance_.page
     agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Start the project repo from main so the workspace clone has zero divergence.
+    # Start the project repo from main so the workspace has zero divergence.
     sculptor_instance_.repo.repo.run_command(["git", "checkout", "main"])
 
     task_page, _ = start_fake_terminal_agent(page, agents_dir)

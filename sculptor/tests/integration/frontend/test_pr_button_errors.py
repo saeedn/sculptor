@@ -53,7 +53,7 @@ def _create_fake_cli(directory: Path, name: str, script: str) -> None:
 def _start_task_and_wait_for_pr_status(page: Page, prompt: str, expected_button: str) -> PlaywrightTaskPage:
     """Start a task and wait for the *specific* expected PR button to appear.
 
-    Clone-mode workspaces are initialized on the target branch, so the first
+    Worktree workspaces are initialized on the target branch, so the first
     PR poll runs while ``current_branch == target_branch`` and the backend
     returns ``pr_state="none"`` with no error_category — which renders as the
     "Create PR" button. The agent's ``git checkout -b <agent_branch>`` runs
@@ -67,7 +67,7 @@ def _start_task_and_wait_for_pr_status(page: Page, prompt: str, expected_button:
     """
     task_page = start_task_and_wait_for_ready(page, prompt)
     # The backend poll cadence on slow CI runners plus the
-    # clone-on-target-branch transient means the initial PR button can take
+    # workspace-on-target-branch transient means the initial PR button can take
     # a non-trivial amount of time to reach its final state — give it a
     # generous budget before we conclude the status never arrived.
     task_page.wait_for_pr_button(expected_button)

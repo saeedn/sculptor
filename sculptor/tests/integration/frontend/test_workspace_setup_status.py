@@ -61,17 +61,17 @@ def test_setup_card_shows_succeeded(sculptor_instance_: SculptorInstance) -> Non
     expect(output).not_to_contain_text("Exit code")
 
 
-@user_story("to have my setup command run inside the workspace's clone, not the source repo")
+@user_story("to have my setup command run inside the workspace's worktree, not the source repo")
 def test_setup_runs_in_workspace_working_directory(sculptor_instance_: SculptorInstance) -> None:
     """Setup should execute inside the per-workspace working directory.
 
-    For a CLONE workspace that's `<workspace_root>/code/`. Build artifacts
+    For a workspace that's `<workspace_root>/code/`. Build artifacts
     (node_modules, .venv, etc.) need to land there so the agent sees them.
     `pwd` plus a workspace-marker file lets us assert both that we're inside
-    the clone *and* that we're not in the user's source repo.
+    the worktree *and* that we're not in the user's source repo.
     """
     page = sculptor_instance_.page
-    _configure_setup_command(page, "pwd && ls .git >/dev/null && echo CLONE_DETECTED")
+    _configure_setup_command(page, "pwd && ls .git >/dev/null && echo WORKTREE_DETECTED")
 
     start_task_and_wait_for_ready(sculptor_page=page)
 
@@ -86,7 +86,7 @@ def test_setup_runs_in_workspace_working_directory(sculptor_instance_: SculptorI
     output = setup.get_output()
     # Expected directory shape: ".../workspaces/<id>/code"
     expect(output).to_contain_text("/code")
-    expect(output).to_contain_text("CLONE_DETECTED")
+    expect(output).to_contain_text("WORKTREE_DETECTED")
 
 
 @user_story("to see that my workspace setup failed")

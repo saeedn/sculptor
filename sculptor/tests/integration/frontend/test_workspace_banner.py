@@ -1,7 +1,7 @@
 """Integration tests for the redesigned workspace metadata banner.
 
-Tests verify that the new banner components (diff summary, repo segment with
-mode label, branch name) render correctly and respond to user interactions.
+Tests verify that the new banner components (diff summary, repo segment,
+branch name) render correctly and respond to user interactions.
 """
 
 from playwright.sync_api import expect
@@ -24,18 +24,6 @@ def test_diff_summary_appears_on_file_changes(sculptor_instance_: SculptorInstan
 
     diff_summary = task_page.get_diff_summary()
     expect(diff_summary).to_be_visible()
-
-
-@user_story("to see that clone mode does not show a mode badge")
-def test_repo_segment_shows_mode_label(sculptor_instance_: SculptorInstance) -> None:
-    """Clone mode should not display a mode badge in the workspace banner."""
-    page = sculptor_instance_.page
-    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
-
-    task_page, _ = start_fake_terminal_agent(page, agents_dir)
-
-    mode_badge = task_page.get_mode_badge()
-    expect(mode_badge).not_to_be_visible()
 
 
 @user_story("to see the branch name in the workspace banner")

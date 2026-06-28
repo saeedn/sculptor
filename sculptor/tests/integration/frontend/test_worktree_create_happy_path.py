@@ -5,8 +5,7 @@ Covers the three scenarios from the spec:
 2. Custom branch name: user overrides preview before submit.
 3. Random slug: empty workspace name → preview uses `<user>/<adj>-<noun>`.
 
-Worktree mode is the default; no flag toggling is needed and the mode
-selector is hidden unless an opt-in mode (clone or in-place) is enabled.
+A worktree is the only kind of workspace; no flag toggling is needed.
 """
 
 import re

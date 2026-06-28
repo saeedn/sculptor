@@ -173,9 +173,6 @@ class PlaywrightTaskPage(PlaywrightProjectLayoutPage):
     def get_diff_summary(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_SUMMARY)
 
-    def get_mode_badge(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.TASK_MODE_BADGE)
-
     def get_thinking_indicator(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.THINKING_INDICATOR)
 

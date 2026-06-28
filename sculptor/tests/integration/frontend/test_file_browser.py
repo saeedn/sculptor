@@ -364,8 +364,8 @@ def test_file_browser_populates_after_workspace_created_without_prompt(sculptor_
     """File browser shows the file tree after creating a workspace without a prompt.
 
     When a workspace is created without a prompt, the agent enters a waiting state.
-    The environment (clone) is still created asynchronously, and the file browser
-    should populate with the cloned repo's files without needing to send a prompt first.
+    The environment (worktree) is still created asynchronously, and the file browser
+    should populate with the repo's files without needing to send a prompt first.
     """
     page = sculptor_instance_.page
     agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
@@ -375,7 +375,7 @@ def test_file_browser_populates_after_workspace_created_without_prompt(sculptor_
     file_browser = get_file_browser_panel(page)
     expect(file_browser).to_be_visible()
 
-    # The file tree should populate with the cloned repo's files.
+    # The file tree should populate with the repo's files.
     # With the bug, this times out because the file list is never fetched
     # after the environment is created.
     file_tree = file_browser.get_file_tree()
@@ -1305,15 +1305,15 @@ def test_refresh_button_reflects_file_operations(sculptor_instance_: SculptorIns
 
 
 def _get_workspace_working_dir(sculptor_instance: SculptorInstance) -> Path:
-    """Find the clone workspace's working directory (sculptor_folder/workspaces/*/code/).
+    """Find the workspace's working directory (sculptor_folder/workspaces/*/code/).
 
-    After a workspace is created via the UI (clone mode), the clone lives at
+    After a workspace is created via the UI, the worktree lives at
     ``sculptor_folder / "workspaces" / env_id / "code"``.  This helper
     locates it by scanning the workspaces directory.
     """
     workspaces_dir = sculptor_instance.sculptor_folder / "workspaces"
     code_dirs = sorted(workspaces_dir.glob("*/code"), key=lambda p: p.stat().st_mtime, reverse=True)
-    assert code_dirs, f"No workspace clone found under {workspaces_dir}"
+    assert code_dirs, f"No workspace worktree found under {workspaces_dir}"
     return code_dirs[0]
 
 
@@ -1333,7 +1333,7 @@ def test_refresh_button_updates_uncommitted_tab_for_external_changes(
     file_tree = file_browser.get_file_tree()
     expect(file_tree).to_be_visible()
 
-    # Create a new file directly in the workspace's clone directory, bypassing
+    # Create a new file directly in the workspace's worktree directory, bypassing
     # the agent.  This simulates a user creating a file in the terminal.
     workspace_dir = _get_workspace_working_dir(sculptor_instance_)
     new_file_path = workspace_dir / "EXTERNAL_FILE.txt"

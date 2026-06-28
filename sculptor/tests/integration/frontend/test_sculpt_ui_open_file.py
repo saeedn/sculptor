@@ -3,8 +3,8 @@
 Each test launches a workspace, runs the CLI verb in-band, then asserts
 on the per-workspace diff-panel state via Playwright.
 
-The CLI subprocess inherits its cwd from pytest, NOT from the workspace
-clone. Tests therefore use absolute paths (a tempfile or a known absolute
+The CLI subprocess inherits its cwd from pytest, NOT from the workspace.
+Tests therefore use absolute paths (a tempfile or a known absolute
 path) so the relative-to-cwd resolution doesn't surface unrelated paths
 to the backend. The relaxed read-file gate makes any
 host-readable absolute path acceptable, which is what these tests rely on.
@@ -181,10 +181,10 @@ def test_path_not_found_exits_4(sculptor_instance_: SculptorInstance) -> None:
     assert exit_code == 4, f"Expected exit 4 (file_not_found), got {exit_code}; stderr: {stderr}"
 
 
-@user_story("agent can open an out-of-clone host-readable file via absolute path")
-def test_out_of_clone_absolute_path_opens(sculptor_instance_: SculptorInstance) -> None:
+@user_story("agent can open an outside-the-workspace host-readable file via absolute path")
+def test_out_of_workspace_absolute_path_opens(sculptor_instance_: SculptorInstance) -> None:
     page = sculptor_instance_.page
-    with _workspace_and_file(page, content="hello from out-of-clone\n") as (workspace_id, tmp_path):
+    with _workspace_and_file(page, content="hello from outside the workspace\n") as (workspace_id, tmp_path):
         exit_code, _stdout, stderr = _run_sculpt_ui_open_file(
             sculptor_instance_, path=tmp_path, workspace_id=workspace_id, mode="file"
         )

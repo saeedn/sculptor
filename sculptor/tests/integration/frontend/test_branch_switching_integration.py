@@ -12,7 +12,7 @@ from sculptor.testing.user_stories import user_story
 def test_branch_switching_with_untracked_file(sculptor_instance_: SculptorInstance) -> None:
     """Test that sets up a test repo with two branches A and B as well as a single untracked file,
     checks out branch A, starts sculptor, and uses the branch selector on the New Workspace page
-    to create a workspace cloned from branch B.
+    to create a workspace created from branch B.
     """
     page = sculptor_instance_.page
 
@@ -62,7 +62,3 @@ def test_branch_switching_with_untracked_file(sculptor_instance_: SculptorInstan
     # Wait for the terminal panel to appear (we navigated to the workspace/agent page).
     task_page = PlaywrightTaskPage(page=page)
     expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
-
-    # Worktree mode should not show a mode badge.
-    mode_badge = task_page.get_mode_badge()
-    expect(mode_badge).not_to_be_visible()

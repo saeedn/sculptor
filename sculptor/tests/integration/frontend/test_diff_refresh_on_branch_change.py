@@ -19,14 +19,14 @@ from sculptor.testing.user_stories import user_story
 
 
 def _get_workspace_working_dir(sculptor_instance: SculptorInstance) -> Path:
-    """Find the clone workspace's working directory.
+    """Find the workspace's working directory.
 
-    After a workspace is created via the UI (clone mode), the clone lives at
+    After a workspace is created via the UI, the worktree lives at
     ``sculptor_folder / "workspaces" / env_id / "code"``.
     """
     workspaces_dir = sculptor_instance.sculptor_folder / "workspaces"
     code_dirs = sorted(workspaces_dir.glob("*/code"), key=lambda p: p.stat().st_mtime, reverse=True)
-    assert code_dirs, f"No workspace clone found under {workspaces_dir}"
+    assert code_dirs, f"No workspace worktree found under {workspaces_dir}"
     return code_dirs[0]
 
 

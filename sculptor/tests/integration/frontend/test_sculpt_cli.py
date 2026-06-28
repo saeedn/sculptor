@@ -120,14 +120,13 @@ def _assert_subset(expected: dict[str, Any], actual: dict[str, Any]) -> None:
 
 # -- Expected key sets for each command's JSON output --------------------------
 
-WORKSPACE_CREATE_KEYS = {"id", "repo_id", "description", "strategy", "source_branch"}
+WORKSPACE_CREATE_KEYS = {"id", "repo_id", "description", "source_branch"}
 
 WORKSPACE_LIST_ALL_KEYS = {
     "id",
     "repo_id",
     "repo_path",
     "description",
-    "strategy",
     "source_branch",
     "agent_count",
     "is_open",
@@ -151,13 +150,6 @@ AGENT_SHOW_KEYS = {
     "repo_id",
     "workspace_id",
     "is_deleted",
-    "artifact_names",
-    "current_activity",
-    "last_activity",
-    "task_completed",
-    "task_total",
-    "current_task_subject",
-    "waiting_detail",
     "error_detail",
 }
 
@@ -165,16 +157,10 @@ AGENT_STATUS_KEYS = {
     "id",
     "status",
     "updated_at",
-    "current_activity",
-    "last_activity",
-    "waiting_detail",
     "error_detail",
-    "task_completed",
-    "task_total",
-    "current_task_subject",
 }
 
-RUN_KEYS = {"workspace_id", "agent_id", "strategy", "prompt"}
+RUN_KEYS = {"workspace_id", "agent_id", "prompt"}
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +178,7 @@ def test_workspace_create_via_cli(sculptor_instance_: SculptorInstance) -> None:
 
     assert set(created.keys()) == WORKSPACE_CREATE_KEYS
     _assert_subset(
-        {"description": "CLI Created", "strategy": "WORKTREE", "source_branch": base_branch},
+        {"description": "CLI Created", "source_branch": base_branch},
         created,
     )
 
@@ -206,7 +192,7 @@ def test_workspace_create_via_cli(sculptor_instance_: SculptorInstance) -> None:
     ws_match = next(w for w in workspaces if w["id"] == created["id"])
     assert set(ws_match.keys()) == WORKSPACE_LIST_ALL_KEYS
     _assert_subset(
-        {"description": "CLI Created", "strategy": "WORKTREE", "agent_count": 0},
+        {"description": "CLI Created", "agent_count": 0},
         ws_match,
     )
     _assert_is_iso_datetime(ws_match["created_at"])
@@ -231,7 +217,6 @@ def test_workspace_show_via_cli(sculptor_instance_: SculptorInstance) -> None:
             "id": ws_id,
             "repo_id": created["repo_id"],
             "description": "Show Test",
-            "strategy": "WORKTREE",
             "agent_count": 0,
         },
         detail,
@@ -294,14 +279,14 @@ def _worktree_branch(worktree_path: Path) -> str:
 def _create_workspace_via_cli(instance: SculptorInstance, name: str) -> tuple[int, str]:
     """Create a worktree workspace via ``sculpt workspace create``.
 
-    Worktree (the only surviving strategy) requires an explicit source branch,
-    so mirror a real invocation by sourcing the repo's current branch — the same
-    value the Add Workspace form pre-selects.
+    Worktree creation requires an explicit source branch, so mirror a real
+    invocation by sourcing the repo's current branch — the same value the Add
+    Workspace form pre-selects.
     """
     base_branch = _worktree_branch(instance.project_path)
     return _run_sculpt(
         instance,
-        ["workspace", "create", "--name", name, "--strategy", "worktree", "--branch", base_branch],
+        ["workspace", "create", "--name", name, "--branch", base_branch],
     )
 
 
@@ -353,8 +338,6 @@ def test_run_with_repo_to_already_registered_path_is_idempotent(
             str(sculptor_instance_.project_path),
             "--name",
             "SCU-1309 idempotent repo",
-            "--strategy",
-            "worktree",
             "--branch",
             base_branch,
         ],
@@ -363,13 +346,13 @@ def test_run_with_repo_to_already_registered_path_is_idempotent(
     assert "Failed to initialize repo (no response)" not in output
     result = json.loads(output)
     assert set(result.keys()) == RUN_KEYS
-    _assert_subset({"strategy": "WORKTREE", "prompt": "scu-1309 idempotent --repo"}, result)
+    _assert_subset({"prompt": "scu-1309 idempotent --repo"}, result)
 
 
-@user_story("to spawn a worktree-strategy agent via the sculpt CLI with an explicit branch name")
+@user_story("to spawn an agent via the sculpt CLI with an explicit branch name")
 def test_run_creates_worktree_workspace_via_cli(sculptor_instance_: SculptorInstance) -> None:
-    """`sculpt run --strategy worktree --branch <base> --branch-name <new>` should create a real
-    git worktree on disk on the requested new branch and a workspace whose strategy is WORKTREE."""
+    """`sculpt run --branch <base> --branch-name <new>` should create a real
+    git worktree on disk on the requested new branch."""
     base_branch = _worktree_branch(sculptor_instance_.project_path)
     new_branch = "dev/cli-worktree-explicit"
 
@@ -380,8 +363,6 @@ def test_run_creates_worktree_workspace_via_cli(sculptor_instance_: SculptorInst
         [
             "run",
             "Do something",
-            "--strategy",
-            "worktree",
             "--branch",
             base_branch,
             "--branch-name",
@@ -391,15 +372,14 @@ def test_run_creates_worktree_workspace_via_cli(sculptor_instance_: SculptorInst
         ],
     )
     assert exit_code == 0, f"run failed: {output}"
-    result = json.loads(output)
-    _assert_subset({"strategy": "WORKTREE"}, result)
 
-    # Verify the workspace's recorded strategy/branch via `sculpt workspace show`.
+    # Verify the workspace's recorded branch via `sculpt workspace show`.
+    result = json.loads(output)
     exit_code, output = _run_sculpt(sculptor_instance_, ["workspace", "show", result["workspace_id"]])
     assert exit_code == 0, f"workspace show failed: {output}"
     ws_detail = json.loads(output)
     _assert_subset(
-        {"description": "CLI Worktree Explicit", "strategy": "WORKTREE", "source_branch": base_branch},
+        {"description": "CLI Worktree Explicit", "source_branch": base_branch},
         ws_detail,
     )
 
@@ -408,7 +388,7 @@ def test_run_creates_worktree_workspace_via_cli(sculptor_instance_: SculptorInst
     assert _worktree_branch(worktree_path) == new_branch
 
 
-@user_story("to spawn a worktree-strategy agent via the sculpt CLI without naming the new branch")
+@user_story("to spawn an agent via the sculpt CLI without naming the new branch")
 def test_run_creates_worktree_workspace_autogen_branch_name(sculptor_instance_: SculptorInstance) -> None:
     """When `--branch-name` is omitted, the CLI mirrors the UI by calling preview-branch-name to
     auto-fill a slug derived from the workspace name."""
@@ -421,8 +401,6 @@ def test_run_creates_worktree_workspace_autogen_branch_name(sculptor_instance_: 
         [
             "run",
             "Do something",
-            "--strategy",
-            "worktree",
             "--branch",
             base_branch,
             "--name",
@@ -430,8 +408,6 @@ def test_run_creates_worktree_workspace_autogen_branch_name(sculptor_instance_: 
         ],
     )
     assert exit_code == 0, f"run failed: {output}"
-    result = json.loads(output)
-    _assert_subset({"strategy": "WORKTREE"}, result)
 
     worktree_path = _wait_for_new_worktree(sculptor_instance_, before)
     branch_on_worktree = _worktree_branch(worktree_path)
@@ -518,7 +494,6 @@ def test_workspace_created_in_ui_visible_via_cli(sculptor_instance_: SculptorIns
     workspaces = json.loads(output)
 
     ws_match = next(w for w in workspaces if w.get("description") == "UI Created Workspace")
-    _assert_subset({"strategy": "WORKTREE"}, ws_match)
     assert ws_match["agent_count"] >= 1
 
 
@@ -616,9 +591,6 @@ def test_agent_show_via_cli(sculptor_instance_: SculptorInstance) -> None:
         },
         detail,
     )
-    assert isinstance(detail["artifact_names"], list)
-    assert detail["task_completed"] >= 0
-    assert detail["task_total"] >= 0
     _assert_is_iso_datetime(detail["created_at"])
     _assert_is_iso_datetime(detail["updated_at"])
 
@@ -641,8 +613,6 @@ def test_agent_status_via_cli(sculptor_instance_: SculptorInstance) -> None:
     assert set(status.keys()) == AGENT_STATUS_KEYS
     _assert_subset({"id": agent_id}, status)
     assert isinstance(status["status"], str)
-    assert status["task_completed"] >= 0
-    assert status["task_total"] >= 0
     _assert_is_iso_datetime(status["updated_at"])
 
 
@@ -741,7 +711,7 @@ def test_multiple_workspaces_via_cli(sculptor_instance_: SculptorInstance) -> No
         exit_code, output = _create_workspace_via_cli(sculptor_instance_, name)
         assert exit_code == 0, f"workspace create failed for {name}: {output}"
         created = json.loads(output)
-        _assert_subset({"description": name, "strategy": "WORKTREE"}, created)
+        _assert_subset({"description": name}, created)
         created_ids.append(created["id"])
 
     exit_code, output = _run_sculpt(sculptor_instance_, ["workspace", "list", "--all"])
@@ -763,8 +733,6 @@ def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorIns
             "run",
             "--name",
             "Run Command Test",
-            "--strategy",
-            "worktree",
             "--branch",
             base_branch,
             "Do something",
@@ -775,7 +743,7 @@ def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorIns
 
     assert set(result.keys()) == RUN_KEYS
     _assert_subset(
-        {"strategy": "WORKTREE", "prompt": "Do something"},
+        {"prompt": "Do something"},
         result,
     )
 
@@ -784,7 +752,7 @@ def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorIns
     exit_code, output = _run_sculpt(sculptor_instance_, ["workspace", "show", ws_id])
     assert exit_code == 0
     ws_detail = json.loads(output)
-    _assert_subset({"description": "Run Command Test", "strategy": "WORKTREE"}, ws_detail)
+    _assert_subset({"description": "Run Command Test"}, ws_detail)
 
     # Verify the agent exists in that workspace
     exit_code, output = _run_sculpt(sculptor_instance_, ["agent", "list", "--workspace", ws_id])
@@ -837,7 +805,7 @@ def test_run_rejects_explicit_terminal_harness_via_cli(sculptor_instance_: Sculp
     base_branch = _worktree_branch(sculptor_instance_.project_path)
     exit_code, _stdout, stderr = _run_sculpt_capture(
         sculptor_instance_,
-        ["run", "do something", "--strategy", "worktree", "--branch", base_branch, "--harness", "Terminal"],
+        ["run", "do something", "--branch", base_branch, "--harness", "Terminal"],
     )
     assert exit_code == 1, f"expected rejection, got exit {exit_code}; stderr={stderr!r}"
     assert "sculpt run" in stderr, stderr

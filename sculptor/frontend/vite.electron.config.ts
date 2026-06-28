@@ -19,7 +19,6 @@ export default defineFrontendConfig({
   // Undefined so the renderer uses the backend port the preload injects into
   // window.sculptor.backendPort instead of a baked-in base URL.
   apiUrlBase: (): string => "undefined",
-  sentryRelease: (env): string => env.SCULPTOR_SENTRY_RELEASE_ID || "",
   gateHmrUnderPytest: true,
   build: {
     // electron-forge bundles everything under .vite/build.

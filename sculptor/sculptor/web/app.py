@@ -2747,8 +2747,6 @@ def get_health_check(request: Request) -> HealthCheckResponse:
         data_directory=str(build_utils.get_sculptor_folder()),
         install_mode="packaged" if is_packaged() else "source",
         install_path=str(get_install_path()),
-        ci_job_id=version.ci_job_id,
-        ci_ref=version.ci_ref,
     )
 
 

@@ -79,8 +79,6 @@ export const VersionPopover = (): ReactElement => {
           <Flex direction="column" gap="2" className={styles.details}>
             <InfoRow label="Version" value={healthCheckData?.version} />
             <InfoRow label="Git SHA" value={healthCheckData?.gitSha} />
-            {healthCheckData?.ciJobId && <InfoRow label="CI Job" value={healthCheckData.ciJobId} />}
-            {healthCheckData?.ciRef && <InfoRow label="Source" value={healthCheckData.ciRef} />}
           </Flex>
           <Text size="2" weight="medium" mt="1">
             Diagnostics

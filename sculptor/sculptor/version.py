@@ -42,11 +42,6 @@ def pyproject_version() -> str:
         return tomllib.load(f)["project"]["version"]
 
 
-def is_devrelease(version_str: str) -> bool:
-    """Helper function that hides the string"""
-    return Version(version_str).is_devrelease
-
-
 def pep_440_to_semver(version: str) -> str:
     """Convert a version string to a semver-compatible version string, for use by Electron.
 
@@ -68,7 +63,7 @@ def pep_440_to_semver(version: str) -> str:
 
 def _get_version_and_sha():
     try:
-        return pyproject_version(), dev_git_sha(), None, None
+        return pyproject_version(), dev_git_sha()
     except FileNotFoundError:
         # Production mode: trust built _version.py
         from sculptor import _version  # type: ignore[reportMissingImports]
@@ -76,9 +71,7 @@ def _get_version_and_sha():
         return (
             _version.__version__,
             _version.__git_sha__,
-            getattr(_version, "ci_job_id", None),
-            getattr(_version, "ci_ref", None),
         )
 
 
-__version__, __git_sha__, ci_job_id, ci_ref = _get_version_and_sha()
+__version__, __git_sha__ = _get_version_and_sha()

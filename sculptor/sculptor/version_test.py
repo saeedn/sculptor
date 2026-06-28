@@ -1,22 +1,6 @@
 import pytest
 
-from sculptor.version import is_devrelease
 from sculptor.version import pep_440_to_semver
-
-
-@pytest.mark.parametrize(
-    ("version_string", "expected"),
-    [
-        ("1.2.3", False),
-        ("1.2.3.dev1", True),
-        ("2.0.0-dev", True),
-        ("0.9.0-alpha.2", False),
-        ("1.0.0.post1", False),
-    ],
-)
-def test_is_devrelease(version_string, expected) -> None:
-    """Test the is_devrelease function with various inputs."""
-    assert is_devrelease(version_string) == expected
 
 
 @pytest.mark.parametrize(

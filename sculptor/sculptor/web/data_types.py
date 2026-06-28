@@ -422,8 +422,6 @@ class HealthCheckResponse(SerializableModel):
     data_directory: str
     install_mode: str
     install_path: str
-    ci_job_id: str | None = None
-    ci_ref: str | None = None
 
 
 class UpdateUserConfigRequest(RequestModel):

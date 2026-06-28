@@ -839,7 +839,6 @@ build-frontend: install-frontend
     #! /usr/bin/env bash
     {{ nvm_use }}
     cd "{{justfile_directory()}}/sculptor/frontend"
-    # NOTE: intentionally not calling setup-build-vars here so test/dev builds don't pelt sentry
     npm run build --mode {{MODE}}
     mkdir -p ./frontend-dist
     cp -a dist/. ../frontend-dist/
@@ -872,9 +871,6 @@ pyrefly-check:
 # Creates a production build of the Sculptor webapp and backend.
 [group("build")]
 dist:
-    # The ENVIRONMENT variable gets eventually passed to sculptor/builder/cli.py,
-    # where it's used to derive environment variables defining sentry DSN and release ID,
-    # which then get picked up as Vite defines and affect the built JS files.
     @just ENVIRONMENT=production build-frontend build-backend
 
 # Builds a "sidecar" of the Sculptor webapp backend.
@@ -920,10 +916,7 @@ build-desktop-app:
     #! /usr/bin/env bash
     {{ nvm_use }}
     cd "{{justfile_directory()}}/sculptor/frontend"
-    # Set up the environment variables for the correct version. Defaults to
-    # "dev" so `just refresh app` works locally without ceremony; CI sets
-    # MODE=production explicitly when packaging release artifacts.
-    eval $(uv run --project sculptor builder setup-build-vars "${MODE:-dev}") && npm run electron:package
+    npm run electron:package
     mkdir -p "{{justfile_directory()}}/dist/darwin-arm64"
     cp -r out/Sculptor-darwin-arm64/ "{{justfile_directory()}}/dist/darwin-arm64"
 
@@ -939,10 +932,7 @@ build-desktop-app:
       aarch64|arm64) ELECTRON_ARCH="arm64" ;;
       *)             ELECTRON_ARCH="x64" ;;
     esac
-    # Set up the environment variables for the correct version. Defaults to
-    # "dev" so `just refresh app` works locally without ceremony; CI sets
-    # MODE=production explicitly when packaging release artifacts.
-    eval $(uv run --project sculptor builder setup-build-vars "${MODE:-dev}") && npm run electron:package
+    npm run electron:package
     mkdir -p "{{justfile_directory()}}/dist/linux-${ELECTRON_ARCH}"
     cp -r "out/Sculptor-linux-${ELECTRON_ARCH}/" "{{justfile_directory()}}/dist/linux-${ELECTRON_ARCH}"
 
@@ -967,10 +957,7 @@ package-desktop-installer:
     just unmount-dmg
     {{ nvm_use }}
     cd "{{justfile_directory()}}/sculptor/frontend"
-    # Telemetry env baked into the installer. Defaults to production so a bare
-    # `just pkg` never ships a dev DSN; CI sets SCULPTOR_BUILD_ENV=dev for
-    # non-release builds.
-    eval "$(uv run --project sculptor builder setup-build-vars "${SCULPTOR_BUILD_ENV:-production}")" && npm run electron:make
+    npm run electron:make
     mkdir -p "{{justfile_directory()}}/dist"
     cp -r out/make/zip "{{justfile_directory()}}/dist"
     cp out/make/Sculptor.dmg "{{justfile_directory()}}/dist"
@@ -999,10 +986,7 @@ pkg-dev:
     trap '(cd "$ROOT/sculptor" && uv run --project sculptor builder sync-frontend-version --reverse)' EXIT
     {{ nvm_use }}
     cd "$ROOT/sculptor/frontend"
-    # Use the "dev" sentry/posthog environment so daily-driver telemetry stays
-    # out of the production buckets.
-    eval $(uv run --project sculptor builder setup-build-vars dev) && \
-        SKIP_NOTARIZE_AND_SIGN=1 npm run electron:make
+    SKIP_NOTARIZE_AND_SIGN=1 npm run electron:make
     mkdir -p "$ROOT/dist"
     cp out/make/Sculptor.dmg "$ROOT/dist"
     echo "Built: $ROOT/dist/Sculptor.dmg"
@@ -1099,10 +1083,7 @@ package-desktop-installer:
       aarch64|arm64) ELECTRON_ARCH="arm64" ;;
       *)             ELECTRON_ARCH="x64" ;;
     esac
-    # Inject the telemetry env before packaging, like the macOS recipe; without
-    # it the renderer bakes an empty DSN. Defaults to production; CI sets
-    # SCULPTOR_BUILD_ENV=dev for non-release builds.
-    eval "$(uv run --project sculptor builder setup-build-vars "${SCULPTOR_BUILD_ENV:-production}")" && npm run electron:make
+    npm run electron:make
 
     # The AppImage maker includes the version in the filename.
     # Rename the file to remove the version for consistent filenames.

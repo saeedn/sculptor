@@ -17,9 +17,8 @@ What it does:
     ``start_fake_terminal_agent``.
 
 What it deliberately does NOT do: there is **no chat surface**. It does not
-emit JSONL, tool pills, MCP control messages, or ask-user-question blocks — the
-slim-down triage confirmed no surviving test needs any of those, and they are
-being removed. Resist re-creating ``FakeClaude``'s breadth here.
+emit JSONL, tool pills, MCP control messages, or ask-user-question blocks — no
+test needs any of those. Resist re-creating ``FakeClaude``'s breadth here.
 
 Usage (integration test)::
 

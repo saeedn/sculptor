@@ -42,9 +42,9 @@ export type AccentColor =
 export type GrayColor = "auto" | "gray" | "mauve" | "slate" | "sage" | "olive" | "sand";
 
 /**
- * Slimmed theme settings. Only the fields the app still reads survive: the
- * light/dark/system appearance toggle, the (now fixed) Radix color names that
- * components and the terminal palette derive from, and the code-block theme.
+ * Theme settings: the light/dark/system appearance toggle, the Radix color
+ * names that components and the terminal palette derive from, and the
+ * code-block theme.
  */
 export type ThemeSettings = {
   accentColor: AccentColor;

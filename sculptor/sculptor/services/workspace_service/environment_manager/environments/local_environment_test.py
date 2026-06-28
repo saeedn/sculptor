@@ -17,7 +17,7 @@ from sculptor.primitives.ids import LocalEnvironmentID
 from sculptor.primitives.ids import ProjectID
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LOCAL_WORKSPACE_DIR
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
-from sculptor.services.workspace_service.environment_manager.environments.worktree_strategy import WorktreeError
+from sculptor.services.workspace_service.environment_manager.environments.worktree import WorktreeError
 from sculptor.testing.local_git_repo import LocalGitRepo
 
 

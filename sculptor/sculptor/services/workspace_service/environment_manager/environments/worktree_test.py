@@ -1,4 +1,4 @@
-"""Tests for worktree_strategy module — verifying create and remove behavior."""
+"""Tests for the worktree module — verifying create and remove behavior."""
 
 import subprocess
 from pathlib import Path
@@ -7,9 +7,9 @@ import pytest
 
 from sculptor.foundation.async_monkey_patches_test import expect_exact_logged_errors
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
-from sculptor.services.workspace_service.environment_manager.environments.worktree_strategy import WorktreeError
-from sculptor.services.workspace_service.environment_manager.environments.worktree_strategy import create_worktree
-from sculptor.services.workspace_service.environment_manager.environments.worktree_strategy import remove_worktree
+from sculptor.services.workspace_service.environment_manager.environments.worktree import WorktreeError
+from sculptor.services.workspace_service.environment_manager.environments.worktree import create_worktree
+from sculptor.services.workspace_service.environment_manager.environments.worktree import remove_worktree
 
 
 def _make_repo(path: Path, branch: str = "main") -> None:

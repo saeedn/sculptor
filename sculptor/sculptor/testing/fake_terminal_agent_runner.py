@@ -8,9 +8,8 @@ TUI.
 
 It is deliberately **pure stdlib** — it must run under whatever ``python3`` is
 on PATH inside an agent's shell, with NO dependency on the ``sculptor`` package
-(in particular none on ``agents/default/claude_code_sdk/`` or
-``agents/hello_agent/``, all of which are removed in later slim-down phases).
-The only external program it invokes is the ``sculpt`` CLI (already on PATH
+(in particular none on its agent modules). The only external program it invokes
+is the ``sculpt`` CLI (already on PATH
 inside agent terminals), which it uses to report busy/idle/files-changed and a
 session id — the same lifecycle signals a real registration emits.
 

@@ -58,7 +58,7 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     stop_terminals_for_environment,
 )
-from sculptor.services.workspace_service.environment_manager.environments.worktree_strategy import remove_worktree
+from sculptor.services.workspace_service.environment_manager.environments.worktree import remove_worktree
 from sculptor.services.workspace_service.setup_command_runner import SetupCommandRunner
 from sculptor.services.workspace_service.setup_command_runner import SetupStateChanged
 from sculptor.utils.build import build_sculpt_backend_env

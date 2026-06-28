@@ -38,7 +38,7 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     stop_terminals_for_environment,
 )
-from sculptor.services.workspace_service.environment_manager.environments.worktree_strategy import create_worktree
+from sculptor.services.workspace_service.environment_manager.environments.worktree import create_worktree
 from sculptor.utils.build import get_workspaces_folder
 
 # Workspace directory for local environments

@@ -101,7 +101,7 @@ def _create_workspace(
     project: Project,
     description: str = "test workspace",
 ) -> Workspace:
-    """Create an IN_PLACE workspace for testing."""
+    """Create a workspace for testing."""
     return services.workspace_service.create_workspace(
         project=project,
         source_branch=None,

@@ -186,7 +186,7 @@ export const setActiveDiffTabAtom = atom(null, (get, set, payload: SetActiveDiff
  *
  * Path-prefix limitation: status-map keys are git-relative (e.g.
  * "sculptor/web/app.py") while filePath in the event is absolute. For paths
- * inside the workspace clone this means auto-resolution may fall back to
+ * inside the workspace this means auto-resolution may fall back to
  * file-view when the prefixes don't match. Acceptable for v1; spec
  * (architecture §4.2) explicitly allows the file-view fallback.
  */

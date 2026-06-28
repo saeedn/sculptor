@@ -291,7 +291,7 @@ def start_task_and_wait_for_ready(
     submit_button.click()
 
     # A terminal first agent has no chat surface — wait for the terminal panel.
-    # On contended CI runners the workspace clone + environment setup can take >30s.
+    # On contended CI runners the workspace creation + environment setup can take >30s.
     terminal_panel_locator = sculptor_page.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
     expect(terminal_panel_locator).to_be_visible(timeout=60_000)
     return PlaywrightTaskPage(page=sculptor_page)

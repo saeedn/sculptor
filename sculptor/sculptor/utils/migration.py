@@ -5,8 +5,8 @@ from loguru import logger
 
 from sculptor.utils import build as build_utils
 
-# Bumped to "2" for the slim release: worktree-only workspaces hard-removed the
-# IN_PLACE / CLONE enum values, so a pre-slim DB would crash on deserialization.
+# Bumped to "2" for the slim release, which removed schema a pre-slim DB still
+# references, so opening one would crash on deserialization.
 # An older on-disk marker triggers the fresh-start guard below, which moves the
 # pre-slim data aside before the app ever opens the DB.
 _FORMAT_VERSION = "2"

@@ -32,7 +32,7 @@ _MAX_ERROR_DETAIL_LENGTH = 500
 def open_file(
     path: str = typer.Argument(
         ...,
-        help="Path to open. Relative paths resolve against the agent's CWD; absolute paths are accepted, including paths outside the workspace clone.",
+        help="Path to open. Relative paths resolve against the agent's CWD; absolute paths are accepted, including paths outside the workspace.",
     ),
     workspace: str | None = typer.Option(
         None,

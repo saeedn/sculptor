@@ -13,7 +13,7 @@ def atomic_copy_env_file(source: Path, dest: Path) -> None:
     bytes before any data is written. Under parallel test execution
     several endpoints (``/diff``, ``/files``, ``/skills``) hit
     ``resume_environment`` concurrently, each re-copying the project
-    ``.sculptor/.env`` into the workspace clone. A reader running at the same
+    ``.sculptor/.env`` into the workspace. A reader running at the same
     time (``create_terminal_for_environment`` calling ``load_project_env_vars``)
     can land in that truncate window and parse an empty file — surfacing as
     SCU-731's "terminal didn't see SCTEST_TERMINAL_VAR" flake.

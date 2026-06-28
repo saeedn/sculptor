@@ -347,7 +347,7 @@ def _notify_pr_polling_service(
             prev = last_branch_by_workspace.get(item.workspace_id)
             last_branch_by_workspace[item.workspace_id] = item.current_branch
             if prev is None:
-                # First branch info for this workspace — repo is cloned and
+                # First branch info for this workspace — repo is checked out and
                 # git commands work, so it's safe to start PR polling.
                 pr_polling_service.on_workspace_ready(item.workspace_id)
             elif prev != item.current_branch:

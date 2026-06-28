@@ -409,7 +409,7 @@ class PrPollingService(Service):
         """Enqueue a workspace for its first poll.
 
         Called when the first ``WorkspaceBranchInfo`` arrives for a
-        workspace, indicating that the repo is cloned and ready.
+        workspace, indicating that the repo is checked out and ready.
         """
         self._enqueue(workspace_id, delay=0)
 

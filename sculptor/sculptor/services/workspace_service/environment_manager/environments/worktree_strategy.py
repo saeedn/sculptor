@@ -1,7 +1,6 @@
-"""Git worktree operations for WORKTREE-mode workspaces.
+"""Git worktree operations for workspaces.
 
-Mirrors the shape of clone_strategy.py but creates a `git worktree add`
-off the user's repository (shared `.git`) instead of a full clone.
+Creates a `git worktree add` off the user's repository (shared `.git`).
 """
 
 from pathlib import Path

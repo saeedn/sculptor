@@ -18,8 +18,8 @@ import { Router } from "./Router.tsx";
 type AppErrorBoundaryProps = { children: ReactNode };
 type AppErrorBoundaryState = { error: Error | null };
 
-// Vanilla replacement for the former @sentry/react ErrorBoundary: catches
-// render errors anywhere in the tree and shows the same ErrorPage fallback.
+// Error boundary: catches render errors anywhere in the tree and shows the
+// ErrorPage fallback.
 class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
   state: AppErrorBoundaryState = { error: null };
 

@@ -33,7 +33,7 @@ export function useWebsocket<T>({
   const onCloseRef = useRef(onClose);
 
   // We keep this ref to track if we've logged an error already on each successful connection. This protects us from
-  // logging the same error multiple times during reconnections, chewing through our Sentry quota.
+  // logging the same error multiple times during reconnections, avoiding log spam.
   const hasLoggedErrorRef = useRef(false);
 
   // Update refs when callbacks change
@@ -113,7 +113,7 @@ export function useWebsocket<T>({
 
         ws.onerror = (event): void => {
           // PROD-1604: Websocket errors occur extremely often: in production when the server goes away and in testing
-          // on the cleanup of every instance. We do not log a sentry error for this.
+          // on the cleanup of every instance. We do not log an error for this.
           onErrorRef.current?.(event);
         };
 

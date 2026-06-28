@@ -190,7 +190,7 @@ Bug fixes, stability work, and error-path improvements. Anything that fixes brok
 Include an item only if a typical user — not a developer or maintainer — would plausibly notice. **Exclude**:
 
 - Developer-only tools (devtools panels, in-app debug helpers)
-- Internal observability / telemetry (PostHog events, Sentry instrumentation)
+- Internal observability / telemetry / instrumentation
 - Environment-variable knobs and other unsurfaced configuration (env vars are almost never user-facing — they exist for internal dev or escape-hatch use, not as documented product features)
 - Tests, CI, build infrastructure
 - Refactors and cleanup with no visible behavior change

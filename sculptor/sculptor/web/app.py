@@ -2167,8 +2167,8 @@ def get_repo_info(
                 except ProcessSetupError as e:
                     # The is_path_accessible attribute is set in _check_and_update_project_accessibility, which
                     # used to fail when the project repo is a remote mounted directory which got disconnected.
-                    # Properly catching the OSError there should prevent an unnecessary re-raise here, preventing
-                    # Sentry spam and hopefully preventing the backend from crashing.
+                    # Properly catching the OSError there should prevent an unnecessary re-raise here, avoiding
+                    # log spam and hopefully preventing the backend from crashing.
                     if project.is_path_accessible:
                         raise
                     raise HTTPException(

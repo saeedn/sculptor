@@ -108,7 +108,7 @@ def _commit_on_worktree(worktree_path: Path, message: str) -> None:
     reraise=True,
 )
 def _delete_workspace_via_api(page: Page, workspace_id: str) -> None:
-    # Retry on transient ECONNRESET under heavy offload-sandbox load (SCU-773).
+    # Retry on transient ECONNRESET under heavy CI-sandbox load (SCU-773).
     base_url = page.url.split("#")[0].rstrip("/")
     response = page.request.delete(f"{base_url}/api/v1/workspaces/{workspace_id}")
     assert response.ok, f"DELETE workspace failed: {response.status} {response.text()}"

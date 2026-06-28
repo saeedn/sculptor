@@ -352,9 +352,9 @@ class RunningProcess:
             self._completed_process = run_local_command_modern_version(**kwargs)
         except BaseException as e:
             # Don't swallow irrecoverable exceptions — re-raise so
-            # ObservableThread.run's outer handler can flush sentry and
-            # exit the program. The handler is no-op by default; sculptor
-            # registers one via set_irrecoverable_exception_handler.
+            # ObservableThread.run's outer handler can exit the program.
+            # The handler is no-op by default; sculptor registers one via
+            # set_irrecoverable_exception_handler.
             if is_exception_irrecoverable(e):
                 raise
             # `self._thread` is set by `start()` before `self._thread.start()`,

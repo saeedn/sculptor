@@ -158,7 +158,7 @@ def pytest_runtest_logfinish(nodeid: str, location: tuple[str, int | None, str])
     leftover scratch dir is safe to remove.
 
     Without this, one test's mid-flight trace can fill the worker disk
-    (offload sandboxes hit ENOSPC at ~7 tests in), and every subsequent
+    (some CI sandboxes hit ENOSPC at ~7 tests in), and every subsequent
     ``Tracing.start`` on the same context cascades with
     "Tracing has been already started" because the prior trace never
     closed cleanly.
@@ -170,10 +170,10 @@ def pytest_runtest_logfinish(nodeid: str, location: tuple[str, int | None, str])
     rmtree sibling workers' in-flight scratch dirs, surfacing as
     ``Tracing.stop: ENOENT ... .trace`` followed by "Tracing has been
     already started" on every later test in that sibling — the same
-    cascade we are trying to prevent. Offload runs one test per Modal
-    sandbox (no xdist), so this gate keeps the fix where it matters and
-    avoids the friendly-fire on CI ``XDIST_WORKERS=7`` runs and on
-    local-xdist runs.
+    cascade we are trying to prevent. A non-xdist CI runner (one test per
+    sandbox) still benefits from the cleanup, so this gate keeps the fix
+    where it matters and avoids the friendly-fire on CI ``XDIST_WORKERS=7``
+    runs and on local-xdist runs.
     """
     if os.environ.get("PYTEST_XDIST_WORKER") or _IS_XDIST_CONTROLLER:
         return

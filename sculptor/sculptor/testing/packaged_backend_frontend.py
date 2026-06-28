@@ -66,7 +66,7 @@ class PackagedBackendFrontend:
             "SCULPTOR_SESSION_TOKEN": self.session_token,
             "PYTEST_CURRENT_TEST": "packaged_integration_test",
         }
-        env_unset_keys = ("SESSION_TOKEN", "SENTRY_DSN", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
+        env_unset_keys = ("SESSION_TOKEN", "CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT")
         full_env = {k: v for k, v in os.environ.items() if k not in env_unset_keys}
         full_env.update(env_overrides)
         full_env.update(self.extra_env)

@@ -3,7 +3,7 @@ from typing import Any
 
 from sculptor.foundation.constants import ExceptionPriority
 
-# This is the name of the attribute we set on our exceptions to ensure they are logged (esp. to Sentry) at most once.
+# This is the name of the attribute we set on our exceptions to ensure they are logged at most once.
 EXCEPTION_LOGGED_FLAG = "_was_logged_by_log_exception"
 
 

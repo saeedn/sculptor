@@ -183,7 +183,6 @@ def get_testing_environment(
     environment[SCULPTOR_FOLDER_OVERRIDE_ENV_FLAG] = str(sculptor_folder)
     environment["DATABASE_URL"] = database_url
     environment["TESTING__INTEGRATION_ENABLED"] = "true"
-    environment["SENTRY_DSN"] = None
     # Unset SESSION_TOKEN to prevent inheriting it from the parent environment (e.g., when
     # running tests from a terminal spawned by Sculptor). If inherited, the backend would
     # require session token authentication, but the Electron frontend generates its own token.

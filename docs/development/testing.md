@@ -10,9 +10,8 @@
 ## Running Tests
 
 ```bash
-just test-unit              # All unit tests (backend, frontend, imbue_core, sculpt CLI)
+just test-unit              # All unit tests (backend, frontend, foundation, sculpt CLI)
 just test-unit-backend      # Backend only
-just test-unit-offload      # Backend on Offload/Modal — use when local CPU is busy or chasing local flakes (see .sculptor/testing.md)
 just test-unit-frontend     # Frontend only
 just test-integration       # All integration tests
 ```

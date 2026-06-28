@@ -10,7 +10,7 @@ def atomic_copy_env_file(source: Path, dest: Path) -> None:
     """Replace ``dest`` with a copy of ``source`` atomically.
 
     ``shutil.copy2`` opens ``dest`` with ``'wb'``, which truncates it to zero
-    bytes before any data is written. Under offload's parallel test execution
+    bytes before any data is written. Under parallel test execution
     several endpoints (``/diff``, ``/files``, ``/skills``) hit
     ``resume_environment`` concurrently, each re-copying the project
     ``.sculptor/.env`` into the workspace clone. A reader running at the same

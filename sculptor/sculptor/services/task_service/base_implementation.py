@@ -395,7 +395,7 @@ class BaseTaskService(TaskService, ABC):
                         raise
 
                 except BaseException as e:
-                    # we want to make sure that we log unexpected exceptions to sentry
+                    # we want to make sure that we log unexpected exceptions
                     # we will *also* log it in the task service handler, but it will be marked here as already handled
                     # so that we don't log it twice
                     log_exception(e, "Task execution failed unexpectedly", priority=ExceptionPriority.HIGH_PRIORITY)

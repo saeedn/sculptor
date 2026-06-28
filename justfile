@@ -25,16 +25,6 @@ nvm use --silent 24.17.0
 set -u
 '''
 
-# Reusable snippet to abort early when the `offload` CLI is not installed.
-_require_offload := '''
-if ! command -v offload &>/dev/null; then
-    echo "Error: 'offload' is not installed."
-    echo "Install it with: cargo install offload"
-    echo "(On macOS, install Rust first if needed: brew install rust)"
-    exit 1
-fi
-'''
-
 # Pinned version of the `ratchets` lint binary (https://crates.io/crates/ratchets).
 # Bump this and re-run `just install-ratchets` (and update CI) when adopting a new release.
 ratchets_version := "0.4.0"
@@ -697,24 +687,6 @@ tmux-stop:
 # Rebuilds everything needed to successfully `just start` after changing commits
 [group("dev")]
 rebuild: clean install install-ratchets generate-api generate-sculpt-client
-
-# Open the per-test runtime distribution visualization in a browser.
-# Reads offload-history.jsonl from the repo root (tracked; updated by every `offload` run).
-[group("dev")]
-visualize-test-runtimes:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{justfile_directory()}}"
-    PORT="$(uv run python -c 'import socket; s=socket.socket(); s.bind(("",0)); print(s.getsockname()[1]); s.close()')"
-    URL="http://localhost:${PORT}/tools/offload-stats/test-runtime-distributions.html"
-    echo "serving on http://localhost:${PORT}/  (Ctrl-C to stop)"
-    echo "opening ${URL}"
-    uv run python -m http.server "$PORT" >/dev/null 2>&1 &
-    SERVER_PID=$!
-    trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
-    sleep 0.3
-    uv run python -m webbrowser "$URL" >/dev/null 2>&1 || true
-    wait "$SERVER_PID"
 
 # -------- Sculptor Build Commands --------
 
@@ -1440,35 +1412,6 @@ test-integration-electron tests="sculptor/tests/integration/" buildargs="": buil
 [group("test")]
 benchmark tests="sculptor/tests/benchmark" buildargs="":
     uv run --project sculptor pytest --show-capture=all --capture=tee-sys -v -ra {{tests}} {{buildargs}}
-
-# Run integration tests in parallel on Modal via Offload
-[group("test")]
-test-offload *args="":
-    #!/bin/bash
-    set -ueo pipefail
-    {{ _require_offload }}
-    ulimit -n 8192
-    offload run --trace {{args}} || [ $? -eq 2 ]
-
-# Run the @electron integration subset on Offload (Modal) in Electron launch
-# mode; see offload-electron.toml. These are skipped by the browser-mode lane.
-[group("test")]
-test-offload-electron *args="":
-    #!/bin/bash
-    set -ueo pipefail
-    {{ _require_offload }}
-    ulimit -n 8192
-    offload run -c offload-electron.toml --trace {{args}} || [ $? -eq 2 ]
-
-# Run the backend unit suite on Offload (Modal); see offload-unit.toml.
-# Alternative to `just test-unit-backend` (pytest -n 8).
-[group("test")]
-test-unit-offload *args="":
-    #!/bin/bash
-    set -ueo pipefail
-    {{ _require_offload }}
-    ulimit -n 8192
-    offload run -c offload-unit.toml --trace --show-estimated-cost {{args}} || [ $? -eq 2 ]
 
 # -------- Sculptor Release Commands --------
 

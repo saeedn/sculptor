@@ -17,7 +17,6 @@ from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.web.data_types import OpenFileUiAction
 from sculptor.web.data_types import StreamingUpdateSourceTypes
 from sculptor.web.data_types import UserUpdateSourceTypes
-from sculptor.web.streams import LEGACY_SETUP_PLACEHOLDER_BYTES
 from sculptor.web.streams import _convert_to_streaming_update
 from sculptor.web.streams import _convert_to_user_update
 from sculptor.web.streams import _snapshot_setup_state
@@ -90,26 +89,6 @@ def _empty_runner() -> MagicMock:
     runner = MagicMock()
     runner.iter_states.return_value = []
     return runner
-
-
-def test_snapshot_emits_synthetic_placeholder_for_migrated_workspaces() -> None:
-    """Workspaces backfilled from the legacy PTY-based setup have terminal
-    status but no captured log. The snapshot should still emit a chunk with
-    a synthetic placeholder so the user can see the run happened.
-    """
-    workspace = _make_terminal_workspace(setup_run_id=None, setup_log_path=None)
-
-    out = _snapshot_setup_state(services=_services_with_workspaces([workspace]), runner=_empty_runner())
-
-    assert len(out) == 1
-    status, chunk = out[0]
-    assert status.status == "succeeded"
-    assert status.run_id is None
-    assert chunk is not None
-    assert chunk.data == LEGACY_SETUP_PLACEHOLDER_BYTES
-    # The chunk must carry a deterministic synthetic run_id so the frontend
-    # can dedupe re-emissions across reconnects.
-    assert chunk.run_id == f"persisted-{workspace.object_id}"
 
 
 def test_snapshot_skips_terminal_workspace_with_known_run_but_lost_log() -> None:

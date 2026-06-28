@@ -59,12 +59,6 @@ StreamUpdateT = TypeVar("StreamUpdateT", bound=StreamingUpdateSourceTypes)
 _KEEPALIVE_SECONDS = 10
 _POLL_SECONDS = 1
 
-# Synthetic placeholder shown for workspaces whose setup ran under the old
-# PTY-based path (pre-runner). The legacy implementation never captured output
-# to disk, so there is nothing to replay — but emitting *something* makes it
-# clear the run happened and the system did not lose its state.
-LEGACY_SETUP_PLACEHOLDER_BYTES = b"(setup ran in a previous Sculptor version; output was not captured)\n"
-
 
 class ServerStopped(Exception):
     pass
@@ -157,16 +151,10 @@ def _snapshot_setup_state(
         log_bytes: bytes | None = None
         if workspace.setup_log_path and workspace.environment_id:
             log_bytes = _read_persisted_setup_log(workspace.environment_id, workspace.setup_log_path)
-        if log_bytes is None:
-            # "Migrated" workspaces — those backfilled from the legacy PTY-based
-            # setup path — have a terminal status but no captured output.
-            # `setup_run_id is None` is the durable signal: the new runner
-            # always assigns one. Synthesize a placeholder so the user can
-            # see the run happened without thinking the system lost its state.
-            if workspace.setup_run_id is None:
-                log_bytes = LEGACY_SETUP_PLACEHOLDER_BYTES
-            else:
-                continue
+        if log_bytes is None or workspace.setup_run_id is None:
+            # A persisted log is only ever written alongside a run id, so a
+            # readable log without one shouldn't happen; skip defensively.
+            continue
         ws_id = workspace.object_id
         status = WorkspaceSetupStatus.model_validate(
             {
@@ -181,7 +169,7 @@ def _snapshot_setup_state(
         )
         chunk = WorkspaceSetupOutputChunk(
             workspace_id=ws_id,
-            run_id=workspace.setup_run_id or f"persisted-{workspace.object_id}",
+            run_id=workspace.setup_run_id,
             seq=1,
             data=log_bytes,
         )

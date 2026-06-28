@@ -275,20 +275,10 @@ export const SetupStatusCard = ({ workspaceId }: SetupStatusCardProps): ReactEle
     );
   }
 
-  // Terminal-state rows with no recorded run_id and no captured command: show
-  // a placeholder rather than implying we know what ran.
-  const isMigrated =
-    (status.status === "succeeded" || status.status === "failed") &&
-    (status.runId === null || status.runId === undefined);
-
   const persistedCommand =
     typeof workspace?.setupCommand === "string" && workspace.setupCommand.length > 0 ? workspace.setupCommand : null;
-  const commandRan = persistedCommand ?? (isMigrated ? null : currentCommand);
-  const commandHeader = commandRan
-    ? joinCommandForHeader(commandRan)
-    : isMigrated
-      ? "(command not recorded)"
-      : "workspace setup";
+  const commandRan = persistedCommand ?? currentCommand;
+  const commandHeader = commandRan ? joinCommandForHeader(commandRan) : "workspace setup";
   const titleNode = commandRan ? (
     <Tooltip content={commandRan} side="bottom">
       <span>

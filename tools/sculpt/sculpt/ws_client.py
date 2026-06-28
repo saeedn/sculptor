@@ -34,7 +34,6 @@ class AgentSnapshot(pydantic.BaseModel):
     error_detail: str | None
     updated_at: str
     title: str | None
-    interface: str
     project_id: str
     workspace_id: str
     created_at: str
@@ -107,7 +106,6 @@ def _snapshot_from_view(task_id: str, view: dict[str, Any]) -> AgentSnapshot:
         error_detail=view.get("errorDetail"),
         updated_at=view.get("updatedAt", ""),
         title=view.get("title"),
-        interface=view.get("interface", ""),
         project_id=view.get("projectId", ""),
         workspace_id=view.get("workspaceId", ""),
         created_at=view.get("createdAt", ""),

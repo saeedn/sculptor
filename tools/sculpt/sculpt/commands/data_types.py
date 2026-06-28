@@ -110,7 +110,6 @@ class AgentShowOutput(BaseModel):
     id: str = Field(description="Unique agent ID")
     title: str = Field(description="Agent title")
     status: str = Field(description="Agent infrastructure status")
-    interface: str = Field(description="Agent interface type")
     created_at: str = Field(description="ISO 8601 datetime of creation")
     updated_at: str = Field(description="ISO 8601 datetime of last update")
     repo_id: str = Field(description="Associated repo/project ID")

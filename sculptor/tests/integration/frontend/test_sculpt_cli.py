@@ -144,7 +144,6 @@ AGENT_SHOW_KEYS = {
     "id",
     "title",
     "status",
-    "interface",
     "created_at",
     "updated_at",
     "repo_id",
@@ -161,6 +160,27 @@ AGENT_STATUS_KEYS = {
 }
 
 RUN_KEYS = {"workspace_id", "agent_id", "prompt"}
+
+
+# `sculpt run` delivers a prompt into a freshly created agent, so it needs an
+# agent that is prompt-capable and reaches its prompt. The bundled claude-code
+# agent never reaches an interactive prompt in the headless test sandbox, so the
+# run tests target this fake instead: it signals idle on launch (immediately
+# "at its prompt"), opts into automated prompts, and echoes delivered lines.
+_PROMPT_AGENT_COMMAND = "sculpt signal idle; while read -r _line; do echo RECEIVED:$_line; sculpt signal busy; done"
+_PROMPT_AGENT_DISPLAY_NAME = "Run Prompts"
+
+
+def _register_prompt_capable_harness(instance: SculptorInstance) -> str:
+    """Register a prompt-capable terminal agent; return its harness display name."""
+    registrations_dir = instance.sculptor_folder / "terminal_agents"
+    registrations_dir.mkdir(parents=True, exist_ok=True)
+    (registrations_dir / "run-prompts.toml").write_text(
+        f'display_name = "{_PROMPT_AGENT_DISPLAY_NAME}"\n'
+        f'launch_command = "{_PROMPT_AGENT_COMMAND}"\n'
+        "accepts_automated_prompts = true\n"
+    )
+    return _PROMPT_AGENT_DISPLAY_NAME
 
 
 # ---------------------------------------------------------------------------
@@ -328,12 +348,15 @@ def test_run_with_repo_to_already_registered_path_is_idempotent(
     the full CLI -> /api/v1/projects/initialize -> /api/v1/projects -> /api/v1/workspaces
     chain. Without the fix, `sculpt run --repo <auto-registered project>` is the exact
     invocation pattern that blocks every agent that tries to spawn a workspace."""
+    harness = _register_prompt_capable_harness(sculptor_instance_)
     base_branch = _worktree_branch(sculptor_instance_.project_path)
     exit_code, output = _run_sculpt(
         sculptor_instance_,
         [
             "run",
             "scu-1309 idempotent --repo",
+            "--harness",
+            harness,
             "--repo",
             str(sculptor_instance_.project_path),
             "--name",
@@ -353,6 +376,7 @@ def test_run_with_repo_to_already_registered_path_is_idempotent(
 def test_run_creates_worktree_workspace_via_cli(sculptor_instance_: SculptorInstance) -> None:
     """`sculpt run --branch <base> --branch-name <new>` should create a real
     git worktree on disk on the requested new branch."""
+    harness = _register_prompt_capable_harness(sculptor_instance_)
     base_branch = _worktree_branch(sculptor_instance_.project_path)
     new_branch = "dev/cli-worktree-explicit"
 
@@ -363,6 +387,8 @@ def test_run_creates_worktree_workspace_via_cli(sculptor_instance_: SculptorInst
         [
             "run",
             "Do something",
+            "--harness",
+            harness,
             "--branch",
             base_branch,
             "--branch-name",
@@ -392,6 +418,7 @@ def test_run_creates_worktree_workspace_via_cli(sculptor_instance_: SculptorInst
 def test_run_creates_worktree_workspace_autogen_branch_name(sculptor_instance_: SculptorInstance) -> None:
     """When `--branch-name` is omitted, the CLI mirrors the UI by calling preview-branch-name to
     auto-fill a slug derived from the workspace name."""
+    harness = _register_prompt_capable_harness(sculptor_instance_)
     base_branch = _worktree_branch(sculptor_instance_.project_path)
 
     before = set(_worktree_paths(sculptor_instance_.project_path))
@@ -401,6 +428,8 @@ def test_run_creates_worktree_workspace_autogen_branch_name(sculptor_instance_: 
         [
             "run",
             "Do something",
+            "--harness",
+            harness,
             "--branch",
             base_branch,
             "--name",
@@ -586,7 +615,6 @@ def test_agent_show_via_cli(sculptor_instance_: SculptorInstance) -> None:
             "id": agent_id,
             "workspace_id": ws["id"],
             "repo_id": ws["repo_id"],
-            "interface": "API",
             "is_deleted": False,
         },
         detail,
@@ -726,6 +754,7 @@ def test_multiple_workspaces_via_cli(sculptor_instance_: SculptorInstance) -> No
 @user_story("to use the `sculpt run` shortcut to create a workspace and agent in one step")
 def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorInstance) -> None:
     """The `sculpt run` command should create a workspace with an agent in a single step."""
+    harness = _register_prompt_capable_harness(sculptor_instance_)
     base_branch = _worktree_branch(sculptor_instance_.project_path)
     exit_code, output = _run_sculpt(
         sculptor_instance_,
@@ -733,6 +762,8 @@ def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorIns
             "run",
             "--name",
             "Run Command Test",
+            "--harness",
+            harness,
             "--branch",
             base_branch,
             "Do something",

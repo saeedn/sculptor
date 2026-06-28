@@ -672,7 +672,6 @@ def _make_snapshot(
         error_detail=error_detail,
         updated_at="2026-01-15T10:35:00Z",
         title="Test task",
-        interface="TERMINAL",
         project_id=project_id,
         workspace_id=workspace_id,
         created_at="2026-01-15T10:30:00Z",

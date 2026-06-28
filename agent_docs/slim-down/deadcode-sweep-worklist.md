@@ -157,7 +157,14 @@ Removed wholesale (each gated green, committed separately):
 - **Pi agent** remnants (test-real-pi/install-pi recipes, real_pi marker, stale comments, AGENT_TYPE_MENU_ITEM_PI).
 - **Iterate pass**: setuptools package-data stanza (dead globs), CI-orphaned scripts, getFileData/getAppVersion IPC chains, write-only command-palette target atoms, more dead CSS.
 
+### Release pipeline + final telemetry-cruft passes (bottom-out)
+- **Release/publish/S3 pipeline DELETED** (maintainer decision): builder cut/promote/hotfix/fixup-release, publish/snapshot/retrieve-build-artifacts, bump-version, verify-release-tag, s3 helpers, artifacts.py + tests; matching justfile recipes/aliases; create-version-file --annotate-dev. Kept local build/package (build-backend/frontend, package-*, dist, refresh + version/setup-build-vars→removed/create-version-file/sync-frontend-version/validate-darwin-binary).
+- **Cascade**: version helpers VersionComponent/is_prerelease/next_version/is_devrelease + tests.
+- **Final telemetry cruft**: dead Vite defines (FRONTEND_SENTRY_*/POSTHOG_*), setup-build-vars + its recipe `eval`s, inert ci_job_id/ci_ref version metadata (CI gone → always null) end-to-end, docs/development/posthog.md.
+- A final confirmation scan verified structural bottom-out (every remaining builder cmd / script / helper traces to a live caller). Self-corrected a nested-worktree false positive (CI-Babysitter is a LIVE product feature; not CI).
+
 ### Open items needing a decision (NOT plain dead code — flagged, not removed)
+- **Broader stale telemetry references**: `// former @sentry/react`-style comments in App.tsx/useWebsocket.ts/localStorageMigrationLogic.ts (intentional breadcrumbs explaining vanilla replacements — probably keep) and telemetry mentions in docs/specs/*. Doc cleanup, judgment call.
 - **Builder release/publish/S3 cluster** (~700 LOC): verify-release-tag/check_release_tag, publish/snapshot/retrieve-build-artifacts + s3_copy, artifacts.py, create-version-file --annotate-dev, cut/promote/hotfix-release. Still `just`-recipe-reachable but CI-decapitated (no automated trigger after CI removal). Delete only if manual desktop releases are not intended.
 - **Toast variant CSS** (`.success/.error/.warning`): latent styling bug — `styles[type]` uses uppercase ToastType values but CSS keys are lowercase, so these toasts render unstyled. Bug fix, not dead code.
 - **Pre-existing `sculpt run` integration failures** (terminal-readiness 409): predate this work (terminal_input.py untouched by it); ~5 tests in test_sculpt_cli.py.

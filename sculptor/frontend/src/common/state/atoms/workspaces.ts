@@ -452,7 +452,7 @@ export const updateWorkspacesAtom = atom(null, (get, set, workspaces: ReadonlyAr
       if (existingStatus === null) {
         set(workspaceSetupStatusAtomFamily(workspace.objectId), {
           workspaceId: workspace.objectId,
-          status: workspace.setupStatus as "not_configured" | "pending" | "running" | "succeeded" | "failed" | "legacy",
+          status: workspace.setupStatus as "not_configured" | "pending" | "running" | "succeeded" | "failed",
           runId: workspace.setupRunId ?? null,
           exitCode: workspace.setupExitCode ?? null,
           startedAt: workspace.setupStartedAt ?? null,

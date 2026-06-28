@@ -23,7 +23,7 @@ from sculptor.foundation.event_utils import ReadOnlyEvent
 
 SubprocessRunner = Callable[[str, Callable[[bytes], None], Callable[[int], None], ReadOnlyEvent], int]
 
-SetupStatus = Literal["not_configured", "pending", "running", "succeeded", "failed", "legacy"]
+SetupStatus = Literal["not_configured", "pending", "running", "succeeded", "failed"]
 
 HEAD_BYTES = 512 * 1024
 TAIL_BYTES = 512 * 1024

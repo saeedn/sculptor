@@ -275,11 +275,10 @@ export const SetupStatusCard = ({ workspaceId }: SetupStatusCardProps): ReactEle
     );
   }
 
-  // "Migrated" workspaces are terminal-state rows backfilled from the legacy
-  // PTY-based setup path. They have no recorded run_id and no captured
-  // command, so we show a placeholder rather than implying we know what ran.
+  // Terminal-state rows with no recorded run_id and no captured command: show
+  // a placeholder rather than implying we know what ran.
   const isMigrated =
-    (status.status === "succeeded" || status.status === "failed" || status.status === "legacy") &&
+    (status.status === "succeeded" || status.status === "failed") &&
     (status.runId === null || status.runId === undefined);
 
   const persistedCommand =
@@ -339,7 +338,6 @@ export const SetupStatusCard = ({ workspaceId }: SetupStatusCardProps): ReactEle
     badgeDuration = "previous";
   }
 
-  const shouldShowLog = status.status !== "legacy";
   const rawLogText = output?.text ?? "";
   // Prefix the body with "Exit code N\n" on failure, matching how Sculptor's
   // bash tool calls render their popover. Stderr is already merged into the
@@ -347,14 +345,11 @@ export const SetupStatusCard = ({ workspaceId }: SetupStatusCardProps): ReactEle
   const exitCodePrefix =
     status.status === "failed" && typeof status.exitCode === "number" ? `Exit code ${status.exitCode}\n` : "";
   const logText = `${exitCodePrefix}${rawLogText}`;
-  const canOpenPopover = shouldShowLog;
   const hasLogText = logText.length > 0;
   const hasCommandChanged = persistedCommand !== null && currentCommand !== null && persistedCommand !== currentCommand;
   // Rerun is gated on the project having a command — the backend reads it from
   // `project.workspace_setup_command` and 422s when blank.
-  const isRerunVisible =
-    (status.status === "succeeded" || status.status === "failed" || status.status === "legacy") &&
-    currentCommand !== null;
+  const isRerunVisible = (status.status === "succeeded" || status.status === "failed") && currentCommand !== null;
 
   const aside = (
     <>
@@ -398,10 +393,6 @@ export const SetupStatusCard = ({ workspaceId }: SetupStatusCardProps): ReactEle
   );
 
   const isError = status.status === "failed";
-
-  if (!canOpenPopover) {
-    return <SetupRow testId="setup-status-card" isError={isError} title={titleNode} aside={aside} />;
-  }
 
   // Use PopoverAnchor + the row's own onClick instead of Popover.Trigger:
   // Trigger composes its toggle via Radix Slot, which is unreliable when

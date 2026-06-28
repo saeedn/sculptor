@@ -152,7 +152,7 @@ def _snapshot_setup_state(
             continue
         if workspace.is_deleted:
             continue
-        if workspace.setup_status not in ("succeeded", "failed", "legacy"):
+        if workspace.setup_status not in ("succeeded", "failed"):
             continue
         log_bytes: bytes | None = None
         if workspace.setup_log_path and workspace.environment_id:

@@ -475,7 +475,7 @@ class WorkspaceSetupStatus(SerializableModel):
     """Status snapshot for a workspace setup run."""
 
     workspace_id: WorkspaceID
-    status: Literal["not_configured", "pending", "running", "succeeded", "failed", "legacy"]
+    status: Literal["not_configured", "pending", "running", "succeeded", "failed"]
     run_id: str | None = None
     exit_code: int | None = None
     started_at: float | None = None
@@ -499,7 +499,7 @@ class WorkspaceSetupOutputChunk(SerializableModel):
 class WorkspaceSetupSnapshot(SerializableModel):
     """Per-workspace setup snapshot embedded in WorkspaceResponse."""
 
-    status: Literal["not_configured", "pending", "running", "succeeded", "failed", "legacy"]
+    status: Literal["not_configured", "pending", "running", "succeeded", "failed"]
     run_id: str | None = None
     exit_code: int | None = None
     started_at: float | None = None

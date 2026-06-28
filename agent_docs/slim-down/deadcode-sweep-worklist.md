@@ -147,3 +147,17 @@ Integration baseline (before refactors): 103 passed, 3 skipped, 1 xfailed; the l
 
 ## Coverage note
 no-op handler removal (9d) dropped 2 task-lifecycle unit tests (idle-finalize, proper-shutdown-kills-runners) that depended on the removed lightweight task type; their assertions (_get_name_for_runner_from_task, stop()-kills-runners) could be re-covered later via a real terminal-agent fixture.
+
+## Targeted subsystem removals + deep cut (later session)
+Removed wholesale (each gated green, committed separately):
+- **Dead config/scripts/assets**: container/ dir, codex-output-schema.json, dead sculptor scripts, 6 unused SVGs.
+- **Dead CSS** (~683 lines), **dead backend** (stdin-writer feature, dead exceptions, test-only helpers), **unused deps** (boto3/pyjwt; electron-squirrel-startup/uuid/user-event/@types-semver/tsx).
+- **All CI config** (.github/workflows + actions + scripts/ci + APPROVED_CONTRIBUTORS) and the **Offload** subsystem (offload*.toml, tools/offload-stats, .devcontainer, justfile recipes).
+- **Auto-update infrastructure** (generate-autoupdate-manifest, app-update.yml, latest-*.yml feed artifacts, electron-updater helpers).
+- **Pi agent** remnants (test-real-pi/install-pi recipes, real_pi marker, stale comments, AGENT_TYPE_MENU_ITEM_PI).
+- **Iterate pass**: setuptools package-data stanza (dead globs), CI-orphaned scripts, getFileData/getAppVersion IPC chains, write-only command-palette target atoms, more dead CSS.
+
+### Open items needing a decision (NOT plain dead code — flagged, not removed)
+- **Builder release/publish/S3 cluster** (~700 LOC): verify-release-tag/check_release_tag, publish/snapshot/retrieve-build-artifacts + s3_copy, artifacts.py, create-version-file --annotate-dev, cut/promote/hotfix-release. Still `just`-recipe-reachable but CI-decapitated (no automated trigger after CI removal). Delete only if manual desktop releases are not intended.
+- **Toast variant CSS** (`.success/.error/.warning`): latent styling bug — `styles[type]` uses uppercase ToastType values but CSS keys are lowercase, so these toasts render unstyled. Bug fix, not dead code.
+- **Pre-existing `sculpt run` integration failures** (terminal-readiness 409): predate this work (terminal_input.py untouched by it); ~5 tests in test_sculpt_cli.py.

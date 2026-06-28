@@ -2,7 +2,6 @@ import { FolderOpenIcon, SettingsIcon } from "lucide-react";
 
 import { getOpenWithItems, getPreferredApp } from "../../../common/openInApp/items.tsx";
 import { workspacesArrayAtom } from "../../../common/state/atoms/workspaces.ts";
-import { workspaceActionsTargetAtom } from "../contextActions/atoms.ts";
 import type { WorkspaceActionRuntime } from "../contextActions/types.ts";
 import { buildWorkspaceActions } from "../contextActions/workspaceActions.ts";
 import type { CommandRuntime } from "../runtime.ts";
@@ -51,12 +50,7 @@ export const buildWorkspaceActionsProvider = (
       pageId: "workspace.actions",
       primary: true,
       order: 30,
-      perform: () => {
-        // Capture the current workspace as the action target before the
-        // runner pushes the page. The action sub-page reads this atom to
-        // know which workspace to act on.
-        runtime.store.set(workspaceActionsTargetAtom, target.objectId);
-      },
+      perform: () => {},
     });
 
     // Sub-page sort order is stamped on each descriptor as `paletteOrder`.
@@ -121,11 +115,7 @@ export const buildWorkspaceActionsProvider = (
         // The row stays put so the user knows the capability exists.
         disabled: !canOpenInOS,
         disabledReason: !canOpenInOS ? openInDisabledReason : undefined,
-        perform: () => {
-          // Re-set the action target so deep-linked sub-page navigation
-          // (e.g. via fuzzy-search to a per-app entry) still has it.
-          runtime.store.set(workspaceActionsTargetAtom, target.objectId);
-        },
+        perform: () => {},
       });
 
       const preferred = getPreferredApp();

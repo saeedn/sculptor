@@ -47,17 +47,6 @@ _run_pipe = functools.partial(
 )  # Writes to a pipe for checking
 
 
-@app.command("create-publication-artifacts")
-def create_publication_artifacts() -> None:
-    """Creates publication artifacts for Sculptor (dmg, deb, rpm) specific to
-    the current platform.
-
-    This command does the heavy lifting for building artifacts. After this, the artifacts will be available in
-    `sculptor/dist`
-    """
-    _run_out(["just", "refresh", "pkg"])
-
-
 @app.command("version")
 def version() -> None:
     """Print the Sculptor version and Git SHA."""

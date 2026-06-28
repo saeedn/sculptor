@@ -352,7 +352,6 @@ class ElementIDs(StrEnum):
     ADD_AGENT_CHEVRON_BUTTON = "ADD_AGENT_CHEVRON_BUTTON"
     AGENT_TYPE_MENU = "AGENT_TYPE_MENU"
     AGENT_TYPE_MENU_ITEM_CLAUDE = "AGENT_TYPE_MENU_ITEM_CLAUDE"
-    AGENT_TYPE_MENU_ITEM_PI = "AGENT_TYPE_MENU_ITEM_PI"
     AGENT_TYPE_MENU_ITEM_TERMINAL = "AGENT_TYPE_MENU_ITEM_TERMINAL"
     # Registered terminal agents share one testid; tests disambiguate via the
     # data-registration-id attribute set alongside it.

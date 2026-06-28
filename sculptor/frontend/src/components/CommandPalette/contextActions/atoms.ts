@@ -20,18 +20,3 @@ export const workspaceDeleteTargetAtom = atom<{ id: string; name: string } | nul
 export const renamingAgentIdAtom = atom<string | null>(null);
 
 export const agentDeleteTargetAtom = atom<{ id: string; name: string } | null>(null);
-
-/**
- * The workspace whose context-action sub-page is currently shown in the
- * command palette. Set by the workspace picker page-opener and read by
- * the dynamic provider for the `workspace.actions` sub-page. Cleared on
- * palette close.
- */
-export const workspaceActionsTargetAtom = atom<string | null>(null);
-
-/**
- * The agent whose context-action sub-page is currently shown in the
- * command palette. Stores both ids so the perform handlers can navigate /
- * delete / mark-unread without doing a separate workspace lookup.
- */
-export const agentActionsTargetAtom = atom<{ workspaceId: string; agentId: string } | null>(null);

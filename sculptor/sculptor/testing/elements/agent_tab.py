@@ -29,9 +29,6 @@ class PlaywrightAgentTabBarElement:
     def get_agent_type_menu_item_claude(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.AGENT_TYPE_MENU_ITEM_CLAUDE)
 
-    def get_agent_type_menu_item_pi(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.AGENT_TYPE_MENU_ITEM_PI)
-
     def get_agent_type_menu_item_terminal(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.AGENT_TYPE_MENU_ITEM_TERMINAL)
 

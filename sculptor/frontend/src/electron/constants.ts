@@ -3,8 +3,6 @@ export const BACKEND_STATUS_CHANGE_CHANNEL_NAME = "BACKEND_STATUS_CHANGE";
 export const SELECT_PROJECT_DIRECTORY_CHANNEL_NAME = "SELECT_PROJECT_DIRECTORY";
 export const GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME = "GET_CURRENT_BACKEND_STATUS";
 export const SAVE_FILE_CHANNEL_NAME = "SAVE_FILE";
-export const GET_FILE_DATA_CHANNEL_NAME = "GET_FILE_DATA";
-export const GET_APP_VERSION_CHANNEL_NAME = "GET_APP_VERSION";
 export const GET_DEV_INFO_CHANNEL_NAME = "GET_DEV_INFO";
 // Sent from main → renderer when the user invokes a zoom action (View menu /
 // accelerators) or when an explicit factor is pushed at startup

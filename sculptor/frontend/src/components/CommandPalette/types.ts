@@ -12,11 +12,11 @@ export type PageId =
   | "workspaces.switch"
   /** Agents in the current workspace. */
   | "agents.switch"
-  /** Action list for the current workspace (set via `workspaceActionsTargetAtom`). */
+  /** Action list for the current workspace. */
   | "workspace.actions"
   /** External-app picker for the current workspace (Finder, VS Code, ...). */
   | "workspace.open_in"
-  /** Action list for the current agent (set via `agentActionsTargetAtom`). */
+  /** Action list for the current agent. */
   | "agent.actions"
   /** Layout toggles: Left/Right/Bottom panel zones + Focus/Zen modes. */
   | "view.layout"

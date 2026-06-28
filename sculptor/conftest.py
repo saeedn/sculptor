@@ -44,7 +44,7 @@ def pytest_sessionstart(session: pytest.Session) -> None:
 def pytest_runtest_setup(item: pytest.Item) -> None:
     """Fail remaining tests if the session time budget is exhausted.
 
-    Also sets JUnit XML name to the full test ID for exact matching with Offload.
+    Also sets the JUnit XML name to the full test ID for exact matching.
     """
     budget = int(os.environ.get("SESSION_TIMEOUT_SECONDS", "0"))
     if budget > 0:
@@ -56,15 +56,7 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
     xml = item.config.stash.get(xml_key, None)
     if xml is not None:
-        offload_root = os.environ.get("OFFLOAD_ROOT")
-        if offload_root:
-            fspath = str(item.path)
-            rel_path = os.path.relpath(fspath, offload_root)
-            nodeid_parts = item.nodeid.split("::")
-            test_id = "::".join([rel_path] + nodeid_parts[1:])
-        else:
-            test_id = item.nodeid
-        xml.node_reporter(item.nodeid).add_attribute("name", test_id)
+        xml.node_reporter(item.nodeid).add_attribute("name", item.nodeid)
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -174,9 +166,9 @@ def port_manager_(request: pytest.FixtureRequest) -> Generator[PortManager, None
         # xdist workers must not delete it out from under their siblings. We key
         # off `workerinput` (set only on workers) rather than
         # is_xdist_controller(), which reads config.option.dist and raises
-        # AttributeError when the xdist plugin is disabled — e.g. in the offload
-        # runner's single-process sandbox. A non-xdist run is its own
-        # controller, so it cleans up too.
+        # AttributeError when the xdist plugin is disabled — e.g. in a
+        # single-process run. A non-xdist run is its own controller, so it
+        # cleans up too.
         is_xdist_worker = hasattr(request.config, "workerinput")
         if not is_xdist_worker:
             port_manager.close()

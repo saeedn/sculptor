@@ -68,18 +68,6 @@ exclude = [
     "sculptor.testing.*",
 ]
 
-# The next two stanzas ensure that these non-python files are included inside the sculptor wheel.
-[tool.setuptools]
-include-package-data = true
-
-[tool.setuptools.package-data]
-sculptor = [
-    "services/environment_service/providers/docker/imbue_addons/*",
-    "services/environment_service/providers/docker/default_devcontainer/*",
-    "cli/ssh_config/*",
-]
-# Sadly, the build system will not complain if the above are misspelled.
-
 [dependency-groups]
 dev = [
     # The source-built `sculpt` CLI. sculptor does not import it (agents shell out

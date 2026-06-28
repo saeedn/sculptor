@@ -14,10 +14,8 @@ import type { ZoomCommand } from "./constants";
 import {
   BACKEND_PORT_CHANNEL_NAME,
   BACKEND_STATUS_CHANGE_CHANNEL_NAME,
-  GET_APP_VERSION_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
-  GET_FILE_DATA_CHANNEL_NAME,
   SAVE_FILE_CHANNEL_NAME,
   SELECT_PROJECT_DIRECTORY_CHANNEL_NAME,
   ZOOM_COMMAND_CHANNEL_NAME,
@@ -808,7 +806,6 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle(GET_DEV_INFO_CHANNEL_NAME, () => getDevInfo());
-  ipcMain.handle(GET_APP_VERSION_CHANNEL_NAME, () => app.getVersion());
   ipcMain.handle("get-backend-url", () => backendUrlReady);
 
   ipcMain.handle(SAVE_FILE_CHANNEL_NAME, async (_event, fileData: ArrayBuffer, originalFilename: string) => {
@@ -832,35 +829,6 @@ app.whenReady().then(async () => {
       return filePath;
     } catch (error) {
       logger.error("Error saving file:", error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle(GET_FILE_DATA_CHANNEL_NAME, async (_event, filePath: string) => {
-    try {
-      const fileBuffer = fs.readFileSync(filePath);
-      const base64Data = fileBuffer.toString("base64");
-
-      const ext = path.extname(filePath).toLowerCase();
-      const mimeTypes: Record<string, string> = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-        ".svg": "image/svg+xml",
-        ".mp4": "video/mp4",
-        ".webm": "video/webm",
-        ".mov": "video/quicktime",
-      };
-      if (!mimeTypes[ext]) {
-        throw new Error(`Unsupported file extension: ${ext}`);
-      }
-      const mimeType = mimeTypes[ext];
-
-      return `data:${mimeType};base64,${base64Data}`;
-    } catch (error) {
-      logger.error("Error getting file data:", error);
       throw error;
     }
   });

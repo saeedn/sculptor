@@ -2,7 +2,6 @@ import { SettingsIcon } from "lucide-react";
 
 import { tasksArrayAtom } from "../../../common/state/atoms/tasks.ts";
 import { buildAgentActions } from "../contextActions/agentActions.ts";
-import { agentActionsTargetAtom } from "../contextActions/atoms.ts";
 import type { AgentActionRuntime } from "../contextActions/types.ts";
 import type { CommandRuntime } from "../runtime.ts";
 import type { Command, DynamicProvider } from "../types.ts";
@@ -54,12 +53,7 @@ export const buildAgentActionsProvider = (
       pageId: "agent.actions",
       primary: true,
       order: 50,
-      perform: () => {
-        runtime.store.set(agentActionsTargetAtom, {
-          workspaceId: ctx.activeWorkspaceId as string,
-          agentId: target.id,
-        });
-      },
+      perform: () => {},
     });
 
     // Mechanical descriptor → Command projection. Per-action metadata

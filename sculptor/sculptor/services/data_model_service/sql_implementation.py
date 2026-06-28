@@ -792,8 +792,7 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
                 )
                 log_exception(
                     e,
-                    "Database is locked, inspect extra data to see why",
-                    sentry_extra=dict(transaction_summary=transaction_summary),
+                    f"Database is locked, inspect the transaction summary to see why:\n{transaction_summary}",
                 )
             raise
 

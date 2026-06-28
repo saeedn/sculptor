@@ -77,15 +77,6 @@
   }
 }
 
-.groupHeader {
-  color: var(--gray-9);
-  font-size: var(--font-size-1);
-  font-weight: var(--font-weight-medium);
-  overflow-wrap: anywhere;
-  padding: var(--space-2) var(--space-3) var(--space-1);
-  user-select: none;
-}
-
 .extension {
   color: var(--gray-9);
 }
@@ -108,10 +99,6 @@
 
 .lineStatsRemoved {
   color: var(--red-11);
-}
-
-.toolbarSpacer {
-  flex: 1;
 }
 
 .flatListRow {

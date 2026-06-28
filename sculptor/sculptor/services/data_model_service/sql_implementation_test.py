@@ -701,7 +701,7 @@ def test_debugging_report_from_concurrent_transactions(
     thread.start()
     time.sleep(1)  # give it a moment to start and hold the transaction open
     try:
-        with expect_exact_logged_errors(["Database is locked, inspect extra data to see why"]):
+        with expect_exact_logged_errors(["Database is locked, inspect the transaction summary to see why"]):
             # now open a transaction in the main thread, which should detect the concurrent transaction:
             with service.open_transaction(RequestID()) as transaction:
                 _user_settings = transaction.get_user_settings(user_reference)
@@ -737,7 +737,7 @@ def test_lock_debug_logging_on_begin_immediate_failure(
 
     with patch.object(service, "_begin_immediate_connection", fail_with_database_locked):
         try:
-            with expect_exact_logged_errors(["Database is locked, inspect extra data to see why"]):
+            with expect_exact_logged_errors(["Database is locked, inspect the transaction summary to see why"]):
                 with service.open_transaction(RequestID(), immediate=True):
                     pass
         except OperationalError:

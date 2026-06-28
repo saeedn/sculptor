@@ -169,5 +169,15 @@ Removed wholesale (each gated green, committed separately):
 - **Toast variant CSS** (`.success/.error/.warning`): latent styling bug — `styles[type]` uses uppercase ToastType values but CSS keys are lowercase, so these toasts render unstyled. Bug fix, not dead code.
 - **`sculpt run` integration failures** (terminal-readiness 409): FIXED — `sculpt run` now polls delivery until the agent is at its prompt and rejects `--harness Terminal` up front; tests target a fake idle-emitting terminal agent. test_sculpt_cli fully green (21 passed).
 
+### One-time migration removal (done — brand-new product, no back-compat)
+- **Frontend localStorage app-scheme migration**: deleted localStorageMigration.ts/Logic.ts/test + the electron/main.ts wiring (MIGRATION_BLANK_PATH protocol branch, isMigrating state + window-all-closed suppression).
+- **Frontend tab/workspace migrations** (workspaces.ts): removed `createMigratingTabsStorage` (legacy `sculptor-tab-order` → `sculptor-tabs`) → plain JSON storage; removed the `sculptor-open-workspace-tab-ids` → backend open-state migration (kept the first-time init-from-open-workspaces branch). Removed the matching unit + integration tests (test_legacy_tab_order_migrates_to_sculptor_tabs).
+- **Backend legacy_cleanup.py**: deleted the legacy-MRU-file sweep + test + middleware call.
+- **Alembic collapse**: folded the 3 follow-up drop migrations (task.max_seconds, workspace.initialization_strategy/setup_command_triggered) into the single 4ddee12c1e07 initial_schema; deleted the 3 migrations + their version_tests. One migration now = current schema.
+
+### Left intentionally (NOT clean one-time migrations)
+- **Project dedup-by-repo-URL** (project_service `_get_project_id` path lookup + projects.ts `projectsArrayAtom` dedup): idempotent project resolution, not a self-removing migration; removing it carries behavior risk.
+- **SetupStatus `"legacy"`** value (backend Literal + frontend union): a never-produced dead enum value (migration-adjacent), but removing it is a coordinated FE/BE + generate-api change with low payoff. Flagged, not removed.
+
 ### Offload / Sentry / PostHog reference scrub (done)
 - Removed/reworded all stale references: deleted orphan test_error_utils snapshot + stale utils/README.md; removed the OFFLOAD_ROOT sculpt conftest hook, .offload/_sentry_settings gitignore entries, SENTRY_DSN test env-unsets; fixed docs (test-unit-offload, posthog.md link); reworded comments. Kept the live localStorage telemetry-key purge and the English-verb "offload".

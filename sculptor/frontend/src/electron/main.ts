@@ -22,7 +22,6 @@ import {
 } from "./constants";
 import { createDevIcon } from "./devIcon";
 import { PORT } from "./electronOnlyUtils";
-import { migrateLocalStorageToAppScheme, MIGRATION_BLANK_PATH } from "./localStorageMigration";
 import { finalizeLogger, getSculptorFolder, logger } from "./logger";
 import {
   flushTracingBeforeExit,
@@ -124,10 +123,6 @@ let window: BrowserWindow | null = null;
 let currentBackendStatus: AnyBackendStatus = { status: "loading", payload: { message: "Initializing..." } };
 let stderrBuffer = "";
 let isQuitting = false;
-// True only during the one-time startup localStorage migration, which opens and
-// destroys a transient window before the main window exists. Destroying it would
-// otherwise fire window-all-closed and quit the app mid-startup (see the handler).
-let isMigrating = false;
 // Resolved once the local backend URL is known (always the local port now).
 let resolveBackendUrl: ((url: string | null) => void) | null = null;
 const backendUrlReady: Promise<string | null> = new Promise((resolve) => {
@@ -731,14 +726,6 @@ const registerAppProtocolHandler = (): void => {
   const bundleDir = path.join(app.getAppPath(), ".vite/build/renderer");
   protocol.handle(APP_SCHEME, async (request) => {
     const { pathname, search } = new URL(request.url);
-    // Blank doc for the one-time localStorage origin migration: lets the main
-    // process open a page on this origin to write without booting the renderer.
-    if (pathname === MIGRATION_BLANK_PATH) {
-      return new Response('<!doctype html><meta charset="utf-8"><title>migrating</title>', {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
-    }
-
     if (APP_SCHEME_DEV_SERVER_ORIGIN !== null) {
       // Test/dev: proxy to the Vite dev server, preserving path + query so its
       // on-the-fly module transforms and asset requests resolve there. (The
@@ -769,17 +756,6 @@ const registerAppProtocolHandler = (): void => {
 app.whenReady().then(async () => {
   // Register the app-scheme file handler before any window loads from it.
   registerAppProtocolHandler();
-
-  // One-time: carry renderer localStorage from the legacy file:// origin to
-  // sculptor://app before any window loads, so an in-place upgrade keeps the
-  // user's layout, theme, tabs, etc. Gated, capped, and never throws.
-  if (app.isPackaged && shouldUseAppScheme && !isInPytest) {
-    // Suppress the window-all-closed quit while the migration's transient window
-    // opens and closes (the main window doesn't exist yet). Cleared once the
-    // main window is created, below.
-    isMigrating = true;
-    await migrateLocalStorageToAppScheme(store);
-  }
 
   traceMark("electron.app_ready");
   createApplicationMenu();
@@ -836,10 +812,6 @@ app.whenReady().then(async () => {
   // We can only create the window _after_ the handlers have been defined, because createWindow() invokes preload.ts
   // which depends on the handlers.
   await createWindow();
-
-  // Main window exists now, so the migration's transient-window quit suppression
-  // is no longer needed (any future window-all-closed is a real user close).
-  isMigrating = false;
 
   // Switch the logger from the temp file to the final location inside the
   // sculptor folder now that the data folder is known.
@@ -1003,15 +975,6 @@ function killProcessAndWait(process: ReturnType<typeof spawn>, timeoutMs: number
 
 app.on("window-all-closed", (): void => {
   logger.info("[main] window-all-closed fired, isQuitting=%s, platform=%s", isQuitting, process.platform);
-
-  // The one-time localStorage migration opens and closes a transient window
-  // before the main window is created; its close leaves zero windows. Ignore
-  // that so the app doesn't quit itself mid-startup (the main window is on its
-  // way). Cleared once createWindow() returns.
-  if (isMigrating) {
-    logger.info("[main] window-all-closed during migration — ignoring");
-    return;
-  }
 
   if (IS_DEVELOPMENT && isQuitting) {
     // In dev mode, CTRL-C kills the Vite dev server simultaneously, crashing

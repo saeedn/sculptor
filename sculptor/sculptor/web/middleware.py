@@ -29,7 +29,6 @@ from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.service_collections.service_collection import get_services
 from sculptor.services.project_service.default_implementation import update_most_recently_used_project
-from sculptor.services.workspace_service.legacy_cleanup import cleanup_obsolete_mru_files
 from sculptor.utils.migration import ensure_sculptor_folder_ready
 from sculptor.utils.shutdown import GLOBAL_SHUTDOWN_EVENT
 from sculptor.utils.tracing import get_trace_to_path
@@ -244,7 +243,6 @@ async def lifespan(app: App):
     Initializes the application. (It has to be async.)
     """
     ensure_sculptor_folder_ready()
-    cleanup_obsolete_mru_files()
 
     if get_settings in app.dependency_overrides:
         settings = app.dependency_overrides[get_settings]()

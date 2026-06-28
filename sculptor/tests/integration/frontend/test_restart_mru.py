@@ -3,8 +3,7 @@
 Cold start should reproduce the user's last-active tab synchronously
 from the sculptor-tabs localStorage entry: workspace + agent URL,
 draft URL, or /ws/new when no MRU was ever recorded or the saved
-workspace was deleted between sessions. Also covers the legacy
-sculptor-tab-order → sculptor-tabs migration.
+workspace was deleted between sessions.
 """
 
 import json
@@ -114,40 +113,3 @@ def test_restart_with_no_mru_lands_on_new(
     """Cold start with empty localStorage should land on /ws/new/<uuid>."""
     with sculptor_instance_factory_.spawn_instance() as instance:
         expect(instance.page).to_have_url(re.compile(r"#/ws/new/"))
-
-
-@user_story("to keep my tab list when upgrading from the prior build")
-def test_legacy_tab_order_migrates_to_sculptor_tabs(
-    sculptor_instance_factory_: SculptorInstanceFactory,
-) -> None:
-    """Pre-seeded sculptor-tab-order should migrate into sculptor-tabs on first read."""
-    with sculptor_instance_factory_.spawn_instance() as instance:
-        page = instance.page
-        page.evaluate(
-            """
-            () => {
-              window.localStorage.removeItem('sculptor-tabs');
-              window.localStorage.setItem('sculptor-tab-order', JSON.stringify(['__home__']));
-            }
-            """
-        )
-        page.reload()
-        # Wait for the migration to complete (sculptor-tabs present, legacy gone).
-        page.wait_for_function(
-            """
-            () => window.localStorage.getItem('sculptor-tabs') !== null
-              && window.localStorage.getItem('sculptor-tab-order') === null
-            """,
-        )
-        snapshot = page.evaluate(
-            """
-            () => ({
-              tabs: window.localStorage.getItem('sculptor-tabs'),
-              legacy: window.localStorage.getItem('sculptor-tab-order'),
-            })
-            """
-        )
-        assert snapshot["legacy"] is None, snapshot
-        parsed = json.loads(snapshot["tabs"])
-        order = parsed["order"]
-        assert any(entry["tabId"] == "__home__" and entry["agentId"] is None for entry in order), parsed

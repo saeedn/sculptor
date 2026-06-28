@@ -98,7 +98,6 @@ describe("useWorkspaceNavigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.removeItem("sculptor-tabs");
-    localStorage.removeItem("sculptor-tab-order");
   });
 
   it("navigates to the saved agent when tabsAtom has an entry for the workspace", () => {

@@ -308,7 +308,7 @@ class SculptorInstance:
         # has been unloaded.  If we PUT the reset while the old page is
         # still alive, a debounced sync hook (e.g. usePanelLayoutSync)
         # can fire afterwards and PUT the full stale config back —
-        # silently re-enabling flags like enablePiAgent and
+        # silently re-enabling flags like envVarOverrideEnabled and
         # breaking the next test.  about:blank tears down the React
         # tree, which cancels those pending timers.
         self._reset_user_config_defaults()
@@ -365,8 +365,8 @@ class SculptorInstance:
         """Reset persistent user-config flags that tests may have mutated.
 
         User config lives on disk and is shared across tests in the same
-        instance, so any flag a test enables (e.g. enablePiAgent) leaks into
-        the next test unless reset here. Each flag listed below must default
+        instance, so any flag a test enables (e.g. envVarOverrideEnabled) leaks
+        into the next test unless reset here. Each flag listed below must default
         to False in the shipping config; add new entries when a test starts
         toggling a new flag.
 
@@ -374,9 +374,9 @@ class SculptorInstance:
         of shared, persistent state: the server records it whenever an agent
         is created with an explicit type, and a later create that omits the
         type resolves back to it. Without resetting it, a prior test that
-        created a Pi or terminal agent makes the next agent-type-less create
-        resolve to that harness (e.g. Pi, whose binary is absent in CI)
-        instead of Claude, so it is cleared back to None here too.
+        created a specific terminal agent makes the next agent-type-less create
+        resolve to that harness instead of the default, so it is cleared back to
+        None here too.
 
         Transient PUT failures under load would silently leave a flag stuck,
         so we retry and raise loudly if the reset never succeeds — a leaked

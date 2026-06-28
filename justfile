@@ -811,55 +811,6 @@ install:
     just install-build-deps
     just install-backend
     just install-frontend
-    # pi is not installed here: Sculptor provisions it in MANAGED mode (the
-    # default). Run `just install-pi` only for a CUSTOM or real_pi dev setup.
-
-# Installs the pinned, self-contained pi binary from GitHub Releases into
-# .venv/pi (the whole release tree — the binary loads sibling files like
-# package.json/wasm/theme relative to its real path) and symlinks it into
-# .venv/bin, which `uv run` puts first on PATH so a CUSTOM `pi` resolves to it.
-# We install the version PI_VERSION_RANGE pins. Sculptor provisions pi itself
-# in MANAGED mode (the default), so this is NOT part of `just install`/`rebuild`.
-# Opt-in dev helper: for a CUSTOM pi against .venv/bin/pi, or the real_pi suite.
-[group("install")]
-install-pi:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    {{ _quiet_by_default_fn }}
-    _do_install_pi() {
-      cd "{{justfile_directory()}}"
-      venv="{{justfile_directory()}}/.venv"
-      target="$venv/bin/pi"
-      # Source of truth for the pinned version: PI_VERSION_RANGE. (uv run also
-      # ensures the workspace venv exists, since we install into its bin.)
-      version="$(uv run --project sculptor python -c 'from sculptor.services.dependency_management_service import PI_VERSION_RANGE; print(PI_VERSION_RANGE.recommended_version)')"
-      if [ -x "$target" ] && [ "$("$target" --version 2>&1 | tr -dc '0-9.')" = "$version" ]; then
-        echo "pi $version already installed."
-        return 0
-      fi
-      case "$(uname -s)" in
-        Darwin) os_part=darwin ;;
-        Linux) os_part=linux ;;
-        *) echo "install-pi: unsupported OS '$(uname -s)'" >&2; return 1 ;;
-      esac
-      case "$(uname -m)" in
-        arm64|aarch64) arch_part=arm64 ;;
-        x86_64|amd64) arch_part=x64 ;;
-        *) echo "install-pi: unsupported arch '$(uname -m)'" >&2; return 1 ;;
-      esac
-      asset="pi-${os_part}-${arch_part}.tar.gz"
-      url="https://github.com/earendil-works/pi/releases/download/v${version}/${asset}"
-      echo "Downloading pi $version ($asset)..."
-      tmp="$(mktemp -d)"
-      trap 'rm -rf "$tmp"' RETURN
-      curl -fsSL "$url" -o "$tmp/pi.tar.gz"
-      rm -rf "$venv/pi"
-      tar -xzf "$tmp/pi.tar.gz" -C "$venv"
-      [ -x "$venv/pi/pi" ] || { echo "install-pi: pi binary missing in $asset" >&2; return 1; }
-      ln -sf ../pi/pi "$target"
-      echo "Installed pi $version -> $target"
-    }
-    quiet_by_default install-pi _do_install_pi
 
 # Installs additional dependencies for testing
 [group("install")]
@@ -1286,7 +1237,7 @@ test-integration tests="sculptor/tests/integration/" buildargs="": build-fronten
     fi
     {{ _quiet_by_default_fn }}
     _do_test_integration() {
-      ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude --ignore=sculptor/tests/integration/real_pi {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
+      ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
     }
     quiet_by_default test-integration _do_test_integration
 
@@ -1345,31 +1296,6 @@ test-real-claude tests="sculptor/tests/integration/real_claude/" buildargs="": b
     }
     quiet_by_default test-real-claude _do_test_real_claude
 
-# Runs real pi integration tests (require ANTHROPIC_API_KEY). These tests hit
-# the real upstream model through real pi and are excluded from CI. The
-# `install-pi` dependency puts the pinned pi on PATH (.venv/bin/pi), which the
-# real_pi resolver requires. Run serially by default.
-# Set XDIST_WORKERS to override (e.g. XDIST_WORKERS=2 for parallel).
-[group("test")]
-test-real-pi tests="sculptor/tests/integration/real_pi/" buildargs="": install-pi build-frontend generate-sculpt-client
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ "${JUST_VERBOSE:-}" != "1" ] && [ -z "${JUST_LOG_FILE:-}" ]; then
-      mkdir -p "{{ _logs_dir }}"
-      export JUST_LOG_FILE="{{ _logs_dir }}/test-real-pi-$(date +%Y%m%d-%H%M%S).log"
-      echo "log: $JUST_LOG_FILE"
-    fi
-    if [ -n "${XDIST_WORKERS:-}" ]; then
-      xdist_args="-n ${XDIST_WORKERS}"
-    else
-      xdist_args=""
-    fi
-    {{ _quiet_by_default_fn }}
-    _do_test_real_pi() {
-      uv run --project sculptor pytest ${xdist_args} -m real_pi --show-capture=all --capture=tee-sys -v -ra {{ if env("RUN_ALL", "") != "" { "" } else { "-x" } }} {{tests}} {{buildargs}}
-    }
-    quiet_by_default test-real-pi _do_test_real_pi
-
 # Runs Electron integration tests (marked @pytest.mark.electron or @pytest.mark.browser_and_electron).
 # Same env var overrides as test-integration: RUN_ALL=1, XDIST_WORKERS=N, JUST_VERBOSE=1.
 # Uses fewer parallel workers than test-integration (Electron is heavier than headless Chromium).
@@ -1398,7 +1324,7 @@ test-integration-electron tests="sculptor/tests/integration/" buildargs="": buil
     fi
     {{ _quiet_by_default_fn }}
     _do_test_integration_electron() {
-      ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude --ignore=sculptor/tests/integration/real_pi --sculptor-launch-mode=electron {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
+      ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude --sculptor-launch-mode=electron {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
     }
     quiet_by_default test-integration-electron _do_test_integration_electron
 

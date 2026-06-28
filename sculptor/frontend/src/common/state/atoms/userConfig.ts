@@ -89,7 +89,7 @@ export const ciBabysitterMergeConflictPromptAtom = atom<string>(
 );
 
 // Which agent the babysitter drives: the discriminated union from the backend
-// (MRU | Claude | Pi | Registered{registrationId}); null until config loads.
+// (MRU | Registered{registrationId}); null until config loads.
 export const ciBabysitterAgentAtom = atom<NonNullable<CiBabysitterConfig["agent"]> | null>(
   (get) => get(ciBabysitterConfigAtom)?.agent ?? null,
 );

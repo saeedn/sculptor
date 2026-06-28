@@ -766,7 +766,7 @@ def test_run_command_creates_workspace_and_agent(sculptor_instance_: SculptorIns
 # Harness selection / most-recently-used (MRU) harness tests
 #
 # The CLI's JSON output has no explicit harness field, but the auto-assigned
-# agent title encodes the type ("Claude N" / "Terminal N" / "Pi N"), so these
+# agent title encodes the type ("Claude N" / "Terminal N"), so these
 # tests verify the harness via the title. Terminal is used as the non-default
 # harness: it has no enable gate and creates a waiting agent whose title is
 # stable (no prompt, so no later prompt-derived rename).

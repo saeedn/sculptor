@@ -233,9 +233,6 @@ class ElementIDs(StrEnum):
 
     # Settings > Dependencies > Git
 
-    # Pi settings
-    # Managed-install controls, mirroring the CLAUDE_CLI_* set.
-
     # Repository settings
     SETTINGS_REPO_ROW = "SETTINGS_REPO_ROW"
     SETTINGS_REMOVE_REPO_BUTTON = "SETTINGS_REMOVE_REPO_BUTTON"

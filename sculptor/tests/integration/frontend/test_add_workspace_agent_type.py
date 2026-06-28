@@ -2,8 +2,7 @@
 
 Agent type is per-agent, so the form's picker chooses the type of the
 workspace's *first agent* via createWorkspaceAgent. The select is always
-visible (Terminal is available to everyone); only the pi option is gated
-behind the experimental pi-agent flag.
+visible (Terminal is available to everyone) and is not flag-gated.
 """
 
 from playwright.sync_api import expect

@@ -70,9 +70,7 @@ def parse_command_frontmatter(content: str) -> str | None:
     """Extract description from a command markdown file's YAML frontmatter.
 
     Commands use a simpler format than skills: the filename is the command name,
-    and the frontmatter may optionally contain a description field. Public
-    because the pi agent reuses it when wrapping loose commands in synthesized
-    SKILL.md files.
+    and the frontmatter may optionally contain a description field.
     """
     if not content.startswith("---"):
         return None
@@ -187,14 +185,12 @@ def get_skill_source_directories(
 
     The single source of truth for *where* Sculptor looks for skills:
     ``discover_skills`` scans exactly these directories (in this order,
-    first-name-wins), and the pi agent points pi at the same directories via
-    ``--skill`` so the slash-picker list and pi's loaded skill set stay in
-    lockstep. Directories are returned whether or not they exist on disk;
-    callers that act on them (scan, or hand to a subprocess) should skip the
-    missing ones.
+    first-name-wins). Directories are returned whether or not they exist on
+    disk; callers that act on them (scan, or hand to a subprocess) should skip
+    the missing ones.
 
-    ``home_path`` overrides ``Path.home()`` for the user-global sources, so the
-    pi agent can pass its environment's home and have the paths resolve inside
+    ``home_path`` overrides ``Path.home()`` for the user-global sources, so a
+    caller can pass another environment's home and have the paths resolve inside
     that environment.
     """
     home = Path.home() if home_path is None else home_path

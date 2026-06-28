@@ -1,7 +1,7 @@
 """Minimum-interface conformance suite for the terminal agent.
 
-The terminal agent is the only surviving agent kind (the Claude/pi chat
-harnesses are removed in the slim-down). It must satisfy two invariants,
+The terminal agent is the only surviving agent kind (the chat harnesses
+are removed in the slim-down). It must satisfy two invariants,
 re-expressed against the terminal surface (there is no chat surface):
 
 - Turn-boundary signalling: a command runs as one busy → idle turn (the tab dot

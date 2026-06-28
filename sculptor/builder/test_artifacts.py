@@ -34,10 +34,6 @@ DEV_SEMVER_VERSION = pep_440_to_semver(DEV_VERSION)
                         f"s3://imbue-sculptor-releases/slim-rc/AppImage/x64/Sculptor-{VERSION}.AppImage",
                     ],
                 ),
-                (
-                    f"s3://imbue-sculptor-builds/slim/{GIT_SHA}/AppImage/x64/latest-linux.yml",
-                    ["s3://imbue-sculptor-releases/slim-rc/AppImage/x64/latest-linux.yml"],
-                ),
             ],
         ),
         (
@@ -51,10 +47,6 @@ DEV_SEMVER_VERSION = pep_440_to_semver(DEV_VERSION)
                         "s3://imbue-sculptor-releases/slim/AppImage/x64/Sculptor.AppImage",
                         f"s3://imbue-sculptor-releases/slim/AppImage/x64/Sculptor-{VERSION}.AppImage",
                     ],
-                ),
-                (
-                    f"s3://imbue-sculptor-builds/slim/{GIT_SHA}/AppImage/x64/latest-linux.yml",
-                    ["s3://imbue-sculptor-releases/slim/AppImage/x64/latest-linux.yml"],
                 ),
             ],
         ),
@@ -70,10 +62,6 @@ DEV_SEMVER_VERSION = pep_440_to_semver(DEV_VERSION)
                         f"s3://imbue-sculptor-builds/slim/{GIT_SHA}/AppImage/x64/Sculptor-{VERSION}.AppImage",
                     ],
                 ),
-                (
-                    "../dist/AppImage/x64/latest-linux.yml",
-                    [f"s3://imbue-sculptor-builds/slim/{GIT_SHA}/AppImage/x64/latest-linux.yml"],
-                ),
             ],
         ),
         (
@@ -87,10 +75,6 @@ DEV_SEMVER_VERSION = pep_440_to_semver(DEV_VERSION)
                         f"s3://imbue-sculptor-releases/slim-dev/{DEV_VERSION}/AppImage/x64/Sculptor.AppImage",
                         f"s3://imbue-sculptor-releases/slim-dev/{DEV_VERSION}/AppImage/x64/Sculptor-{DEV_VERSION}.AppImage",
                     ],
-                ),
-                (
-                    f"s3://imbue-sculptor-builds/slim-dev/{GIT_SHA}/{DEV_PIPELINE_ID}/AppImage/x64/latest-linux.yml",
-                    [f"s3://imbue-sculptor-releases/slim-dev/{DEV_VERSION}/AppImage/x64/latest-linux.yml"],
                 ),
             ],
         ),
@@ -113,10 +97,6 @@ DEV_SEMVER_VERSION = pep_440_to_semver(DEV_VERSION)
                         f"s3://imbue-sculptor-releases/slim-rc/zip/darwin/arm64/Sculptor-darwin-arm64-{SEMVER_VERSION}.zip"
                     ],
                 ),
-                (
-                    f"s3://imbue-sculptor-builds/slim/{GIT_SHA}/zip/darwin/arm64/latest-mac.yml",
-                    ["s3://imbue-sculptor-releases/slim-rc/zip/darwin/arm64/latest-mac.yml"],
-                ),
             ],
         ),
         (
@@ -134,10 +114,6 @@ DEV_SEMVER_VERSION = pep_440_to_semver(DEV_VERSION)
                 (
                     f"s3://imbue-sculptor-builds/slim/{GIT_SHA}/zip/darwin/arm64/Sculptor-darwin-arm64-{SEMVER_VERSION}.zip",
                     [f"s3://imbue-sculptor-releases/slim/zip/darwin/arm64/Sculptor-darwin-arm64-{SEMVER_VERSION}.zip"],
-                ),
-                (
-                    f"s3://imbue-sculptor-builds/slim/{GIT_SHA}/zip/darwin/arm64/latest-mac.yml",
-                    ["s3://imbue-sculptor-releases/slim/zip/darwin/arm64/latest-mac.yml"],
                 ),
             ],
         ),
@@ -159,10 +135,6 @@ DEV_SEMVER_VERSION = pep_440_to_semver(DEV_VERSION)
                         f"s3://imbue-sculptor-builds/slim/{GIT_SHA}/zip/darwin/arm64/Sculptor-darwin-arm64-{SEMVER_VERSION}.zip"
                     ],
                 ),
-                (
-                    "../dist/zip/darwin/arm64/latest-mac.yml",
-                    [f"s3://imbue-sculptor-builds/slim/{GIT_SHA}/zip/darwin/arm64/latest-mac.yml"],
-                ),
             ],
         ),
         (
@@ -182,10 +154,6 @@ DEV_SEMVER_VERSION = pep_440_to_semver(DEV_VERSION)
                     [
                         f"s3://imbue-sculptor-releases/slim-dev/{DEV_VERSION}/zip/darwin/arm64/Sculptor-darwin-arm64-{DEV_SEMVER_VERSION}.zip"
                     ],
-                ),
-                (
-                    f"s3://imbue-sculptor-builds/slim-dev/{GIT_SHA}/{DEV_PIPELINE_ID}/zip/darwin/arm64/latest-mac.yml",
-                    [f"s3://imbue-sculptor-releases/slim-dev/{DEV_VERSION}/zip/darwin/arm64/latest-mac.yml"],
                 ),
             ],
         ),

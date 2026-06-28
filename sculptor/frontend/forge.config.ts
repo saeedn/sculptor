@@ -50,11 +50,6 @@ let config = {
     extraResource: [
       path.resolve(__dirname, "../dist/sculptor_backend"), // Our backend
       path.resolve(__dirname, "../dist/sculpt"), // Sculpt CLI for agents
-      // electron-updater reads app-update.yml from process.resourcesPath
-      // during downloadUpdate() to resolve the updater cache directory name.
-      // Without this file, downloads fail with ENOENT even when setFeedURL()
-      // was called (setFeedURL only overrides the provider, not configOnDisk).
-      path.resolve(__dirname, "app-update.yml"),
     ],
     // Path to application icon (platform-specific extensions will be auto-selected)
     icon: path.resolve(__dirname, "assets/icons/icon"),

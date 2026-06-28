@@ -1185,13 +1185,6 @@ pkg_filename := if os() == "linux" { "AppImage/x64/Sculptor.AppImage" } else { "
 
 # -------- Sculptor Release Commands --------
 
-# Generate an electron-updater auto-update manifest for the given platform and architecture.
-[group("build")]
-generate-autoupdate-manifest platform arch:
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder generate-autoupdate-manifest {{platform}} {{arch}}
-
 # Uploads Snapshots of the artifacts for a given target to the BUILD s3 bucket and location.
 [group("release")]
 snapshot-build-artifacts platform arch:

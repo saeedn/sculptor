@@ -599,15 +599,3 @@ def navigate_to_workspace_without_agent(page: Page, workspace_id: str) -> None:
     a hash-only navigation via React Router).
     """
     page.evaluate(f"window.location.hash = '/ws/{workspace_id}'")
-
-
-def get_electron_app_version(page: Page) -> str:
-    """Return the Electron ``app.getVersion()`` string from the running instance.
-
-    ``electron-updater`` compares the manifest version against this value to
-    decide whether an update is available.  In dev mode it returns ``"0.0.0"``
-    (from ``package.json``); in packaged builds it returns the real semver set
-    during packaging.
-    """
-    version: str = page.evaluate("window.sculptor.getAppVersion()")
-    return version

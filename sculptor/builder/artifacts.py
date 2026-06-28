@@ -123,19 +123,11 @@ TARGET_TO_FILES: Mapping[Target, list[ArtifactFile]] = {
             input_path="AppImage/x64/Sculptor.AppImage",
             output_paths=["AppImage/x64/Sculptor.AppImage", "AppImage/x64/Sculptor-{version}.AppImage"],
         ),
-        ArtifactFile(
-            input_path="AppImage/x64/latest-linux.yml",
-            output_paths=["AppImage/x64/latest-linux.yml"],
-        ),
     ],
     Target.LINUX_ARM64: [
         ArtifactFile(
             input_path="AppImage/arm64/Sculptor.AppImage",
             output_paths=["AppImage/arm64/Sculptor.AppImage", "AppImage/arm64/Sculptor-{version}.AppImage"],
-        ),
-        ArtifactFile(
-            input_path="AppImage/arm64/latest-linux-arm64.yml",
-            output_paths=["AppImage/arm64/latest-linux-arm64.yml"],
         ),
     ],
     Target.MAC_ARM64: [
@@ -146,10 +138,6 @@ TARGET_TO_FILES: Mapping[Target, list[ArtifactFile]] = {
         ArtifactFile(
             input_path="zip/darwin/arm64/Sculptor-darwin-arm64-{pedantic_version}.zip",
             output_paths=["zip/darwin/arm64/Sculptor-darwin-arm64-{pedantic_version}.zip"],
-        ),
-        ArtifactFile(
-            input_path="zip/darwin/arm64/latest-mac.yml",
-            output_paths=["zip/darwin/arm64/latest-mac.yml"],
         ),
     ],
 }

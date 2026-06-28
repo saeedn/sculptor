@@ -432,6 +432,6 @@ class ElementIDs(StrEnum):
     # backend status is "shutting_down". The spinner shows by default; if
     # shutdown does not complete within the stall timeout, the renderer
     # swaps to the stalled-recovery message so the user is not stuck on
-    # an indefinite progress bar after a failed auto-update install.
+    # an indefinite progress bar.
     BACKEND_SHUTDOWN_SPINNER = "BACKEND_SHUTDOWN_SPINNER"
     BACKEND_SHUTDOWN_STALLED = "BACKEND_SHUTDOWN_STALLED"

@@ -8,10 +8,7 @@ set -x
 
 # Extract the packaged binary based on platform
 if [[ "$1" == "darwin" ]]; then
-    # TODO(SCU-160): Switch to zip extraction once auto-update artifacts are re-enabled.
-    # The zip is what ships via auto-update, so testing against it would better match
-    # the user-facing artifact. For now we use the DMG since that's the only macOS
-    # artifact published in TARGET_TO_FILES.
+    # Use the DMG since that's the only macOS artifact published in TARGET_TO_FILES.
     dmg_path="../dist/Sculptor.dmg"
     mount_dir="/Volumes/Sculptor"
     hdiutil attach "$dmg_path" -nobrowse -noautoopen
@@ -49,11 +46,6 @@ timeout_cmd="timeout"
 if [[ "$1" == "darwin" ]] && ! command -v timeout &>/dev/null; then
     timeout_cmd="gtimeout"  # coreutils on macOS
 fi
-
-# Prevent auto-update from hitting S3 during non-auto-update tests.
-# The auto-update electron test fixture removes this variable so the
-# auto-updater initializes against its local test server instead.
-export SCULPTOR_DISABLE_AUTO_UPDATE=1
 
 set +eo pipefail
 ${timeout_cmd} --signal=INT --kill-after=60s "${pytest_timeout_seconds}" \

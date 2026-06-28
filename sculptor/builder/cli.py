@@ -6,11 +6,8 @@ By only building the wheels we need, we save from having to import all of the
 sculptor repo.
 """
 
-import base64
-import datetime
 import fnmatch
 import functools
-import hashlib
 import json
 import os
 import subprocess
@@ -48,53 +45,6 @@ _run_out = functools.partial(subprocess.run, check=True, stdout=sys.stdout, text
 _run_pipe = functools.partial(
     subprocess.run, check=True, stdout=subprocess.PIPE, text=True
 )  # Writes to a pipe for checking
-
-
-@app.command("generate-autoupdate-manifest")
-def generate_autoupdate_manifest(platform: str, arch: str) -> None:
-    """Generate an electron-updater compatible YAML manifest for auto-updates.
-
-    The manifest includes the artifact filename, version, SHA-512 hash, and file size.
-    """
-    semver_version = pep_440_to_semver(pyproject_version())
-    dist_dir = Path("../dist")
-
-    if platform == "darwin":
-        artifact_filename = f"Sculptor-darwin-arm64-{semver_version}.zip"
-        manifest_filename = "latest-mac.yml"
-        output_dir = dist_dir / "zip" / "darwin" / arch
-    elif platform == "linux":
-        artifact_filename = "Sculptor.AppImage"
-        manifest_filename = "latest-linux-arm64.yml" if arch == "arm64" else "latest-linux.yml"
-        output_dir = dist_dir / "AppImage" / arch
-    else:
-        typer.secho(f"Unsupported platform: {platform}. Must be 'darwin' or 'linux'.", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
-    artifact_path = output_dir / artifact_filename
-    if not artifact_path.exists():
-        typer.secho(f"Artifact not found: {artifact_path}", fg=typer.colors.RED)
-        raise typer.Exit(code=1)
-
-    sha512_hash = hashlib.sha512(artifact_path.read_bytes()).digest()
-    sha512_base64 = base64.b64encode(sha512_hash).decode("ascii")
-    file_size = artifact_path.stat().st_size
-    release_date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
-
-    manifest_lines = [
-        f"version: {semver_version}",
-        "files:",
-        f"  - url: {artifact_filename}",
-        f"    sha512: {sha512_base64}",
-        f"    size: {file_size}",
-        f"releaseDate: {release_date}",
-        "",
-    ]
-    manifest_content = "\n".join(manifest_lines)
-
-    manifest_path = output_dir / manifest_filename
-    manifest_path.write_text(manifest_content)
-    typer.secho(f"Generated manifest: {manifest_path}", fg=typer.colors.GREEN)
 
 
 @app.command("create-publication-artifacts")

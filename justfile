@@ -120,11 +120,6 @@ alias stop := tmux-stop
 alias app := build-desktop-app
 alias pkg := package-desktop-installer
 alias refresh := refresh-assets
-alias snapshot := snapshot-build-artifacts
-alias publish := publish-build-artifacts
-alias promote := promote-release
-alias fixup := fixup-release
-alias hotfix := hotfix-release
 
 # === CI Commands ===
 
@@ -856,21 +851,6 @@ build-backend: install-backend
     echo "Creating an sdist for sculptor"
     uv run --project sculptor builder create-version-file
 
-# Create _version.py with version and git SHA. Pass --annotate-dev for CI dev builds.
-[group("build")]
-create-version-file *args="":
-    cd "{{justfile_directory()}}/sculptor" && uv run --project sculptor builder create-version-file {{ args }}
-
-# Fail fast if pyproject version is inconsistent with the build context. Pass the
-# tag (sculptor-v...) for tag builds; omit it for non-tag (dev) builds.
-# The tag is a named parameter passed through quote() — NOT an unquoted variadic
-# {{ args }} — because CI feeds github.ref_name through here and git refnames may
-# contain shell metacharacters ($, ;, |, ...); unquoted interpolation would both
-# drop an empty tag (the bug that failed every main build) and allow injection.
-[group("build")]
-verify-release-tag tag="":
-    cd "{{justfile_directory()}}/sculptor" && uv run --project sculptor builder verify-release-tag --tag {{ quote(tag) }}
-
 # Builds the Sculptor webapp in the default environment.
 [group("build")]
 build: (pyrefly-check) build-frontend build-backend
@@ -1134,32 +1114,6 @@ package-desktop-installer:
 
 pkg_filename := if os() == "linux" { "AppImage/x64/Sculptor.AppImage" } else { "Sculptor.dmg" }
 
-# -------- Sculptor Release Commands --------
-
-# Uploads Snapshots of the artifacts for a given target to the BUILD s3 bucket and location.
-[group("release")]
-snapshot-build-artifacts platform arch:
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder snapshot-build-artifacts -p {{platform}} -a {{arch}}
-
-# Pull down uploaded snapshots of the artifacts from the BUILD s3 bucket and location.
-[group("release")]
-retrieve-build-artifacts +args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder retrieve-build-artifacts {{ args }}
-
-
-[doc("""Publishes the artifacts for the given build to the public s3 buckets. This detects whether we're running in
-release-candidate or not, and makes the appropriate copies.""")]
-[group("release")]
-publish-build-artifacts *args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder publish-build-artifacts {{ args }}
-
-
 # -------- Sculptor Testing Commands --------
 
 # Run backend unit tests (excludes integration/acceptance tests)
@@ -1331,79 +1285,3 @@ test-integration-electron tests="sculptor/tests/integration/" buildargs="": buil
 [group("test")]
 benchmark tests="sculptor/tests/benchmark" buildargs="":
     uv run --project sculptor pytest --show-capture=all --capture=tee-sys -v -ra {{tests}} {{buildargs}}
-
-# -------- Sculptor Release Commands --------
-
-# Runs the dev command to create a branch bumping the version
-[group("release")]
-bump-version args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder bump-version {{args}}
-
-# Run the dev command to cut a release
-[group("release")]
-cut-release *args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder cut-release {{args}}
-
-# Run the dev command to update a release
-[group("release")]
-fixup-release args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder fixup-release {{args}}
-
-# Begins a hotfix branch for a release that was already published
-[group("release")]
-hotfix-release args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder hotfix-release {{args}}
-
-
-# Promote a release to the latest version
-[group("release")]
-promote-release args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder promote-release {{args}}
-
-# Trigger a dev build pipeline from the current branch
-[group("release")]
-trigger-dev-build:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # Require clean working tree
-    if ! git diff --quiet HEAD; then
-        echo "Error: working tree is dirty. Commit or stash changes first."
-        exit 1
-    fi
-    # Reject release versions — dev builds must use a .dev suffix in pyproject.toml
-    VERSION=$(cd sculptor && python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-    if [[ "$VERSION" != *".dev"* ]]; then
-        echo "Error: pyproject.toml version '$VERSION' is a release version."
-        echo "Dev builds require a .dev suffix (e.g. 0.15.0.dev0). Aborting."
-        exit 1
-    fi
-    REF="$(git rev-parse --abbrev-ref HEAD)"
-    if [ "$REF" = "HEAD" ]; then
-        echo "Error: detached HEAD state. Check out a branch first."
-        exit 1
-    fi
-    # Ensure branch is fully pushed to the remote
-    git fetch origin "$REF" 2>/dev/null || true
-    LOCAL_SHA="$(git rev-parse HEAD)"
-    REMOTE_SHA="$(git rev-parse "origin/$REF" 2>/dev/null || echo "")"
-    if [ -z "$REMOTE_SHA" ]; then
-        echo "Error: branch '$REF' does not exist on origin. Push it first."
-        exit 1
-    fi
-    if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
-        echo "Error: local branch '$REF' ($LOCAL_SHA) differs from origin ($REMOTE_SHA)."
-        echo "Push your changes first: git push origin $REF"
-        exit 1
-    fi
-    echo "Triggering dev build on ref: $REF (sha: $LOCAL_SHA)"
-    gh workflow run build-desktop.yml --ref "$REF"

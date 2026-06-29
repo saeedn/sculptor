@@ -264,7 +264,7 @@ check-yaml:
     _do_check_yaml() {
       cd "{{justfile_directory()}}"
       echo "Checking YAML file syntax..."
-      YAML_FILES=$(git ls-files '*.yaml' '*.yml' | grep -Ev '{{_style_exclude}}|authentik')
+      YAML_FILES=$(git ls-files '*.yaml' '*.yml' | grep -Ev '{{_style_exclude}}|authentik' || true)
       if [ -z "$YAML_FILES" ]; then
         echo "No YAML files to check."
         exit 0
@@ -811,27 +811,6 @@ install:
 [group("install")]
 install-test:
 	uv run --project sculptor -m playwright install --with-deps
-
-# Install git hooks that delegate to just commands
-[group("install")]
-install-hooks:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{justfile_directory()}}"
-    echo "Installing git hooks..."
-    ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
-    echo "Git hooks installed successfully."
-    echo "  pre-commit: runs 'just check' + 'just check-large-files'"
-
-# Uninstall git hooks (restores to no hooks)
-[group("install")]
-uninstall-hooks:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{justfile_directory()}}"
-    echo "Uninstalling git hooks..."
-    rm -f .git/hooks/pre-commit .git/hooks/pre-push
-    echo "Git hooks uninstalled."
 
 # Creates a FE distribution for the backend to serve statically
 [group("build")]

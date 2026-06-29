@@ -11,7 +11,7 @@ What this means:
 - Things will not be perfect. Expect mistakes and bugs.
 - Things may change quickly and significantly. We are optimizing for learning and may make drastic changes if we believe they lead to the best possible outcomes.
 
-At this time we don't have the bandwidth to take on a large volume of external contributions. We know it's not truly open source until the community is involved, and we're committed to embarking on that journey when we're truly ready. See [CONTRIBUTING.md](CONTRIBUTING.md) for how we handle issues and pull requests in the meantime.
+At this time we don't have the bandwidth to take on a large volume of external contributions. We know it's not truly open source until the community is involved, and we're committed to embarking on that journey when we're truly ready.
 
 ## Download
 - [Mac (Apple Silicon)](https://tryimbue.link/sculptor-for-apple-silicon)
@@ -27,17 +27,7 @@ At this time we don't have the bandwidth to take on a large volume of external c
 
 ## Docs
 
-- [Getting Started](docs/help/getting_started.md): first-run setup and your first task
-- [Workspaces](docs/help/workspaces.md): isolated worktrees of your repo, branches, and setup
-- [Chat](docs/help/chat.md): the chat input, models, context, plan/effort, and mentions
-- [Terminal](docs/help/terminal.md): the built-in terminal scoped to the workspace
-- [Agents](docs/help/agents.md): running multiple agents and complex tasks
-- [Changes](docs/help/changes.md): reviewing and committing agent changes
-- [Pull Requests](docs/help/pull_requests.md): opening a GitHub PR and tracking its status
-- [Skills](docs/help/skills.md): the bundled workflow and experimental skills
-- [Command Palette](docs/help/command_palette.md): Cmd+K to search and jump around the app
-- [Settings](docs/help/settings.md): a tour of the settings sections
-- [Container Backend](docs/help/experimental/container_backend.md): running in Docker or on a remote (experimental)
+See [`docs/`](docs/) for developer documentation and the product specification.
 
 
 ## Running locally

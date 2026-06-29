@@ -227,8 +227,8 @@ class ManualTestHarness:
             tmp_path=self._tmp_path,
             hide_keys=False,
         )
-        # Opt-out used by /update-help-docs so screenshots don't include the
-        # "Fake Claude" and "Fake Claude 2" test-only models in the model picker.
+        # Opt-out so manual sessions / screenshots don't include the "Fake
+        # Claude" and "Fake Claude 2" test-only models in the model picker.
         # The frontend gates those models on TESTING__INTEGRATION_ENABLED.
         if os.environ.get("SCULPTOR_MANUAL_TEST_HIDE_FAKE_MODELS", "").lower() in ("1", "true", "yes"):
             environment["TESTING__INTEGRATION_ENABLED"] = "false"

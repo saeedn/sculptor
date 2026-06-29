@@ -31,12 +31,12 @@ display_name = "Claude CLI"
 # CLAUDE_CODE_NO_FLICKER=1 forces the TUI's fullscreen alt-screen renderer
 # (flicker-free, virtualized scrollback) instead of the classic main-screen
 # renderer.
-launch_command = 'env CLAUDE_CODE_NO_FLICKER=1 "$SCULPT_CLAUDE_BIN" --dangerously-skip-permissions --settings "{terminal_agents_directory}/claude-code-hooks.json" --plugin-dir "$SCULPT_PLUGINS_DIR/sculptor-plugin" --plugin-dir "$SCULPT_PLUGINS_DIR/sculptor-workflow" --plugin-dir "$SCULPT_PLUGINS_DIR/sculptor-experimental"'
+launch_command = 'env CLAUDE_CODE_NO_FLICKER=1 "$SCULPT_CLAUDE_BIN" --dangerously-skip-permissions --settings "{terminal_agents_directory}/claude-code-hooks.json" --plugin-dir "$SCULPT_PLUGINS_DIR/sculptor-plugin" --plugin-dir "$SCULPT_PLUGINS_DIR/sculptor-workflow"'
 
 # Same env and flags as launch_command (a resumed session must come back
 # with the same renderer, hooks, and plugins), plus --resume: {session_id}
 # is replaced with the session id the hooks reported on the first prompt,
 # so a Sculptor restart resumes the same conversation.
-resume_command_template = 'env CLAUDE_CODE_NO_FLICKER=1 "$SCULPT_CLAUDE_BIN" --dangerously-skip-permissions --settings "{terminal_agents_directory}/claude-code-hooks.json" --plugin-dir "$SCULPT_PLUGINS_DIR/sculptor-plugin" --plugin-dir "$SCULPT_PLUGINS_DIR/sculptor-workflow" --plugin-dir "$SCULPT_PLUGINS_DIR/sculptor-experimental" --resume {session_id}'
+resume_command_template = 'env CLAUDE_CODE_NO_FLICKER=1 "$SCULPT_CLAUDE_BIN" --dangerously-skip-permissions --settings "{terminal_agents_directory}/claude-code-hooks.json" --plugin-dir "$SCULPT_PLUGINS_DIR/sculptor-plugin" --plugin-dir "$SCULPT_PLUGINS_DIR/sculptor-workflow" --resume {session_id}'
 
 accepts_automated_prompts = true

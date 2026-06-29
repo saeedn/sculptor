@@ -63,7 +63,6 @@ pyinstaller --onedir --name sculptor_backend \
   --add-data "frontend-dist:frontend-dist" \
   --add-data "sculptor-plugin:sculptor-plugin" \
   --add-data "sculptor-workflow:sculptor-workflow" \
-  --add-data "sculptor-experimental:sculptor-experimental" \
   --add-data "../samples/terminal_agents:samples/terminal_agents" \
   --noupx \
   --noconfirm \

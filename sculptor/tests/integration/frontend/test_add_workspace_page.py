@@ -515,7 +515,10 @@ def test_deleting_project_also_deletes_its_workspaces(
         workspace_id = _extract_workspace_id(page.url)
         base_url = sculptor_instance.backend_api_url.rstrip("/")
 
-        get_response = page.request.get(f"{base_url}/api/v1/workspaces/{workspace_id}")
+        # The workspace's agents endpoint routes through `_get_workspace_or_404`,
+        # so it serves a real 200/404 (a deleted workspace 404s) rather than the
+        # SPA catch-all — making it a reliable existence/deletion probe.
+        get_response = page.request.get(f"{base_url}/api/v1/workspaces/{workspace_id}/agents")
         assert get_response.ok, f"Expected workspace {workspace_id} to exist, got status {get_response.status}"
 
         settings_page = navigate_to_settings_page(page=page)
@@ -524,7 +527,7 @@ def test_deleting_project_also_deletes_its_workspaces(
         # Delete the first repo row (the original project).
         repos_section.remove_first_repo()
 
-        get_response = page.request.get(f"{base_url}/api/v1/workspaces/{workspace_id}")
+        get_response = page.request.get(f"{base_url}/api/v1/workspaces/{workspace_id}/agents")
         assert get_response.status == 404, (
             f"Expected workspace {workspace_id} to be deleted (404) after project deletion, but got status {get_response.status}"
         )

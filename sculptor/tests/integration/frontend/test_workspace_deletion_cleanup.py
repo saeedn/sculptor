@@ -139,9 +139,13 @@ def _wait_for_dead(page: Page, pid: int, timeout: float = 15.0) -> bool:
 
 
 def _assert_workspace_gone_from_backend(page: Page, workspace_id: str) -> None:
-    """Assert the workspace now 404s — proves the soft-delete (and cascade) committed."""
+    """Assert the workspace now 404s — proves the soft-delete (and cascade) committed.
+
+    Probes the workspace's agents endpoint, which routes through
+    ``_get_workspace_or_404`` and so 404s on a missing or soft-deleted workspace.
+    """
     base_url = page.url.split("#")[0].rstrip("/")
-    response = request_with_retry(page.request.get, f"{base_url}/api/v1/workspaces/{workspace_id}")
+    response = request_with_retry(page.request.get, f"{base_url}/api/v1/workspaces/{workspace_id}/agents")
     assert response.status == 404, f"expected workspace {workspace_id} to be gone, got {response.status}"
 
 

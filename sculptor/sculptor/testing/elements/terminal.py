@@ -85,16 +85,9 @@ def focus_agent_terminal(page: Page) -> None:
     get_agent_terminal_panel(page).locator(".xterm-screen").click()
 
 
-def expect_terminal_panel_replaces_chat(page: Page) -> None:
-    """Assert the main panel is the terminal, not the chat.
-
-    Both halves of the panel switch for terminal agents: the agent terminal
-    panel is visible AND no chat input is mounted anywhere on the page
-    (page-level check — the chat-panel POM is scoped to a panel that does
-    not exist here).
-    """
+def expect_agent_terminal_panel_visible(page: Page) -> None:
+    """Assert the agent's main panel is its terminal."""
     expect(get_agent_terminal_panel(page)).to_be_visible()
-    expect(page.get_by_test_id(ElementIDs.CHAT_INPUT)).to_have_count(0)
 
 
 def get_agent_terminal_textarea(page: Page) -> Locator:

@@ -49,9 +49,8 @@ export const useTerminalChatActions = (taskId: string): void => {
     };
     setChatActions((prev) => ({
       ...prev,
-      // No rich-text editor exists for terminal agents, so insertSkill stays
-      // null (consumers already null-check it). appendText drafts the prompt
-      // into the PTY without submitting (submit: false).
+      // appendText drafts the prompt into the PTY without submitting
+      // (submit: false).
       appendText: (text: string): void => {
         void writePrompt(text, false);
       },
@@ -74,7 +73,7 @@ export const useTerminalChatActions = (taskId: string): void => {
   // teardown as useChatData, so tab switches hand the atom over cleanly.
   useEffect(() => {
     return (): void => {
-      setChatActions({ appendText: null, insertSkill: null, sendMessage: null, isDisabled: true });
+      setChatActions({ appendText: null, sendMessage: null, isDisabled: true });
     };
   }, [setChatActions]);
 };

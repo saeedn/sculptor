@@ -276,10 +276,6 @@ export const SkillsPanel = (): ReactElement => {
     };
   }, [clearOpenTimer, clearCloseTimer]);
 
-  const handleClick = (skill: SkillEntry): void => {
-    chatActions.insertSkill?.({ name: skill.name, description: skill.description, type: skill.type });
-  };
-
   // For non-builtin skills the API always provides filePath, so the handler
   // is only wired up when filePath is defined.
   const handleOpenInSculptor = (skill: SkillEntry): void => {
@@ -378,16 +374,6 @@ export const SkillsPanel = (): ReactElement => {
   // simpler and accurate.
   const effectiveSelectedIndex = Math.min(selectedIndex, Math.max(0, visibleSkills.length - 1));
 
-  const handleSearchEnter = useCallback((): void => {
-    // Use the clamped index, not raw selectedIndex — moveSelection lets
-    // selectedIndex grow past the end of the list, and the visual
-    // selection lives on whatever effectiveSelectedIndex points at.
-    const skill = visibleSkills[effectiveSelectedIndex];
-    if (skill !== undefined && !chatActions.isDisabled) {
-      chatActions.insertSkill?.({ name: skill.name, description: skill.description, type: skill.type });
-    }
-  }, [visibleSkills, effectiveSelectedIndex, chatActions]);
-
   // Map skill name → its position in `visibleSkills`. Chips in collapsed
   // groups aren't in this map, so they render with `selected={false}` and
   // are skipped by the keyboard navigator.
@@ -451,7 +437,6 @@ export const SkillsPanel = (): ReactElement => {
           onClose={handleSearchClose}
           onArrowDown={(): void => moveSelection(1)}
           onArrowUp={(): void => moveSelection(-1)}
-          onEnter={handleSearchEnter}
         />
       ) : (
         <PanelHeader
@@ -562,7 +547,6 @@ export const SkillsPanel = (): ReactElement => {
                     {!isCollapsed && (
                       <SkillChip
                         skill={skill}
-                        onClick={(): void => handleClick(skill)}
                         onMouseEnter={(e): void => handleChipMouseEnter(skill, e.currentTarget)}
                         onMouseLeave={handleChipMouseLeave}
                         onOpenInSculptor={

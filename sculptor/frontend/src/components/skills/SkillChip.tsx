@@ -10,7 +10,7 @@ import styles from "./SkillChip.module.scss";
 
 type SkillChipProps = {
   skill: SkillEntry;
-  onClick: () => void;
+  onClick?: () => void;
   onMouseEnter?: (event: React.MouseEvent<HTMLDivElement>) => void;
   onMouseLeave?: () => void;
   onOpenInSculptor?: () => void;
@@ -31,7 +31,7 @@ export const SkillChip = ({
 }: SkillChipProps): ReactElement => {
   const handleClick = (): void => {
     if (!disabled) {
-      onClick();
+      onClick?.();
     }
   };
 
@@ -39,7 +39,7 @@ export const SkillChip = ({
     if (disabled) return;
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
-      onClick();
+      onClick?.();
     }
   };
 

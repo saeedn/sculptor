@@ -1,7 +1,6 @@
 from collections.abc import Sequence
 from typing import Any
 
-from loguru import logger
 from playwright.sync_api import Locator
 from playwright.sync_api import Page
 from playwright.sync_api import expect
@@ -9,47 +8,6 @@ from tenacity import retry
 from tenacity import retry_if_exception_type
 from tenacity import stop_after_attempt
 from tenacity import wait_fixed
-
-from sculptor.constants import ElementIDs
-
-
-def wait_for_tiptap_ready(page: Page, *, timeout_ms: int = 10_000) -> None:
-    """Best-effort wait for the Tiptap editor to initialize on the chat input.
-
-    After page reloads (e.g. ``_reset_browser_state``), the contenteditable DOM
-    element can be visible and clickable before the React fiber tree has the
-    Tiptap editor prop attached.  This function polls for the editor to appear,
-    giving it a head start before ``type_into_tiptap`` runs.
-
-    This is non-fatal: if the editor isn't ready within ``timeout_ms``, we log
-    and return.  The ``type_into_tiptap`` function has its own 5 s retry loop
-    as a fallback.
-    """
-    chat_input = page.get_by_test_id(ElementIDs.CHAT_INPUT)
-    if chat_input.count() == 0:
-        return
-    try:
-        chat_input.evaluate(
-            f"""(el) => new Promise((resolve, reject) => {{
-                const deadline = Date.now() + {timeout_ms};
-                const findEditor = (el) => {{ {_FIND_TIPTAP_EDITOR_JS} }};
-                const poll = () => {{
-                    try {{
-                        findEditor(el);
-                        resolve();
-                    }} catch (e) {{
-                        if (Date.now() < deadline) {{
-                            requestAnimationFrame(poll);
-                        }} else {{
-                            reject(e);
-                        }}
-                    }}
-                }};
-                poll();
-            }})"""
-        )
-    except Exception as exc:
-        logger.debug("wait_for_tiptap_ready timed out after {}ms: {}", timeout_ms, exc)
 
 
 class PlaywrightIntegrationTestElement(Locator):

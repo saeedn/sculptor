@@ -4,10 +4,8 @@
       "AgentCrashedRunnerMessage": {
         "$defs": {
           "AgentMessageSource": {
-            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), and RUNNER (the process controlling a task on the server.)",
+            "description": "Messages come from the RUNNER (the process controlling a task on the server).",
             "enum": [
-              "AGENT",
-              "USER",
               "RUNNER"
             ],
             "title": "AgentMessageSource",
@@ -130,10 +128,8 @@
       "EnvironmentCrashedRunnerMessage": {
         "$defs": {
           "AgentMessageSource": {
-            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), and RUNNER (the process controlling a task on the server.)",
+            "description": "Messages come from the RUNNER (the process controlling a task on the server).",
             "enum": [
-              "AGENT",
-              "USER",
               "RUNNER"
             ],
             "title": "AgentMessageSource",
@@ -243,10 +239,8 @@
       "UnexpectedErrorRunnerMessage": {
         "$defs": {
           "AgentMessageSource": {
-            "description": "Messages can come from the AGENT (in-container LLM), USER (chat messages & direct interactions), and RUNNER (the process controlling a task on the server.)",
+            "description": "Messages come from the RUNNER (the process controlling a task on the server).",
             "enum": [
-              "AGENT",
-              "USER",
               "RUNNER"
             ],
             "title": "AgentMessageSource",

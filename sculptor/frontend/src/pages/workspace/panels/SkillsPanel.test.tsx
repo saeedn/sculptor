@@ -48,21 +48,17 @@ type RenderOpts = {
   skills?: ReadonlyArray<SkillEntry>;
   isLoading?: boolean;
   error?: string | null;
-  insertSkill?: ((skill: { name: string; description: string; type: SkillEntry["type"] }) => void) | null;
   isChatDisabled?: boolean;
 };
 
-const renderSkillsPanel = (
-  opts: RenderOpts = {},
-): { store: ReturnType<typeof createStore>; insertSkill: ReturnType<typeof vi.fn> } => {
-  const { skills = [], isLoading = false, error = null, insertSkill = vi.fn(), isChatDisabled = false } = opts;
+const renderSkillsPanel = (opts: RenderOpts = {}): { store: ReturnType<typeof createStore> } => {
+  const { skills = [], isLoading = false, error = null, isChatDisabled = false } = opts;
 
   mockUseSkills.mockReturnValue({ skills, isLoading, error });
 
   const store = createStore();
   store.set(chatActionsAtom, {
     appendText: vi.fn(),
-    insertSkill,
     sendMessage: vi.fn().mockResolvedValue(undefined),
     isDisabled: isChatDisabled,
   });
@@ -80,7 +76,7 @@ const renderSkillsPanel = (
   );
 
   render(<SkillsPanel />, { wrapper: Wrapper });
-  return { store, insertSkill: insertSkill as ReturnType<typeof vi.fn> };
+  return { store };
 };
 
 beforeEach(() => {
@@ -240,24 +236,17 @@ describe("SkillsPanel — collapsible sections", () => {
     // Selection is over `visibleSkills`, so collapsing "Built-in" must
     // remove `loop` from the navigation order — ArrowDown from the only
     // visible row stays put.
-    const insertSkill = vi.fn();
     renderSkillsPanel({
       skills: [customSkill({ name: "alpha" }), builtinSkill({ name: "loop" })],
-      insertSkill,
     });
     // Collapse the Built-in section, then start a search.
     fireEvent.click(screen.getByText("Built-in"));
     fireEvent.click(screen.getByLabelText(/Search skills/i));
     const input = screen.getByPlaceholderText("Search skills...");
     fireEvent.keyDown(input, { key: "ArrowDown" });
-    fireEvent.keyDown(input, { key: "Enter" });
-    // Only `alpha` is reachable — `loop` is hidden.
-    expect(insertSkill).toHaveBeenCalledTimes(1);
-    expect(insertSkill).toHaveBeenCalledWith({
-      name: "alpha",
-      description: expect.any(String),
-      type: "custom",
-    });
+    // Only `alpha` is reachable — `loop` is hidden, so the selection stays on it.
+    const selected = document.querySelector<HTMLElement>('[data-testid="SKILL_CHIP"][data-selected="true"]');
+    expect(selected?.getAttribute("data-skill-name")).toBe("alpha");
   });
 });
 
@@ -297,32 +286,6 @@ describe("SkillsPanel — search", () => {
   });
 });
 
-describe("SkillsPanel — click-to-insert", () => {
-  it("calls insertSkill with the skill's name/description/type when a chip is clicked", () => {
-    const insertSkill = vi.fn();
-    renderSkillsPanel({
-      skills: [customSkill({ name: "fix-bug", description: "Fix a bug", type: "custom" })],
-      insertSkill,
-    });
-    fireEvent.click(screen.getByText("fix-bug"));
-    expect(insertSkill).toHaveBeenCalledWith({
-      name: "fix-bug",
-      description: "Fix a bug",
-      type: "custom",
-    });
-  });
-
-  it("safely no-ops when insertSkill is null (chat hasn't mounted yet)", () => {
-    // Regression: the panel can render before useChatData wires the atom.
-    // Clicking a chip in that window must not throw.
-    renderSkillsPanel({
-      skills: [customSkill()],
-      insertSkill: null,
-    });
-    expect(() => fireEvent.click(screen.getByText("fix-bug"))).not.toThrow();
-  });
-});
-
 describe("SkillsPanel — action buttons", () => {
   it("renders the Open-in-Sculptor button for non-builtin skills", () => {
     renderSkillsPanel({ skills: [customSkill()] });
@@ -333,15 +296,6 @@ describe("SkillsPanel — action buttons", () => {
     // Builtins have filePath: null and no on-disk source to open.
     renderSkillsPanel({ skills: [builtinSkill()] });
     expect(screen.queryByLabelText(/Open in Sculptor/i)).not.toBeInTheDocument();
-  });
-
-  it("does not fire the row's insertSkill when the action button is clicked", () => {
-    // SkillChip's action button uses stopPropagation. Without it, opening
-    // the file would also insert the skill — a UX bug.
-    const insertSkill = vi.fn();
-    renderSkillsPanel({ skills: [customSkill()], insertSkill });
-    fireEvent.click(screen.getByLabelText(/Open in Sculptor/i));
-    expect(insertSkill).not.toHaveBeenCalled();
   });
 });
 
@@ -469,21 +423,6 @@ describe("SkillsPanel — keyboard navigation in search", () => {
     expect(selectedSkillName()).toBe("alpha");
   });
 
-  it("Enter inserts the currently-selected chip", () => {
-    const insertSkill = vi.fn();
-    renderSkillsPanel({
-      skills: [
-        customSkill({ name: "alpha", description: "A desc", type: "custom" }),
-        customSkill({ name: "beta", description: "B desc", type: "custom" }),
-      ],
-      insertSkill,
-    });
-    openSearch();
-    fireEvent.keyDown(searchInput(), { key: "ArrowDown" });
-    fireEvent.keyDown(searchInput(), { key: "Enter" });
-    expect(insertSkill).toHaveBeenCalledWith({ name: "beta", description: "B desc", type: "custom" });
-  });
-
   it("typing a query resets the selection back to the first match", () => {
     renderSkillsPanel({
       skills: [customSkill({ name: "alpha" }), customSkill({ name: "beta" }), customSkill({ name: "gamma" })],
@@ -495,29 +434,6 @@ describe("SkillsPanel — keyboard navigation in search", () => {
     // Typing narrows the list — selection must snap back to the new top match.
     fireEvent.change(searchInput(), { target: { value: "be" } });
     expect(selectedSkillName()).toBe("beta");
-  });
-
-  it("Enter is a no-op when the filtered list is empty", () => {
-    const insertSkill = vi.fn();
-    renderSkillsPanel({ skills: [customSkill({ name: "alpha" })], insertSkill });
-    openSearch();
-    fireEvent.change(searchInput(), { target: { value: "no-match" } });
-    fireEvent.keyDown(searchInput(), { key: "Enter" });
-    expect(insertSkill).not.toHaveBeenCalled();
-  });
-
-  it("Enter does not insert when chat is disabled", () => {
-    // Mirrors the click path: a queued chat must not silently trigger an
-    // insert from a keyboard activation either.
-    const insertSkill = vi.fn();
-    renderSkillsPanel({
-      skills: [customSkill({ name: "alpha" })],
-      insertSkill,
-      isChatDisabled: true,
-    });
-    openSearch();
-    fireEvent.keyDown(searchInput(), { key: "Enter" });
-    expect(insertSkill).not.toHaveBeenCalled();
   });
 
   it("no chip is marked selected when search is closed", () => {

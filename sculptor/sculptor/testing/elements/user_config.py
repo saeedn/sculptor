@@ -6,8 +6,6 @@ driving the settings UI, which has timing issues with Radix controls.
 
 from playwright.sync_api import Page
 
-from sculptor.testing.elements.base import wait_for_tiptap_ready
-
 # Under heavy load the backend can transiently return 500 (e.g. SQLite busy),
 # so the config PUT is retried a few times with a short delay between attempts.
 _PUT_RETRY_COUNT = 3
@@ -37,6 +35,3 @@ def _set_user_config_flag(page: Page, field: str, value: object) -> None:
 
     page.reload()
     page.wait_for_load_state("networkidle")
-
-    # Wait for Tiptap to re-initialize after reload (if on a workspace page).
-    wait_for_tiptap_ready(page)

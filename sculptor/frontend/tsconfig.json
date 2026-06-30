@@ -6,11 +6,7 @@
     "module": "ESNext",
     "skipLibCheck": true,
     "paths": {
-      "~/*": ["./src/*"],
-      // Bundled plugins import the SDK by its bare specifier; resolve it to host
-      // source so `tsc` type-checks them (they're included below). Mirrors each
-      // plugin's own tsconfig path and the vite/import-map resolution.
-      "@sculptor/plugin-sdk": ["./src/plugins/sdk/index.ts"]
+      "~/*": ["./src/*"]
     },
     /* Bundler mode */
     "moduleResolution": "bundler",

@@ -80,7 +80,6 @@ const renderActionsPanel = (options: RenderOptions = {}): RenderResult & { store
   store.set(userConfigAtom, config);
   store.set(chatActionsAtom, {
     appendText: vi.fn(),
-    insertSkill: vi.fn(),
     sendMessage: vi.fn().mockResolvedValue(undefined),
     isDisabled: isChatDisabled,
   });
@@ -219,7 +218,7 @@ describe("ActionsPanel", () => {
 
       const store = createStore();
       store.set(userConfigAtom, { customActions: { actions, groups: [] } } as unknown as UserConfig);
-      store.set(chatActionsAtom, { appendText: vi.fn(), insertSkill: vi.fn(), sendMessage, isDisabled: false });
+      store.set(chatActionsAtom, { appendText: vi.fn(), sendMessage, isDisabled: false });
       store.set(collapsedGroupsAtom, {});
 
       const Wrapper = ({ children }: { children: ReactNode }): ReactElement => (
@@ -239,7 +238,7 @@ describe("ActionsPanel", () => {
 
       const store = createStore();
       store.set(userConfigAtom, { customActions: { actions, groups: [] } } as unknown as UserConfig);
-      store.set(chatActionsAtom, { appendText, insertSkill: vi.fn(), sendMessage: vi.fn(), isDisabled: false });
+      store.set(chatActionsAtom, { appendText, sendMessage: vi.fn(), isDisabled: false });
       store.set(collapsedGroupsAtom, {});
 
       const Wrapper = ({ children }: { children: ReactNode }): ReactElement => (

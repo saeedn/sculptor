@@ -33,7 +33,6 @@ from sculptor.interfaces.agents.harness import HarnessCapabilities
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import WorkspaceID
-from sculptor.state.messages import AgentMessageSource
 from sculptor.state.messages import Message
 from sculptor.web.data_types import PrApproval  # noqa: F401 — re-exported for existing import sites
 from sculptor.web.data_types import PrComment  # noqa: F401 — re-exported for existing import sites
@@ -162,14 +161,10 @@ class LimitedBaseTaskView(SerializableModel, Generic[TaskInputType, TaskStateTyp
 def _is_content_message(msg: Message) -> bool:
     """Return True if the message represents user-visible content for read/unread tracking.
 
-    Content messages are those that create new visual elements in the chat UI
-    (agent responses, errors, warnings, etc.). Non-content messages include:
-    - Ephemeral messages (not persisted, recreated on restart)
-    - User-initiated messages (the user already knows about their own actions)
+    The only non-content messages are ephemeral ones (not persisted, recreated
+    on restart).
     """
     if msg.is_ephemeral:
-        return False
-    if msg.source == AgentMessageSource.USER:
         return False
     return True
 
@@ -363,7 +358,6 @@ class UserUpdate(SerializableModel):
     user_settings: UserSettings | None = None
     projects: tuple[Project, ...] = ()
     workspaces: tuple[Workspace, ...] = ()
-    settings: SculptorSettings | None = None
     notifications: tuple[Notification, ...] = ()
 
 

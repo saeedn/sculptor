@@ -54,7 +54,6 @@ def test_convert_to_user_update_collects_models_and_overwrites_duplicates() -> N
 
     assert update.user_settings == user_settings
     assert update.projects == (updated_project,)
-    assert update.settings == server_settings
     assert update.notifications == (notification,)
 
 

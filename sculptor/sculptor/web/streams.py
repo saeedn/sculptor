@@ -451,7 +451,6 @@ def _convert_to_user_update(all_data: list[UserUpdateSourceTypes | None]) -> Use
     projects_by_id: dict[ProjectID, Project] = {}
     workspaces_by_id: dict[WorkspaceID, Workspace] = {}
     user_settings = None
-    server_settings = None
     for model in all_data:
         match model:
             case None:
@@ -471,14 +470,14 @@ def _convert_to_user_update(all_data: list[UserUpdateSourceTypes | None]) -> Use
                         case _ as unreachable:
                             assert_never(unreachable)
             case SculptorSettings():
-                server_settings = model
+                # Settings are no longer surfaced to clients; consume to keep the match exhaustive.
+                pass
             case _ as also_unreachable:
                 assert_never(also_unreachable)
     return UserUpdate(
         user_settings=user_settings,
         projects=tuple(projects_by_id.values()),
         workspaces=tuple(workspaces_by_id.values()),
-        settings=server_settings,
         notifications=tuple(notifications),
     )
 

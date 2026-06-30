@@ -679,23 +679,6 @@ def batch_update_open_state(
                 pass  # Skip workspaces that no longer exist
 
 
-@router.get("/api/v1/workspaces/{workspace_id}")
-def get_workspace(
-    workspace_id: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> WorkspaceResponse:
-    """Get a workspace by ID."""
-    validated_workspace_id = validate_workspace_id(workspace_id)
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = transaction.get_workspace(validated_workspace_id)
-        if workspace is None or workspace.is_deleted:
-            raise HTTPException(status_code=404, detail=f"Workspace {workspace_id} not found")
-        return _workspace_to_response(workspace)
-
-
 @router.get("/api/v1/projects/{project_id}/workspaces")
 def list_workspaces(
     project_id: str,
@@ -2021,40 +2004,6 @@ def _is_github_url(url: str) -> bool:
     return "github" in _extract_hostname(url).lower()
 
 
-def _get_remote_branches(repo_path: Path, remote_filter: str | None = "origin") -> list[str]:
-    """Get remote branch names (e.g. 'origin/main').
-
-    Args:
-        repo_path: Path to the git repository.
-        remote_filter: Only include branches from this remote (e.g. ``"origin"``).
-            Pass ``None`` to include branches from all remotes.
-    """
-    try:
-        result = subprocess.run(
-            ["git", "branch", "-r", "--format=%(refname:short)"],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=_GIT_INFO_TIMEOUT_SECONDS,
-        )
-        if result.returncode != 0:
-            return []
-        branches = []
-        for line in result.stdout.strip().splitlines():
-            branch = line.strip()
-            if not branch:
-                continue
-            if remote_filter is not None and not branch.startswith(f"{remote_filter}/"):
-                continue
-            # Skip HEAD pointer entries
-            if branch.endswith("/HEAD") or "HEAD ->" in line:
-                continue
-            branches.append(branch)
-        return branches
-    except (subprocess.TimeoutExpired, OSError):
-        return []
-
-
 @router.get("/api/v1/projects/{project_id}/current_branch")
 def get_current_branch(
     project_id: ProjectID,
@@ -2191,7 +2140,6 @@ def get_repo_info(
         origin_url = _get_origin_url(repo_path)
         is_gitlab_origin = _is_gitlab_url(origin_url) if origin_url is not None else False
         is_github_origin = _is_github_url(origin_url) if origin_url is not None else False
-        remote_branches = _get_remote_branches(repo_path)
 
         return RepoInfo(
             repo_path=repo_path,
@@ -2200,7 +2148,6 @@ def get_repo_info(
             project_id=project.object_id,
             is_gitlab_origin=is_gitlab_origin,
             is_github_origin=is_github_origin,
-            remote_branches=remote_branches,
         )
     except HTTPException:
         raise

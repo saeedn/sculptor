@@ -4,7 +4,7 @@ import type { KeybindingId } from "~/common/keybindings/types.ts";
 
 export type CommandId = string;
 
-export type CommandGroupId = "navigation" | "workspaces" | "view" | "chat" | "terminal" | "help";
+export type CommandGroupId = "navigation" | "workspaces" | "view" | "terminal" | "help";
 
 export type PageId =
   | "theme.appearance"

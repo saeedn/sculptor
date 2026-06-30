@@ -212,11 +212,6 @@ class TaskView(LimitedBaseTaskView[TaskInputType, TaskStateType], Generic[TaskIn
         # This excludes:
         # - Ephemeral messages (runner state transitions, environment lifecycle, artifact
         #   updates) which are not persisted and can be re-created on server restart.
-        # - Request lifecycle messages (RequestStartedAgentMessage,
-        #   PersistentRequestCompleteAgentMessage, RemoveQueuedMessageAgentMessage)
-        #   which are bookkeeping and don't create visual content in the chat.
-        # - User-initiated messages (source=USER) since the user already knows about
-        #   their own actions.
         # Without this, updated_at can advance past last_read_at from bookkeeping
         # messages saved to the DB after the frontend's mark_read call, causing
         # previously-read tasks to appear unread after a server restart.

@@ -353,7 +353,6 @@ class RepoInfo(SerializableModel):
     project_id: ProjectID
     is_gitlab_origin: bool = False
     is_github_origin: bool = False
-    remote_branches: list[str] = Field(default_factory=list)
 
 
 class CurrentBranchInfo(SerializableModel):

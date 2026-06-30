@@ -65,19 +65,8 @@ class ElementIDs(StrEnum):
     COMMAND_PALETTE_FOOTER = "COMMAND_PALETTE_FOOTER"
     COMMAND_PALETTE_PAGE_BREADCRUMB = "COMMAND_PALETTE_PAGE_BREADCRUMB"
 
-    # Chat Search Bar (Cmd+F)
-
-    # Chat Panel
-    ERROR_INPUT = "ERROR_INPUT"
-
+    # Chat Panel (asserted absent in terminal-only mode)
     CHAT_INPUT = "CHAT_INPUT"
-    THINKING_INDICATOR = "THINKING_INDICATOR"
-
-    # /btw popup
-
-    # AskUserQuestion
-
-    # Prompt Navigator (dot rail)
 
     FILE_PREVIEW = "FILE_PREVIEW"
     FILE_PREVIEW_REMOVE = "FILE_PREVIEW_REMOVE"

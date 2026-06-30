@@ -95,7 +95,7 @@ export const KEYBINDING_DEFINITIONS: ReadonlyArray<KeybindingDefinition> = [
   {
     id: "zen_mode",
     name: "Zen mode",
-    description: "Maximize chat by hiding all panels and UI chrome",
+    description: "Maximize the workspace by hiding all panels and UI chrome",
     category: "general",
     defaultBinding: "Meta+Shift+\\",
   },

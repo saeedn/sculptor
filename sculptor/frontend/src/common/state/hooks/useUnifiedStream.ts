@@ -7,7 +7,6 @@ import type { StreamingUpdate } from "../../../api";
 import { notificationsAtom } from "../atoms/notifications";
 import { updateProjectsAtom } from "../atoms/projects";
 import { updatePrStatusAtom } from "../atoms/prStatus";
-import { sculptorSettingsAtom } from "../atoms/sculptorSettings";
 import { updateTasksAtom } from "../atoms/tasks";
 import { updateWorkspaceBranchAtom } from "../atoms/workspaceBranch";
 import { updateWorkspacesAtom } from "../atoms/workspaces";
@@ -24,7 +23,7 @@ const API_BASE_URL = "/api/v1";
  * 1. Connects to the unified WebSocket stream
  * 2. Processes task view updates (for sidebar/task list)
  * 3. Processes task detail updates for ALL tasks (even background ones)
- * 4. Processes user updates (projects, settings, repo info)
+ * 4. Processes user updates (notifications, projects, workspaces)
  * 5. Handles request tracking acknowledgments
  *
  * Task details are accumulated in global atoms so switching between tasks
@@ -35,7 +34,6 @@ export const useUnifiedStream = (): void => {
   const updateProjects = useSetAtom(updateProjectsAtom);
   const updateWorkspaces = useSetAtom(updateWorkspacesAtom);
   const setNotifications = useSetAtom(notificationsAtom);
-  const setSculptorSettings = useSetAtom(sculptorSettingsAtom);
   const updatePrStatus = useSetAtom(updatePrStatusAtom);
   const updateWorkspaceBranch = useSetAtom(updateWorkspaceBranchAtom);
   const updateWorkspaceTargetBranches = useSetAtom(updateWorkspaceTargetBranchesAtom);
@@ -73,10 +71,6 @@ export const useUnifiedStream = (): void => {
 
         if (userUpdate.workspaces) {
           updateWorkspaces(userUpdate.workspaces);
-        }
-
-        if (userUpdate.settings) {
-          setSculptorSettings(userUpdate.settings);
         }
       }
 
@@ -141,7 +135,6 @@ export const useUnifiedStream = (): void => {
       updateProjects,
       updateWorkspaces,
       setNotifications,
-      setSculptorSettings,
       updatePrStatus,
       updateWorkspaceBranch,
       updateWorkspaceTargetBranches,

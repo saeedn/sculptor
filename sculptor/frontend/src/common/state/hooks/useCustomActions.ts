@@ -2,7 +2,6 @@ import { useAtomValue } from "jotai";
 import { useCallback, useMemo } from "react";
 
 import type { CustomAction, CustomActionGroup, CustomActionsConfig } from "~/api";
-import { isBuiltInAction, isBuiltInGroup } from "~/common/builtinActions.ts";
 
 import { customActionsAtom } from "../atoms/userConfig.ts";
 import { useUserConfig } from "./useUserConfig.ts";
@@ -70,7 +69,6 @@ export const useCustomActions = (): UseCustomActionsResult => {
 
   const addAction = useCallback(
     async (action: Omit<CustomAction, "id" | "order">): Promise<void> => {
-      if (isBuiltInGroup(action.groupId)) return;
       const targetGroupActions = actions.filter((a) => (action.groupId ? a.groupId === action.groupId : !a.groupId));
       const newAction = {
         ...action,
@@ -102,7 +100,6 @@ export const useCustomActions = (): UseCustomActionsResult => {
 
   const updateAction = useCallback(
     async (action: CustomAction): Promise<void> => {
-      if (isBuiltInAction(action.id)) return;
       const newActions = actions.map((a) => (a.id === action.id ? action : a));
       await persistConfig([...newActions], [...groups]);
     },
@@ -111,7 +108,6 @@ export const useCustomActions = (): UseCustomActionsResult => {
 
   const updateActionWithNewGroup = useCallback(
     async (action: CustomAction, groupName: string): Promise<void> => {
-      if (isBuiltInAction(action.id)) return;
       const newGroup: CustomActionGroup = {
         id: crypto.randomUUID(),
         name: groupName,
@@ -126,7 +122,6 @@ export const useCustomActions = (): UseCustomActionsResult => {
 
   const deleteAction = useCallback(
     async (actionId: string): Promise<void> => {
-      if (isBuiltInAction(actionId)) return;
       const action = actions.find((a) => a.id === actionId);
       if (!action) return;
       const remaining = actions.filter((a) => a.id !== actionId);
@@ -156,7 +151,6 @@ export const useCustomActions = (): UseCustomActionsResult => {
 
   const renameGroup = useCallback(
     async (groupId: string, name: string): Promise<void> => {
-      if (isBuiltInGroup(groupId)) return;
       const newGroups = groups.map((g) => (g.id === groupId ? { ...g, name } : g));
       await persistConfig([...actions], [...newGroups]);
     },
@@ -165,7 +159,6 @@ export const useCustomActions = (): UseCustomActionsResult => {
 
   const deleteGroup = useCallback(
     async (groupId: string): Promise<void> => {
-      if (isBuiltInGroup(groupId)) return;
       const newActions = actions.filter((a) => a.groupId !== groupId);
       const newGroups = recomputeOrders(groups.filter((g) => g.id !== groupId));
       await persistConfig(newActions, newGroups);
@@ -175,7 +168,6 @@ export const useCustomActions = (): UseCustomActionsResult => {
 
   const moveActionToGroup = useCallback(
     async (actionId: string, groupId: string | null): Promise<void> => {
-      if (isBuiltInAction(actionId) || isBuiltInGroup(groupId)) return;
       const action = actions.find((a) => a.id === actionId);
       if (!action) return;
 
@@ -205,7 +197,6 @@ export const useCustomActions = (): UseCustomActionsResult => {
 
   const reorderActions = useCallback(
     async (actionId: string, newOrder: number, newGroupId?: string | null): Promise<void> => {
-      if (isBuiltInAction(actionId) || (newGroupId !== undefined && isBuiltInGroup(newGroupId))) return;
       const action = actions.find((a) => a.id === actionId);
       if (!action) return;
 
@@ -262,10 +253,7 @@ export const useCustomActions = (): UseCustomActionsResult => {
 
   const reorderGroups = useCallback(
     async (groupId: string, newOrder: number): Promise<void> => {
-      if (isBuiltInGroup(groupId)) return;
-      // Exclude built-in groups from reordering; they are injected virtually and keep a fixed position.
-      const userGroups = groups.filter((g) => !isBuiltInGroup(g.id));
-      const sortedGroups = [...userGroups].sort((a, b) => a.order - b.order);
+      const sortedGroups = [...groups].sort((a, b) => a.order - b.order);
       const currentIndex = sortedGroups.findIndex((g) => g.id === groupId);
       if (currentIndex === -1) return;
 

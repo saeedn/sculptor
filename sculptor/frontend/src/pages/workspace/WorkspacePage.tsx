@@ -14,20 +14,12 @@ import {
 import { useMarkRead } from "../../common/state/hooks/useMarkRead";
 import { usePanelLayoutSync } from "../../common/state/hooks/usePanelLayoutSync.ts";
 import { useWorkspaceFiles } from "../../common/state/hooks/useWorkspaceFiles.ts";
-import { zenModeActiveAtom } from "../../components/panels/atoms.ts";
 import { DockingLayout } from "../../components/panels/DockingLayout";
 import { AgentTabs } from "./components/AgentTabs.tsx";
-import { BottomBar } from "./components/BottomBar";
 import { ChatPanelContent } from "./components/ChatPanelContent.tsx";
 import { DiffSplitContainer } from "./components/DiffSplitContainer.tsx";
 import { WorkspaceBanner } from "./components/WorkspaceBanner.tsx";
 import styles from "./WorkspacePage.module.scss";
-
-const ZenTopGradient = (): ReactElement | null => {
-  const isZenMode = useAtomValue(zenModeActiveAtom);
-  if (!isZenMode) return null;
-  return <div className={styles.zenGradient} />;
-};
 
 const WorkspacePageContent = ({ taskID }: { taskID: string }): ReactElement => {
   const { workspaceID } = useWorkspacePageParams();
@@ -47,7 +39,6 @@ const WorkspacePageContent = ({ taskID }: { taskID: string }): ReactElement => {
   const centerContent = useMemo(
     () => (
       <Flex direction="column" className={styles.centerPanel}>
-        <ZenTopGradient />
         <WorkspaceBanner />
         <DiffSplitContainer
           workspaceId={workspaceID}
@@ -66,7 +57,6 @@ const WorkspacePageContent = ({ taskID }: { taskID: string }): ReactElement => {
   return (
     <Flex direction="column" className={styles.container} overflowY="hidden">
       <DockingLayout centerContent={centerContent} />
-      <BottomBar />
     </Flex>
   );
 };

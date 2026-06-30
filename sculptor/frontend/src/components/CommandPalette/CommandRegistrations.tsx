@@ -41,7 +41,7 @@ export const CommandRegistrations = (): null => {
       ...buildNavigationCommands(runtime),
       ...buildWorkspaceActionCommands(runtime),
       ...buildSettingsCommands(runtime),
-      ...buildPanelCommands(runtime),
+      ...buildPanelCommands(),
       ...buildThemeCommands(runtime),
       ...buildTerminalCommands(runtime),
       ...buildHelpCommands(runtime),

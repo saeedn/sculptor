@@ -38,7 +38,6 @@ import { AgentContextMenuContent } from "~/components/CommandPalette/contextActi
 import type { AgentActionRuntime } from "~/components/CommandPalette/contextActions/types.ts";
 import { DeleteConfirmationDialog } from "~/components/DeleteConfirmationDialog.tsx";
 import { InlineRenameInput } from "~/components/InlineRenameInput.tsx";
-import { zenModeActiveAtom } from "~/components/panels/atoms.ts";
 import { AgentStatusDot, getAgentDotStatus } from "~/components/statusDot";
 import { TabBar } from "~/components/tabs/TabBar";
 import type { TabDefinition } from "~/components/tabs/types";
@@ -119,7 +118,6 @@ const DiagnosticsSubMenu = ({ workspaceID, agentId }: { workspaceID: string; age
 };
 
 export const AgentTabs = (): ReactElement | null => {
-  const isZenModeActive = useAtomValue(zenModeActiveAtom);
   const { workspaceID, agentID } = useWorkspacePageParams();
   const { navigateToAgent } = useImbueNavigate();
   const tasks = useAtomValue(tasksArrayAtom);
@@ -466,8 +464,6 @@ export const AgentTabs = (): ReactElement | null => {
     },
     [workspaceAgents, workspaceID, agentActions],
   );
-
-  if (isZenModeActive) return null;
 
   return (
     <>

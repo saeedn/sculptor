@@ -39,11 +39,6 @@ const makeRuntime = (): CommandRuntime =>
     ui: {
       toggleHelpDialog: noop,
       toggleDevPanel: noop,
-      toggleZenMode: noop,
-      toggleFocusMode: noop,
-      toggleLeftPanel: noop,
-      toggleBottomPanel: noop,
-      toggleRightPanel: noop,
       togglePanel: noop,
       setTheme: noop,
       nextWorkspaceTab: noop,
@@ -61,7 +56,6 @@ const WORKSPACE_CTX: PaletteContext = {
   activeWorkspaceId: "ws-1",
   activeAgentId: null,
   hasTerminalPanel: false,
-  isZenMode: false,
   page: null,
 };
 
@@ -71,7 +65,7 @@ const collectStaticShortcuts = (): Array<KeybindingId> => {
     ...buildNavigationCommands(runtime),
     ...buildWorkspaceActionCommands(runtime),
     ...buildSettingsCommands(runtime),
-    ...buildPanelCommands(runtime),
+    ...buildPanelCommands(),
     ...buildThemeCommands(runtime),
     ...buildTerminalCommands(runtime),
     ...buildHelpCommands(runtime),

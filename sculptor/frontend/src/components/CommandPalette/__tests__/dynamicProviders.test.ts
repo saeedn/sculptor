@@ -16,7 +16,6 @@ const ROOT_CTX: PaletteContext = {
   activeWorkspaceId: null,
   activeAgentId: null,
   hasTerminalPanel: false,
-  isZenMode: false,
   page: null,
 };
 
@@ -36,11 +35,6 @@ const makeRuntime = (): CommandRuntime => {
     ui: {
       toggleHelpDialog: noop,
       toggleDevPanel: noop,
-      toggleZenMode: noop,
-      toggleFocusMode: noop,
-      toggleLeftPanel: noop,
-      toggleBottomPanel: noop,
-      toggleRightPanel: noop,
       togglePanel: noop,
       setTheme: noop,
       nextWorkspaceTab: noop,

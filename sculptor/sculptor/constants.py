@@ -152,17 +152,6 @@ class ElementIDs(StrEnum):
     # Bottom Bar
     BOTTOM_BAR = "BOTTOM_BAR"
 
-    # Panel Side Toggle Buttons (bottom bar)
-    SIDE_TOGGLE_LEFT = "SIDE_TOGGLE_LEFT"
-    SIDE_TOGGLE_BOTTOM = "SIDE_TOGGLE_BOTTOM"
-    SIDE_TOGGLE_RIGHT = "SIDE_TOGGLE_RIGHT"
-
-    # Zen mode
-    EXIT_ZEN_MODE_BUTTON = "EXIT_ZEN_MODE_BUTTON"
-
-    # Focus mode
-    FOCUS_MODE_BUTTON = "FOCUS_MODE_BUTTON"
-
     # Agent tasks popover (StatusPill)
 
     # Agent tasks popover (DAG-aware)

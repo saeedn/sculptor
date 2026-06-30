@@ -18,8 +18,6 @@ export type PageId =
   | "workspace.open_in"
   /** Action list for the current agent. */
   | "agent.actions"
-  /** Layout toggles: Left/Right/Bottom panel zones + Focus/Zen modes. */
-  | "view.layout"
   /** Individual panel toggles (Files, Actions, Terminal, Notes, …). */
   | "view.panels";
 
@@ -44,7 +42,6 @@ export type PaletteContext = {
   activeWorkspaceId: string | null;
   activeAgentId: string | null;
   hasTerminalPanel: boolean;
-  isZenMode: boolean;
   /** The current sub-page id, or null for the root page. */
   page: PageId | null;
 };

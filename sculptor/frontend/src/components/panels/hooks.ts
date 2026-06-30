@@ -5,21 +5,15 @@ import { flushSync } from "react-dom";
 import { isDismissibleOverlayOpen, shouldHandleKeybinding } from "~/common/ShortcutUtils";
 import {
   activePanelPerZoneAtom,
-  didZenImplyFocusModeAtom,
-  focusModeActiveAtom,
-  focusModeSavedVisibilityAtom,
-  isSideVisibleAtom,
   panelRegistryAtom,
   panelShortcutsAtom,
   panelsInZoneAtom,
-  savedSideVisibilityAtom,
-  zenModeActiveAtom,
   zoneAssignmentsAtom,
   zoneOrderAtom,
   zoneVisibilityAtom,
 } from "~/components/panels/atoms.ts";
-import type { LayoutSide, PanelDefinition, PanelId, ZoneId } from "~/components/panels/types.ts";
-import { SIDE_ZONE_MAP, ZONE_IDS } from "~/components/panels/types.ts";
+import type { PanelDefinition, PanelId, ZoneId } from "~/components/panels/types.ts";
+import { ZONE_IDS } from "~/components/panels/types.ts";
 import { computeToggleAction } from "~/components/panels/utils.ts";
 
 /** Look up a single panel definition from the registry by ID. */
@@ -57,10 +51,6 @@ export const usePanelActions = (): UsePanelActionsResult => {
   const [zoneVisibility, setZoneVisibility] = useAtom(zoneVisibilityAtom);
   const setZoneAssignments = useSetAtom(zoneAssignmentsAtom);
   const setZoneOrder = useSetAtom(zoneOrderAtom);
-  const isZenModeActive = useAtomValue(zenModeActiveAtom);
-  const isFocusModeActive = useAtomValue(focusModeActiveAtom);
-  const setFocusModeActive = useSetAtom(focusModeActiveAtom);
-  const setFocusModeSavedVisibility = useSetAtom(focusModeSavedVisibilityAtom);
 
   const movePanel = useCallback(
     (panelId: PanelId, targetZone: ZoneId, insertIndex?: number): void => {
@@ -189,302 +179,11 @@ export const usePanelActions = (): UsePanelActionsResult => {
           setZoneVisibility((prev) => ({ ...prev, [action.zone]: true }));
           break;
       }
-
-      if (isZenModeActive) {
-        // In zen mode: update saved focus mode visibility so the change
-        // persists when exiting zen mode, but don't exit focus/zen mode.
-        const isNowVisible = action.type !== "close-zone";
-        setFocusModeSavedVisibility((prev) => ({ ...prev, [action.zone]: isNowVisible }));
-        return;
-      }
-
-      // Any panel state change exits focus mode.
-      if (isFocusModeActive) {
-        setFocusModeActive(false);
-        setFocusModeSavedVisibility({});
-      }
     },
-    [
-      zoneAssignments,
-      activePanelPerZone,
-      zoneVisibility,
-      isZenModeActive,
-      isFocusModeActive,
-      setActivePanelPerZone,
-      setZoneVisibility,
-      setFocusModeActive,
-      setFocusModeSavedVisibility,
-    ],
+    [zoneAssignments, activePanelPerZone, zoneVisibility, setActivePanelPerZone, setZoneVisibility],
   );
 
   return { movePanel, togglePanel };
-};
-
-type UseSideToggleResult = {
-  isVisible: boolean;
-  toggle: () => void;
-};
-
-/** Toggle an entire layout side (left / bottom / right).
- *  Saves per-zone visibility before hiding so it can be fully restored. */
-export const useSideToggle = (side: LayoutSide): UseSideToggleResult => {
-  const isVisible = useAtomValue(isSideVisibleAtom(side));
-  const setZoneVisibility = useSetAtom(zoneVisibilityAtom);
-  const [savedSideVisibility, setSavedSideVisibility] = useAtom(savedSideVisibilityAtom);
-  const setActivePanelPerZone = useSetAtom(activePanelPerZoneAtom);
-  const isZenModeActive = useAtomValue(zenModeActiveAtom);
-  const isFocusModeActive = useAtomValue(focusModeActiveAtom);
-  const setFocusModeActive = useSetAtom(focusModeActiveAtom);
-  const setFocusModeSavedVisibility = useSetAtom(focusModeSavedVisibilityAtom);
-
-  // Read the panels assigned to each zone in this side so we can fill in
-  // missing active-panel entries when restoring visibility.
-  const zones = SIDE_ZONE_MAP[side];
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const zonePanelArrays = zones.map((zoneId) => useAtomValue(panelsInZoneAtom(zoneId)));
-  const panelsPerZone = useMemo(() => {
-    const result: Partial<Record<ZoneId, ReadonlyArray<PanelId>>> = {};
-    zones.forEach((zoneId, i) => {
-      result[zoneId] = zonePanelArrays[i];
-    });
-    return result;
-  }, [zones, zonePanelArrays]);
-
-  const toggle = useCallback((): void => {
-    if (isVisible) {
-      // Snapshot current zone visibility and hide all zones in one pass.
-      // The updater runs synchronously in Jotai, so `snapshot` is populated
-      // before the next setter call.
-      const snapshot: Partial<Record<ZoneId, boolean>> = {};
-      setZoneVisibility((prev) => {
-        const next = { ...prev };
-        for (const zoneId of zones) {
-          snapshot[zoneId] = prev[zoneId] ?? false;
-          next[zoneId] = false;
-        }
-        return next;
-      });
-      setSavedSideVisibility((prev) => ({ ...prev, [side]: snapshot }));
-    } else {
-      // Restore saved visibility, or default to showing the first zone
-      const saved = savedSideVisibility[side];
-      setZoneVisibility((prev) => {
-        const next = { ...prev };
-        if (saved && Object.values(saved).some(Boolean)) {
-          for (const zoneId of zones) {
-            next[zoneId] = saved[zoneId] ?? false;
-          }
-        } else {
-          next[zones[0]] = true;
-        }
-        return next;
-      });
-      setSavedSideVisibility((prev) => {
-        const rest = { ...prev };
-        delete rest[side];
-        return rest;
-      });
-
-      // Ensure every zone being shown has an active panel. Without this,
-      // a zone can become visible but render empty because no panel is selected.
-      setActivePanelPerZone((prev) => {
-        const next = { ...prev };
-        for (const zoneId of zones) {
-          if (!next[zoneId]) {
-            const panels = panelsPerZone[zoneId];
-            if (panels && panels.length > 0) {
-              next[zoneId] = panels[0];
-            }
-          }
-        }
-        return next;
-      });
-    }
-
-    if (isZenModeActive) {
-      // In zen mode: update saved focus mode visibility so the change
-      // persists when exiting zen mode, but don't exit focus/zen mode.
-      setFocusModeSavedVisibility((prev) => {
-        const next = { ...prev };
-        if (isVisible) {
-          // Just hid this side → mark its zones as hidden in saved state
-          for (const zoneId of zones) {
-            next[zoneId] = false;
-          }
-        } else {
-          // Just showed this side → mark its zones as visible in saved state
-          const saved = savedSideVisibility[side];
-          if (saved && Object.values(saved).some(Boolean)) {
-            for (const zoneId of zones) {
-              next[zoneId] = saved[zoneId] ?? false;
-            }
-          } else {
-            next[zones[0]] = true;
-          }
-        }
-        return next;
-      });
-      return;
-    }
-
-    // Any panel state change exits focus mode.
-    if (isFocusModeActive) {
-      setFocusModeActive(false);
-      setFocusModeSavedVisibility({});
-    }
-  }, [
-    side,
-    isVisible,
-    isZenModeActive,
-    isFocusModeActive,
-    savedSideVisibility,
-    panelsPerZone,
-    zones,
-    setZoneVisibility,
-    setSavedSideVisibility,
-    setActivePanelPerZone,
-    setFocusModeActive,
-    setFocusModeSavedVisibility,
-  ]);
-
-  return { isVisible, toggle };
-};
-
-type UseFocusModeResult = {
-  isFocusModeActive: boolean;
-  toggleFocusMode: () => void;
-};
-
-/** Toggle focus mode — hide all panels (saving their state) or restore them.
- *  When exiting focus mode while zen mode is active, also exits zen mode
- *  (Cmd+\ is a full escape from zen mode). */
-export const useFocusMode = (): UseFocusModeResult => {
-  const isFocusModeActive = useAtomValue(focusModeActiveAtom);
-  const setFocusModeActive = useSetAtom(focusModeActiveAtom);
-  const [focusModeSavedVisibility, setFocusModeSavedVisibility] = useAtom(focusModeSavedVisibilityAtom);
-  const setZoneVisibility = useSetAtom(zoneVisibilityAtom);
-  const setActivePanelPerZone = useSetAtom(activePanelPerZoneAtom);
-  const setZenModeActive = useSetAtom(zenModeActiveAtom);
-  const setZenModeImpliedFocusMode = useSetAtom(didZenImplyFocusModeAtom);
-
-  // Read the panels assigned to each zone so we can fill in missing
-  // active-panel entries when restoring visibility.
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const zonePanelArrays = ZONE_IDS.map((zoneId) => useAtomValue(panelsInZoneAtom(zoneId)));
-  const panelsPerZone = useMemo(() => {
-    const result: Partial<Record<ZoneId, ReadonlyArray<PanelId>>> = {};
-    ZONE_IDS.forEach((zoneId, i) => {
-      result[zoneId] = zonePanelArrays[i];
-    });
-    return result;
-  }, [zonePanelArrays]);
-
-  const toggleFocusMode = useCallback((): void => {
-    if (!isFocusModeActive) {
-      // Entering focus mode: snapshot current visibility, then hide all zones.
-      const snapshot: Partial<Record<ZoneId, boolean>> = {};
-      setZoneVisibility((prev) => {
-        const next = { ...prev };
-        for (const zoneId of ZONE_IDS) {
-          snapshot[zoneId] = prev[zoneId] ?? false;
-          next[zoneId] = false;
-        }
-        return next;
-      });
-      setFocusModeSavedVisibility(snapshot);
-      setFocusModeActive(true);
-    } else {
-      // Exiting focus mode: restore saved visibility.
-      setZoneVisibility((prev) => {
-        const next = { ...prev };
-        if (Object.values(focusModeSavedVisibility).some(Boolean)) {
-          for (const zoneId of ZONE_IDS) {
-            next[zoneId] = focusModeSavedVisibility[zoneId] ?? false;
-          }
-        }
-        return next;
-      });
-
-      // Ensure every restored-visible zone has an active panel.
-      setActivePanelPerZone((prev) => {
-        const next = { ...prev };
-        for (const zoneId of ZONE_IDS) {
-          if (!next[zoneId]) {
-            const panels = panelsPerZone[zoneId];
-            if (panels && panels.length > 0) {
-              next[zoneId] = panels[0];
-            }
-          }
-        }
-        return next;
-      });
-
-      setFocusModeSavedVisibility({});
-      setFocusModeActive(false);
-
-      // Exiting focus mode also fully exits zen mode.
-      setZenModeActive(false);
-      setZenModeImpliedFocusMode(false);
-    }
-  }, [
-    isFocusModeActive,
-    focusModeSavedVisibility,
-    panelsPerZone,
-    setZoneVisibility,
-    setFocusModeSavedVisibility,
-    setFocusModeActive,
-    setActivePanelPerZone,
-    setZenModeActive,
-    setZenModeImpliedFocusMode,
-  ]);
-
-  return { isFocusModeActive, toggleFocusMode };
-};
-
-type UseZenModeResult = {
-  isZenModeActive: boolean;
-  toggleZenMode: () => void;
-};
-
-/** Toggle zen mode — hide all UI chrome and panels, maximizing chat space.
- *  Builds on focus mode: entering zen also enters focus mode (if not already active).
- *  Exiting zen via Cmd+Shift+\ preserves pre-existing focus mode;
- *  exiting via Cmd+\ (focus mode toggle) exits both. */
-export const useZenMode = (): UseZenModeResult => {
-  const isZenModeActive = useAtomValue(zenModeActiveAtom);
-  const setZenModeActive = useSetAtom(zenModeActiveAtom);
-  const [didZenImplyFocusMode, setZenModeImpliedFocusMode] = useAtom(didZenImplyFocusModeAtom);
-  const isFocusModeActive = useAtomValue(focusModeActiveAtom);
-  const { toggleFocusMode } = useFocusMode();
-
-  const toggleZenMode = useCallback((): void => {
-    if (!isZenModeActive) {
-      // Entering zen mode: also enter focus mode if not already active.
-      if (!isFocusModeActive) {
-        toggleFocusMode();
-        setZenModeImpliedFocusMode(true);
-      } else {
-        setZenModeImpliedFocusMode(false);
-      }
-      setZenModeActive(true);
-    } else {
-      // Exiting zen mode: show chrome. If zen implied focus mode, also exit it.
-      setZenModeActive(false);
-      if (didZenImplyFocusMode) {
-        toggleFocusMode();
-        setZenModeImpliedFocusMode(false);
-      }
-    }
-  }, [
-    isZenModeActive,
-    isFocusModeActive,
-    didZenImplyFocusMode,
-    toggleFocusMode,
-    setZenModeActive,
-    setZenModeImpliedFocusMode,
-  ]);
-
-  return { isZenModeActive, toggleZenMode };
 };
 
 /**
@@ -499,10 +198,6 @@ export const usePanelKeyboardShortcuts = (): void => {
   const activePanelPerZone = useAtomValue(activePanelPerZoneAtom);
   const setZoneVisibility = useSetAtom(zoneVisibilityAtom);
   const setActivePanelPerZone = useSetAtom(activePanelPerZoneAtom);
-  const isFocusModeActive = useAtomValue(focusModeActiveAtom);
-  const isZenModeActive = useAtomValue(zenModeActiveAtom);
-  const setFocusModeActive = useSetAtom(focusModeActiveAtom);
-  const setFocusModeSavedVisibility = useSetAtom(focusModeSavedVisibilityAtom);
 
   useEffect(() => {
     const focusPanel = (panel: PanelDefinition, zone: ZoneId): void => {
@@ -531,7 +226,6 @@ export const usePanelKeyboardShortcuts = (): void => {
         const zoneEl = document.querySelector(`[data-zone-id="${zone}"]`);
         const hasFocus = zoneEl?.contains(document.activeElement) ?? false;
 
-        let isNowVisible = true;
         if (!isVisible) {
           // flushSync forces React to commit the visibility/active-panel
           // changes before we try to focus the (now-mounted) zone element.
@@ -549,16 +243,6 @@ export const usePanelKeyboardShortcuts = (): void => {
           focusPanel(panel, zone);
         } else {
           setZoneVisibility((prev) => ({ ...prev, [zone]: false }));
-          isNowVisible = false;
-        }
-
-        if (isZenModeActive) {
-          // In zen mode, mirror the visibility change into the saved focus-mode
-          // snapshot so it survives zen-mode exit.
-          setFocusModeSavedVisibility((prev) => ({ ...prev, [zone]: isNowVisible }));
-        } else if (isFocusModeActive) {
-          setFocusModeActive(false);
-          setFocusModeSavedVisibility({});
         }
         return;
       }
@@ -572,11 +256,7 @@ export const usePanelKeyboardShortcuts = (): void => {
     zoneAssignments,
     zoneVisibility,
     activePanelPerZone,
-    isFocusModeActive,
-    isZenModeActive,
     setZoneVisibility,
     setActivePanelPerZone,
-    setFocusModeActive,
-    setFocusModeSavedVisibility,
   ]);
 };

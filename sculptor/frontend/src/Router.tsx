@@ -99,7 +99,7 @@ const router = createHashRouter([
   },
   {
     path: "/ws/:workspaceID",
-    element: <PageLayout showVersionIndicator={false} />,
+    element: <PageLayout />,
     errorElement: <RouteErrorPage />,
     children: [
       {

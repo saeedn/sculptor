@@ -414,23 +414,3 @@ def test_customized_keybinding_is_honored(sculptor_instance_: SculptorInstance) 
     # Reset keybindings for subsequent tests
     keybindings = _navigate_to_keybindings(sculptor_instance_)
     keybindings.reset_all_to_defaults()
-
-
-@pytest.mark.release
-@user_story("to see arrow key symbols in panel toggle keybindings")
-def test_panel_toggle_keybindings_display_arrow_symbols(sculptor_instance_: SculptorInstance) -> None:
-    """Panel toggle keybindings should display arrow symbols (← → ↓) not letter keys."""
-    keybindings = _navigate_to_keybindings(sculptor_instance_)
-    keybindings.reset_all_to_defaults()
-
-    # Toggle left panel should show ← (ArrowLeft)
-    left_display = keybindings.get_keybinding_display_text("toggle_left_panel")
-    expect(left_display).to_contain_text("←")
-
-    # Toggle right panel should show → (ArrowRight)
-    right_display = keybindings.get_keybinding_display_text("toggle_right_panel")
-    expect(right_display).to_contain_text("→")
-
-    # Toggle bottom panel should show ↓ (ArrowDown)
-    bottom_display = keybindings.get_keybinding_display_text("toggle_bottom_panel")
-    expect(bottom_display).to_contain_text("↓")

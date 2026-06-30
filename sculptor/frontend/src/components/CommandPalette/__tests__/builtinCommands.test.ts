@@ -17,7 +17,6 @@ const ROOT_CTX: PaletteContext = {
   activeWorkspaceId: null,
   activeAgentId: null,
   hasTerminalPanel: false,
-  isZenMode: false,
   page: null,
 };
 
@@ -55,11 +54,6 @@ const makeRuntime = (overrides: Partial<CommandRuntime> = {}): CommandRuntime =>
     ui: {
       toggleHelpDialog: vi.fn(),
       toggleDevPanel: vi.fn(),
-      toggleZenMode: vi.fn(),
-      toggleFocusMode: vi.fn(),
-      toggleLeftPanel: vi.fn(),
-      toggleBottomPanel: vi.fn(),
-      toggleRightPanel: vi.fn(),
       togglePanel: vi.fn(),
       setTheme: vi.fn(),
       nextWorkspaceTab: vi.fn(),
@@ -303,41 +297,27 @@ describe("buildSettingsCommands", () => {
 
 describe("buildPanelCommands", () => {
   it("emits exactly the expected command ids", () => {
-    const cmds = buildPanelCommands(makeRuntime());
-    expect(cmds.map((c) => c.id).sort()).toEqual(
-      [
-        "view.toggle_layout",
-        "view.toggle_panels",
-        "view.toggle_left_panel",
-        "view.toggle_right_panel",
-        "view.toggle_bottom_panel",
-        "view.focus_mode",
-        "view.zen_mode",
-      ].sort(),
-    );
+    const cmds = buildPanelCommands();
+    expect(cmds.map((c) => c.id).sort()).toEqual(["view.toggle_panels"].sort());
   });
 
-  it("the two root entry-points push the layout / panels sub-pages", () => {
-    const cmds = buildPanelCommands(makeRuntime());
-    const layoutOpener = cmds.find((c) => c.id === "view.toggle_layout")!;
+  it("the panels entry-point pushes the panels sub-page", () => {
+    const cmds = buildPanelCommands();
     const panelsOpener = cmds.find((c) => c.id === "view.toggle_panels")!;
-    expect(layoutOpener.pageId).toBe("view.layout");
-    expect(layoutOpener.onPage).toBeUndefined();
-    expect(layoutOpener.primary).toBe(true);
     expect(panelsOpener.pageId).toBe("view.panels");
     expect(panelsOpener.onPage).toBeUndefined();
     expect(panelsOpener.primary).toBe(true);
   });
 
   it("the panels page-opener title matches what users search for", () => {
-    const cmds = buildPanelCommands(makeRuntime());
+    const cmds = buildPanelCommands();
     const panelsOpener = cmds.find((c) => c.id === "view.toggle_panels")!;
     expect(panelsOpener.title).toBe("Toggle panel visibility...");
   });
 
   it('does NOT use the word "plugin" in any user-visible string', () => {
     // Coworker feedback: "plugin" is jargon coworkers don't recognise.
-    const cmds = buildPanelCommands(makeRuntime());
+    const cmds = buildPanelCommands();
     for (const cmd of cmds) {
       expect(cmd.title.toLowerCase()).not.toContain("plugin");
       expect((cmd.subtitle ?? "").toLowerCase()).not.toContain("plugin");
@@ -347,22 +327,8 @@ describe("buildPanelCommands", () => {
     }
   });
 
-  it("zone toggles + Focus/Zen modes are scoped to the view.layout sub-page", () => {
-    const cmds = buildPanelCommands(makeRuntime());
-    for (const id of [
-      "view.toggle_left_panel",
-      "view.toggle_right_panel",
-      "view.toggle_bottom_panel",
-      "view.focus_mode",
-      "view.zen_mode",
-    ]) {
-      const cmd = cmds.find((c) => c.id === id)!;
-      expect(cmd.onPage).toBe("view.layout");
-    }
-  });
-
   it("all when predicates require route.isWorkspace", () => {
-    const cmds = buildPanelCommands(makeRuntime());
+    const cmds = buildPanelCommands();
     for (const cmd of cmds) {
       expect(cmd.when).toBeDefined();
       expect(cmd.when!(WORKSPACE_CTX)).toBe(true);
@@ -370,31 +336,6 @@ describe("buildPanelCommands", () => {
       expect(cmd.when!(SETTINGS_CTX)).toBe(false);
       expect(cmd.when!(ADD_WORKSPACE_CTX)).toBe(false);
     }
-  });
-
-  it("the three zone-toggle commands have keepOpen: true; focus_mode and zen_mode do not", () => {
-    const cmds = buildPanelCommands(makeRuntime());
-    const byId = (id: string): Command => cmds.find((c) => c.id === id)!;
-    expect(byId("view.toggle_left_panel").keepOpen).toBe(true);
-    expect(byId("view.toggle_right_panel").keepOpen).toBe(true);
-    expect(byId("view.toggle_bottom_panel").keepOpen).toBe(true);
-    expect(byId("view.focus_mode").keepOpen).not.toBe(true);
-    expect(byId("view.zen_mode").keepOpen).not.toBe(true);
-  });
-
-  it("perform delegates to the matching runtime.ui method", () => {
-    const runtime = makeRuntime();
-    const cmds = buildPanelCommands(runtime);
-    runPerform(cmds.find((c) => c.id === "view.toggle_left_panel")!);
-    runPerform(cmds.find((c) => c.id === "view.toggle_right_panel")!);
-    runPerform(cmds.find((c) => c.id === "view.toggle_bottom_panel")!);
-    runPerform(cmds.find((c) => c.id === "view.focus_mode")!);
-    runPerform(cmds.find((c) => c.id === "view.zen_mode")!);
-    expect(runtime.ui.toggleLeftPanel).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.toggleRightPanel).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.toggleBottomPanel).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.toggleFocusMode).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.toggleZenMode).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -532,7 +473,7 @@ describe("invariants", () => {
       ...buildNavigationCommands(runtime),
       ...buildWorkspaceActionCommands(runtime),
       ...buildSettingsCommands(runtime),
-      ...buildPanelCommands(runtime),
+      ...buildPanelCommands(),
       ...buildThemeCommands(runtime),
       ...buildTerminalCommands(runtime),
       ...buildHelpCommands(runtime),

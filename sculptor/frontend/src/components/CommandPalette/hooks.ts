@@ -4,7 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSyncExtern
 import { useImbueLocation } from "~/common/NavigateUtils.ts";
 import { tasksArrayAtom } from "~/common/state/atoms/tasks.ts";
 import { effectiveOpenTabIdsAtom, workspacesArrayAtom } from "~/common/state/atoms/workspaces.ts";
-import { panelRegistryAtom, terminalPanelMountedAtom, zenModeActiveAtom } from "~/components/panels/atoms.ts";
+import { panelRegistryAtom, terminalPanelMountedAtom } from "~/components/panels/atoms.ts";
 
 import {
   commandPaletteInitialPageAtom,
@@ -35,7 +35,6 @@ const COMMAND_TIMEOUT_MS = 30_000;
  */
 export const usePaletteContext = (): PaletteContext => {
   const loc = useImbueLocation();
-  const isZen = useAtomValue(zenModeActiveAtom);
   const hasTerminalPanel = useAtomValue(terminalPanelMountedAtom);
   const pages = useAtomValue(commandPalettePagesAtom);
   const page = pages.length === 0 ? null : (pages[pages.length - 1] ?? null);
@@ -58,7 +57,6 @@ export const usePaletteContext = (): PaletteContext => {
       activeWorkspaceId,
       activeAgentId,
       hasTerminalPanel,
-      isZenMode: isZen,
       page,
     }),
     [
@@ -70,7 +68,6 @@ export const usePaletteContext = (): PaletteContext => {
       activeWorkspaceId,
       activeAgentId,
       hasTerminalPanel,
-      isZen,
       page,
     ],
   );

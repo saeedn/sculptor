@@ -33,11 +33,6 @@ export type CommandRuntime = {
   ui: {
     toggleHelpDialog: () => void;
     toggleDevPanel: () => void;
-    toggleZenMode: () => void;
-    toggleFocusMode: () => void;
-    toggleLeftPanel: () => void;
-    toggleBottomPanel: () => void;
-    toggleRightPanel: () => void;
     /**
      * Toggle the visibility of one specific panel by id (e.g. "files",
      * "terminal", "notes"). Smart-toggles via `usePanelActions`: opens

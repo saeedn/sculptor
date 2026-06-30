@@ -12,7 +12,6 @@ import { useProject } from "~/common/state/hooks/useProjects";
 import { useRepoInfo } from "~/common/state/hooks/useRepoInfo";
 import { useWorkspace } from "~/common/state/hooks/useWorkspace";
 import { useWorkspaceBranch } from "~/common/state/hooks/useWorkspaceBranch";
-import { zenModeActiveAtom } from "~/components/panels/atoms.ts";
 import { getBranchName } from "~/pages/home/Utils";
 
 import { useProgressiveCollapse } from "../hooks/useProgressiveCollapse";
@@ -24,7 +23,6 @@ import { TargetBranchSelector } from "./TargetBranchSelector";
 import styles from "./WorkspaceBanner.module.scss";
 
 export const WorkspaceBanner = (): ReactElement | null => {
-  const isZenModeActive = useAtomValue(zenModeActiveAtom);
   const { workspaceID } = useWorkspacePageParams();
   const projectID = useActiveProjectID();
 
@@ -129,7 +127,7 @@ export const WorkspaceBanner = (): ReactElement | null => {
     [hasMismatch, prStatus?.mismatchedPrTargetBranch, prStatus?.mismatchedPrIid, isGitLab],
   );
 
-  if (isZenModeActive || !workspace) {
+  if (!workspace) {
     return null;
   }
 

@@ -54,11 +54,6 @@ export const PAGE_DEFINITIONS: Record<PageId, PageDefinition> = {
     title: "Agent actions",
     placeholder: "Pick an action...",
   },
-  "view.layout": {
-    id: "view.layout",
-    title: "Toggle layout",
-    placeholder: "Pick a layout option...",
-  },
   "view.panels": {
     id: "view.panels",
     title: "Toggle panel visibility",

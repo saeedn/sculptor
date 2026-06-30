@@ -26,17 +26,6 @@ export type PanelDefinition = {
   defaultEnabled?: boolean;
 };
 
-// Layout sides — groups of zones toggled together by the bottom bar buttons
-export const LAYOUT_SIDES = ["left", "bottom", "right"] as const;
-export type LayoutSide = (typeof LAYOUT_SIDES)[number];
-
-/** Maps each layout side to the zone IDs it controls. */
-export const SIDE_ZONE_MAP: Readonly<Record<LayoutSide, ReadonlyArray<ZoneId>>> = {
-  left: ["top-left", "bottom-left"],
-  bottom: ["bottom"],
-  right: ["top-right", "bottom-right"],
-} as const;
-
 // Default layout configuration for first-time initialization
 export type DefaultPanelLayout = {
   zoneAssignments: Record<PanelId, ZoneId>;

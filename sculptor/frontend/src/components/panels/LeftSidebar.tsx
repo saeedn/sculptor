@@ -2,7 +2,7 @@ import { useAtomValue } from "jotai";
 import type { ReactElement } from "react";
 import { memo } from "react";
 
-import { focusModeActiveAtom, panelsInZoneAtom, zenModeActiveAtom } from "~/components/panels/atoms.ts";
+import { panelsInZoneAtom } from "~/components/panels/atoms.ts";
 import { SidebarIcon } from "~/components/panels/SidebarIcon";
 import type { PanelId, ZoneId } from "~/components/panels/types.ts";
 
@@ -16,16 +16,12 @@ const SidebarZone = ({ zoneId, panelIds }: { zoneId: ZoneId; panelIds: ReadonlyA
   </div>
 );
 
-const LeftSidebarInner = (): ReactElement | null => {
-  const isZenModeActive = useAtomValue(zenModeActiveAtom);
-  const isFocusModeActive = useAtomValue(focusModeActiveAtom);
+const LeftSidebarInner = (): ReactElement => {
   const topLeftPanels = useAtomValue(panelsInZoneAtom("top-left"));
   const bottomLeftPanels = useAtomValue(panelsInZoneAtom("bottom-left"));
   const bottomPanels = useAtomValue(panelsInZoneAtom("bottom"));
 
   const shouldShowDivider = topLeftPanels.length > 0 && bottomLeftPanels.length > 0;
-
-  if (isZenModeActive || isFocusModeActive) return null;
 
   return (
     <div className={`${styles.sidebar} ${styles.left}`}>

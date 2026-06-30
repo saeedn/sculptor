@@ -39,18 +39,6 @@ class PlaywrightPanelZonesElement:
     def get_right_resize_handle(self) -> Locator:
         return self.get_right_area().get_by_test_id(ElementIDs.PANEL_RIGHT_RESIZE_HANDLE)
 
-    def get_side_toggle_left(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.SIDE_TOGGLE_LEFT)
-
-    def get_side_toggle_bottom(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.SIDE_TOGGLE_BOTTOM)
-
-    def get_side_toggle_right(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.SIDE_TOGGLE_RIGHT)
-
-    def get_focus_mode_button(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.FOCUS_MODE_BUTTON)
-
     def get_file_browser_panel(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.FILE_BROWSER_PANEL)
 

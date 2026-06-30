@@ -1,5 +1,3 @@
-from typing import Literal
-
 from playwright.sync_api import Locator
 from playwright.sync_api import Page
 from playwright.sync_api import expect
@@ -43,9 +41,9 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
     def get_file_view_marker(self) -> Locator:
         """Hidden marker element rendered inside file-view tab labels.
 
-        File-view, single-diff, combined-review, and commit-diff tabs all
-        share the ``DIFF_TAB`` test id; the marker is what distinguishes a
-        file-view tab from the others.
+        File-view, single-diff, and commit-diff tabs all share the
+        ``DIFF_TAB`` test id; the marker is what distinguishes a file-view
+        tab from the others.
         """
         return self._page.get_by_test_id(ElementIDs.FILE_VIEW_TAB_MARKER)
 
@@ -54,9 +52,6 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
 
     def get_read_only_preview(self) -> Locator:
         return self.get_by_test_id(ElementIDs.READ_ONLY_PREVIEW)
-
-    def get_file_sections(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.COMBINED_DIFF_FILE_SECTION)
 
     def get_scope_picker(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_SCOPE_PICKER)
@@ -94,9 +89,6 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
     def get_close_panel_button(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_CLOSE_PANEL_BUTTON)
 
-    def get_render_toggle(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.DIFF_RENDER_TOGGLE)
-
     def get_find_in_file_button(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_FIND_IN_FILE_BTN)
 
@@ -108,17 +100,6 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
 
     def get_split_column_handle(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_SPLIT_COLUMN_HANDLE)
-
-    def get_read_only_preview_markdown(self) -> Locator:
-        return self.get_read_only_preview().get_by_test_id(ElementIDs.READ_ONLY_PREVIEW_MARKDOWN)
-
-    def ensure_render_mode(self, mode: Literal["rendered", "source"]) -> None:
-        """Ensure the render-mode toggle is in ``mode`` (``"rendered"`` or ``"source"``)."""
-        toggle = self.get_render_toggle()
-        expect(toggle).to_be_visible()
-        if toggle.get_attribute("data-state") != mode:
-            toggle.click()
-        expect(toggle).to_have_attribute("data-state", mode)
 
     def get_rename_banner(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_RENAME_BANNER)

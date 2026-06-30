@@ -54,7 +54,6 @@ export const useFileMenuGroups = ({
   const isDeleted = context.fileStatus === "D";
   const isFile = !context.isFolder;
   const isDiffSource = context.source === "diff-header" || context.source === "diff-tab";
-  const isCombinedDiffSource = context.source === "combined-diff-header";
 
   const handleOpenDiffView = useCallback((): void => {
     openDiffTab({ workspaceId, filePath: context.filePath, status: context.fileStatus ?? "M" });
@@ -113,7 +112,7 @@ export const useFileMenuGroups = ({
 
     // Group 1: Open diff view / View file
     const group1: MenuGroup = [];
-    if (isFile && !isDiffSource && !isCombinedDiffSource) {
+    if (isFile && !isDiffSource) {
       group1.push({
         key: "open-diff",
         label: "Open diff view",
@@ -123,7 +122,7 @@ export const useFileMenuGroups = ({
       });
     }
 
-    if (isFile && !isDeleted && !isCombinedDiffSource) {
+    if (isFile && !isDeleted) {
       group1.push({
         key: "view-file",
         label: "View file",
@@ -229,7 +228,6 @@ export const useFileMenuGroups = ({
   }, [
     isFile,
     isDiffSource,
-    isCombinedDiffSource,
     context.isFolder,
     isDeleted,
     isExpanded,

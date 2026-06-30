@@ -107,24 +107,21 @@ class ElementIDs(StrEnum):
     DIFF_PANEL = "DIFF_PANEL"
     DIFF_TAB = "DIFF_TAB"
     # Hidden marker rendered inside file-view tab labels so tests can
-    # distinguish a file-view tab from a single-diff / combined / commit-diff
-    # tab without a CSS-attribute locator on the tab id prefix.
+    # distinguish a file-view tab from a single-diff / commit-diff tab
+    # without a CSS-attribute locator on the tab id prefix.
     FILE_VIEW_TAB_MARKER = "FILE_VIEW_TAB_MARKER"
     DIFF_FILE_HEADER = "DIFF_FILE_HEADER"
     DIFF_FILE_HEADER_MENU_TRIGGER = "DIFF_FILE_HEADER_MENU_TRIGGER"
-    COMBINED_DIFF_FILE_SECTION = "COMBINED_DIFF_FILE_SECTION"
     DIFF_VIEW_UNIFIED = "DIFF_VIEW_UNIFIED"
     DIFF_VIEW_SPLIT = "DIFF_VIEW_SPLIT"
     DIFF_SPLIT_VIEW_TOGGLE = "DIFF_SPLIT_VIEW_TOGGLE"
     DIFF_SPLIT_COLUMN_HANDLE = "DIFF_SPLIT_COLUMN_HANDLE"
     DIFF_RENAME_BANNER = "DIFF_RENAME_BANNER"
     DIFF_LINE_WRAP_TOGGLE = "DIFF_LINE_WRAP_TOGGLE"
-    DIFF_RENDER_TOGGLE = "DIFF_RENDER_TOGGLE"
     DIFF_FIND_IN_FILE_BTN = "DIFF_FIND_IN_FILE_BTN"
     DIFF_IN_FILE_SEARCH_BAR = "DIFF_IN_FILE_SEARCH_BAR"
     DIFF_IN_FILE_SEARCH_INPUT = "DIFF_IN_FILE_SEARCH_INPUT"
     READ_ONLY_PREVIEW = "READ_ONLY_PREVIEW"
-    READ_ONLY_PREVIEW_MARKDOWN = "READ_ONLY_PREVIEW_MARKDOWN"
 
     # Changes Panel
     CHANGES_PANEL = "CHANGES_PANEL"

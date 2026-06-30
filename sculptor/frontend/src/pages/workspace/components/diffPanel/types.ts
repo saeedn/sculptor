@@ -1,6 +1,5 @@
 import type { FileStatus } from "~/pages/workspace/panels/fileBrowser/types.ts";
 
-export const COMBINED_REVIEW_PATH = "__combined_review__";
 export const FILE_VIEW_PREFIX = "__file_view__:";
 export const COMMIT_DIFF_PREFIX = "__commit_diff__:";
 export const TARGET_BRANCH_DIFF_PREFIX = "__target_branch_diff__:";
@@ -14,13 +13,6 @@ export type SingleFileDiffTab = {
   viewedAt: number;
   /** Tool-specific diff string when opened from a chip popover. When absent, the workspace diff is used. */
   diffString?: string;
-};
-
-export type CombinedDiffTab = {
-  kind: "combined";
-  filePath: typeof COMBINED_REVIEW_PATH;
-  defaultScope?: DiffScope;
-  viewedAt: number;
 };
 
 export type FileViewTab = {
@@ -42,9 +34,7 @@ export type CommitFileDiffTab = {
   viewedAt: number;
 };
 
-export type DiffTab = SingleFileDiffTab | CombinedDiffTab | FileViewTab | CommitFileDiffTab;
-
-export const isCombinedTab = (tab: DiffTab): tab is CombinedDiffTab => tab.kind === "combined";
+export type DiffTab = SingleFileDiffTab | FileViewTab | CommitFileDiffTab;
 
 export const isFileViewTab = (tab: DiffTab): tab is FileViewTab => tab.kind === "file-view";
 

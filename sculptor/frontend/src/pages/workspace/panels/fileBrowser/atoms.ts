@@ -49,7 +49,7 @@ export const getUncommittedFileStatusMap = (
   return map;
 };
 
-/** Per-workspace scope for the Changes tab (independent of the Review All scope). Resets on page refresh. */
+/** Per-workspace scope for the Changes tab. Resets on page refresh. */
 export const changesScopeAtomFamily = atomFamily((_workspaceId: string) => atom<DiffScope>("vs-target-branch"));
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type

@@ -1,6 +1,6 @@
 import { ContextMenu, Flex } from "@radix-ui/themes";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { Eye, Maximize2, Minimize2, Search, SplitSquareHorizontal, WrapText, X, XCircle } from "lucide-react";
+import { Maximize2, Minimize2, Search, SplitSquareHorizontal, WrapText, X, XCircle } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
 
@@ -20,7 +20,6 @@ import {
   closeDiffTabAtom,
   closeOtherDiffTabsAtom,
   diffPanelStateAtomFamily,
-  openCombinedDiffTabAtom,
   openCommitDiffTabAtom,
   openDiffTabAtom,
   openFileViewTabAtom,
@@ -28,7 +27,7 @@ import {
 } from "./atoms.ts";
 import styles from "./DiffTabBar.module.scss";
 import type { DiffTab, DiffViewType } from "./types.ts";
-import { isCombinedTab, isCommitDiffTab, isFileViewTab, TARGET_BRANCH_DIFF_PREFIX } from "./types.ts";
+import { isCommitDiffTab, isFileViewTab, TARGET_BRANCH_DIFF_PREFIX } from "./types.ts";
 
 type TabCloseContextMenuProps = {
   children: ReactNode;
@@ -76,19 +75,6 @@ const TabCloseContextMenu = ({ children, filePath, workspaceId }: TabCloseContex
 };
 
 const diffTabToDefinition = (tab: DiffTab, workspaceId: string): TabDefinition => {
-  if (isCombinedTab(tab)) {
-    return {
-      id: tab.filePath,
-      label: "Review All",
-      dataTestId: ElementIds.DIFF_TAB,
-      contextMenu: (children) => (
-        <TabCloseContextMenu filePath={tab.filePath} workspaceId={workspaceId}>
-          {children}
-        </TabCloseContextMenu>
-      ),
-    };
-  }
-
   if (isFileViewTab(tab)) {
     const fileName = tab.realPath.split("/").pop() ?? tab.realPath;
     return {
@@ -160,12 +146,6 @@ type DiffTabBarProps = {
   isSearchOpen: boolean;
   onToggleSearch: () => void;
   isBinaryFile: boolean;
-  showRenderToggle: boolean;
-  isRendered: boolean;
-  /** Off => the eye icon renders disabled with a hint tooltip pointing at
-   * Settings → Experimental, where the flag lives. */
-  isRenderToggleEnabled: boolean;
-  onToggleRender: () => void;
 };
 
 export const DiffTabBar = ({
@@ -177,14 +157,9 @@ export const DiffTabBar = ({
   isSearchOpen,
   onToggleSearch,
   isBinaryFile,
-  showRenderToggle,
-  isRendered,
-  isRenderToggleEnabled,
-  onToggleRender,
 }: DiffTabBarProps): ReactElement => {
   const diffPanelState = useAtomValue(diffPanelStateAtomFamily(workspaceId));
   const openDiffTab = useSetAtom(openDiffTabAtom);
-  const openCombinedTab = useSetAtom(openCombinedDiffTabAtom);
   const openCommitDiffTab = useSetAtom(openCommitDiffTabAtom);
   const openFileViewTab = useSetAtom(openFileViewTabAtom);
   const closeDiffTab = useSetAtom(closeDiffTabAtom);
@@ -210,9 +185,7 @@ export const DiffTabBar = ({
     (filePath: string): void => {
       const tab = openTabs.find((t) => t.filePath === filePath);
       if (!tab) return;
-      if (isCombinedTab(tab)) {
-        openCombinedTab({ workspaceId });
-      } else if (isFileViewTab(tab)) {
+      if (isFileViewTab(tab)) {
         openFileViewTab({ workspaceId, filePath: tab.realPath });
       } else if (isCommitDiffTab(tab)) {
         openCommitDiffTab({ workspaceId, commitHash: tab.commitHash, filePath: tab.realPath });
@@ -223,7 +196,7 @@ export const DiffTabBar = ({
         openDiffTab({ workspaceId, filePath: realPath, status: tab.status, scope: tab.scope });
       }
     },
-    [openDiffTab, openCombinedTab, openCommitDiffTab, openFileViewTab, workspaceId, openTabs],
+    [openDiffTab, openCommitDiffTab, openFileViewTab, workspaceId, openTabs],
   );
 
   const handleCloseTab = useCallback(
@@ -293,21 +266,16 @@ export const DiffTabBar = ({
       }
     >
       <Flex align="center" gap="2" flexShrink="0" className={styles.controls}>
-        {/* Find-in-file walks the source-view DOM (Pierre shadow root or
-            ReadOnlyPreview text). The rendered-markdown view has neither, so
-            we hide the button rather than show a control that does nothing. */}
-        {!(showRenderToggle && isRendered) && (
-          <TooltipIconButton
-            tooltipText="Find in file"
-            size="1"
-            onClick={onToggleSearch}
-            disabled={isBinaryFile}
-            className={isSearchOpen ? styles.activeControl : undefined}
-            data-testid={ElementIds.DIFF_FIND_IN_FILE_BTN}
-          >
-            <Search size={14} />
-          </TooltipIconButton>
-        )}
+        <TooltipIconButton
+          tooltipText="Find in file"
+          size="1"
+          onClick={onToggleSearch}
+          disabled={isBinaryFile}
+          className={isSearchOpen ? styles.activeControl : undefined}
+          data-testid={ElementIds.DIFF_FIND_IN_FILE_BTN}
+        >
+          <Search size={14} />
+        </TooltipIconButton>
 
         <TooltipIconButton
           tooltipText={viewType === "unified" ? "Switch to split view" : "Switch to unified view"}
@@ -329,26 +297,6 @@ export const DiffTabBar = ({
         >
           <WrapText size={14} />
         </TooltipIconButton>
-
-        {showRenderToggle && (
-          <TooltipIconButton
-            tooltipText={
-              isRenderToggleEnabled
-                ? isRendered
-                  ? "Show source"
-                  : "Show rendered"
-                : "Markdown rendering is an experimental feature that you have to enable in settings first."
-            }
-            size="1"
-            onClick={onToggleRender}
-            disabled={!isRenderToggleEnabled}
-            className={isRendered ? styles.activeControl : undefined}
-            data-testid={ElementIds.DIFF_RENDER_TOGGLE}
-            data-state={isRendered ? "rendered" : "source"}
-          >
-            <Eye size={14} />
-          </TooltipIconButton>
-        )}
       </Flex>
     </TabBar>
   );

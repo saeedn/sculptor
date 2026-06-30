@@ -82,23 +82,6 @@ def _open_file_in_changes_diff(page: Page, file_text: str) -> None:
     expect(diff_panel).to_be_visible()
 
 
-def _ensure_render_mode(page: Page, mode: str) -> None:
-    """Ensure the read-only preview's render-mode toggle is in ``mode``
-    (``"rendered"`` or ``"source"``).
-
-    The default mode is persisted globally to localStorage, so a previous
-    test in the same browser context could leave it in either state. This
-    helper inspects the toggle's ``data-state`` and only clicks if needed,
-    then verifies the post-click state.
-    """
-    diff_panel = get_diff_panel_from_page(page)
-    toggle = diff_panel.get_render_toggle()
-    expect(toggle).to_be_visible()
-    if toggle.get_attribute("data-state") != mode:
-        toggle.click()
-    expect(toggle).to_have_attribute("data-state", mode)
-
-
 def _ensure_folder_expanded(page: Page, folder_text: str) -> None:
     """Expand a folder if not already expanded.
 
@@ -1103,10 +1086,6 @@ def test_in_file_search_bar(sculptor_instance_: SculptorInstance) -> None:
 
     _open_file_in_diff(page, "README")
 
-    # README.md may render as markdown by default; in rendered mode the
-    # find-in-file button is hidden. Force the source view.
-    _ensure_render_mode(page, "source")
-
     # The in-file search bar should not be visible by default
     diff_panel = get_diff_panel_from_page(page)
     search_bar = diff_panel.get_search_bar()
@@ -1139,10 +1118,6 @@ def test_in_file_search_works_in_file_view(sculptor_instance_: SculptorInstance)
     # Opening from the file tree (Browse tab) renders a ReadOnlyPreview,
     # not a diff. The search must still find matches inside the file content.
     _open_file_in_diff(page, "README")
-
-    # README.md may render as markdown by default; the search hook walks
-    # Pierre's DOM, so force the source view.
-    _ensure_render_mode(page, "source")
 
     diff_panel = get_diff_panel_from_page(page)
     find_button = diff_panel.get_find_in_file_button()

@@ -62,19 +62,10 @@ let config = {
   // Array of "makers" that create platform-specific installers and packages
   makers: [
     {
-      // Windows installer maker using Squirrel.Windows
-      name: "@electron-forge/maker-squirrel",
-      config: {
-        // Name of the Windows setup executable file
-        setupExe: "sculptor-setup.exe",
-      },
-      platforms: ["win32"],
-    },
-    {
       // ZIP archive maker for simple distribution
       name: "@electron-forge/maker-zip",
-      // Create ZIP files for all platforms (fallback distribution method)
-      platforms: ["darwin", "linux", "win32"],
+      // Create ZIP files for macOS and Linux (fallback distribution method)
+      platforms: ["darwin", "linux"],
     },
     {
       // macOS DMG disk image maker for native macOS distribution

@@ -8,29 +8,6 @@ import type { CustomAction, CustomActionGroup } from "~/api";
 
 import { ActionDialog } from "./ActionDialog";
 
-// Mock the Editor component since TipTap requires a real browser DOM.
-// The mock renders a simple textarea that mirrors the Editor's interface.
-vi.mock("~/components/Editor", () => ({
-  Editor: ({
-    tagName,
-    placeholder,
-    value,
-    onChange,
-  }: {
-    tagName: string;
-    placeholder: string;
-    value: string;
-    onChange: (value: string) => void;
-  }): ReactElement => (
-    <textarea
-      data-testid={tagName}
-      placeholder={placeholder}
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-    />
-  ),
-}));
-
 const createAction = (overrides: Partial<CustomAction> = {}): CustomAction => ({
   id: "action-1",
   name: "Test Action",

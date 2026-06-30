@@ -1,11 +1,10 @@
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden";
-import { Button, Dialog, Flex, Select, Switch, Text, TextField } from "@radix-ui/themes";
+import { Button, Dialog, Flex, Select, Switch, Text, TextArea, TextField } from "@radix-ui/themes";
 import type { KeyboardEvent, ReactElement } from "react";
 import { useCallback, useEffect, useState } from "react";
 
 import type { CustomAction, CustomActionGroup } from "~/api";
 import { ElementIds } from "~/api";
-import { Editor } from "~/components/Editor";
 
 import styles from "./ActionDialog.module.scss";
 
@@ -102,13 +101,12 @@ export const ActionDialog = ({ open, onOpenChange, action, groups, onSave }: Act
             <Text size="2" weight="medium">
               Prompt
             </Text>
-            <Editor
-              wrapperClassName={styles.promptEditor}
+            <TextArea
               placeholder="Action prompt"
               value={prompt}
-              onChange={setPrompt}
-              tagName={ElementIds.ACTION_DIALOG_PROMPT_INPUT}
-              autoFocus={false}
+              onChange={(e) => setPrompt(e.target.value)}
+              data-testid={ElementIds.ACTION_DIALOG_PROMPT_INPUT}
+              rows={4}
             />
           </Flex>
 

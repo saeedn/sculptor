@@ -236,7 +236,7 @@ makes durability and upgrade-survival guarantees (§9.5) that rest directly on t
   version test** under `sculptor/sculptor/database/alembic/version_tests/` (seed → migrate → verify),
   enforced by `test_every_migration_has_a_test_fixture()` (`sculptor/sculptor/database/README.md`) —
   the process guarantee that lets the schema evolve safely as future migrations are added.
-- **REQ-DATA-013 (MUST).** Versioned JSON columns (e.g. `Task.task_inputs`, `SavedAgentMessage.message`,
+- **REQ-DATA-013 (MUST).** Versioned JSON columns (e.g. `Task.input_data`, `SavedAgentMessage.message`,
   which store unions of agent-message/input variants) are guarded by a **frozen Pydantic-schema
   snapshot** (`alembic/frozen_pydantic_schemas.json`); a model change that isn't reflected fails a test
   until a migration is authored or the change is confirmed back-compatible (`alembic/utils.py`,

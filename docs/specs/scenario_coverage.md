@@ -128,7 +128,7 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 | ADDWS-008 | Partial | test_multi_repo.py::test_create_new_project_from_add_workspace_page (adds via Settings UI) | Trigger "Add Repository" from the repo-selector dropdown; assert the new project is auto-selected. |
 | ADDWS-009 | Missing | — | Assert the branch control shows spinner + "Loading …" and is disabled while branch info loads. |
 | ADDWS-010 | Partial | test_worktree_create_happy_path.py::test_worktree_create_with_default_branch_name | Open the branch selector; assert recent branches + "Fetch more branches"; selecting one updates the source branch and clears the override. |
-| ADDWS-012 | Partial | test_worktree_create_happy_path.py::test_worktree_create_with_default_branch_name; ::test_worktree_create_with_custom_branch_name | Assert branch-name field across all three modes (Worktree required / Clone optional / In-place absent). |
+| ADDWS-012 | Partial | test_worktree_create_happy_path.py::test_worktree_create_with_default_branch_name; ::test_worktree_create_with_custom_branch_name | Assert branch-name field behavior (single git-worktree workspace). |
 | ADDWS-014 | Partial | test_worktree_create_happy_path.py::test_worktree_create_with_custom_branch_name | Assert auto-fill stops, a reset link appears, and clicking reset restores the preview. |
 | ADDWS-020 | Partial | test_branch_name_collisions.py::test_worktree_mode_collision_blocks_creation | Assert the Create button's explanatory disabled tooltips and the "Cmd/Ctrl+↵" ready tooltip. |
 | ADDWS-023 | Partial | test_branch_name_collisions.py::test_worktree_mode_collision_blocks_creation (pre-submit) | Force a submit-time 409; assert toast "Branch '{name}' already exists" and the form stays open. |
@@ -266,7 +266,7 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 
 | Scenario | Status | Existing integration test(s) | Integration tests to add |
 |----------|--------|------------------------------|--------------------------|
-| SET-001 | Partial | test_settings_tab.py::test_settings_opens_as_tab; piecemeal section-clicks across test_settings_integration.py, test_keybindings.py, test_custom_actions.py | One nav test clicking every sidebar item asserting active content; cover the mobile dropdown; CI, File Browser, Git, Env-Vars, Experimental are never opened-and-asserted as a nav target. |
+| SET-001 | Partial | test_settings_tab.py::test_settings_opens_as_tab; piecemeal section-clicks across test_settings_integration.py, test_keybindings.py, test_custom_actions.py | One nav test clicking every sidebar item asserting active content; cover the mobile dropdown; CI, File Browser, Git, Env-Vars are never opened-and-asserted as a nav target. |
 | SET-002 | Missing | — | Load `/#/settings?section=<x>` and assert it opens directly to that section. |
 | SET-003 | Missing | — | View a non-default section, reopen Settings; assert the last-viewed section is restored. |
 | SET-004 | Partial | test_settings_integration.py::test_env_vars_override_toggle_saves_setting; test_keybindings.py; test_custom_actions.py (success toast broadly) | Assert the "Failed to update setting" error-toast path (induce a save failure). |

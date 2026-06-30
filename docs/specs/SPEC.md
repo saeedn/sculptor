@@ -207,7 +207,7 @@ agent or user makes commits on it; and a workspace can open a **pull request** a
 branch, after which Sculptor tracks the PR's CI and review status (and can "babysit" CI → §7.6).
 
 **Skill.** An invocable, named workflow — bundled (the spec → mock → architect → plan → build →
-review pipeline, plus `fix-bug` and `setup-repo`) or experimental (`handoff`, `stack`, `restack`).
+review pipeline, plus `fix-bug` and `setup-repo`).
 Skills are Claude Code slash commands invoked by typing the command into a terminal agent, and a
 skill typically runs as its own agent. (§7.8.)
 
@@ -452,7 +452,7 @@ A **skill** is a reusable agent capability you invoke as a **Claude Code slash c
 `/skill-name` directly into a terminal agent (the agent is Claude Code), and the skill runs as a full
 agent with its own tools, so it can read your codebase, spawn parallel subagents, and adapt to your
 repo. Sculptor surfaces three kinds: the **built-in** skills Claude Code ships with, the **Sculptor**
-plugin skills (the workflow and experimental sets below, plus the base `sculptor` plugin's `help` and
+plugin skills (the workflow set below, plus the base `sculptor` plugin's
 `sculpt-cli`), and any **custom** skills you've installed under your home or repo `.claude/`
 directory.
 
@@ -483,13 +483,6 @@ config files that teach the other skills how your codebase builds, tests, and wh
 test-driven bug fix: it reproduces the bug with a failing test, fixes the code, and verifies —
 interactively by default, or end-to-end with no questions when run autonomously, optionally opening a
 pull request if the repo allows it.
-
-A separate **experimental** plugin (`sculptor-experimental`) adds three more slash-command skills:
-**`handoff`** hands the current work to a fresh agent seeded with a summary of where you are — either
-a new agent in the same workspace or a brand-new workspace on its own branch cut from the current
-one; **`stack`** is a handoff into a new workspace whose branch is both based off and targets the
-current branch, scoping the new workspace's diff and any pull request to just the work stacked on
-top; and **`restack`** propagates a parent branch's changes down its stacked children in order.
 
 ### 7.9 Command Palette & Navigation
 

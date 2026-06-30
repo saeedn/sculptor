@@ -361,15 +361,6 @@ class CurrentBranchInfo(SerializableModel):
     current_branch: str
 
 
-class SkillInfo(SerializableModel):
-    """Information about a single Claude Code skill."""
-
-    name: str
-    description: str
-    source: Literal["custom", "plugin"]
-    file_path: str | None = None
-
-
 class InitializeGitRepoRequest(RequestModel):
     """Request to initialize a directory as a git repository"""
 

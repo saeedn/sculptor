@@ -9,7 +9,6 @@ from typing import TypeVar
 from pydantic import PrivateAttr
 from pydantic import computed_field
 
-from sculptor.agents.harness_registry import get_harness_for_config
 from sculptor.config.settings import SculptorSettings
 from sculptor.database.models import AgentTaskInputsV2
 from sculptor.database.models import AgentTaskStateV2
@@ -28,8 +27,6 @@ from sculptor.interfaces.agents.agent import EnvironmentReleasedRunnerMessage
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
-from sculptor.interfaces.agents.harness import Harness
-from sculptor.interfaces.agents.harness import HarnessCapabilities
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import WorkspaceID
@@ -246,11 +243,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
 
     @computed_field
     @property
-    def harness_capabilities(self) -> HarnessCapabilities:
-        return self._resolve_harness().capabilities()
-
-    @computed_field
-    @property
     def accepts_automated_prompts(self) -> bool:
         # Stamped from the registration TOML at creation: only opted-in
         # registered terminal agents can receive automated prompts through
@@ -296,10 +288,6 @@ class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
         if latest_signal == TerminalStatusSignal.WAITING:
             return TaskStatus.WAITING
         return TaskStatus.READY
-
-    def _resolve_harness(self) -> Harness:
-        """Return the `Harness` this task's config resolves to."""
-        return get_harness_for_config(self.task_input.agent_config)
 
     @computed_field
     @property

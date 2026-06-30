@@ -24,9 +24,6 @@ class PlaywrightPanelZonesElement:
     def get_files_icon(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.PANEL_ICON_FILES)
 
-    def get_skills_icon(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.PANEL_ICON_SKILLS)
-
     def get_terminal_icon(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.PANEL_ICON_TERMINAL)
 

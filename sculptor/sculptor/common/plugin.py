@@ -13,20 +13,3 @@ def get_plugins_base_dir() -> Path:
     per-machine paths (which would rot on app updates and AppImage mounts).
     """
     return Path(sculptor.__file__).parent.parent
-
-
-def get_plugin_dirs() -> list[Path]:
-    """Return the list of bundled plugin directories that exist on disk.
-
-    Sculptor ships two plugins:
-      - `sculptor-plugin` — runtime helpers (/sculpt-cli)
-      - `sculptor-workflow` — opinionated engineering workflow
-        (/spec, /mock, /architect, /plan, /build, /review, /fix-bug,
-        /setup-repo)
-
-    Each plugin is loaded into Claude Code via a separate `--plugin-dir`
-    flag in `get_claude_command()`.
-    """
-    base = get_plugins_base_dir()
-    candidates = [base / "sculptor-plugin", base / "sculptor-workflow"]
-    return [path for path in candidates if path.is_dir()]

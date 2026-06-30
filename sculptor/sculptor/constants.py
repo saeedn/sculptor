@@ -142,7 +142,6 @@ class ElementIDs(StrEnum):
     FILE_BROWSER_TAB_HISTORY = "FILE_BROWSER_TAB_HISTORY"
     PANEL_ICON_ACTIONS = "PANEL_ICON_ACTIONS"
     PANEL_ICON_TERMINAL = "PANEL_ICON_TERMINAL"
-    PANEL_ICON_SKILLS = "PANEL_ICON_SKILLS"
 
     # Panel Containers (docking layout)
     PANEL_TOP_RIGHT = "PANEL_TOP_RIGHT"
@@ -167,12 +166,6 @@ class ElementIDs(StrEnum):
     # Agent tasks popover (StatusPill)
 
     # Agent tasks popover (DAG-aware)
-
-    # Skills Panel
-    SKILLS_PANEL = "SKILLS_PANEL"
-    SKILL_CHIP = "SKILL_CHIP"
-    SKILLS_PANEL_SEARCH_TOGGLE = "SKILLS_PANEL_SEARCH_TOGGLE"
-    SKILLS_PANEL_SEARCH_INPUT = "SKILLS_PANEL_SEARCH_INPUT"
 
     # Common UI Elements
     TOAST = "TOAST"

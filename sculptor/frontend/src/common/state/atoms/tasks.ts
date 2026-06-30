@@ -94,10 +94,6 @@ export const taskStatusAtomFamily = atomFamily<string, Atom<TaskStatus | undefin
   atom((get) => get(taskAtomFamily(taskId))?.status),
 );
 
-export const taskSupportsSkillsAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
-  atom((get) => get(taskAtomFamily(taskId))?.harnessCapabilities.supportsSkills),
-);
-
 export const taskAcceptsAutomatedPromptsAtomFamily = atomFamily<string, Atom<boolean | undefined>>((taskId) =>
   atom((get) => get(taskAtomFamily(taskId))?.acceptsAutomatedPrompts),
 );

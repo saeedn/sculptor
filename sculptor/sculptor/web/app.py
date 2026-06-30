@@ -40,7 +40,6 @@ from fastapi.websockets import WebSocketDisconnect
 from loguru import logger
 
 from sculptor import version
-from sculptor.common.plugin import get_plugin_dirs
 from sculptor.config.settings import SculptorSettings
 from sculptor.config.user_config import UserConfig
 from sculptor.config.user_config import UserConfigField
@@ -168,7 +167,6 @@ from sculptor.web.data_types import RecentWorkspaceResponse
 from sculptor.web.data_types import RenameAgentRequest
 from sculptor.web.data_types import RepoInfo
 from sculptor.web.data_types import SignalEventRequest
-from sculptor.web.data_types import SkillInfo
 from sculptor.web.data_types import TerminalInputRequest
 from sculptor.web.data_types import ToolAvailability
 from sculptor.web.data_types import UpdateUserConfigRequest
@@ -197,7 +195,6 @@ from sculptor.web.middleware import register_on_startup
 from sculptor.web.middleware import run_sync_function_with_debugging_support_if_enabled
 from sculptor.web.middleware import shutdown_event as shutdown_event_impl
 from sculptor.web.open_with import open_path_in_external_app
-from sculptor.web.skills import discover_skills
 from sculptor.web.streams import ServerStopped
 from sculptor.web.streams import StreamingUpdate
 from sculptor.web.streams import stream_everything
@@ -1163,74 +1160,6 @@ def workspace_read_file_at_ref(
             raise HTTPException(status_code=404, detail=f"File not found at ref: {e}") from e
 
     return ReadFileAtRefResponse(content=result.content, encoding=result.encoding)
-
-
-@router.get("/api/v1/skills")
-def get_skills(
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-    project_id: str | None = None,
-    workspace_id: str | None = None,
-) -> list[SkillInfo]:
-    """Get available Claude Code skills.
-
-    Exactly one of project_id or workspace_id must be provided.
-
-    When workspace_id is given, discovers skills from the workspace's working
-    directory (the worktree checkout). Falls back to the project's local repo
-    if the workspace environment hasn't been initialized yet.
-
-    When project_id is given, discovers skills from the project's local
-    repository. Used on the Add Workspace page where no workspace exists yet.
-    """
-    if workspace_id is not None and project_id is not None:
-        raise HTTPException(status_code=400, detail="Provide either project_id or workspace_id, not both")
-    if workspace_id is None and project_id is None:
-        raise HTTPException(status_code=400, detail="Either project_id or workspace_id is required")
-
-    services = get_services_from_request_or_websocket(request)
-    plugin_dirs = get_plugin_dirs()
-
-    if workspace_id is not None:
-        validated_workspace_id = validate_workspace_id(workspace_id)
-        with user_session.open_transaction(services) as transaction:
-            workspace = transaction.get_workspace(validated_workspace_id)
-            if workspace is None or workspace.is_deleted:
-                raise HTTPException(status_code=404, detail=f"Workspace {workspace_id} not found")
-
-            working_dir = services.workspace_service.get_workspace_working_directory(workspace, transaction)
-
-            if working_dir is None:
-                # Environment not yet initialized — fall back to the project's local repo.
-                project = transaction.get_project(workspace.project_id)
-                if project is None:
-                    raise HTTPException(status_code=404, detail="Workspace project not found")
-                try:
-                    with services.git_repo_service.open_local_user_git_repo_for_read(project) as repo:
-                        return discover_skills(repo.get_repo_path(), plugin_dirs=plugin_dirs)
-                except Exception as e:
-                    log_exception(e, "Failed to get skills")
-                    raise HTTPException(status_code=500, detail="Failed to get skills") from e
-
-        try:
-            return discover_skills(working_dir, plugin_dirs=plugin_dirs)
-        except Exception as e:
-            log_exception(e, "Failed to get skills")
-            raise HTTPException(status_code=500, detail="Failed to get skills") from e
-
-    else:
-        assert project_id is not None
-        validated_project_id = validate_project_id(project_id)
-        with user_session.open_transaction(services) as transaction:
-            project = transaction.get_project(validated_project_id)
-            if project is None:
-                raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
-            try:
-                with services.git_repo_service.open_local_user_git_repo_for_read(project) as repo:
-                    return discover_skills(repo.get_repo_path(), plugin_dirs=plugin_dirs)
-            except Exception as e:
-                log_exception(e, "Failed to get skills")
-                raise HTTPException(status_code=500, detail="Failed to get skills") from e
 
 
 def _get_workspace_or_404(

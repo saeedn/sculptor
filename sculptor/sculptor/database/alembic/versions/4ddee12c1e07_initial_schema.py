@@ -30,7 +30,6 @@ def upgrade() -> None:
         sa.Column("user_git_repo_url", sa.String(), nullable=True),
         sa.Column("is_path_accessible", sa.Integer(), nullable=False),
         sa.Column("is_deleted", sa.Integer(), nullable=False),
-        sa.Column("default_system_prompt", sa.String(), nullable=True),
         sa.Column("workspace_setup_command", sa.String(), nullable=True),
         sa.Column("naming_pattern", sa.String(), nullable=True),
         sa.PrimaryKeyConstraint("object_id"),

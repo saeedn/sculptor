@@ -36,8 +36,6 @@ def _make_terminal_task(*, outcome: TaskState = TaskState.RUNNING) -> Task:
         project_id=ProjectID(),
         input_data=AgentTaskInputsV2(
             agent_config=TerminalAgentConfig(),
-            git_hash="abc123",
-            system_prompt=None,
         ),
         current_state=AgentTaskStateV2(workspace_id=WorkspaceID()),
         outcome=outcome,

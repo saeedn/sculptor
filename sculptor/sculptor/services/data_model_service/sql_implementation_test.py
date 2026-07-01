@@ -99,8 +99,6 @@ def get_simple_agent_task(
         object_id=TaskID(),
         input_data=AgentTaskInputsV2(
             agent_config=TerminalAgentConfig(),
-            git_hash="HEAD",
-            system_prompt=None,
         ),
         organization_reference=organization_reference,
         user_reference=user_reference,
@@ -1295,7 +1293,7 @@ def test_update_project_fields_writes_only_named_columns(
 
     # Seed non-default values on fields we don't intend to touch.
     with service.open_transaction(RequestID()) as transaction:
-        seeded = project.evolve(project.ref().default_system_prompt, "SEED_PROMPT")
+        seeded = project.evolve(project.ref().naming_pattern, "SEED_PROMPT")
         seeded = seeded.evolve(seeded.ref().workspace_setup_command, "SEED_SETUP")
         transaction.upsert_project(seeded)
 
@@ -1304,7 +1302,7 @@ def test_update_project_fields_writes_only_named_columns(
         updated = transaction.update_project_fields(project.object_id, name="RENAMED")
         assert updated is not None
         assert updated.name == "RENAMED"
-        assert updated.default_system_prompt == "SEED_PROMPT", "unnamed field clobbered"
+        assert updated.naming_pattern == "SEED_PROMPT", "unnamed field clobbered"
         assert updated.workspace_setup_command == "SEED_SETUP", "unnamed field clobbered"
 
     # Re-read from DB to confirm.
@@ -1312,7 +1310,7 @@ def test_update_project_fields_writes_only_named_columns(
         after = transaction.get_project(project.object_id)
         assert after is not None
         assert after.name == "RENAMED"
-        assert after.default_system_prompt == "SEED_PROMPT"
+        assert after.naming_pattern == "SEED_PROMPT"
         assert after.workspace_setup_command == "SEED_SETUP"
 
 
@@ -1416,7 +1414,7 @@ def test_update_project_fields_disjoint_concurrent_writers_do_not_clobber(
             _ = transaction.get_project(project.object_id)
             writer_a_read.set()
             writer_b_read.wait(timeout=5)
-            transaction.update_project_fields(project.object_id, default_system_prompt="A_PROMPT")
+            transaction.update_project_fields(project.object_id, naming_pattern="A_PROMPT")
 
     def writer_b() -> None:
         with service.open_transaction(RequestID()) as transaction:
@@ -1437,7 +1435,7 @@ def test_update_project_fields_disjoint_concurrent_writers_do_not_clobber(
     with service.open_transaction(RequestID()) as transaction:
         final = transaction.get_project(project.object_id)
         assert final is not None
-        assert final.default_system_prompt == "A_PROMPT", "A's update was lost"
+        assert final.naming_pattern == "A_PROMPT", "A's update was lost"
         assert final.workspace_setup_command == "B_SETUP", "B's update was lost"
 
 
@@ -1465,7 +1463,7 @@ def test_update_project_fields_stress_disjoint_concurrent_writers(
     iterations = 25
     field_names = (
         "name",
-        "default_system_prompt",
+        "naming_pattern",
         "workspace_setup_command",
         "user_git_repo_url",
     )
@@ -1511,7 +1509,7 @@ def test_update_project_fields_and_upsert_immediate_mix_concurrently(
 ) -> None:
     """Mixed-API stress: targeted updates + IMMEDIATE full-row upserts.
 
-    Thread A hammers ``update_project_fields(default_system_prompt=...)``.
+    Thread A hammers ``update_project_fields(naming_pattern=...)``.
     Thread B hammers ``upsert_project`` in ``immediate=True`` transactions
     with a fresh read-then-evolve of ``name`` — the MR 986 pattern for
     legacy sites that can't migrate to targeted updates yet.
@@ -1534,7 +1532,7 @@ def test_update_project_fields_and_upsert_immediate_mix_concurrently(
             barrier.wait(timeout=10)
             for i in range(iterations):
                 with service.open_transaction(RequestID()) as transaction:
-                    transaction.update_project_fields(project.object_id, default_system_prompt=f"A_iter_{i}")
+                    transaction.update_project_fields(project.object_id, naming_pattern=f"A_iter_{i}")
         except BaseException as e:
             with errors_lock:
                 errors.append(e)
@@ -1565,7 +1563,7 @@ def test_update_project_fields_and_upsert_immediate_mix_concurrently(
     with service.open_transaction(RequestID()) as transaction:
         final = transaction.get_project(project.object_id)
         assert final is not None
-        assert final.default_system_prompt == f"A_iter_{iterations - 1}", "targeted-update writer lost its final write"
+        assert final.naming_pattern == f"A_iter_{iterations - 1}", "targeted-update writer lost its final write"
         assert final.name == f"B_iter_{iterations - 1}", "IMMEDIATE upsert writer lost its final write"
 
 

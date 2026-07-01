@@ -67,8 +67,6 @@ def terminal_task(project: Project) -> Task:
         project_id=project.object_id,
         input_data=AgentTaskInputsV2(
             agent_config=TerminalAgentConfig(),
-            git_hash="initialhash",
-            system_prompt=None,
         ),
     )
 
@@ -258,7 +256,7 @@ def test_run_task_dispatches_terminal_config_to_terminal_handler(
 def test_launch_command_for_start_selects_per_config() -> None:
     state = AgentTaskStateV2(workspace_id=WorkspaceID())
     state_with_session = AgentTaskStateV2(workspace_id=WorkspaceID(), terminal_session_id="sess-42")
-    plain = AgentTaskInputsV2(agent_config=TerminalAgentConfig(), git_hash="x")
+    plain = AgentTaskInputsV2(agent_config=TerminalAgentConfig())
     # Plain terminals always get a bare shell — also after restart.
     assert launch_command_for_start(plain, state) is None
     assert launch_command_for_start(plain, state_with_session) is None
@@ -270,7 +268,6 @@ def test_launch_command_for_start_selects_per_config() -> None:
             launch_command="claude",
             resume_command_template="claude --resume {session_id}",
         ),
-        git_hash="x",
     )
     # No session reported yet → plain launch.
     assert launch_command_for_start(registered, state) == "claude"
@@ -283,7 +280,6 @@ def test_launch_command_for_start_selects_per_config() -> None:
             display_name="Claude Code",
             launch_command="claude",
         ),
-        git_hash="x",
     )
     # Session but no template → plain launch.
     assert launch_command_for_start(registered_no_template, state_with_session) == "claude"
@@ -309,7 +305,6 @@ def test_registered_config_launch_command_is_written_on_spawn(
                 display_name="Claude Code",
                 launch_command="echo registered-launch-marker",
             ),
-            git_hash="initialhash",
         ),
     )
     with services.data_model_service.open_transaction(RequestID()) as transaction:

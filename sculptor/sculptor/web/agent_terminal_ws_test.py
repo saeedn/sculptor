@@ -52,8 +52,6 @@ def _create_task(
         project_id=project.object_id,
         input_data=AgentTaskInputsV2(
             agent_config=agent_config,
-            git_hash="initialhash",
-            system_prompt=None,
         ),
         current_state=AgentTaskStateV2(workspace_id=WorkspaceID()),
         outcome=TaskState.RUNNING,

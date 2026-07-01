@@ -445,10 +445,7 @@ class BaseTaskService(TaskService, ABC):
                 self._finalize_task_as_deleted(logged_task, transaction)
                 return
 
-            if logged_task.outcome == TaskState.CANCELLED:
-                # if the task was cancelled, we don't want to update the outcome
-                pass
-            elif logged_task.outcome != outcome:
+            if logged_task.outcome != outcome:
                 task_with_new_outcome = logged_task.evolve(logged_task.ref().outcome, outcome)
                 if error_to_publish is not None:
                     task_with_new_outcome = task_with_new_outcome.evolve(

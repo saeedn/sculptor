@@ -580,8 +580,6 @@ class CIBabysitterCoordinator(Service):
             if project is None or project.is_deleted:
                 logger.debug("Cannot create babysitter task: project {} missing", workspace.project_id)
                 return None
-            with self._git_repo_service.open_local_user_git_repo_for_read(project) as repo:
-                initial_commit_hash = repo.get_current_commit_hash()
             task = Task(
                 object_id=TaskID(),
                 organization_reference=workspace.organization_reference,
@@ -589,8 +587,6 @@ class CIBabysitterCoordinator(Service):
                 project_id=project.object_id,
                 input_data=AgentTaskInputsV2(
                     agent_config=agent_config,
-                    git_hash=initial_commit_hash,
-                    system_prompt=project.default_system_prompt,
                 ),
                 current_state=AgentTaskStateV2(
                     title=_BABYSITTER_TITLE,

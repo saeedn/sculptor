@@ -1410,9 +1410,6 @@ def create_workspace_agent(
         )
         task_id = TaskID()
 
-        with services.git_repo_service.open_local_user_git_repo_for_read(project) as repo:
-            initial_commit_hash = repo.get_current_commit_hash()
-
         initial_task_state = AgentTaskStateV2(
             title=task_name,
             workspace_id=validated_workspace_id,
@@ -1425,8 +1422,6 @@ def create_workspace_agent(
             project_id=project.object_id,
             input_data=AgentTaskInputsV2(
                 agent_config=agent_config,
-                git_hash=initial_commit_hash,
-                system_prompt=project.default_system_prompt,
             ),
             current_state=initial_task_state,
         )

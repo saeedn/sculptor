@@ -72,7 +72,6 @@ class ProjectFieldUpdate(TypedDict, total=False):
     name: str
     user_git_repo_url: str | None
     is_path_accessible: bool
-    default_system_prompt: str | None
     workspace_setup_command: str | None
     naming_pattern: str | None
 

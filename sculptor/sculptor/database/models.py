@@ -54,7 +54,6 @@ class Project(DatabaseModel):
     # whether the project has been deleted by the user
     is_deleted: bool = False
 
-    default_system_prompt: str | None = None
     workspace_setup_command: str | None = None
     # Per-project override of UserConfig.default_workspace_branch_naming_pattern.
     naming_pattern: str | None = None
@@ -123,19 +122,12 @@ class AgentTaskInputsV2(TaskInputs):
     Contains the necessary information for the task runner.
 
     The `agent_config` is used to configure the `Agent` itself. It contains the full (versioned) command to be run.
-    The `git_hash` records the starting commit for diff computation.
     """
 
     object_type: str = "AgentTaskInputsV2"
 
     # which agent to run
     agent_config: AgentConfigTypes
-
-    # the output of `git rev-parse HEAD` at the time the task was created.
-    # used for diff computation against the starting state.
-    git_hash: str
-
-    system_prompt: str | None = None
 
 
 # Terminal agents are the only surviving task backend, so this is a single-member
@@ -260,12 +252,9 @@ class NotificationImportance(StrEnum):
     """
     From the Apple Human Interface Guidelines: https://developer.apple.com/design/human-interface-guidelines/managing-notifications
 
-    Active (the default). Information people might appreciate knowing about when it arrives, like a score update on their favorite sports team.
-
     Time Sensitive. Information that directly impacts the person and requires their immediate attention, like an account security issue or a package delivery.
     """
 
-    ACTIVE = "ACTIVE"
     TIME_SENSITIVE = "TIME_SENSITIVE"
 
 
@@ -276,7 +265,7 @@ class Notification(DatabaseModel):
     # by convention, only the first line will be shown directly to the user, and of that, only the first X characters.
     # we assume that this is roughly markdown (eg, for formatting, links, etc).
     message: str
-    importance: NotificationImportance = NotificationImportance.ACTIVE
+    importance: NotificationImportance = NotificationImportance.TIME_SENSITIVE
     task_id: TaskID | None = None
     # Notifications can be related to a whole project, not necessarily a specific task.
     project_id: ProjectID | None = None

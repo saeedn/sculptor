@@ -17,8 +17,6 @@ const getToastType = (importance?: NotificationImportance): ToastType => {
   switch (importance) {
     case NotificationImportance.TIME_SENSITIVE:
       return ToastType.WARNING;
-    case NotificationImportance.ACTIVE:
-      return ToastType.DEFAULT;
     case undefined:
     default:
       return ToastType.DEFAULT;
@@ -29,7 +27,6 @@ const getToastDurationMiliseconds = (importance?: NotificationImportance): numbe
   switch (importance) {
     case NotificationImportance.TIME_SENSITIVE:
       return 5000;
-    case NotificationImportance.ACTIVE:
     case undefined:
     default:
       return 3000;

@@ -266,23 +266,23 @@ Wave 2 hunted the two false-negative classes and re-litigated wave-1's "cleared"
 - Frontend Clusters 2/3/5 (panel docking husk): `movePanel`/`usePanelsByZone`, bottom-left/right zones,
   expand-mode dead arms, per-panel extension fields — done via focused sub-agent (see its report).
 
-**DEFERRED — one focused follow-up (all require the `bump_migrations.py` frozen-schema regen +
-no-op-migration-stub deletion; `default_system_prompt` also needs concurrency-test repointing):**
-These are all genuinely dead but change a persisted-model JSON schema / DB column, which the repo
-treats as its own deliberately-reviewed commit (see `followup-deletions.md`). Grouping them:
-- `TaskState.CANCELLED` (never produced) — enum-value removal changes `Task.outcome` schema.
-- `NotificationImportance.ACTIVE` (default never stored; only TIME_SENSITIVE produced) — changes
-  `Notification.importance` schema.
-- `AgentTaskInputsV2.system_prompt` (write-only) — ~7 test fixtures pass `system_prompt=None`.
-- `Project.default_system_prompt` (write-only config chain) — DB column; it is the guinea-pig field
-  in the `sql_implementation_test.py` concurrency/durability tests (~L1298-1568) + `coordinator_test.py`,
-  which must be repointed to another nullable Project field (e.g. `naming_pattern`).
-- `AgentTaskInputsV2.git_hash` (write-only; diff uses workspace `source_git_hash`) — required field;
-  ~9 test fixtures + orphans the `initial_commit_hash`/repo-open block in the task-creation hot path.
-Sequence for the follow-up: edit models + write sites + repoint/trim tests → `bump_migrations.py "<msg>"`
-→ keep the updated frozen schema, delete the generated no-op migration stub → `just check`/`test-unit`.
+**DONE (persisted-schema batch — separate commit, ran the `bump_migrations.py` frozen-schema regen +
+deleted the generated no-op migration stub):**
+All genuinely dead, each changing a persisted-model JSON schema / DB column (hence its own commit):
+- `TaskState.CANCELLED` (never produced) — removed the member + the dead `outcome == CANCELLED` guard
+  and the READY-tuple entry.
+- `NotificationImportance.ACTIVE` (default never stored; only TIME_SENSITIVE produced) — removed the
+  member, retargeted the default to TIME_SENSITIVE, dropped the dead frontend toast arms.
+- `AgentTaskInputsV2.system_prompt` (write-only) — removed the field + ~8 `system_prompt=None` fixtures.
+- `Project.default_system_prompt` (write-only config chain) — removed the field, the DB column in the
+  initial migration, the `ProjectFieldUpdate` entry, and repointed the `sql_implementation_test.py`
+  concurrency/durability guinea-pig field + `coordinator_test.py` to `naming_pattern`.
+- `AgentTaskInputsV2.git_hash` (write-only; diff uses workspace `source_git_hash`) — removed the field,
+  both write sites + the now-orphaned `initial_commit_hash`/repo-open blocks, and ~9 test fixtures.
+Frozen JSON schema regenerated via `bump_migrations.py`; SQL stayed in sync (column dropped from the
+initial migration), so the generated migration was a no-op and was deleted (clean break — old rows are
+not migrated). `just format`/`check`/`test-unit` green.
 
 **Also deferred (naming/comment debt — not dead code):** rename `chatActions`/`useTerminalChatActions`/
 `ChatIntro.module.scss` away from "chat"; stale comments enumerated in Tier 3; `useCommandRuntime`
 `electron.isAvailable`. Low value, high churn; left to avoid noise in this pass.
-

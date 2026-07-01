@@ -144,7 +144,7 @@ class LimitedBaseTaskView(SerializableModel, Generic[TaskInputType, TaskStateTyp
         if self.task.outcome == TaskState.QUEUED:
             return TaskStatus.BUILDING
 
-        if self.task.outcome in (TaskState.SUCCEEDED, TaskState.CANCELLED, TaskState.DELETED):
+        if self.task.outcome in (TaskState.SUCCEEDED, TaskState.DELETED):
             return TaskStatus.READY
 
         # otherwise, the task is running.

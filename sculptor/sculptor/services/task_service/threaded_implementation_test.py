@@ -53,8 +53,6 @@ def get_simple_task(user_session: UserSession, project: Project) -> Task:
         project_id=project.object_id,
         input_data=AgentTaskInputsV2(
             agent_config=TerminalAgentConfig(),
-            git_hash="HEAD",
-            system_prompt=None,
         ),
     )
 

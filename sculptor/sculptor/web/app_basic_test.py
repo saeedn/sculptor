@@ -128,8 +128,6 @@ def _create_task_in_workspace(
         project_id=project.object_id,
         input_data=AgentTaskInputsV2(
             agent_config=agent_config if agent_config is not None else TerminalAgentConfig(),
-            git_hash="doesn't matter",
-            system_prompt=None,
         ),
         current_state=AgentTaskStateV2(workspace_id=workspace.object_id),
     )

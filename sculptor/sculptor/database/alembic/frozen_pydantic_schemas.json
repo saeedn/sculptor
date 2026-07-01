@@ -549,7 +549,7 @@
           }
         },
         "additionalProperties": true,
-        "description": "The primary task for running an agent.\n\nContains the necessary information for the task runner.\n\nThe `agent_config` is used to configure the `Agent` itself. It contains the full (versioned) command to be run.\nThe `git_hash` records the starting commit for diff computation.",
+        "description": "The primary task for running an agent.\n\nContains the necessary information for the task runner.\n\nThe `agent_config` is used to configure the `Agent` itself. It contains the full (versioned) command to be run.",
         "properties": {
           "agentConfig": {
             "oneOf": [
@@ -562,31 +562,14 @@
             ],
             "title": "Agentconfig"
           },
-          "gitHash": {
-            "title": "Githash",
-            "type": "string"
-          },
           "objectType": {
             "default": "AgentTaskInputsV2",
             "title": "Objecttype",
             "type": "string"
-          },
-          "systemPrompt": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "default": null,
-            "title": "Systemprompt"
           }
         },
         "required": [
-          "agentConfig",
-          "gitHash"
+          "agentConfig"
         ],
         "title": "AgentTaskInputsV2",
         "type": "object"

@@ -246,7 +246,6 @@ class _FakeEnv:
             organization_reference=organization_reference,
             name="test-project",
             user_git_repo_url="file:///tmp/repo",
-            default_system_prompt="be helpful",
         )
         self.workspace = Workspace(
             object_id=self.workspace_id,
@@ -919,7 +918,6 @@ def _make_agent_task(
         project_id=env.project_id,
         input_data=AgentTaskInputsV2(
             agent_config=agent_config,
-            git_hash="abc123",
         ),
         current_state=AgentTaskStateV2(workspace_id=env.workspace_id, title=title),
     )

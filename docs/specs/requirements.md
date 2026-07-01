@@ -129,9 +129,6 @@ and flags the targets it does not currently define.
 - **REQ-NFR-050 (SHOULD).** A diff over **500 lines** is gated behind "Show full diff"
   (`.../diffPanel/LargeDiffGate.tsx`, `LARGE_DIFF_LINE_THRESHOLD`). Binary files and renames/deletes
   show an explanatory banner instead of a diff (`SPEC.md` §7.5).
-- **REQ-NFR-051 (SHOULD).** Max single image upload is **20 MB**, restricted to image types
-  (`.jpg/.jpeg/.png/.webp/.gif`), in the rich-text editor used to compose an Action's prompt
-  (`sculptor/frontend/src/components/FileUploadUtils.ts`, `MAX_FILE_SIZE`).
 - **REQ-NFR-053 (MAY).** Default file-browser split ratio is **50/50**; split-vs-unified, wrapping,
   and tab-close behavior are user-configurable (`sculptor/sculptor/config/user_config.py`; `SPEC.md` §7.10).
 

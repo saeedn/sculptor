@@ -48,14 +48,14 @@ class WorkspaceTargetBranchesInfo(SerializableModel):
 
 
 class PrApproval(SerializableModel):
-    """A reviewer's approval status on a pull/merge request."""
+    """A reviewer's approval status on a pull request."""
 
     name: str
     approved: bool
 
 
 class PrComment(SerializableModel):
-    """An unresolved comment on a pull/merge request."""
+    """An unresolved comment on a pull request."""
 
     author: str
     file_path: str
@@ -81,7 +81,7 @@ class PrStatusInfo(SerializableModel):
     error_category: (
         Literal["cli_missing", "not_authenticated", "no_access", "network_error", "rate_limited", "transient"] | None
     ) = None
-    error_provider: Literal["gitlab", "github"] | None = None
+    error_provider: Literal["github"] | None = None
     error_message: str | None = None
     mismatched_pr_iid: int | None = None
     mismatched_pr_target_branch: str | None = None
@@ -92,7 +92,7 @@ class PrStatusInfoCleared(SerializableModel):
     """Sentinel pushed to the stream to clear a workspace's PR status on the frontend.
 
     When the workspace branch changes, the old PR status is stale. This signal
-    causes the frontend atom to be set to null, showing "Checking MR/PR..." until
+    causes the frontend atom to be set to null, showing "Checking PR..." until
     the next poll result arrives.
     """
 
@@ -351,7 +351,6 @@ class RepoInfo(SerializableModel):
     current_branch: str
     recent_branches: list[str]
     project_id: ProjectID
-    is_gitlab_origin: bool = False
     is_github_origin: bool = False
 
 
@@ -391,10 +390,6 @@ class ToolAvailability(SerializableModel):
 
     claude: bool
     git: bool
-
-
-class UploadFileResponse(SerializableModel):
-    file_id: str
 
 
 class HealthCheckResponse(SerializableModel):

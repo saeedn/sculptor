@@ -46,10 +46,6 @@ class SculptorSettings(BaseSettings):
     def workspace_sync_path(self) -> Path:
         return Path(self.WORKSPACE_SYNC_DIR)
 
-    @property
-    def upload_path(self) -> Path:
-        return get_internal_folder() / "uploads"
-
 
 # Think twice before using SculptorSettings directly. We want to be sure to properly inject different settings at test time.
 # This is done either by:

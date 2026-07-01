@@ -1,18 +1,18 @@
 """Integration tests for the CI Babysitter feature.
 
-Each test installs a fake ``glab`` CLI that returns a controlled MR
-state (failed pipeline, merge conflict, merged, etc.) and asserts that
+Each test installs a fake ``gh`` CLI that returns a controlled PR
+state (failed checks, merge conflict, merged, etc.) and asserts that
 ``CIBabysitterCoordinator`` reacts correctly: a "CI Babysitter" agent
-tab is spawned, the configured prompt is delivered, the agent is
-retired on merge, and pause prevents prompts.
+tab is spawned, the configured prompt is delivered to its PTY, the
+agent is retired on merge, and pause prevents prompts.
 
 The classifier's first-poll baseline behavior (architecture's "Risks
 and Mitigations" section) requires PIPELINE_FAILED to fire only on a
-*change* of pipeline id, not on the very first poll. Tests therefore
-write an initial pipeline_id (the baseline) before starting the
-workspace, wait for that baseline poll to land, and then bump the
-pipeline_id to trigger an actionable transition. The bump-after-wait
-pattern is encapsulated in `_bump_pipeline_id_after_baseline`.
+*change* into the failed state, not on the very first poll. Tests
+therefore start with a non-failed check state (the baseline), confirm
+the poller actually observed it, and then flip the checks to failed to
+trigger an actionable transition. That arming sequence is encapsulated
+in `_arm_failed_transition`.
 """
 
 import stat
@@ -69,55 +69,35 @@ _MERGED_MODE_STABLE_WAIT_MS = 25_000
 # baseline and no transition would fire. 20s gives the baseline poll headroom.
 _BASELINE_POLL_SETTLE_MS = 20_000
 
-_FAKE_GITLAB_REMOTE = "https://gitlab.com/test-org/test-repo.git"
+_FAKE_GITHUB_REMOTE = "https://github.com/test-org/test-repo.git"
 
-# Shared fake glab script driven by a `state_file` (mode) and a `pipeline_id_file`.
-#   mode = failed   → MR is open with a failed pipeline of the given id.
-#   mode = merged   → MR is merged.
-#   mode = closed   → MR is closed without merging.
-_FAKE_GLAB_STATE_SCRIPT = """\
+# Shared fake gh script driven by a `state_file` (mode). The backend issues a
+# single `gh api graphql` query for PR status (see pr_status.py), so each mode
+# emits that GraphQL response envelope.
+#   mode = running  → PR is open with a pending (running) check rollup.
+#   mode = failed   → PR is open with a failed check rollup.
+#   mode = merged   → PR is merged.
+#   mode = closed   → PR is closed without merging.
+# The mode-file path is injected via ``.replace("{state_file}", ...)`` (not
+# ``.format``) so the JSON braces below don't need escaping.
+_FAKE_GH_STATE_SCRIPT = """\
 #!/bin/bash
 MODE=$(cat "{state_file}")
-PIPELINE_ID=$(cat "{pipeline_id_file}")
 case "$MODE" in
+    running)
+        echo '{"data":{"repository":{"pullRequests":{"nodes":[{"number":7,"title":"Test PR","url":"https://github.com/test/repo/pull/7","state":"OPEN","baseRefName":"main","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"PENDING"}}}]},"latestReviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}]}}}}'
+        ;;
     failed)
-        if [[ "$*" == *"mr list"* && "$*" == *"--merged"* ]]; then
-            echo "[]"
-        elif [[ "$*" == *"mr list"* && "$*" == *"--closed"* ]]; then
-            echo "[]"
-        elif [[ "$*" == *"mr list"* ]]; then
-            echo '[{{"iid": 7, "title": "Test MR", "web_url": "https://gitlab.com/test/repo/-/merge_requests/7", "target_branch": "main", "has_conflicts": false}}]'
-        elif [[ "$*" == *"mr view"* ]]; then
-            echo "{{\\"iid\\": 7, \\"title\\": \\"Test MR\\", \\"web_url\\": \\"https://gitlab.com/test/repo/-/merge_requests/7\\", \\"target_branch\\": \\"main\\", \\"has_conflicts\\": false, \\"pipeline\\": {{\\"id\\": $PIPELINE_ID, \\"status\\": \\"failed\\", \\"web_url\\": \\"https://gitlab.com/test/repo/-/pipelines/$PIPELINE_ID\\", \\"updated_at\\": \\"2026-01-01T00:00:00Z\\"}}}}"
-        elif [[ "$*" == *"approvals"* ]]; then
-            echo '{{"approved_by": []}}'
-        elif [[ "$*" == *"discussions"* ]]; then
-            echo '[]'
-        else
-            exit 1
-        fi
+        echo '{"data":{"repository":{"pullRequests":{"nodes":[{"number":7,"title":"Test PR","url":"https://github.com/test/repo/pull/7","state":"OPEN","baseRefName":"main","commits":{"nodes":[{"commit":{"statusCheckRollup":{"state":"FAILURE"}}}]},"latestReviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}]}}}}'
         ;;
     merged)
-        if [[ "$*" == *"mr list"* && "$*" == *"--merged"* ]]; then
-            echo '[{{"iid": 7, "title": "Test MR", "web_url": "https://gitlab.com/test/repo/-/merge_requests/7", "target_branch": "main"}}]'
-        else
-            echo "[]"
-        fi
+        echo '{"data":{"repository":{"pullRequests":{"nodes":[{"number":7,"title":"Test PR","url":"https://github.com/test/repo/pull/7","state":"MERGED","baseRefName":"main","commits":{"nodes":[]},"latestReviews":{"nodes":[]},"reviewThreads":{"nodes":[]}}]}}}}'
         ;;
     *)
-        echo "[]"
+        echo '{"data":{"repository":{"pullRequests":{"nodes":[]}}}}'
         ;;
 esac
 """
-
-
-def _install_fake_glab(fake_bin_dir: Path, script: str) -> None:
-    script_path = fake_bin_dir / "glab"
-    script_path.write_text(textwrap.dedent(script))
-    script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
-
-
-_FAKE_GITHUB_REMOTE = "https://github.com/test-org/test-repo.git"
 
 # Fake `gh` returning one OPEN PR that GitHub reports as CONFLICTING. The
 # backend issues a single `gh api graphql` query; this node carries
@@ -140,10 +120,10 @@ def _install_fake_gh(fake_bin_dir: Path, script: str) -> None:
     script_path.chmod(script_path.stat().st_mode | stat.S_IEXEC)
 
 
-def _install_state_driven_glab(instance: SculptorInstance, state_file: Path, pipeline_id_file: Path) -> None:
-    _install_fake_glab(
+def _install_state_driven_gh(instance: SculptorInstance, state_file: Path) -> None:
+    _install_fake_gh(
         instance.fake_bin_dir,
-        _FAKE_GLAB_STATE_SCRIPT.format(state_file=state_file, pipeline_id_file=pipeline_id_file),
+        _FAKE_GH_STATE_SCRIPT.replace("{state_file}", str(state_file)),
     )
 
 
@@ -185,23 +165,32 @@ def _enable_babysitter(instance: SculptorInstance) -> None:
     assert put_response.ok, f"PUT /api/v1/config failed: {put_response.status}"
 
 
-_PIPELINE_PROMPT_FRAGMENT = "Investigate the failing pipeline for this MR"
-
 # Fragment of the default merge-conflict prompt (user_config.CIBabysitterConfig).
-# Chosen to be provider-neutral so the assertion survives the "MR"/"PR" wording.
 _MERGE_CONFLICT_PROMPT_FRAGMENT = "merge conflict with its base branch"
 
 
-def _bump_pipeline_id_after_baseline(page, pipeline_id_file: Path, new_id: str) -> None:
-    """Wait for the baseline poll to land, then write a new pipeline id.
+def _arm_failed_transition(instance: SculptorInstance, state_file: Path) -> None:
+    """Flip checks running → failed, confirming the poller actually observed the
+    non-failed baseline (via the PR popover "Running" badge) before the flip.
 
-    The classifier records the first-seen `pipeline_id` as the baseline
-    for a workspace. Tests must let that baseline poll happen before
-    changing the id, or the new id is itself the baseline and no
-    transition is observed.
+    The classifier suppresses PIPELINE_FAILED on the first poll (prev is None) so
+    a Sculptor restart against an already-red PR doesn't burn a retry. A
+    non-failed → failed transition therefore only fires if a non-failed poll
+    landed first. A fixed wall-clock window can't guarantee that under CI load —
+    and after a backend restart the coordinator's in-memory prev_status resets to
+    None and polling resumes lazily, so the window can elapse before any
+    non-failed poll lands. Waiting on the badge — driven by the same poll result
+    the coordinator consumes — guarantees prev_status is non-failed before we
+    write "failed", regardless of timing or restart state.
     """
-    page.wait_for_timeout(_BASELINE_POLL_SETTLE_MS)
-    pipeline_id_file.write_text(new_id)
+    state_file.write_text("running")
+    pr_popover = PlaywrightPrPopoverElement(instance.page)
+    chevron = pr_popover.get_chevron()
+    expect(chevron).to_be_visible(timeout=60_000)
+    chevron.click()
+    expect(pr_popover.get_pipeline_status_badge()).to_have_text("Running", timeout=60_000)
+    instance.page.keyboard.press("Escape")
+    state_file.write_text("failed")
 
 
 def _make_registered_agent_mru(page, agent_tabs: PlaywrightAgentTabBarElement, registration_id: str) -> None:
@@ -221,21 +210,19 @@ def _make_registered_agent_mru(page, agent_tabs: PlaywrightAgentTabBarElement, r
 
 @user_story("to have Sculptor's CI Babysitter automatically investigate a failed pipeline")
 def test_scenario_1_failed_pipeline_creates_babysitter(sculptor_instance_: SculptorInstance, tmp_path: Path) -> None:
-    """When CI fails on an MR opened from a workspace, the coordinator spawns
+    """When CI fails on a PR opened from a workspace, the coordinator spawns
     a 'CI Babysitter' terminal tab and writes the configured prompt to its PTY.
     """
-    state_file = tmp_path / "glab_state"
-    pipeline_id_file = tmp_path / "pipeline_id"
-    state_file.write_text("failed")
-    pipeline_id_file.write_text("100")
+    state_file = tmp_path / "gh_state"
+    state_file.write_text("running")
 
     registration = _write_registration(
         sculptor_instance_, "babysit-prompts", "Babysit Prompts", accepts_automated_prompts=True
     )
     try:
         _enable_babysitter(sculptor_instance_)
-        _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
-        _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
+        _install_state_driven_gh(sculptor_instance_, state_file)
+        _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
 
         page = sculptor_instance_.page
         start_task_and_wait_for_ready(page)
@@ -243,7 +230,7 @@ def test_scenario_1_failed_pipeline_creates_babysitter(sculptor_instance_: Sculp
         agent_tabs = PlaywrightAgentTabBarElement(page)
         _make_registered_agent_mru(page, agent_tabs, "babysit-prompts")
 
-        _bump_pipeline_id_after_baseline(page, pipeline_id_file, "101")
+        _arm_failed_transition(sculptor_instance_, state_file)
 
         babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
         expect(babysitter_tab.first).to_be_visible(timeout=90_000)
@@ -255,22 +242,20 @@ def test_scenario_1_failed_pipeline_creates_babysitter(sculptor_instance_: Sculp
         registration.unlink(missing_ok=True)
 
 
-@user_story("to retain babysitter history after the MR is merged, with no further automated prompts")
-def test_scenario_7_merged_mr_retires_babysitter(sculptor_instance_: SculptorInstance, tmp_path: Path) -> None:
-    """Once an MR is merged, the coordinator stops sending prompts but
+@user_story("to retain babysitter history after the PR is merged, with no further automated prompts")
+def test_scenario_7_merged_pr_retires_babysitter(sculptor_instance_: SculptorInstance, tmp_path: Path) -> None:
+    """Once a PR is merged, the coordinator stops sending prompts but
     the babysitter task and its terminal history remain.
     """
-    state_file = tmp_path / "glab_state"
-    pipeline_id_file = tmp_path / "pipeline_id"
-    state_file.write_text("failed")
-    pipeline_id_file.write_text("100")
+    state_file = tmp_path / "gh_state"
+    state_file.write_text("running")
 
     registration = _write_registration(
         sculptor_instance_, "babysit-prompts", "Babysit Prompts", accepts_automated_prompts=True
     )
     try:
-        _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
-        _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
+        _install_state_driven_gh(sculptor_instance_, state_file)
+        _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
         _enable_babysitter(sculptor_instance_)
 
         page = sculptor_instance_.page
@@ -279,7 +264,7 @@ def test_scenario_7_merged_mr_retires_babysitter(sculptor_instance_: SculptorIns
         agent_tabs = PlaywrightAgentTabBarElement(page)
         _make_registered_agent_mru(page, agent_tabs, "babysit-prompts")
 
-        _bump_pipeline_id_after_baseline(page, pipeline_id_file, "101")
+        _arm_failed_transition(sculptor_instance_, state_file)
 
         babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
         expect(babysitter_tab.first).to_be_visible(timeout=90_000)
@@ -303,22 +288,20 @@ def test_scenario_7_merged_mr_retires_babysitter(sculptor_instance_: SculptorIns
         registration.unlink(missing_ok=True)
 
 
-@user_story("to silence the CI Babysitter for an MR while still seeing the babysitter tab")
+@user_story("to silence the CI Babysitter for a PR while still seeing the babysitter tab")
 def test_scenario_4_pause_toggle_prevents_prompt(sculptor_instance_: SculptorInstance, tmp_path: Path) -> None:
-    """Pausing in the PR popover BEFORE a pipeline failure stops the coordinator
-    from delivering any prompt to the babysitter for this MR.
+    """Pausing in the PR popover BEFORE the checks fail stops the coordinator
+    from delivering any prompt to the babysitter for this PR.
     """
-    state_file = tmp_path / "glab_state"
-    pipeline_id_file = tmp_path / "pipeline_id"
-    state_file.write_text("failed")
-    pipeline_id_file.write_text("100")
+    state_file = tmp_path / "gh_state"
+    state_file.write_text("running")
 
     registration = _write_registration(
         sculptor_instance_, "babysit-prompts", "Babysit Prompts", accepts_automated_prompts=True
     )
     try:
-        _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
-        _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
+        _install_state_driven_gh(sculptor_instance_, state_file)
+        _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
         _enable_babysitter(sculptor_instance_)
 
         page = sculptor_instance_.page
@@ -327,19 +310,22 @@ def test_scenario_4_pause_toggle_prevents_prompt(sculptor_instance_: SculptorIns
         agent_tabs = PlaywrightAgentTabBarElement(page)
         _make_registered_agent_mru(page, agent_tabs, "babysit-prompts")
 
-        # Pause the babysitter BEFORE bumping the pipeline id, so no prompt is
-        # ever delivered for the failure.
+        # Pause the babysitter BEFORE flipping the checks to failed, so no prompt
+        # is ever delivered for the failure. Confirm the poller observed the
+        # non-failed ("Running") baseline first, so a missed prompt means pause
+        # worked rather than the transition never arming.
         pr_popover = PlaywrightPrPopoverElement(page)
         pr_chevron = pr_popover.get_chevron()
         expect(pr_chevron).to_be_visible(timeout=60_000)
         pr_chevron.click()
+        expect(pr_popover.get_pipeline_status_badge()).to_have_text("Running", timeout=60_000)
 
         pause_toggle = pr_popover.get_babysitter_pause_toggle()
         expect(pause_toggle).to_be_visible()
         pause_toggle.click()
         page.keyboard.press("Escape")
 
-        _bump_pipeline_id_after_baseline(page, pipeline_id_file, "101")
+        state_file.write_text("failed")
         page.wait_for_timeout(_MERGED_MODE_STABLE_WAIT_MS)
 
         # No prompt is delivered while paused. If the babysitter tab spawned at
@@ -363,18 +349,16 @@ def test_babysitter_drives_registered_terminal_agent(sculptor_instance_: Sculpto
     agent, the babysitter spawns its OWN terminal task on CI failure, waits for
     the program to reach its prompt, and writes the fix-CI prompt to its PTY.
     """
-    state_file = tmp_path / "glab_state"
-    pipeline_id_file = tmp_path / "pipeline_id"
-    state_file.write_text("failed")
-    pipeline_id_file.write_text("100")
+    state_file = tmp_path / "gh_state"
+    state_file.write_text("running")
 
     registration = _write_registration(
         sculptor_instance_, "babysit-prompts", "Babysit Prompts", accepts_automated_prompts=True
     )
     try:
         _enable_babysitter(sculptor_instance_)
-        _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
-        _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
+        _install_state_driven_gh(sculptor_instance_, state_file)
+        _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
 
         page = sculptor_instance_.page
         start_task_and_wait_for_ready(page, "say hello")
@@ -390,7 +374,7 @@ def test_babysitter_drives_registered_terminal_agent(sculptor_instance_: Sculpto
         expect(get_agent_terminal_panel(page)).to_be_visible()
         wait_for_xterm_substring(page, "IDLE-DONE")  # the program is at its prompt
 
-        _bump_pipeline_id_after_baseline(page, pipeline_id_file, "101")
+        _arm_failed_transition(sculptor_instance_, state_file)
 
         # The babysitter spawns its own "CI Babysitter" terminal task (distinct
         # from the user's tab) and writes the fix-CI prompt to its PTY.
@@ -410,14 +394,12 @@ def test_plain_terminal_mru_shows_disabled_reason(sculptor_instance_: SculptorIn
     the PR popover proactively shows the disabled reason and the pause toggle is
     inert — without needing a pipeline failure first.
     """
-    state_file = tmp_path / "glab_state"
-    pipeline_id_file = tmp_path / "pipeline_id"
+    state_file = tmp_path / "gh_state"
     state_file.write_text("failed")
-    pipeline_id_file.write_text("100")
 
     _enable_babysitter(sculptor_instance_)
-    _install_state_driven_glab(sculptor_instance_, state_file, pipeline_id_file)
-    _set_remote(sculptor_instance_, _FAKE_GITLAB_REMOTE)
+    _install_state_driven_gh(sculptor_instance_, state_file)
+    _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
 
     page = sculptor_instance_.page
     start_task_and_wait_for_ready(page, "say hello")
@@ -482,10 +464,8 @@ def test_restart_reuses_existing_babysitter_tab(
     'CI Babysitter' tabs. The fix re-adopts the persisted babysitter task, so a
     post-restart failure delivers its prompt to the existing tab.
     """
-    state_file = tmp_path / "glab_state"
-    pipeline_id_file = tmp_path / "pipeline_id"
-    state_file.write_text("failed")
-    pipeline_id_file.write_text("100")
+    state_file = tmp_path / "gh_state"
+    state_file.write_text("running")
 
     registration: Path | None = None
     try:
@@ -496,8 +476,8 @@ def test_restart_reuses_existing_babysitter_tab(
                 instance, "babysit-prompts", "Babysit Prompts", accepts_automated_prompts=True
             )
             _enable_babysitter(instance)
-            _install_state_driven_glab(instance, state_file, pipeline_id_file)
-            _set_remote(instance, _FAKE_GITLAB_REMOTE)
+            _install_state_driven_gh(instance, state_file)
+            _set_remote(instance, _FAKE_GITHUB_REMOTE)
 
             page = instance.page
             start_task_and_wait_for_ready(page)
@@ -505,7 +485,7 @@ def test_restart_reuses_existing_babysitter_tab(
             agent_tabs = PlaywrightAgentTabBarElement(page)
             _make_registered_agent_mru(page, agent_tabs, "babysit-prompts")
 
-            _bump_pipeline_id_after_baseline(page, pipeline_id_file, "101")
+            _arm_failed_transition(instance, state_file)
 
             babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
             expect(babysitter_tab).to_have_count(1, timeout=90_000)
@@ -529,12 +509,12 @@ def test_restart_reuses_existing_babysitter_tab(
             babysitter_tab = agent_tabs.get_agent_tab_by_name("CI Babysitter")
             expect(babysitter_tab).to_have_count(1)
 
-            # Re-establish the post-restart baseline poll (still at id=101), then
-            # bump so a fresh PIPELINE_FAILED transition fires. With the fix this
-            # is delivered to the existing babysitter tab and there is still
-            # exactly one tab. With the bug a duplicate 'CI Babysitter' tab is
-            # created instead.
-            _bump_pipeline_id_after_baseline(page, pipeline_id_file, "102")
+            # Re-establish a non-failed post-restart baseline, confirm the poller
+            # observed it, then flip back to failed so a fresh PIPELINE_FAILED
+            # transition fires. With the fix this is delivered to the existing
+            # babysitter tab and there is still exactly one tab. With the bug a
+            # duplicate 'CI Babysitter' tab is created instead.
+            _arm_failed_transition(instance, state_file)
 
             expect(agent_tabs.get_agent_tab_by_name("CI Babysitter")).to_have_count(1, timeout=90_000)
             babysitter_tab.first.click()
@@ -551,7 +531,7 @@ def test_restart_reuses_existing_babysitter_tab(
 def test_github_pr_merge_conflict_creates_babysitter(sculptor_instance_: SculptorInstance) -> None:
     """When a GitHub PR opened from a workspace has a merge conflict, the
     coordinator spawns a 'CI Babysitter' terminal tab and writes the configured
-    merge-conflict prompt to its PTY -- at parity with GitLab MR conflict handling.
+    merge-conflict prompt to its PTY.
 
     Regression for SCU-1529: the GitHub PR status path never surfaced
     has_conflicts (the `gh api graphql` query didn't request `mergeable`, and
@@ -579,9 +559,9 @@ def test_github_pr_merge_conflict_creates_babysitter(sculptor_instance_: Sculpto
         babysitter_tab.first.click()
         expect(get_agent_terminal_panel(page)).to_be_visible()
         # The program echoes the whole prompt on one line as `RECEIVED:<prompt>`;
-        # the merge-conflict fragment sits mid-prompt ("This MR has a merge
+        # the merge-conflict fragment sits mid-prompt ("This PR has a merge
         # conflict ..."), so assert the fragment appears on a RECEIVED line
         # rather than immediately after the `RECEIVED:` prefix.
-        wait_for_xterm_substring(page, f"RECEIVED:This MR has a {_MERGE_CONFLICT_PROMPT_FRAGMENT}", timeout_ms=90_000)
+        wait_for_xterm_substring(page, f"RECEIVED:This PR has a {_MERGE_CONFLICT_PROMPT_FRAGMENT}", timeout_ms=90_000)
     finally:
         registration.unlink(missing_ok=True)

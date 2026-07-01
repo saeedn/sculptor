@@ -21,17 +21,14 @@ from typing import Generator
 from typing import Iterator
 from typing import Literal
 from typing import TypeVar
-from uuid import uuid4
 
 import anyio
 import psutil
 import typeid.errors
 from fastapi import Depends
-from fastapi import File as FastAPIFile
 from fastapi import HTTPException
 from fastapi import Request
 from fastapi import Response
-from fastapi import UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import StreamingResponse
@@ -171,7 +168,6 @@ from sculptor.web.data_types import TerminalInputRequest
 from sculptor.web.data_types import ToolAvailability
 from sculptor.web.data_types import UpdateUserConfigRequest
 from sculptor.web.data_types import UpdateWorkspaceRequest
-from sculptor.web.data_types import UploadFileResponse
 from sculptor.web.data_types import WorkspaceDiffResponse
 from sculptor.web.data_types import WorkspaceFileEntry
 from sculptor.web.data_types import WorkspaceFileListResponse
@@ -1918,11 +1914,6 @@ def _extract_hostname(url: str) -> str:
     return parsed.hostname or ""
 
 
-def _is_gitlab_url(url: str) -> bool:
-    """Check if a URL points to a GitLab instance."""
-    return "gitlab" in _extract_hostname(url).lower()
-
-
 def _is_github_url(url: str) -> bool:
     """Check if a URL points to a GitHub instance."""
     return "github" in _extract_hostname(url).lower()
@@ -2062,7 +2053,6 @@ def get_repo_info(
 
         # Get origin URL and provider detection info
         origin_url = _get_origin_url(repo_path)
-        is_gitlab_origin = _is_gitlab_url(origin_url) if origin_url is not None else False
         is_github_origin = _is_github_url(origin_url) if origin_url is not None else False
 
         return RepoInfo(
@@ -2070,7 +2060,6 @@ def get_repo_info(
             current_branch=current_branch,
             recent_branches=branches,
             project_id=project.object_id,
-            is_gitlab_origin=is_gitlab_origin,
             is_github_origin=is_github_origin,
         )
     except HTTPException:
@@ -2883,30 +2872,6 @@ def open_path_in_app(
     """Open a file system path in an external application."""
     target_path = Path(open_path_in_app_request.path).expanduser()
     return open_path_in_external_app(open_path_in_app_request.app, target_path)
-
-
-MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024  # 20MB
-
-
-@router.post("/api/v1/upload-file")
-def upload_file(
-    file: UploadFile = FastAPIFile(...),
-    user_session: UserSession = Depends(get_user_session),
-) -> UploadFileResponse:
-    """Accept a multipart file upload and store it in the backend upload directory."""
-    content = file.file.read(MAX_UPLOAD_SIZE_BYTES + 1)
-    if len(content) > MAX_UPLOAD_SIZE_BYTES:
-        raise HTTPException(status_code=413, detail="File exceeds maximum size of 20MB")
-
-    original_ext = Path(file.filename or "").suffix
-    file_id = f"{uuid4()}{original_ext}"
-
-    settings = get_settings()
-    upload_dir = settings.upload_path
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    (upload_dir / file_id).write_bytes(content)
-
-    return UploadFileResponse(file_id=file_id)
 
 
 class TraceBatchRequest(SerializableModel):

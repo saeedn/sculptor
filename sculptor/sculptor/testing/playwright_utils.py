@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import itertools
 import json
-import re
 from collections.abc import Callable
 from collections.abc import Mapping
-from collections.abc import Sequence
 from typing import TypeVar
 
 import playwright
@@ -426,40 +424,6 @@ def delete_project_via_settings(
 
     # Navigate back to the Add Workspace page after deletion
     navigate_to_add_workspace_page(page)
-
-
-def upload_file_via_api(page: Page, *, name: str, mime_type: str, content: bytes) -> str:
-    """Upload a file through the harness-agnostic upload endpoint, returning its id.
-
-    The endpoint accepts any file type — the image-only validation lives in the
-    frontend — so this is how an integration test attaches a non-image file the
-    UI would refuse. ``page.request`` inherits the page's session cookie.
-    """
-    base_url = page.url.split("#")[0].rstrip("/")
-    response = page.request.post(
-        f"{base_url}/api/v1/upload-file",
-        multipart={"file": {"name": name, "mimeType": mime_type, "buffer": content}},
-    )
-    assert response.ok, f"upload-file failed: {response.status} {response.text()}"
-    # The endpoint serializes UploadFileResponse with a camelCase alias, so the
-    # JSON key is `fileId` (matching the frontend's FileUploadUtils reader).
-    return response.json()["fileId"]
-
-
-def send_message_via_api(page: Page, *, message: str, files: Sequence[str]) -> None:
-    """Send a chat message (with attached upload ids) to the active agent via the API.
-
-    Parses the workspace/agent ids from the page URL (``/ws/<ws>/agent/<agent>``).
-    """
-    base_url = page.url.split("#")[0].rstrip("/")
-    match = re.search(r"/ws/([^/]+)/agent/([^/?#]+)", page.url)
-    assert match is not None, f"could not parse workspace/agent ids from URL: {page.url}"
-    workspace_id, agent_id = match.group(1), match.group(2)
-    response = page.request.post(
-        f"{base_url}/api/v1/workspaces/{workspace_id}/agents/{agent_id}/messages",
-        data={"message": message, "files": files},
-    )
-    assert response.ok, f"send-message failed: {response.status} {response.text()}"
 
 
 # NOTE: The helpers below use page.goto() and page.evaluate(), which are

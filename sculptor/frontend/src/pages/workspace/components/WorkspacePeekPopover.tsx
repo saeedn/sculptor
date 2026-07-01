@@ -11,7 +11,6 @@ import { prStatusAtomFamily } from "~/common/state/atoms/prStatus";
 import { tasksArrayAtom } from "~/common/state/atoms/tasks";
 import { workspaceBranchAtomFamily } from "~/common/state/atoms/workspaceBranch";
 import { workspaceAtomFamily } from "~/common/state/atoms/workspaces";
-import { useGitProvider } from "~/common/state/hooks/useGitProvider";
 import { useThemeDangerColor, useThemeSuccessColor, useThemeWarningColor } from "~/common/state/hooks/useTheme.ts";
 import { useWorkspaceDiff } from "~/common/state/hooks/useWorkspaceDiff";
 import { activePanelPerZoneAtom, zoneAssignmentsAtom, zoneVisibilityAtom } from "~/components/panels/atoms";
@@ -20,7 +19,6 @@ import { activeFileBrowserTabAtomFamily } from "~/components/panels/atoms";
 import { changesScopeAtomFamily } from "../panels/fileBrowser/atoms";
 import { parseDiffStats } from "../utils/parseDiffStats";
 import { AgentStatusDot } from "./AgentStatusDot";
-import type { GitProvider } from "./PrButton";
 import styles from "./WorkspacePeekPopover.module.scss";
 
 type WorkspacePeekPopoverProps = {
@@ -190,14 +188,12 @@ const PeekBanner = ({
 const PeekHeader = ({
   workspaceName,
   prStatus,
-  gitProvider,
   summary,
   workspaceStatus,
   onNavigate,
 }: {
   workspaceName: string;
   prStatus: PrStatusInfo | null;
-  gitProvider: GitProvider;
   summary: string;
   workspaceStatus: WorkspacePeekAgentStatus;
   onNavigate: () => void;
@@ -222,8 +218,7 @@ const PeekHeader = ({
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
         >
-          {gitProvider === "github" ? "PR" : "MR"} {gitProvider === "github" ? "#" : "!"}
-          {prStatus.prIid}
+          PR #{prStatus.prIid}
           {prStatus.prState === "open" && (
             <>
               <span className={`${styles.statusDot} ${getPeekPipelineDotClass(prStatus.pipelineStatus)}`} />
@@ -320,7 +315,6 @@ export const WorkspacePeekPopover = ({
   const allTasks = useAtomValue(tasksArrayAtom);
   const branchInfo = useAtomValue(workspaceBranchAtomFamily(workspaceId));
   const prStatus = useAtomValue(prStatusAtomFamily(workspaceId));
-  const gitProvider = useGitProvider(workspace?.projectId ?? "");
   const { data: diff, isFetching } = useWorkspaceDiff(workspaceId);
   const isShimmering = useTimedLatch(isFetching, SHIMMER_MIN_HOLD_MS);
   const diffStats = useMemo(() => parseDiffStats(diff?.targetBranchDiff), [diff?.targetBranchDiff]);
@@ -468,7 +462,6 @@ export const WorkspacePeekPopover = ({
       <PeekHeader
         workspaceName={workspaceName}
         prStatus={prStatus}
-        gitProvider={gitProvider}
         summary={summary}
         workspaceStatus={workspaceStatus}
         onNavigate={() => onNavigate(workspaceId)}

@@ -98,7 +98,13 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
           <Outlet />
         </PanelRegistryProvider>
         {showVersionIndicator && (
-          <Flex align="center" mx="3" mb="2" flexShrink="0" style={{ background: "var(--gray-2)" }}>
+          <Flex
+            align="center"
+            px="3"
+            py="2"
+            flexShrink="0"
+            style={{ background: "var(--gray-2)", borderTop: "1px solid var(--gray-a5)" }}
+          >
             <Flex flexBasis="0" flexGrow="1" />
             <Flex flexBasis="0" flexGrow="1" justify="center">
               <DevModeIndicator />

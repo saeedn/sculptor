@@ -34,7 +34,6 @@ class SculptorSettings(BaseSettings):
     DATABASE_URL: str = "sqlite:///" + str(get_internal_folder() / "database.db")
     LOG_LEVEL: str = "DEBUG"
     WORKSPACE_SYNC_DIR: str = str(get_internal_folder() / "artifacts" / "workspace_sync")
-    SERVE_STATIC_FILES_DIR: str | None = None
     LOG_PATH: str = str(DEFAULT_LOG_PATH)
 
     # When provided, all requests are expected to have this exact key in the `x-session-token` header (or GET param or cookie).

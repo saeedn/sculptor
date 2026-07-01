@@ -111,8 +111,6 @@ def _snapshot_setup_state(
     out: list[tuple[WorkspaceSetupStatus, WorkspaceSetupOutputChunk | None]] = []
     seen_workspace_ids: set[str] = set()
     for state in runner.iter_states():
-        if state.status == "not_configured":
-            continue
         seen_workspace_ids.add(state.workspace_id)
         ws_id = WorkspaceID(state.workspace_id)
         status = WorkspaceSetupStatus(
@@ -250,8 +248,6 @@ def stream_everything(
                         services=services,
                         queue=updates_queue_loosely_typed,
                         concurrency_group=concurrency_group,
-                        workspace_filter=None,
-                        project_filter=None,
                     )
                 )
                 # Initialize state tracking

@@ -16,7 +16,6 @@ from fastapi import HTTPException
 from loguru import logger
 from pydantic import alias_generators
 from starlette.requests import Request
-from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket
 
 from sculptor.config.settings import SculptorSettings
@@ -37,10 +36,6 @@ from sculptor.utils.tracing import stop_and_write_trace
 from sculptor.web.auth import UserSession
 from sculptor.web.auth import authenticate_anonymous
 from sculptor.web.streams import ServerStopped
-
-
-def mount_static_files(app: FastAPI, static_directory: str) -> None:
-    app.mount("/", StaticFiles(directory=static_directory, html=True), name="frontend-dist")
 
 
 # Note that this is overridden in tests to use the test settings
@@ -291,9 +286,6 @@ async def lifespan(app: App):
                         )
                         services.project_service.activate_project(project)
                         update_most_recently_used_project(project_id=project.object_id)
-
-                if settings.SERVE_STATIC_FILES_DIR is not None:
-                    mount_static_files(app, settings.SERVE_STATIC_FILES_DIR)
 
                 logger.info("Using DB: {}", services.settings.DATABASE_URL)
 

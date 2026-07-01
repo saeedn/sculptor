@@ -47,7 +47,7 @@ const CMDK_KEYS = new Set(["Enter", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowR
  * font can lay them out as a single text run with kerning / ligature
  * lookups in play. Splitting per-character broke that, especially for
  * thin glyphs like ⇧ which then looked like a ghost. Same approach as
- * the chat input's `<KeyboardHint>`.
+ * the shared `<KeyboardHint>` component.
  */
 const ShortcutHint = ({ binding }: { binding: string }): ReactElement => {
   const display = formatShortcutForDisplay(binding);

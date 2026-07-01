@@ -16,7 +16,7 @@ from sculpt.client.models.create_workspace_request_v2 import CreateWorkspaceRequ
 from sculpt.client.models.http_validation_error import HTTPValidationError
 from sculpt.client.models.terminal_input_request import TerminalInputRequest
 from sculpt.client.types import UNSET
-from sculpt.commands._follow_helpers import follow_and_stream_messages
+from sculpt.commands._follow_helpers import follow_until_terminal
 from sculpt.commands._harness_helpers import resolve_harness_selection
 from sculpt.commands._workspace_helpers import resolve_requested_branch_name
 from sculpt.commands.data_types import RunOutput
@@ -218,4 +218,4 @@ def run_cmd(
     if follow:
         if not json_output:
             typer.echo(f"Following agent {agent_result.id}...", err=True)
-        follow_and_stream_messages(base_url, agent_result.id, json_output=json_output)
+        follow_until_terminal(base_url, agent_result.id, json_output=json_output)

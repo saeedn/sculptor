@@ -699,8 +699,8 @@ export const useTerminal = ({
     };
   }, [isVisible, handleResize, isAgentTerminal]);
 
-  // Mirrors the `interrupt_agent` pattern in ChatInput.tsx — we read the
-  // resolved binding from the keybindings registry and attach a window-level
+  // We read the resolved `interrupt_agent` binding from the keybindings
+  // registry and attach a window-level
   // keydown listener that only fires when this terminal instance has
   // keyboard focus. We use capture phase + stopImmediatePropagation so a
   // user-rebound combo that overlaps with a global keybinding (e.g.

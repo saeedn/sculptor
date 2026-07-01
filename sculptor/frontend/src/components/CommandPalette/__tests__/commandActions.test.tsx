@@ -150,8 +150,8 @@ describe("commandActions", () => {
     });
 
     it("when two consumers mount under the same id, the latest registration wins", () => {
-      // Two simultaneous registrants is the documented "chat panel mounts in
-      // two routes during navigation" case. The cleanup of the older mount
+      // Two simultaneous registrants is the documented "terminal panel mounts
+      // in two routes during navigation" case. The cleanup of the older mount
       // must NOT clobber the newer registration, thanks to the same-ref
       // identity check on the stored stable wrapper.
       const store = makeStore();

@@ -80,9 +80,9 @@ export const rollbackDeleteTaskAtom = atom(
 
 // Holds optimistic agent titles by agent id while a rename is in flight (and for a
 // short trailing window after, to mask stale WebSocket pushes — see the comment in
-// AgentTabs.tsx where this is set). Both AgentTabs and the chat intro read from this
-// atom so the tab label and intro text update in lockstep instead of the intro waiting
-// for the rename round-trip to update taskAtomFamily.
+// AgentTabs.tsx where this is set). AgentTabs reads from this atom so the tab label
+// updates immediately instead of waiting for the rename round-trip to update
+// taskAtomFamily.
 export const pendingAgentTitlesAtom = atom<Readonly<Record<string, string>>>({});
 
 // Fine-grained derived atoms for commonly-read task fields.

@@ -6,9 +6,8 @@ import type { Command, DynamicProvider } from "../types.ts";
 
 /**
  * Surfaces one Cmd+K command per registered IDE panel — Files,
- * Actions, Agent tasks, Terminal, Notes (if the feature flag is on),
- * and any future panel that gets added to `workspacePanels` /
- * `panelRegistryAtom`. Each command toggles that panel's visibility via
+ * Actions, Terminal, and any future panel that gets added to
+ * `workspacePanels` / `panelRegistryAtom`. Each command toggles that panel's visibility via
  * `usePanelActions().togglePanel`, which handles open / switch-active /
  * close-zone correctly even when several panels share a zone.
  *

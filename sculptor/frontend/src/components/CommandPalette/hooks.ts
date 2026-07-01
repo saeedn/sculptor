@@ -22,16 +22,16 @@ import type { Command, DynamicProvider, PageId, PaletteContext } from "./types.t
  * `pending` state. After this, we release pending and let the user close
  * the palette; the underlying perform may still complete in the background.
  * Most commands finish in <100ms and async ones
- * (like `updateField` for experimental flags) typically finish in <2s.
+ * (like `updateField` for a settings toggle) typically finish in <2s.
  */
 const COMMAND_TIMEOUT_MS = 30_000;
 
 /**
  * Build the palette context. Re-runs whenever the React Router location
  * changes (`useImbueLocation` re-renders consumers on every navigation),
- * the zen-mode atom changes, the chat panel mounts/unmounts, or the page
- * stack changes. Each ctx field is keyed on a primitive so the returned
- * object is reference-stable across unrelated renders.
+ * the terminal panel mounts/unmounts, or the page stack changes. Each ctx
+ * field is keyed on a primitive so the returned object is reference-stable
+ * across unrelated renders.
  */
 export const usePaletteContext = (): PaletteContext => {
   const loc = useImbueLocation();

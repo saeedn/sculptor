@@ -15,7 +15,7 @@ export type SingleFileDiffTab = {
   diffString?: string;
 };
 
-export type FileViewTab = {
+type FileViewTab = {
   kind: "file-view";
   /** Prefixed path used as the tab identity key (`FILE_VIEW_PREFIX + realPath`). */
   filePath: string;
@@ -24,7 +24,7 @@ export type FileViewTab = {
   viewedAt: number;
 };
 
-export type CommitFileDiffTab = {
+type CommitFileDiffTab = {
   kind: "commit-diff";
   /** Prefixed path used as the tab identity key (`COMMIT_DIFF_PREFIX + commitHash + ":" + realPath`). */
   filePath: string;

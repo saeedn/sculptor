@@ -126,7 +126,7 @@ const buildTabFromPayload = (payload: SetActiveDiffPayload, now: number): { tab:
 /**
  * Unified atom that activates (or opens) a diff tab of any kind.
  */
-export const setActiveDiffTabAtom = atom(null, (get, set, payload: SetActiveDiffPayload) => {
+const setActiveDiffTabAtom = atom(null, (get, set, payload: SetActiveDiffPayload) => {
   const stateAtom = diffPanelStateAtomFamily(payload.workspaceId);
   const state = get(stateAtom);
   const now = Date.now();

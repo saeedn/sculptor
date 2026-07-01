@@ -221,9 +221,9 @@ class TaskView(LimitedBaseTaskView[TaskInputType, TaskStateType], Generic[TaskIn
 
 class CodingAgentTaskView(TaskView[AgentTaskInputsV2, AgentTaskStateV2]):
     """
-    messages are the primary way of interacting with an agent.
-
-    this class is simply a way of deriving the current state of the agent based on the message log.
+    Derives the current view of a terminal agent (status, title, workspace metadata)
+    from the task's runner-message log. The agent itself is driven through its PTY;
+    the log carries the lifecycle/status/signal messages this view is computed from.
 
     because agents are run as idempotent tasks, consumers MUST be able to handle duplicate messages.
     this is particularly tricky because you cannot deduplicate on message_id here --

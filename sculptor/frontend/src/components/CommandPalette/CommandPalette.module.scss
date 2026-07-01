@@ -287,7 +287,7 @@
 }
 
 // Per-row shortcut hint, shown at the right edge of the row. Mirrors
-// the chat input's `<KeyboardHint>` styling: inherited system font (no
+// the `<KeyboardHint>` styling: inherited system font (no
 // monospace, no bold) so the platform's modifier-glyph rendering kicks
 // in and ⌘ / ⇧ / ⌥ / ⌃ lay out cleanly next to letters. Color is muted
 // so the hint stays a quiet companion to the row, not a focal point.

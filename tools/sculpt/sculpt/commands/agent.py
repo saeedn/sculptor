@@ -153,7 +153,9 @@ def create(
 @agent_app.command("list")
 def list_cmd(
     workspace: str | None = typer.Option(None, "--workspace", "-w", help="Workspace ID (or set SCULPT_WORKSPACE_ID)"),
-    status: str | None = typer.Option(None, "--status", "-s", help="Filter by status (BUILDING, ERROR, READY, RUNNING)"),
+    status: str | None = typer.Option(
+        None, "--status", "-s", help="Filter by status (BUILDING, ERROR, READY, RUNNING, WAITING)"
+    ),
     show_all: bool = typer.Option(False, "--all", help="List agents across all workspaces"),
     repo: str | None = typer.Option(None, "--repo", help="Path to the repository"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),

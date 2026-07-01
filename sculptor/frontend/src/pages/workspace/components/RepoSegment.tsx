@@ -14,7 +14,6 @@ type RepoSegmentProps = {
   sourcePath: string;
   environmentPath: string | null;
   projectName: string;
-  "data-testid"?: string;
 };
 
 export const RepoSegment = ({ sourcePath, environmentPath, projectName }: RepoSegmentProps): ReactElement => {

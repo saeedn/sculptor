@@ -116,7 +116,7 @@ export type Command = {
   perform: (args: CommandRunArgs) => void | Promise<void>;
   /**
    * If true, the palette stays open after running this command. Useful for toggles
-   * (e.g. flipping an experimental flag).
+   * (e.g. flipping a settings switch).
    */
   keepOpen?: boolean;
   /**

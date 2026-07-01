@@ -1,1 +1,1 @@
-# User configuration and telemetry services
+# User configuration services

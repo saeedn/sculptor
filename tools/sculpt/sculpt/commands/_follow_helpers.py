@@ -75,8 +75,8 @@ def noop_status(_snapshot: AgentSnapshot) -> None:
     pass
 
 
-def follow_and_stream_messages(base_url: str, agent_id: str, *, json_output: bool) -> None:
-    """Follow an agent until it reaches a terminal/waiting state. Used by run and send commands."""
+def follow_until_terminal(base_url: str, agent_id: str, *, json_output: bool) -> None:
+    """Follow an agent until it reaches a terminal/waiting state. Used by the run command."""
     session_token = get_session_token_safe(base_url, json_output)
     if json_output:
         status_cb = on_status_json

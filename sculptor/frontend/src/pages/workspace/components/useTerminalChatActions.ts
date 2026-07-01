@@ -7,9 +7,9 @@ import { terminalPromptRejectedToastAtom } from "~/common/state/atoms/toasts.ts"
 import { useTaskAcceptsAutomatedPrompts, useTaskStatus } from "~/common/state/hooks/useTaskHelpers.ts";
 
 /**
- * Terminal-panel counterpart of useChatData's chatActions registration: the
- * single seam that makes the prompt-driven features (Commit, Create PR,
- * custom actions) work for automated-prompt-capable terminal agents.
+ * Registers the chatActions seam for the terminal panel: the single seam that
+ * makes the prompt-driven features (Commit, Create PR, custom actions) work
+ * for automated-prompt-capable terminal agents.
  *
  * When the agent's registration opted in (`acceptsAutomatedPrompts`),
  * `sendMessage` (auto-send) and `appendText` (non-auto-send draft) both route
@@ -35,8 +35,7 @@ export const useTerminalChatActions = (taskId: string): void => {
     // differ only in whether the submit Enter is sent. `submit: true`
     // (auto-send actions, Commit, Create PR) types the prompt and submits it;
     // `submit: false` (non-auto-send "draft" actions) types it into the PTY
-    // and leaves it unsubmitted for the user to edit/send — the terminal
-    // counterpart of appendText populating a rich-chat composer.
+    // and leaves it unsubmitted for the user to edit/send.
     const writePrompt = async (text: string, submit: boolean): Promise<void> => {
       try {
         await postAgentTerminalInput({ path: { agent_id: taskId }, body: { text, submit } });

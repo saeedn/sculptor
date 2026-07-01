@@ -25,12 +25,6 @@ type PierreDiffViewProps = {
   oldLines?: Array<string>;
   /** Full new-file lines (each ending with `\n`). Enables hunk expansion. */
   newLines?: Array<string>;
-  /**
-   * When true, the component does not render its own drag handle.
-   * Use this when a parent component renders a single handle that spans
-   * multiple diffs (e.g. the combined "Review all" view).
-   */
-  hideHandle?: boolean;
 };
 
 /**
@@ -121,7 +115,6 @@ export const PierreDiffView = ({
   className,
   oldLines,
   newLines,
-  hideHandle = false,
 }: PierreDiffViewProps): ReactElement => {
   const splitRatio = useAtomValue(splitDiffColumnRatioAtom);
   const codeTheme = useAtomValue(themeCodeThemeAtom);
@@ -264,7 +257,7 @@ export const PierreDiffView = ({
         </div>
         {hasScrollbar && <StickyHorizontalScrollbar containerRef={pierreRef} />}
       </div>
-      {isSplit && !hideHandle && <SplitDiffHandle containerRef={wrapperRef as RefObject<HTMLElement | null>} />}
+      {isSplit && <SplitDiffHandle containerRef={wrapperRef as RefObject<HTMLElement | null>} />}
     </div>
   );
 };

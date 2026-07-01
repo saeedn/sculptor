@@ -24,16 +24,12 @@ import { PanelRegistryProvider } from "../components/panels/PanelRegistryProvide
 import { RepoPathDialog } from "../components/RepoPathDialog.tsx";
 import { Toast } from "../components/Toast.tsx";
 import { TopBar } from "../components/TopBar.tsx";
-import { VersionDisplay } from "../components/VersionDisplay.tsx";
+import { VersionPopover } from "../components/VersionPopover.tsx";
 import { WarningStatusBanner } from "../components/WarningStatusBanner.tsx";
 import { workspaceDefaultLayout, workspacePanels } from "../pages/workspace/panels/workspacePanels.ts";
 import { usePageLayoutKeyboardShortcuts } from "./hooks/usePageLayoutKeyboardShortcuts.ts";
 
-type PageLayoutProps = {
-  showVersionIndicator?: boolean;
-};
-
-export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): ReactElement => {
+export const PageLayout = (): ReactElement => {
   const backendStatus = useAtomValue(backendStatusAtom);
   const deleteErrorToast = useAtomValue(deleteErrorToastAtom);
   const setDeleteErrorToast = useSetAtom(deleteErrorToastAtom);
@@ -97,23 +93,21 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
         <PanelRegistryProvider panels={workspacePanels} defaultLayout={workspaceDefaultLayout}>
           <Outlet />
         </PanelRegistryProvider>
-        {showVersionIndicator && (
-          <Flex
-            align="center"
-            px="3"
-            py="2"
-            flexShrink="0"
-            style={{ background: "var(--gray-2)", borderTop: "1px solid var(--gray-a5)" }}
-          >
-            <Flex flexBasis="0" flexGrow="1" />
-            <Flex flexBasis="0" flexGrow="1" justify="center">
-              <DevModeIndicator />
-            </Flex>
-            <Flex flexBasis="0" flexGrow="1" justify="end">
-              <VersionDisplay />
-            </Flex>
+        <Flex
+          align="center"
+          px="3"
+          py="2"
+          flexShrink="0"
+          style={{ background: "var(--gray-2)", borderTop: "1px solid var(--gray-a5)" }}
+        >
+          <Flex flexBasis="0" flexGrow="1" />
+          <Flex flexBasis="0" flexGrow="1" justify="center">
+            <DevModeIndicator />
           </Flex>
-        )}
+          <Flex flexBasis="0" flexGrow="1" justify="end">
+            <VersionPopover />
+          </Flex>
+        </Flex>
         {isProjectPathInaccessible && (
           <WarningStatusBanner
             message={`Project folder not found: ${currentProject.name}.`}

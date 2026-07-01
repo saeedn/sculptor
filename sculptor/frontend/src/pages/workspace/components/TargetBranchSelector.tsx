@@ -47,7 +47,6 @@ export const TargetBranchSelector = ({
       selectedBranch={currentTargetBranch}
       onBranchSelected={onBranchChange}
       branches={branches}
-      triggerVariant="ghost"
       triggerContent={
         isAmber ? (
           <span className={styles.amberText}>

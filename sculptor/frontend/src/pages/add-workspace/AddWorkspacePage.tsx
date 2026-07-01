@@ -403,7 +403,6 @@ export const AddWorkspacePage = (): ReactElement => {
                 repoInfo={repoInfo}
                 setUserSelectedBranch={setUserSelectedBranch}
                 sourceBranch={sourceBranch}
-                triggerVariant="ghost"
               />
             ) : (
               <Button disabled={true} className={styles.loadingButton}>

@@ -26,7 +26,6 @@ type BranchSelectorCoreProps = {
   specialBranchFilter?: (branch: BranchWithBadges) => boolean;
 
   triggerContent: ReactNode;
-  triggerVariant?: "soft" | "ghost";
 
   disabled?: boolean;
   testId?: string;
@@ -45,7 +44,6 @@ export const BranchSelectorCore = ({
   branches,
   specialBranchFilter,
   triggerContent,
-  triggerVariant = "soft",
   disabled = false,
   testId,
   contentTestId,
@@ -138,7 +136,7 @@ export const BranchSelectorCore = ({
         onOpenChange?.(open);
       }}
     >
-      <Select.Trigger variant={triggerVariant} className={className} data-testid={testId}>
+      <Select.Trigger variant="ghost" className={className} data-testid={testId}>
         {triggerContent}
       </Select.Trigger>
       <Select.Content

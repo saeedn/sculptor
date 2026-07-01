@@ -13,11 +13,9 @@ const COMMIT_BUTTON_STYLE: CSSProperties = { minWidth: 180 };
 
 type CommitButtonProps = {
   changesCount: number;
-  /** Called after the commit message is sent. */
-  onCommit?: () => void;
 };
 
-export const CommitButton = ({ changesCount, onCommit }: CommitButtonProps): ReactElement => {
+export const CommitButton = ({ changesCount }: CommitButtonProps): ReactElement => {
   const chatActions = useAtomValue(chatActionsAtom);
   const commitPrompt = useAtomValue(commitPromptAtom);
   const [isPromptDialogOpen, setIsPromptDialogOpen] = useState(false);
@@ -26,7 +24,6 @@ export const CommitButton = ({ changesCount, onCommit }: CommitButtonProps): Rea
 
   const handleClick = (): void => {
     chatActions.sendMessage?.(commitPrompt);
-    onCommit?.();
   };
 
   return (

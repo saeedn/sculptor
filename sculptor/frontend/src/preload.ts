@@ -6,7 +6,6 @@ import {
   BACKEND_STATUS_CHANGE_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
-  SAVE_FILE_CHANNEL_NAME,
   SELECT_PROJECT_DIRECTORY_CHANNEL_NAME,
   ZOOM_COMMAND_CHANNEL_NAME,
 } from "./electron/constants.ts";
@@ -25,10 +24,6 @@ contextBridge.exposeInMainWorld("sculptor", {
   removeBackendStatusListener: () => ipcRenderer.removeAllListeners(BACKEND_STATUS_CHANGE_CHANNEL_NAME),
   getSessionToken: () => ipcRenderer.invoke("get-session-token"),
   getBackendPort: () => ipcRenderer.invoke(BACKEND_PORT_CHANNEL_NAME),
-  // File storage operations
-  saveFile: (fileData: ArrayBuffer, filename: string): Promise<string> =>
-    ipcRenderer.invoke(SAVE_FILE_CHANNEL_NAME, fileData, filename),
-  getBackendUrl: (): Promise<string | null> => ipcRenderer.invoke("get-backend-url"),
   // Dev-mode metadata: resolves to null in packaged builds.
   getDevInfo: (): Promise<SculptorDevInfo | null> => ipcRenderer.invoke(GET_DEV_INFO_CHANNEL_NAME),
   // Zoom commands dispatched from the View menu / accelerators (or the

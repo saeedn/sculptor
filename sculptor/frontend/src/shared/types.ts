@@ -36,9 +36,6 @@ export type SculptorElectronAPI = {
   removeBackendStatusListener: () => void;
   getSessionToken: () => Promise<string>;
   getBackendPort: () => Promise<number>;
-  // File storage operations
-  saveFile: (fileData: ArrayBuffer, filename: string) => Promise<string>;
-  getBackendUrl: () => Promise<string | null>;
   // Dev-mode metadata: resolves to null in packaged builds.
   getDevInfo: () => Promise<SculptorDevInfo | null>;
   // Zoom commands forwarded from the main process (View menu / accelerators

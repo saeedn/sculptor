@@ -16,7 +16,6 @@ import {
   BACKEND_STATUS_CHANGE_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
-  SAVE_FILE_CHANNEL_NAME,
   SELECT_PROJECT_DIRECTORY_CHANNEL_NAME,
   ZOOM_COMMAND_CHANNEL_NAME,
 } from "./constants";
@@ -123,11 +122,6 @@ let window: BrowserWindow | null = null;
 let currentBackendStatus: AnyBackendStatus = { status: "loading", payload: { message: "Initializing..." } };
 let stderrBuffer = "";
 let isQuitting = false;
-// Resolved once the local backend URL is known (always the local port now).
-let resolveBackendUrl: ((url: string | null) => void) | null = null;
-const backendUrlReady: Promise<string | null> = new Promise((resolve) => {
-  resolveBackendUrl = resolve;
-});
 
 const MAX_STDERR_BUFFER_SIZE = 10 * 1024 * 1024; // 10 MB
 const MAX_BYTE_PER_CHARACTER = 4; // at worst characters are 4 bytes in JS
@@ -782,32 +776,6 @@ app.whenReady().then(async () => {
   });
 
   ipcMain.handle(GET_DEV_INFO_CHANNEL_NAME, () => getDevInfo());
-  ipcMain.handle("get-backend-url", () => backendUrlReady);
-
-  ipcMain.handle(SAVE_FILE_CHANNEL_NAME, async (_event, fileData: ArrayBuffer, originalFilename: string) => {
-    try {
-      const userDataPath = app.getPath("userData");
-      const filesDir = path.join(userDataPath, "files");
-
-      if (!fs.existsSync(filesDir)) {
-        fs.mkdirSync(filesDir, { recursive: true });
-      }
-
-      const { randomUUID } = await import("crypto");
-      const uuid = randomUUID();
-      const ext = path.extname(originalFilename);
-      const uniqueFilename = `${uuid}${ext}`;
-      const filePath = path.join(filesDir, uniqueFilename);
-
-      fs.writeFileSync(filePath, Buffer.from(fileData));
-
-      logger.info(`File saved to: ${filePath}`);
-      return filePath;
-    } catch (error) {
-      logger.error("Error saving file:", error);
-      throw error;
-    }
-  });
 
   // We can only create the window _after_ the handlers have been defined, because createWindow() invokes preload.ts
   // which depends on the handlers.
@@ -823,10 +791,6 @@ app.whenReady().then(async () => {
   logger.info(
     `[main] backend startup: ${shouldStartBackend} (IS_DEV=${IS_DEVELOPMENT}, START_BACKEND_IN_DEV=${process.env.START_BACKEND_IN_DEV})`,
   );
-
-  // The backend URL is always the local port now (custom-command backends are
-  // gone), so the get-backend-url IPC resolves immediately.
-  resolveBackendUrl?.(null);
 
   if (shouldStartBackend) {
     sendBackendState({ status: "loading", payload: { message: "Waiting for backend..." } });

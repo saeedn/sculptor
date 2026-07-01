@@ -2,7 +2,6 @@ import { HTTPException, RequestTimeoutError, ValidationError } from "~/common/Er
 
 import { client } from "./api/client.gen";
 import { setupAuthHeaders } from "./common/Auth.ts";
-import { initBackendCapabilities } from "./common/state/atoms/backendCapabilities.ts";
 import { createRequestTracker } from "./common/state/requestTracking.ts";
 import { makeRequestId } from "./common/Utils.ts";
 
@@ -115,25 +114,13 @@ export let baseUrl: string;
  * This function:
  * 1. Sets up the base URL and custom fetch implementation
  * 2. Adds a request interceptor to handle meta options for tracking
- * 3. Initialises backend capability flags for the session
  */
 export const configureClient = async (): Promise<void> => {
-  let isRemoteBackend = false;
-
   if (API_URL_BASE !== undefined) {
     baseUrl = API_URL_BASE;
   } else if (window.sculptor) {
-    const backendUrl = await window.sculptor.getBackendUrl();
-
-    if (backendUrl) {
-      baseUrl = backendUrl;
-      isRemoteBackend = true;
-    } else {
-      baseUrl = `http://localhost:${await window.sculptor.getBackendPort()}`;
-    }
+    baseUrl = `http://localhost:${await window.sculptor.getBackendPort()}`;
   }
-
-  initBackendCapabilities(isRemoteBackend);
 
   client.setConfig({
     baseUrl,

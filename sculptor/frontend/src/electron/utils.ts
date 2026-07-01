@@ -22,19 +22,18 @@ export const selectProjectDirectory = async (): Promise<string | null> => {
 
 // Titlebar constants
 export const TITLEBAR_HEIGHT = 40;
-const SIDEBAR_CLOSED_LEFT_PADDING = 80;
-const SIDEBAR_OPEN_LEFT_PADDING = 20;
+const TITLEBAR_MAC_LEFT_PADDING = 80;
 // On macOS the traffic-light buttons are drawn by the OS at a fixed device-pixel
 // size and position, but the rest of the page is zoomed via CSS `zoom` on
 // document.body. To keep the reserved gutter width matching the native buttons
 // regardless of zoom level, divide our base px values by --app-zoom.
 const macZoomPaddingCss = (px: number): string => `calc(${px}px / var(--app-zoom))`;
-export const getTitleBarLeftPadding = (isSidebarOpen: boolean): string => {
+export const getTitleBarLeftPadding = (): string => {
   // On macOS, the titlebar traffic light buttons are on the left, so we need to add padding
   if (!isMac()) {
     return "12px";
   }
-  return macZoomPaddingCss(isSidebarOpen ? SIDEBAR_OPEN_LEFT_PADDING : SIDEBAR_CLOSED_LEFT_PADDING);
+  return macZoomPaddingCss(TITLEBAR_MAC_LEFT_PADDING);
 };
 
 export const isMac = (): boolean => {

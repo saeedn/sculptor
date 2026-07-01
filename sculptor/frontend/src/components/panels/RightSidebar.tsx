@@ -18,17 +18,10 @@ const SidebarZone = ({ zoneId, panelIds }: { zoneId: ZoneId; panelIds: ReadonlyA
 
 const RightSidebarInner = (): ReactElement => {
   const topRightPanels = useAtomValue(panelsInZoneAtom("top-right"));
-  const bottomRightPanels = useAtomValue(panelsInZoneAtom("bottom-right"));
-
-  const shouldShowDivider = topRightPanels.length > 0 && bottomRightPanels.length > 0;
 
   return (
     <div className={`${styles.sidebar} ${styles.right}`}>
       <SidebarZone zoneId="top-right" panelIds={topRightPanels} />
-
-      {shouldShowDivider && <div className={styles.divider} />}
-
-      {bottomRightPanels.length > 0 && <SidebarZone zoneId="bottom-right" panelIds={bottomRightPanels} />}
 
       <div className={styles.spacer} />
     </div>

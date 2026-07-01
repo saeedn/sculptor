@@ -8,7 +8,6 @@ import {
   isBottomVisibleAtom,
   isLeftSideVisibleAtom,
   isRightSideVisibleAtom,
-  isZoneVisibleAtom,
   zoneAssignmentsAtom,
   zoneSizesAtom,
   zoneVisibilityAtom,
@@ -16,7 +15,6 @@ import {
 import {
   CENTER_PANEL_MIN_WIDTH_PX,
   DEFAULT_BOTTOM_PANEL_HEIGHT_PX,
-  DEFAULT_INNER_BOTTOM_HEIGHT_PX,
   DEFAULT_SIDE_PANEL_WIDTH_PX,
   PANEL_MIN_PX,
   SIDE_PANEL_MIN_WIDTH_PX,
@@ -26,7 +24,6 @@ import { LeftSidebar } from "~/components/panels/LeftSidebar";
 import { ResizeHandle } from "~/components/panels/ResizeHandle";
 import { RightSidebar } from "~/components/panels/RightSidebar";
 import type { ZoneId } from "~/components/panels/types.ts";
-import { VerticalSplit } from "~/components/panels/VerticalSplit";
 import { ZoneContent } from "~/components/panels/ZoneContent";
 
 import styles from "./DockingLayout.module.scss";
@@ -39,28 +36,19 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
   const isLeftVisibleBase = useAtomValue(isLeftSideVisibleAtom);
   const isRightVisibleBase = useAtomValue(isRightSideVisibleAtom);
   const isBottomVisibleBase = useAtomValue(isBottomVisibleAtom);
-  const isTopLeftVisibleBase = useAtomValue(isZoneVisibleAtom("top-left"));
-  const isBottomLeftVisibleBase = useAtomValue(isZoneVisibleAtom("bottom-left"));
-  const isTopRightVisibleBase = useAtomValue(isZoneVisibleAtom("top-right"));
-  const isBottomRightVisibleBase = useAtomValue(isZoneVisibleAtom("bottom-right"));
   const zoneSizes = useAtomValue(zoneSizesAtom);
   const setZoneSizes = useSetAtom(zoneSizesAtom);
   const zoneAssignments = useAtomValue(zoneAssignmentsAtom);
   const [expandedPanelId, setExpandedPanelId] = useAtom(expandedPanelIdAtom);
 
   // In expand mode, only the zone containing the expanded panel is visible.
-  // All other zones (including sidebars and bottom) are hidden.
+  // The only panel that ever expands is "files" (top-left), so expand mode
+  // shows the left side and hides everything else.
   const expandedZone = expandedPanelId ? (zoneAssignments[expandedPanelId] as ZoneId | undefined) : undefined;
   const isExpanded = expandedPanelId != null;
 
-  const isTopLeftVisible = isExpanded ? expandedZone === "top-left" : isTopLeftVisibleBase;
-  const isBottomLeftVisible = isExpanded ? expandedZone === "bottom-left" : isBottomLeftVisibleBase;
-  const isTopRightVisible = isExpanded ? expandedZone === "top-right" : isTopRightVisibleBase;
-  const isBottomRightVisible = isExpanded ? expandedZone === "bottom-right" : isBottomRightVisibleBase;
-  const isLeftVisible = isExpanded ? expandedZone === "top-left" || expandedZone === "bottom-left" : isLeftVisibleBase;
-  const isRightVisible = isExpanded
-    ? expandedZone === "top-right" || expandedZone === "bottom-right"
-    : isRightVisibleBase;
+  const isLeftVisible = isExpanded ? expandedZone === "top-left" : isLeftVisibleBase;
+  const isRightVisible = isExpanded ? false : isRightVisibleBase;
   const isBottomVisible = isExpanded ? false : isBottomVisibleBase;
 
   usePanelKeyboardShortcuts();
@@ -126,8 +114,6 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
   const topLeftPx = zoneSizes["top-left"] ?? defaultSideWidthPx;
   const topRightPx = zoneSizes["top-right"] ?? defaultSideWidthPx;
   const bottomPx = zoneSizes["bottom"] ?? defaultBottomHeightPx;
-  const bottomLeftPx = zoneSizes["bottom-left"] ?? DEFAULT_INNER_BOTTOM_HEIGHT_PX;
-  const bottomRightPx = zoneSizes["bottom-right"] ?? DEFAULT_INNER_BOTTOM_HEIGHT_PX;
 
   // When the window can't fit the minimum layout, hide zones — right side
   // first, then left. This is a one-way change (not restored when the
@@ -140,12 +126,12 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
     const rightMin = isRightVisible ? SIDE_PANEL_MIN_WIDTH_PX : 0;
     if (leftMin + CENTER_PANEL_MIN_WIDTH_PX + rightMin <= panelGroupWidth) return;
     if (isRightVisible) {
-      setZoneVisibility((v) => ({ ...v, "top-right": false, "bottom-right": false }));
+      setZoneVisibility((v) => ({ ...v, "top-right": false }));
       return;
     }
 
     if (isLeftVisible) {
-      setZoneVisibility((v) => ({ ...v, "top-left": false, "bottom-left": false }));
+      setZoneVisibility((v) => ({ ...v, "top-left": false }));
     }
   }, [panelGroupWidth, isLeftVisible, isRightVisible, isExpanded, setZoneVisibility]);
 
@@ -177,12 +163,6 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
   const getBottom = useCallback(() => readSize("bottom", defaultBottomHeightRef.current), [readSize]);
   const setBottom = useCallback((px: number) => writeSize("bottom", px, PANEL_MIN_PX), [writeSize]);
 
-  const getBottomLeft = useCallback(() => readSize("bottom-left", DEFAULT_INNER_BOTTOM_HEIGHT_PX), [readSize]);
-  const setBottomLeft = useCallback((px: number) => writeSize("bottom-left", px, PANEL_MIN_PX), [writeSize]);
-
-  const getBottomRight = useCallback(() => readSize("bottom-right", DEFAULT_INNER_BOTTOM_HEIGHT_PX), [readSize]);
-  const setBottomRight = useCallback((px: number) => writeSize("bottom-right", px, PANEL_MIN_PX), [writeSize]);
-
   return (
     <div className={styles.container}>
       {!isExpanded && <LeftSidebar />}
@@ -193,16 +173,9 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
             {isLeftVisible && (
               <>
                 <div className={styles.sidePanel} style={{ width: topLeftPx, minWidth: SIDE_PANEL_MIN_WIDTH_PX }}>
-                  <VerticalSplit
-                    topZoneId="top-left"
-                    bottomZoneId="bottom-left"
-                    isTopVisible={isTopLeftVisible}
-                    isBottomVisible={isBottomLeftVisible}
-                    bottomPx={bottomLeftPx}
-                    getBottomSize={getBottomLeft}
-                    onBottomResize={setBottomLeft}
-                    handleAriaLabel="Resize bottom-left zone"
-                  />
+                  <div className={styles.innerTop}>
+                    <ZoneContent zoneId="top-left" />
+                  </div>
                 </div>
                 <ResizeHandle axis="x" getSize={getTopLeft} onResize={setTopLeft} ariaLabel="Resize left panel" />
               </>
@@ -230,19 +203,9 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
                   style={{ width: topRightPx, minWidth: SIDE_PANEL_MIN_WIDTH_PX }}
                   data-testid={ElementIds.PANEL_RIGHT_AREA}
                 >
-                  <VerticalSplit
-                    topZoneId="top-right"
-                    bottomZoneId="bottom-right"
-                    isTopVisible={isTopRightVisible}
-                    isBottomVisible={isBottomRightVisible}
-                    bottomPx={bottomRightPx}
-                    getBottomSize={getBottomRight}
-                    onBottomResize={setBottomRight}
-                    handleAriaLabel="Resize bottom-right zone"
-                    topTestId={ElementIds.PANEL_TOP_RIGHT}
-                    bottomTestId={ElementIds.PANEL_BOTTOM_RIGHT}
-                    handleTestId={ElementIds.PANEL_RIGHT_RESIZE_HANDLE}
-                  />
+                  <div className={styles.innerTop} data-testid={ElementIds.PANEL_TOP_RIGHT}>
+                    <ZoneContent zoneId="top-right" />
+                  </div>
                 </div>
               </>
             )}

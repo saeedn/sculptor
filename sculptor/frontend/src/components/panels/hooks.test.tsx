@@ -3,14 +3,9 @@ import type { createStore } from "jotai";
 import { Provider } from "jotai";
 import { Circle } from "lucide-react";
 import { createElement } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  activePanelPerZoneAtom,
-  createPanelStore,
-  panelEnabledAtom,
-  zoneVisibilityAtom,
-} from "~/components/panels/atoms.ts";
+import { activePanelPerZoneAtom, createPanelStore, zoneVisibilityAtom } from "~/components/panels/atoms.ts";
 import { usePanelKeyboardShortcuts } from "~/components/panels/hooks.ts";
 import { PanelRegistryProvider } from "~/components/panels/PanelRegistryProvider";
 import type { PanelDefinition } from "~/components/panels/types.ts";
@@ -30,7 +25,7 @@ const TEST_PANELS: ReadonlyArray<PanelDefinition> = [
     displayName: "Cost",
     description: "Test panel",
     icon: Circle,
-    defaultZone: "bottom-left",
+    defaultZone: "top-left",
     defaultShortcut: "",
     component: () => createElement("div"),
   },
@@ -52,15 +47,6 @@ const TEST_PANELS: ReadonlyArray<PanelDefinition> = [
     defaultShortcut: "",
     component: () => createElement("div"),
   },
-  {
-    id: "actions",
-    displayName: "Actions",
-    description: "Test panel",
-    icon: Circle,
-    defaultZone: "bottom-right",
-    defaultShortcut: "",
-    component: () => createElement("div"),
-  },
 ];
 
 beforeEach(() => localStorage.clear());
@@ -79,7 +65,7 @@ const mountDispatch = (
   zones: Record<string, HTMLElement>;
 } => {
   const zones: Record<string, HTMLElement> = {};
-  for (const zone of ["top-left", "bottom-left", "bottom", "top-right", "bottom-right"] as const) {
+  for (const zone of ["top-left", "bottom", "top-right"] as const) {
     const el = document.createElement("div");
     el.setAttribute("data-zone-id", zone);
     el.tabIndex = -1;
@@ -175,46 +161,6 @@ describe("usePanelKeyboardShortcuts focus-then-toggle dispatch", () => {
 
     expect(store.get(activePanelPerZoneAtom)["top-left"]).toBe("cost");
     expect(store.get(zoneVisibilityAtom)["top-left"]).toBe(true);
-    unmount();
-  });
-
-  it("disabled panels do not fire", () => {
-    const panels: ReadonlyArray<PanelDefinition> = TEST_PANELS.map((p) =>
-      p.id === "info" ? { ...p, defaultShortcut: "Meta+e" } : p,
-    );
-    const store = createPanelStore(panels, { useDefaultLayout: true });
-    store.set(panelEnabledAtom, { info: false });
-
-    const { unmount, zones } = mountDispatch(store, panels);
-    zones["top-left"].focus();
-
-    act(() => fireMetaE());
-
-    // panelShortcutsAtom omits disabled panels, so no toggle fired.
-    expect(store.get(zoneVisibilityAtom)["top-left"]).toBe(true);
-    unmount();
-  });
-
-  it("calls panel.getFocusTarget() when present", () => {
-    const customTarget = document.createElement("button");
-    document.body.appendChild(customTarget);
-    const focusSpy = vi.spyOn(customTarget, "focus");
-
-    const panels: ReadonlyArray<PanelDefinition> = TEST_PANELS.map((p) =>
-      p.id === "info" ? { ...p, defaultShortcut: "Meta+e", getFocusTarget: () => customTarget } : p,
-    );
-    const store = createPanelStore(panels, { useDefaultLayout: true });
-    store.set(zoneVisibilityAtom, (prev) => ({ ...prev, "top-left": false }));
-
-    vi.useFakeTimers({ toFake: ["requestAnimationFrame", "cancelAnimationFrame"] });
-    const { unmount } = mountDispatch(store, panels);
-    act(() => fireMetaE());
-    act(() => vi.runAllTimers());
-
-    expect(focusSpy).toHaveBeenCalled();
-
-    vi.useRealTimers();
-    customTarget.remove();
     unmount();
   });
 });

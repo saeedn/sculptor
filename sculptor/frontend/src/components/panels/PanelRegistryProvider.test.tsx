@@ -45,12 +45,15 @@ const CHANGES_PANEL: PanelDefinition = {
   component: () => createElement("div"),
 };
 
+// A panel registered after first load, whose defaultZone ("top-right") has no
+// prior zoneOrder entry in TEST_DEFAULT_LAYOUT — this lets the reconciliation
+// tests exercise the "create a zoneOrder entry for a fresh zone" path.
 const NOTES_PANEL: PanelDefinition = {
   id: "notes",
   displayName: "Notes",
   description: "Test notes panel",
   icon: Circle,
-  defaultZone: "bottom-right",
+  defaultZone: "top-right",
   defaultShortcut: "",
   component: () => createElement("div"),
 };
@@ -78,7 +81,6 @@ const TEST_DEFAULT_LAYOUT: DefaultPanelLayout = {
   zoneOrder: {
     "top-left": ["info"],
     bottom: ["terminal"],
-    "top-right": ["changes"],
   },
 };
 
@@ -186,7 +188,7 @@ describe("PanelRegistryProvider — reconciliation (adding panels)", () => {
 
     rerender({ store, panels: EXTENDED_PANELS, defaultLayout: TEST_DEFAULT_LAYOUT });
 
-    expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("bottom-right");
+    expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("top-right");
   });
 
   it("appends a newly-registered panel to zoneOrder for its zone", () => {
@@ -199,15 +201,15 @@ describe("PanelRegistryProvider — reconciliation (adding panels)", () => {
 
     rerender({ store, panels: EXTENDED_PANELS, defaultLayout: TEST_DEFAULT_LAYOUT });
 
-    const bottomRightOrder = store.get(zoneOrderAtom)["bottom-right"];
-    expect(bottomRightOrder).toBeDefined();
-    expect(bottomRightOrder!).toContain(NOTES_PANEL.id);
-    expect(bottomRightOrder![bottomRightOrder!.length - 1]).toBe(NOTES_PANEL.id);
+    const topRightOrder = store.get(zoneOrderAtom)["top-right"];
+    expect(topRightOrder).toBeDefined();
+    expect(topRightOrder!).toContain(NOTES_PANEL.id);
+    expect(topRightOrder![topRightOrder!.length - 1]).toBe(NOTES_PANEL.id);
   });
 
   it("creates a zoneOrder entry for a zone that had no prior entry in defaultLayout", () => {
-    // The default layout does not include "bottom-right" in zoneOrder. Adding
-    // a panel whose defaultZone is bottom-right must create the entry.
+    // The default layout does not include "top-right" in zoneOrder. Adding
+    // a panel whose defaultZone is top-right must create the entry.
     const store = createStore();
     const { rerender } = renderProvider({
       store,
@@ -215,12 +217,12 @@ describe("PanelRegistryProvider — reconciliation (adding panels)", () => {
       defaultLayout: TEST_DEFAULT_LAYOUT,
     });
 
-    expect(store.get(zoneOrderAtom)["bottom-right"]).toBeUndefined();
+    expect(store.get(zoneOrderAtom)["top-right"]).toBeUndefined();
 
     rerender({ store, panels: EXTENDED_PANELS, defaultLayout: TEST_DEFAULT_LAYOUT });
 
-    expect(store.get(zoneOrderAtom)["bottom-right"]).toEqual([NOTES_PANEL.id]);
-    expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("bottom-right");
+    expect(store.get(zoneOrderAtom)["top-right"]).toEqual([NOTES_PANEL.id]);
+    expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("top-right");
   });
 });
 
@@ -228,10 +230,10 @@ describe("PanelRegistryProvider — reconciliation (removing panels)", () => {
   it("removes stale panels from zoneAssignments when they disappear from props", () => {
     const store = createStore();
     const extendedDefaultLayout: DefaultPanelLayout = {
-      zoneAssignments: { ...TEST_DEFAULT_LAYOUT.zoneAssignments, notes: "bottom-right" },
-      activePanelPerZone: { ...TEST_DEFAULT_LAYOUT.activePanelPerZone, "bottom-right": "notes" },
-      zoneVisibility: { ...TEST_DEFAULT_LAYOUT.zoneVisibility, "bottom-right": true },
-      zoneOrder: { ...TEST_DEFAULT_LAYOUT.zoneOrder, "bottom-right": ["notes"] },
+      zoneAssignments: { ...TEST_DEFAULT_LAYOUT.zoneAssignments, notes: "top-right" },
+      activePanelPerZone: { ...TEST_DEFAULT_LAYOUT.activePanelPerZone, "top-right": "notes" },
+      zoneVisibility: { ...TEST_DEFAULT_LAYOUT.zoneVisibility, "top-right": true },
+      zoneOrder: { ...TEST_DEFAULT_LAYOUT.zoneOrder, "top-right": ["notes"] },
     };
 
     const { rerender } = renderProvider({
@@ -240,7 +242,7 @@ describe("PanelRegistryProvider — reconciliation (removing panels)", () => {
       defaultLayout: extendedDefaultLayout,
     });
 
-    expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("bottom-right");
+    expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("top-right");
 
     rerender({ store, panels: TEST_PANELS, defaultLayout: extendedDefaultLayout });
 
@@ -250,10 +252,10 @@ describe("PanelRegistryProvider — reconciliation (removing panels)", () => {
   it("removes stale panels from zoneOrder for every zone", () => {
     const store = createStore();
     const extendedDefaultLayout: DefaultPanelLayout = {
-      zoneAssignments: { ...TEST_DEFAULT_LAYOUT.zoneAssignments, notes: "bottom-right" },
-      activePanelPerZone: { ...TEST_DEFAULT_LAYOUT.activePanelPerZone, "bottom-right": "notes" },
-      zoneVisibility: { ...TEST_DEFAULT_LAYOUT.zoneVisibility, "bottom-right": true },
-      zoneOrder: { ...TEST_DEFAULT_LAYOUT.zoneOrder, "bottom-right": ["notes"] },
+      zoneAssignments: { ...TEST_DEFAULT_LAYOUT.zoneAssignments, notes: "top-right" },
+      activePanelPerZone: { ...TEST_DEFAULT_LAYOUT.activePanelPerZone, "top-right": "notes" },
+      zoneVisibility: { ...TEST_DEFAULT_LAYOUT.zoneVisibility, "top-right": true },
+      zoneOrder: { ...TEST_DEFAULT_LAYOUT.zoneOrder, "top-right": ["notes"] },
     };
 
     const { rerender } = renderProvider({
@@ -346,10 +348,10 @@ describe("PanelRegistryProvider — idempotency", () => {
   it("toggling a panel off then on again yields the original assignment", () => {
     const store = createStore();
     const extendedDefaultLayout: DefaultPanelLayout = {
-      zoneAssignments: { ...TEST_DEFAULT_LAYOUT.zoneAssignments, notes: "bottom-right" },
-      activePanelPerZone: { ...TEST_DEFAULT_LAYOUT.activePanelPerZone, "bottom-right": "notes" },
-      zoneVisibility: { ...TEST_DEFAULT_LAYOUT.zoneVisibility, "bottom-right": true },
-      zoneOrder: { ...TEST_DEFAULT_LAYOUT.zoneOrder, "bottom-right": ["notes"] },
+      zoneAssignments: { ...TEST_DEFAULT_LAYOUT.zoneAssignments, notes: "top-right" },
+      activePanelPerZone: { ...TEST_DEFAULT_LAYOUT.activePanelPerZone, "top-right": "notes" },
+      zoneVisibility: { ...TEST_DEFAULT_LAYOUT.zoneVisibility, "top-right": true },
+      zoneOrder: { ...TEST_DEFAULT_LAYOUT.zoneOrder, "top-right": ["notes"] },
     };
 
     const { rerender } = renderProvider({
@@ -358,13 +360,13 @@ describe("PanelRegistryProvider — idempotency", () => {
       defaultLayout: extendedDefaultLayout,
     });
 
-    expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("bottom-right");
+    expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("top-right");
 
     rerender({ store, panels: TEST_PANELS, defaultLayout: extendedDefaultLayout });
     expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBeUndefined();
 
     rerender({ store, panels: EXTENDED_PANELS, defaultLayout: extendedDefaultLayout });
-    expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("bottom-right");
-    expect(store.get(zoneOrderAtom)["bottom-right"]).toContain(NOTES_PANEL.id);
+    expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("top-right");
+    expect(store.get(zoneOrderAtom)["top-right"]).toContain(NOTES_PANEL.id);
   });
 });

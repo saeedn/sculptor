@@ -44,10 +44,6 @@ export const zoneOrderAtom = atomWithDebouncedStorage<Partial<Record<ZoneId, Arr
   200,
 );
 
-export const panelEnabledAtom = atomWithStorage<Record<PanelId, boolean>>("sculptor-panel-enabled", {}, undefined, {
-  getOnInit: true,
-});
-
 // Tracks whether the terminal panel is mounted — flipped by `TerminalPanelContent` so
 // commands like "Clear terminal" can gate their visibility on whether there's
 // a terminal to act on at all.
@@ -58,17 +54,14 @@ export const terminalPanelMountedAtom = atom<boolean>(false);
 export const panelKeybindingId = (panelId: PanelId): KeybindingId => `panel_${panelId}`;
 
 // Read-only map of panel id → bound shortcut string, sourced from
-// `keybindingsMapAtom` via `panel_<id>` keys. Disabled panels and
-// panels with empty/null bindings are omitted entirely.
+// `keybindingsMapAtom` via `panel_<id>` keys. Panels with empty/null
+// bindings are omitted entirely.
 
 export const panelShortcutsAtom = atom<Record<PanelId, string>>((get) => {
   const registry = get(panelRegistryAtom);
   const keybindingsMap = get(keybindingsMapAtom);
-  const enabled = get(panelEnabledAtom);
   const result: Record<PanelId, string> = {};
   for (const panel of registry) {
-    const isEnabled = (panel.isBuiltin ?? false) || (enabled[panel.id] ?? panel.defaultEnabled ?? true);
-    if (!isEnabled) continue;
     const binding = keybindingsMap[panelKeybindingId(panel.id)]?.binding ?? "";
     if (binding) result[panel.id] = binding;
   }
@@ -84,15 +77,8 @@ const panelsInZoneAtomMap = new Map<ZoneId, Atom<ReadonlyArray<PanelId>>>(
     atom<ReadonlyArray<PanelId>>((get) => {
       const assignments = get(zoneAssignmentsAtom);
       const order = get(zoneOrderAtom);
-      const registry = get(panelRegistryAtom);
-      const enabled = get(panelEnabledAtom);
-      const isEnabled = (panelId: PanelId): boolean => {
-        const def = registry.find((p) => p.id === panelId);
-        if (def?.isBuiltin ?? false) return true;
-        return enabled[panelId] ?? def?.defaultEnabled ?? true;
-      };
       const panelsInZone = (Object.entries(assignments) as ReadonlyArray<[PanelId, ZoneId]>)
-        .filter(([panelId, zone]) => zone === zoneId && isEnabled(panelId))
+        .filter(([, zone]) => zone === zoneId)
         .map(([panelId]) => panelId);
 
       const zoneOrder = order[zoneId];
@@ -130,14 +116,14 @@ export const isZoneVisibleAtom = (zoneId: ZoneId): Atom<boolean> => {
   return isZoneVisibleAtomMap.get(zoneId)!;
 };
 
-// Derived: is left side visible (top-left OR bottom-left)
+// Derived: is left side visible
 export const isLeftSideVisibleAtom = atom<boolean>((get) => {
-  return get(isZoneVisibleAtomMap.get("top-left")!) || get(isZoneVisibleAtomMap.get("bottom-left")!);
+  return get(isZoneVisibleAtomMap.get("top-left")!);
 });
 
-// Derived: is right side visible (top-right OR bottom-right)
+// Derived: is right side visible
 export const isRightSideVisibleAtom = atom<boolean>((get) => {
-  return get(isZoneVisibleAtomMap.get("top-right")!) || get(isZoneVisibleAtomMap.get("bottom-right")!);
+  return get(isZoneVisibleAtomMap.get("top-right")!);
 });
 
 // Derived: is bottom visible

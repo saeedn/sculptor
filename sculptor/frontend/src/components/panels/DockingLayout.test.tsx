@@ -185,17 +185,6 @@ describe("DockingLayout", () => {
       renderTest(<DockingLayout />, store);
       expect(screen.queryByText(TEST_PANEL_CONTENT.cost)).not.toBeInTheDocument();
     });
-
-    it("does not show a divider in the left sidebar when bottom-left is empty", () => {
-      const store = createDefaultTestStore();
-      const { container } = renderTest(<DockingLayout />, store);
-      // The left sidebar is the first sidebar element
-      const sidebars = container.querySelectorAll("[class*='sidebar']");
-      const leftSidebar = sidebars[0];
-      // Divider has a specific class — with non-scoped CSS modules, it's "divider"
-      const divider = leftSidebar?.querySelector("[class*='divider']");
-      expect(divider).toBeNull();
-    });
   });
 
   describe("icon toggle", () => {
@@ -293,71 +282,6 @@ describe("DockingLayout", () => {
     });
   });
 
-  describe("sidebar dividers", () => {
-    it("shows divider in left sidebar when both top-left and bottom-left have panels", () => {
-      const store = createTestStore();
-      store.set(zoneAssignmentsAtom, {
-        info: "top-left",
-        cost: "bottom-left",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        "bottom-left": true,
-        bottom: true,
-        "top-right": true,
-      });
-      const { container } = renderTest(<DockingLayout />, store);
-
-      // The left sidebar should contain a divider element
-      const sidebars = container.querySelectorAll("[class*='sidebar']");
-      const leftSidebar = sidebars[0];
-      const divider = leftSidebar?.querySelector("[class*='divider']");
-      expect(divider).not.toBeNull();
-    });
-
-    it("does not show divider when bottom-left is empty", () => {
-      const store = createDefaultTestStore();
-      const { container } = renderTest(<DockingLayout />, store);
-
-      const sidebars = container.querySelectorAll("[class*='sidebar']");
-      const leftSidebar = sidebars[0];
-      const divider = leftSidebar?.querySelector("[class*='divider']");
-      expect(divider).toBeNull();
-    });
-
-    it("shows divider in right sidebar when both top-right and bottom-right have panels", () => {
-      const store = createTestStore();
-      store.set(zoneAssignmentsAtom, {
-        info: "top-left",
-        cost: "top-left",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      // Move cost to bottom-right for the test — we need a panel there
-      store.set(zoneAssignmentsAtom, {
-        info: "top-left",
-        cost: "bottom-right",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        bottom: true,
-        "top-right": true,
-        "bottom-right": true,
-      });
-      const { container } = renderTest(<DockingLayout />, store);
-
-      // The right sidebar should contain a divider
-      const sidebars = container.querySelectorAll("[class*='sidebar']");
-      const rightSidebar = sidebars[sidebars.length - 1];
-      const divider = rightSidebar?.querySelector("[class*='divider']");
-      expect(divider).not.toBeNull();
-    });
-  });
-
   describe("reorder within zone", () => {
     it("renders icons in the order specified by zoneOrderAtom", () => {
       const store = createDefaultTestStore();
@@ -421,34 +345,6 @@ describe("DockingLayout", () => {
       // Info icon should NOT be in left sidebar (top-left zone)
       const leftZoneIcons = getIconsInZone(container, "top-left");
       expect(leftZoneIcons).not.toContain("info");
-    });
-
-    it("shows zone content when panel is moved to a previously hidden zone", () => {
-      const store = createTestStore();
-      // Move info to bottom-right (initially hidden)
-      store.set(zoneAssignmentsAtom, {
-        info: "bottom-right",
-        cost: "top-left",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      store.set(activePanelPerZoneAtom, {
-        "top-left": "cost",
-        bottom: "terminal",
-        "top-right": "changes",
-        "bottom-right": "info",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        bottom: true,
-        "top-right": true,
-        "bottom-right": true,
-      });
-
-      renderTest(<DockingLayout />, store);
-
-      // Info panel content should be visible in bottom-right
-      expect(screen.getByText(TEST_PANEL_CONTENT.info)).toBeInTheDocument();
     });
 
     it("hides source zone when last panel is moved out", () => {
@@ -757,38 +653,6 @@ describe("DockingLayout", () => {
 
       // Info should be the active panel in bottom
       expect(screen.getByText(TEST_PANEL_CONTENT.info)).toBeInTheDocument();
-    });
-
-    it("moving panel to previously empty bottom-left opens both left zones", () => {
-      const store = createTestStore();
-
-      store.set(zoneAssignmentsAtom, {
-        info: "top-left",
-        cost: "top-left",
-        terminal: "bottom-left",
-        changes: "top-right",
-      });
-      store.set(activePanelPerZoneAtom, {
-        "top-left": "info",
-        "bottom-left": "terminal",
-        "top-right": "changes",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        "bottom-left": true,
-        "top-right": true,
-      });
-
-      const { container } = renderTest(<DockingLayout />, store);
-
-      // Both zones should render their content
-      expect(screen.getByText(TEST_PANEL_CONTENT.info)).toBeInTheDocument();
-      expect(screen.getByText(TEST_PANEL_CONTENT.terminal)).toBeInTheDocument();
-
-      // Left sidebar should show divider between top-left and bottom-left
-      const sidebars = container.querySelectorAll("[class*='sidebar']");
-      const leftSidebar = sidebars[0];
-      expect(leftSidebar?.querySelector("[class*='divider']")).not.toBeNull();
     });
 
     it("zones with no panels assigned do not render icons", () => {

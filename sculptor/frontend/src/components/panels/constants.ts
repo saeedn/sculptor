@@ -2,7 +2,6 @@
 // "fill the remaining space" for the center panel.
 export const DEFAULT_SIDE_PANEL_WIDTH_PX = 300;
 export const DEFAULT_BOTTOM_PANEL_HEIGHT_PX = 300;
-export const DEFAULT_INNER_BOTTOM_HEIGHT_PX = 200;
 export const SIDE_PANEL_MIN_WIDTH_PX = 245;
 // Minimum usable width for the chat interface. When the window is too narrow
 // to fit both side panels and this, side panels auto-collapse (right first).

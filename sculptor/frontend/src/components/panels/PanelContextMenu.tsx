@@ -19,17 +19,6 @@ export const PanelContextMenu = ({ panelId, children, onOpenChange }: PanelConte
       <ContextMenu.Trigger>{children}</ContextMenu.Trigger>
       <ContextMenu.Content size="1">
         <ContextMenu.Label>{panelDef?.displayName ?? panelId}</ContextMenu.Label>
-
-        {panelDef?.contextMenuItems && panelDef.contextMenuItems.length > 0 && (
-          <>
-            <ContextMenu.Separator />
-            {panelDef.contextMenuItems.map((item) => (
-              <ContextMenu.Item key={item.label} onSelect={() => item.action()}>
-                {item.label}
-              </ContextMenu.Item>
-            ))}
-          </>
-        )}
       </ContextMenu.Content>
     </ContextMenu.Root>
   );

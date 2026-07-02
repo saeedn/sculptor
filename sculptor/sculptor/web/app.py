@@ -141,7 +141,6 @@ from sculptor.web.auth import UserSession
 from sculptor.web.data_types import AgentDiagnosticsResponse
 from sculptor.web.data_types import AgentTypeName
 from sculptor.web.data_types import BatchUpdateOpenStateRequest
-from sculptor.web.data_types import BranchExistsResponse
 from sculptor.web.data_types import CommitDiffResponse
 from sculptor.web.data_types import CommitFileInfo
 from sculptor.web.data_types import CommitHistoryResponse
@@ -159,6 +158,7 @@ from sculptor.web.data_types import InitializeGitRepoRequest
 from sculptor.web.data_types import ListTerminalAgentRegistrationsResponse
 from sculptor.web.data_types import ListWorkspacesResponse
 from sculptor.web.data_types import NamingPatternRequest
+from sculptor.web.data_types import NewBranchNameValidationResponse
 from sculptor.web.data_types import OpenFileUiAction
 from sculptor.web.data_types import OpenFileUiRequest
 from sculptor.web.data_types import OpenInOsRequest
@@ -439,6 +439,12 @@ def create_workspace_v2(
             raise HTTPException(status_code=400, detail="source_branch is required for WORKTREE workspaces")
 
         with services.git_repo_service.open_local_user_git_repo_for_read(project, log_command=False) as repo:
+            if not repo.is_valid_branch_name(branch_name):
+                # Reject illegal ref names here so the user gets an actionable
+                # error at creation, rather than an opaque WorktreeError raised
+                # later when `git worktree add -b` runs during async environment
+                # setup (and is surfaced only in the agent panel).
+                raise HTTPException(status_code=400, detail=f"'{branch_name}' is not a valid git branch name")
             if repo.is_branch_ref(branch_name):
                 raise HTTPException(status_code=409, detail=f"Branch '{branch_name}' already exists")
 
@@ -1979,33 +1985,44 @@ def get_current_branch(
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
-@router.get("/api/v1/projects/{project_id}/branch-exists")
-def branch_exists(
+@router.get("/api/v1/projects/{project_id}/validate-new-branch-name")
+def validate_new_branch_name(
     project_id: str,
     name: str,
     request: Request,
     user_session: UserSession = Depends(get_user_session),
-) -> BranchExistsResponse:
-    """Return whether `name` already exists as a local branch in the project's repo."""
+) -> NewBranchNameValidationResponse:
+    """Validate a prospective new workspace branch name in the project's repo.
+
+    Reports whether `name` is a legal git ref (`is_valid`) and whether it
+    collides with an existing local branch (`already_exists`). Backs the Add
+    Workspace form's inline error; `create_workspace_v2` re-checks both as the
+    authoritative gate. When the name is illegal, the collision check is skipped
+    (git can't resolve an invalid ref anyway).
+    """
     validated_project_id = validate_project_id(project_id)
     services = get_services_from_request_or_websocket(request)
 
     trimmed = name.strip()
     if not trimmed:
-        return BranchExistsResponse(exists=False)
+        return NewBranchNameValidationResponse(is_valid=False, already_exists=False)
 
     with user_session.open_transaction(services) as transaction:
         project = transaction.get_project(validated_project_id)
         if project is None:
             raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
+        # When the repo isn't reachable we can't check; don't surface a spurious
+        # error — let the create-time backstop catch any real problem.
         if not project.is_path_accessible:
-            return BranchExistsResponse(exists=False)
+            return NewBranchNameValidationResponse(is_valid=True, already_exists=False)
 
     try:
         with services.git_repo_service.open_local_user_git_repo_for_read(project, log_command=False) as repo:
-            return BranchExistsResponse(exists=repo.is_branch_ref(trimmed))
+            is_valid = repo.is_valid_branch_name(trimmed)
+            already_exists = is_valid and repo.is_branch_ref(trimmed)
+            return NewBranchNameValidationResponse(is_valid=is_valid, already_exists=already_exists)
     except GitRepoNotFoundError:
-        return BranchExistsResponse(exists=False)
+        return NewBranchNameValidationResponse(is_valid=True, already_exists=False)
 
 
 @router.get("/api/v1/projects/{project_id}/repo_info")

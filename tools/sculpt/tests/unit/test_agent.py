@@ -276,6 +276,39 @@ class TestAgentList:
     @patch("sculpt.commands.agent.fetch_all_agents")
     @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
     @respx.mock
+    def test_list_for_workspace_excludes_other_workspaces(
+        self, _mock_token: Any, mock_fetch: Any, runner: CliRunner
+    ) -> None:
+        _mock_session()
+        _mock_workspaces("ws_test123")
+        mock_fetch.return_value = [
+            _make_snapshot(task_id="tsk_mine1234", workspace_id="ws_test123"),
+            _make_snapshot(task_id="tsk_other123", workspace_id="ws_other456"),
+        ]
+
+        result = runner.invoke(app, ["agent", "list", "-w", "ws_test123"])
+
+        assert result.exit_code == 0
+        assert "tsk_mine123" in result.output
+        assert "tsk_other" not in result.output
+
+    @patch("sculpt.commands.agent.fetch_all_agents")
+    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
+    def test_list_all_includes_other_workspaces(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
+        mock_fetch.return_value = [
+            _make_snapshot(task_id="tsk_mine1234", workspace_id="ws_test123"),
+            _make_snapshot(task_id="tsk_other123", workspace_id="ws_other456"),
+        ]
+
+        result = runner.invoke(app, ["agent", "list", "--all"])
+
+        assert result.exit_code == 0
+        assert "tsk_mine123" in result.output
+        assert "tsk_other12" in result.output
+
+    @patch("sculpt.commands.agent.fetch_all_agents")
+    @patch("sculpt.commands._follow_helpers.get_session_token", return_value="test-token")
+    @respx.mock
     def test_list_json(self, _mock_token: Any, mock_fetch: Any, runner: CliRunner) -> None:
         _mock_session()
         _mock_workspaces("ws_test123")

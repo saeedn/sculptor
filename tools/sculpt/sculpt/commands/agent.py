@@ -49,9 +49,6 @@ from sculpt.resolve import resolve_project
 from sculpt.resolve import resolve_workspace_id
 from sculpt.ws_client import AgentNotFoundError
 from sculpt.ws_client import AgentSnapshot
-from sculpt.ws_client import ScopeForbiddenError
-from sculpt.ws_client import ScopeMalformedError
-from sculpt.ws_client import ScopeNotFoundError
 from sculpt.ws_client import fetch_agent_state
 from sculpt.ws_client import fetch_all_agents
 from sculpt.ws_client import follow_agent
@@ -172,30 +169,29 @@ def list_cmd(
 
     session_token = get_session_token_safe(base_url, json_output)
 
-    # Choose the connect-time scope. Precedence: --all > --workspace / env > per-project default.
+    # Choose the listing filter. Precedence: --all > --workspace / env > per-project default.
+    # The server always emits every agent, so narrowing happens client-side.
     ws_id = workspace or os.environ.get("SCULPT_WORKSPACE_ID")
+    workspace_filter: str | None = None
+    project_filter: str | None = None
     if show_all:
-        scope = "all"
+        pass
     elif ws_id:
         client = get_authenticated_client(base_url)
-        resolved_ws_id = resolve_workspace_id(client, ws_id, json_output)
-        scope = f"workspace:{resolved_ws_id}"
+        workspace_filter = resolve_workspace_id(client, ws_id, json_output)
     else:
         client = get_authenticated_client(base_url)
-        project_id = resolve_project(repo, client)
-        scope = f"project:{project_id}"
+        project_filter = resolve_project(repo, client)
 
     try:
-        agents = fetch_all_agents(base_url, session_token, scope=scope)
-    except ScopeNotFoundError:
-        cli_error(f"Scope target not found: {scope}", json_output=json_output)
-    except ScopeForbiddenError:
-        cli_error(f"Not authorized to view scope: {scope}", json_output=json_output)
-    except ScopeMalformedError as e:
-        cli_error(f"Invalid scope: {e}", json_output=json_output)
+        agents = fetch_all_agents(base_url, session_token)
     except (OSError, websockets.exceptions.WebSocketException):
         cli_error("Could not connect to Sculptor server", json_output=json_output)
 
+    if workspace_filter is not None:
+        agents = [a for a in agents if a.workspace_id == workspace_filter]
+    if project_filter is not None:
+        agents = [a for a in agents if a.project_id == project_filter]
     if status is not None:
         agents = [a for a in agents if a.status == status]
 
@@ -436,12 +432,10 @@ def status(
 
         try:
             exit_reason = follow_agent(base_url, session_token, agent_id, on_status, on_reconnect)
-        except ScopeNotFoundError:
+        except AgentNotFoundError:
             cli_error(f"Agent not found: {agent_id}", json_output=json_output)
-        except ScopeForbiddenError:
-            cli_error("Not authorized to view this agent", json_output=json_output)
-        except ScopeMalformedError as e:
-            cli_error(f"Invalid agent id: {e}", json_output=json_output)
+        except (OSError, websockets.exceptions.WebSocketException):
+            cli_error("Could not connect to Sculptor server", json_output=json_output)
         handle_exit_reason(exit_reason, json_output)
         return
 
@@ -460,12 +454,6 @@ def _fetch_snapshot(base_url: str, agent_id: str, timeout: float, json_output: b
 
     try:
         return fetch_agent_state(base_url, session_token, agent_id, timeout)
-    except ScopeNotFoundError:
-        cli_error(f"Agent not found: {agent_id}", json_output=json_output)
-    except ScopeForbiddenError:
-        cli_error("Not authorized to view this agent", json_output=json_output)
-    except ScopeMalformedError as e:
-        cli_error(f"Invalid agent id: {e}", json_output=json_output)
     except AgentNotFoundError as e:
         cli_error(f"Agent not found: {e}", json_output=json_output)
     except asyncio.TimeoutError:

@@ -16,30 +16,15 @@ from sculpt.ws_client import AgentSnapshot
 from sculpt.ws_client import ExitReason
 from sculpt.ws_client import _build_ws_url
 from sculpt.ws_client import fetch_agent_state
-from sculpt.ws_client import fetch_all_agents
 from sculpt.ws_client import follow_agent
 
 
-def test_build_ws_url_no_scope() -> None:
+def test_build_ws_url() -> None:
     assert _build_ws_url("http://x", "tok") == "ws://x/api/v1/stream/ws?x-session-token=tok"
 
 
-def test_build_ws_url_with_all_scope() -> None:
-    assert _build_ws_url("http://x", "tok", scope="all") == "ws://x/api/v1/stream/ws?x-session-token=tok&scope=all"
-
-
-def test_build_ws_url_with_agent_scope() -> None:
-    assert (
-        _build_ws_url("http://x", "tok", scope="agent:tsk_abc")
-        == "ws://x/api/v1/stream/ws?x-session-token=tok&scope=agent:tsk_abc"
-    )
-
-
 def test_build_ws_url_https_to_wss() -> None:
-    assert (
-        _build_ws_url("https://x", "tok", scope="workspace:ws_1")
-        == "wss://x/api/v1/stream/ws?x-session-token=tok&scope=workspace:ws_1"
-    )
+    assert _build_ws_url("https://x", "tok") == "wss://x/api/v1/stream/ws?x-session-token=tok"
 
 
 def _make_task_view(
@@ -456,44 +441,13 @@ def test_follow_retry_exhausted() -> None:
         shutdown_event.set()
 
 
-def test_fetch_agent_state_url_includes_agent_scope() -> None:
+def test_fetch_agent_state_url_includes_session_token() -> None:
     task_id = "tsk_full_id_capture"
     dump = _make_dump(task_views={task_id: _make_task_view(task_id=task_id)})
     url, shutdown, info = _start_ws_server(json.dumps(dump))
     try:
         fetch_agent_state(url.replace("ws://", "http://"), "tok", task_id)
-        assert "scope=agent:tsk_full_id_capture" in info["last_path"]
         assert "x-session-token=tok" in info["last_path"]
-    finally:
-        shutdown.set()
-
-
-def test_fetch_all_agents_workspace_scope_url() -> None:
-    dump = _make_dump(task_views={})
-    url, shutdown, info = _start_ws_server(json.dumps(dump))
-    try:
-        fetch_all_agents(url.replace("ws://", "http://"), "tok", scope="workspace:ws_abc")
-        assert "scope=workspace:ws_abc" in info["last_path"]
-    finally:
-        shutdown.set()
-
-
-def test_fetch_all_agents_project_scope_url() -> None:
-    dump = _make_dump(task_views={})
-    url, shutdown, info = _start_ws_server(json.dumps(dump))
-    try:
-        fetch_all_agents(url.replace("ws://", "http://"), "tok", scope="project:prj_abc")
-        assert "scope=project:prj_abc" in info["last_path"]
-    finally:
-        shutdown.set()
-
-
-def test_fetch_all_agents_default_all_scope_url() -> None:
-    dump = _make_dump(task_views={})
-    url, shutdown, info = _start_ws_server(json.dumps(dump))
-    try:
-        fetch_all_agents(url.replace("ws://", "http://"), "tok")
-        assert "scope=all" in info["last_path"]
     finally:
         shutdown.set()
 

@@ -135,17 +135,12 @@ describe("PanelRegistryProvider — bootstrap", () => {
     expect(store.get(zoneOrderAtom)).toEqual({});
   });
 
-  it("does not re-apply defaultLayout when zoneAssignments is already populated", () => {
+  it("does not re-apply the bootstrap-only atoms when zoneAssignments is already populated", () => {
     const store = createStore();
-    // Seed with an existing user-configured assignment that differs from the
-    // defaultLayout (info is placed in "bottom" instead of "top-left").
-    store.set(zoneAssignmentsAtom, { info: "bottom", terminal: "bottom", changes: "top-right" });
+    store.set(zoneAssignmentsAtom, { info: "top-left", terminal: "bottom", changes: "top-right" });
 
     renderProvider({ store, panels: TEST_PANELS, defaultLayout: TEST_DEFAULT_LAYOUT });
 
-    // The bootstrap effect must not overwrite the existing assignments with
-    // defaultLayout.zoneAssignments. The user-configured zone for "info" stays.
-    expect(store.get(zoneAssignmentsAtom).info).toBe("bottom");
     // activePanelPerZone and zoneVisibility are bootstrap-only atoms — they
     // must remain untouched when zoneAssignments is already populated.
     expect(store.get(activePanelPerZoneAtom)).toEqual({});
@@ -223,6 +218,40 @@ describe("PanelRegistryProvider — reconciliation (adding panels)", () => {
 
     expect(store.get(zoneOrderAtom)["top-right"]).toEqual([NOTES_PANEL.id]);
     expect(store.get(zoneAssignmentsAtom)[NOTES_PANEL.id]).toBe("top-right");
+  });
+});
+
+describe("PanelRegistryProvider — reconciliation (fixed zones)", () => {
+  it("snaps a panel persisted in a foreign zone back to its fixed zone", () => {
+    const store = createStore();
+    // A drag-to-dock-era persisted layout: "changes" was dragged to "top-left".
+    store.set(zoneAssignmentsAtom, { info: "top-left", terminal: "bottom", changes: "top-left" });
+    store.set(zoneOrderAtom, { "top-left": ["info", "changes"], bottom: ["terminal"] });
+    store.set(activePanelPerZoneAtom, { "top-left": "changes", bottom: "terminal" });
+
+    renderProvider({ store, panels: TEST_PANELS, defaultLayout: TEST_DEFAULT_LAYOUT });
+
+    expect(store.get(zoneAssignmentsAtom).changes).toBe("top-right");
+    expect(store.get(zoneOrderAtom)["top-left"]).toEqual(["info"]);
+    expect(store.get(zoneOrderAtom)["top-right"]).toEqual(["changes"]);
+    // The vacated zone's active panel must be repointed at a panel it holds.
+    expect(store.get(activePanelPerZoneAtom)["top-left"]).toBe("info");
+  });
+
+  it("snaps a panel persisted in an unknown zone back to its fixed zone", () => {
+    const store = createStore();
+    store.set(zoneAssignmentsAtom, {
+      info: "top-left",
+      terminal: "bottom",
+      // @ts-expect-error -- deliberately corrupt persisted data
+      changes: "no-such-zone",
+    });
+    store.set(zoneOrderAtom, { "top-left": ["info"], bottom: ["terminal"] });
+
+    renderProvider({ store, panels: TEST_PANELS, defaultLayout: TEST_DEFAULT_LAYOUT });
+
+    expect(store.get(zoneAssignmentsAtom).changes).toBe("top-right");
+    expect(store.get(zoneOrderAtom)["top-right"]).toEqual(["changes"]);
   });
 });
 

@@ -40,51 +40,19 @@ class AgentSnapshot(pydantic.BaseModel):
     is_deleted: bool
 
 
-def _build_ws_url(base_url: str, session_token: str, scope: str | None = None) -> str:
-    """Convert an HTTP base URL to a WebSocket URL for the streaming endpoint.
-
-    If `scope` is provided, append it as a `scope=` query parameter so the
-    server narrows the connection. Pass None to leave the legacy unscoped
-    behavior (server resolves missing scope to ScopeAll).
-    """
+def _build_ws_url(base_url: str, session_token: str) -> str:
+    """Convert an HTTP base URL to a WebSocket URL for the streaming endpoint."""
     if base_url.startswith("https://"):
         ws_url = "wss://" + base_url[len("https://") :]
     elif base_url.startswith("http://"):
         ws_url = "ws://" + base_url[len("http://") :]
     else:
         ws_url = base_url
-    url = f"{ws_url}/api/v1/stream/ws?x-session-token={urllib.parse.quote(session_token, safe='')}"
-    if scope is not None:
-        url = f"{url}&scope={urllib.parse.quote(scope, safe=':')}"
-    return url
-
-
-class ScopeMalformedError(Exception):
-    """Server rejected the scope query string with HTTP 400."""
-
-
-class ScopeForbiddenError(Exception):
-    """Server rejected the scope upgrade with HTTP 403."""
-
-
-class ScopeNotFoundError(Exception):
-    """Server rejected the scope upgrade with HTTP 404."""
-
-
-def _wrap_invalid_status(e: websockets.exceptions.InvalidStatus) -> Exception:
-    """Map a WS upgrade rejection to a typed scope error, preserving the original for non-4xx."""
-    status = e.response.status_code
-    if status == 400:
-        return ScopeMalformedError(str(e))
-    if status == 403:
-        return ScopeForbiddenError(str(e))
-    if status == 404:
-        return ScopeNotFoundError(str(e))
-    return e
+    return f"{ws_url}/api/v1/stream/ws?x-session-token={urllib.parse.quote(session_token, safe='')}"
 
 
 _TERMINAL_STATUSES = frozenset({"READY", "ERROR"})
-_TERMINAL_TASK_STATUSES = frozenset({"FAILED", "CANCELLED", "DELETED", "SUCCEEDED"})
+_TERMINAL_TASK_STATUSES = frozenset({"FAILED", "DELETED", "SUCCEEDED"})
 
 _MAX_RECONNECT_DELAY_SECONDS = 30
 
@@ -130,51 +98,42 @@ async def _receive_initial_dump(ws: Any, timeout: float = 30.0) -> dict[str, Any
 
 
 async def _fetch_agent_state_async(ws_url: str, agent_id: str, timeout: float) -> AgentSnapshot:
-    """Connect to the scoped WebSocket, receive the initial dump, and extract the agent."""
-    try:
-        async with websockets.connect(ws_url, max_size=None) as ws:
-            dump = await _receive_initial_dump(ws, timeout=timeout)
-            task_views = dump.get("taskViewsByTaskId", {})
-            if agent_id not in task_views:
-                raise AgentNotFoundError(f"Agent {agent_id} not found in scoped frame")
-            return _extract_snapshot(agent_id, dump)
-    except websockets.exceptions.InvalidStatus as e:
-        raise _wrap_invalid_status(e) from e
+    """Connect to the WebSocket, receive the initial dump, and extract the agent."""
+    async with websockets.connect(ws_url, max_size=None) as ws:
+        dump = await _receive_initial_dump(ws, timeout=timeout)
+        task_views = dump.get("taskViewsByTaskId", {})
+        if agent_id not in task_views:
+            raise AgentNotFoundError(f"Agent {agent_id} not found in initial frame")
+        return _extract_snapshot(agent_id, dump)
 
 
 def fetch_agent_state(base_url: str, session_token: str, agent_id: str, timeout: float = 10.0) -> AgentSnapshot:
-    """Fetch agent state via a one-shot WebSocket connection scoped to the agent.
+    """Fetch agent state via a one-shot WebSocket connection.
 
-    The connection uses ?scope=agent:<id> so the server only emits this
-    agent's data. Reads exactly one frame and disconnects.
+    Reads exactly one frame, extracts the agent's view, and disconnects.
     """
-    ws_url = _build_ws_url(base_url, session_token, scope=f"agent:{agent_id}")
+    ws_url = _build_ws_url(base_url, session_token)
     return asyncio.run(_fetch_agent_state_async(ws_url, agent_id, timeout))
 
 
 async def _fetch_all_agents_async(ws_url: str, timeout: float) -> list[AgentSnapshot]:
     """Connect to the WebSocket, receive the initial dump, and extract all agents."""
-    try:
-        async with websockets.connect(ws_url, max_size=None) as ws:
-            dump = await _receive_initial_dump(ws, timeout=timeout)
-            task_views = dump.get("taskViewsByTaskId", {})
-            return [_snapshot_from_view(task_id, view) for task_id, view in task_views.items()]
-    except websockets.exceptions.InvalidStatus as e:
-        raise _wrap_invalid_status(e) from e
+    async with websockets.connect(ws_url, max_size=None) as ws:
+        dump = await _receive_initial_dump(ws, timeout=timeout)
+        task_views = dump.get("taskViewsByTaskId", {})
+        return [_snapshot_from_view(task_id, view) for task_id, view in task_views.items()]
 
 
 def fetch_all_agents(
     base_url: str,
     session_token: str,
-    scope: str = "all",
     timeout: float = 10.0,
 ) -> list[AgentSnapshot]:
-    """Fetch all in-scope agent snapshots via a one-shot WebSocket connection.
+    """Fetch all agent snapshots via a one-shot WebSocket connection.
 
-    Defaults to scope='all'. Pass 'workspace:<id>' or 'project:<id>' to let
-    the server narrow the dump.
+    The server always emits every agent; callers filter client-side.
     """
-    ws_url = _build_ws_url(base_url, session_token, scope=scope)
+    ws_url = _build_ws_url(base_url, session_token)
     return asyncio.run(_fetch_all_agents_async(ws_url, timeout))
 
 
@@ -228,7 +187,7 @@ async def _follow_agent_async(
     on_reconnect: Callable[[], None] | None,
     max_retries: int = 5,
 ) -> ExitReason:
-    """Follow an agent via the scoped WebSocket with reconnection support."""
+    """Follow an agent via the WebSocket with reconnection support."""
     retry_count = 0
     task_id = agent_id
     last_status_sig: list[tuple[Any, ...]] = [()]
@@ -240,7 +199,7 @@ async def _follow_agent_async(
 
                 task_views = dump.get("taskViewsByTaskId", {})
                 if task_id not in task_views:
-                    raise AgentNotFoundError(f"Agent {task_id} not found in scoped frame")
+                    raise AgentNotFoundError(f"Agent {task_id} not found in initial frame")
 
                 snapshot = _extract_snapshot(task_id, dump)
 
@@ -260,8 +219,6 @@ async def _follow_agent_async(
 
                 return await _follow_loop(ws, task_id, on_status, last_status_sig)
 
-        except websockets.exceptions.InvalidStatus as e:
-            raise _wrap_invalid_status(e) from e
         except (websockets.exceptions.ConnectionClosed, websockets.exceptions.ConnectionClosedError):
             retry_count += 1
             if retry_count > max_retries:
@@ -280,14 +237,14 @@ def follow_agent(
     on_reconnect: Callable[[], None] | None = None,
     max_retries: int = 5,
 ) -> ExitReason:
-    """Follow an agent via the scoped WebSocket, calling on_status on status changes.
+    """Follow an agent via the WebSocket, calling on_status on status changes.
 
     on_status fires only when meaningful fields actually change (not on every
     server-side task-view bump).
 
     Returns an ExitReason indicating why the follow loop ended.
     """
-    ws_url = _build_ws_url(base_url, session_token, scope=f"agent:{agent_id}")
+    ws_url = _build_ws_url(base_url, session_token)
     try:
         return asyncio.run(
             _follow_agent_async(

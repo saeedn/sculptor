@@ -68,10 +68,7 @@ def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     for item in items:
         if "sculptor_instance_factory_" in getattr(item, "fixturenames", ()):
             factory_tests.append(item)
-        elif (
-            item.get_closest_marker("electron") is not None
-            or item.get_closest_marker("electron_custom_command") is not None
-        ):
+        elif item.get_closest_marker("electron") is not None:
             electron_tests.append(item)
         else:
             browser_tests.append(item)

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import os
 import shutil
-import sys
 import tempfile
 import time
 from contextlib import contextmanager
@@ -14,7 +13,6 @@ from typing import Generator
 import pytest
 from loguru import logger
 from playwright.sync_api import Playwright
-from playwright.sync_api import expect
 from pytest_playwright.pytest_playwright import ArtifactsRecorder
 
 from sculptor.config.user_config import UserConfig
@@ -25,7 +23,6 @@ from sculptor.service_collections.service_collection import CompleteServiceColle
 from sculptor.services.user_config.user_config import save_config
 from sculptor.testing.dependency_stubs import apply_stubs_from_request
 from sculptor.testing.dependency_stubs import assert_no_stub_dependency_markers
-from sculptor.testing.dependency_stubs import create_claude_stub_dir
 from sculptor.testing.dependency_stubs import has_stub_dependency_marker_for
 from sculptor.testing.dependency_stubs import install_default_claude_stub
 from sculptor.testing.electron_frontend import ElectronFrontend
@@ -33,15 +30,12 @@ from sculptor.testing.frontend_utils import DEFAULT_TEST_LOCALE
 from sculptor.testing.frontend_utils import DEFAULT_TEST_VIEWPORT
 from sculptor.testing.frontend_utils import configure_page
 from sculptor.testing.mock_repo import MockRepoState
-from sculptor.testing.packaged_backend_frontend import PackagedBackendFrontend
-from sculptor.testing.packaged_electron_frontend import PackagedElectronFrontend
 from sculptor.testing.playwright_utils import expect_app_not_onboarding
 from sculptor.testing.playwright_utils import navigate_to_frontend
 from sculptor.testing.port_manager import PortManager
 from sculptor.testing.repo_resources import get_test_project_state
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.sculptor_instance import SculptorInstanceFactory
-from sculptor.testing.sculptor_instance import create_packaged_electron_instance_factory
 from sculptor.testing.sculptor_instance import create_sculptor_instance_factory
 from sculptor.testing.server_utils import SculptorServer
 from sculptor.testing.server_utils import get_sculptor_command_backend_only
@@ -109,22 +103,6 @@ def sculptor_instance_(
     instance._post_test(request)
 
 
-def _get_packaged_binary_path(config: pytest.Config) -> Path:
-    """Return the verified ``--packaged-binary-path`` from the pytest config.
-
-    Centralised so the option is only read from one spot; both the session-
-    scoped packaged fixture and the per-test factory path go through here.
-    Fails loudly if the option was not provided or the path doesn't exist.
-    """
-    binary_path_str = config.getoption("--packaged-binary-path")
-    if not binary_path_str:
-        pytest.fail("--packaged-binary-path is required when running against a packaged Sculptor build")
-    binary_path = Path(binary_path_str)
-    if not binary_path.exists():
-        raise FileNotFoundError(f"Packaged binary not found at: {binary_path}")
-    return binary_path
-
-
 def _create_initial_repo(name: str, tmp_path: Path) -> MockRepoState:
     """Create the initial test git repo with a single commit on a branch and no remote."""
     repo_dir = tmp_path / "initial_repo"
@@ -150,9 +128,7 @@ def _get_or_create_shared_instance(
 
     # -- First call: create all session-level resources --
     launch_mode = request.config.getoption("--sculptor-launch-mode", default="browser")
-    use_electron = launch_mode in ("electron", "electron-custom-command")
-    use_custom_command = launch_mode == "electron-custom-command"
-    use_packaged = launch_mode in ("packaged-electron", "packaged-backend")
+    use_electron = launch_mode == "electron"
 
     port_manager = PortManager()
     backend_port = port_manager.get_free_port()
@@ -185,23 +161,6 @@ def _get_or_create_shared_instance(
 
     playwright: Playwright = request.getfixturevalue("playwright")
 
-    if use_packaged:
-        instance = _create_packaged_instance(
-            config=config,
-            request=request,
-            playwright=playwright,
-            port_manager=port_manager,
-            backend_port=backend_port,
-            sculptor_folder=sculptor_folder,
-            tmp_path=tmp_path,
-            fake_bin_dir=fake_bin_dir,
-            default_timeout_ms=default_timeout_ms,
-            initial_repo=initial_repo,
-            repo_path=repo_path,
-            launch_mode=launch_mode,
-        )
-        return instance
-
     database_url = f"sqlite:///{sculptor_folder / 'sculptor.db'}"
 
     environment = get_testing_environment(
@@ -211,30 +170,13 @@ def _get_or_create_shared_instance(
         hide_keys=True,
     )
 
-    if use_custom_command:
-        instance = _create_custom_command_instance(
-            config=config,
-            request=request,
-            playwright=playwright,
-            port_manager=port_manager,
-            backend_port=backend_port,
-            sculptor_folder=sculptor_folder,
-            tmp_path=tmp_path,
-            fake_bin_dir=fake_bin_dir,
-            default_timeout_ms=default_timeout_ms,
-            initial_repo=initial_repo,
-            repo_path=repo_path,
-            environment=environment,
-        )
-        return instance
-
     # Build command
     command = get_sculptor_command_backend_only(repo_path, port=backend_port)
     # Opt-in tracing: only the shared-fixture path consults
     # ``--sculptor-trace-to`` because the ``just test-tracing`` recipe targets a
     # single test that uses ``sculptor_instance_``. If a future tracing scenario
-    # needs the factory or packaged paths, plumb the flag through those
-    # command-building sites the same way.
+    # needs the factory path, plumb the flag through its command-building site
+    # the same way.
     trace_to_path = request.config.getoption("--sculptor-trace-to", default=None)
     if trace_to_path:
         command = command + (f"--trace-to={trace_to_path}",)
@@ -301,7 +243,6 @@ def _get_or_create_shared_instance(
         project_path=repo_path,
         browser_context=browser_context,
         browser=browser,
-        is_electron=use_electron,
         default_timeout_ms=default_timeout_ms,
         forwarder=forwarder,
     )
@@ -336,267 +277,9 @@ def _get_or_create_shared_instance(
     return instance
 
 
-def _create_packaged_instance(
-    config: pytest.Config,
-    request: pytest.FixtureRequest,
-    playwright: Playwright,
-    port_manager: PortManager,
-    backend_port: int,
-    sculptor_folder: Path,
-    tmp_path: Path,
-    fake_bin_dir: Path,
-    default_timeout_ms: int,
-    initial_repo: MockRepoState,
-    repo_path: Path,
-    launch_mode: str,
-) -> SculptorInstance:
-    """Create a SculptorInstance backed by a packaged Sculptor binary.
-
-    When launch_mode is 'packaged-electron', launches the full Electron binary
-    with CDP (Linux). When 'packaged-backend', launches sculptor_backend directly
-    with a standalone headless Chromium (macOS / headless environments).
-    """
-    binary_path = _get_packaged_binary_path(config)
-
-    # Place a stub `claude` binary on PATH so the packaged app's dependency
-    # check sees claude as installed and gets past the onboarding screen.
-    claude_stub_dir = create_claude_stub_dir(tmp_path)
-    original_path = os.environ.get("PATH", "")
-    extra_env = {"PATH": f"{claude_stub_dir}{os.pathsep}{original_path}"}
-
-    packaged_frontend: PackagedElectronFrontend | PackagedBackendFrontend
-    if launch_mode == "packaged-electron":
-        cdp_port = port_manager.get_free_port()
-        user_data_dir = Path(tempfile.mkdtemp(prefix="sculptor_packaged_"))
-        packaged_frontend = PackagedElectronFrontend(
-            playwright=playwright,
-            binary_path=binary_path,
-            backend_port=backend_port,
-            cdp_port=cdp_port,
-            sculptor_folder=sculptor_folder,
-            user_data_dir=user_data_dir,
-            timeout_ms=default_timeout_ms,
-            extra_env=extra_env,
-        )
-    else:
-        packaged_frontend = PackagedBackendFrontend(
-            playwright=playwright,
-            binary_path=binary_path,
-            backend_port=backend_port,
-            sculptor_folder=sculptor_folder,
-            timeout_ms=default_timeout_ms,
-            extra_env=extra_env,
-        )
-
-    browser_context, page = packaged_frontend.__enter__()
-
-    # Add the session token as a cookie so that Playwright's page.request API
-    # (used by SculptorInstance._pre_test for cleanup) authenticates correctly.
-    browser_context.add_cookies(
-        [
-            {
-                "name": "x-session-token",
-                "value": packaged_frontend.session_token,
-                "url": f"http://127.0.0.1:{backend_port}",
-            }
-        ]
-    )
-
-    # Create a SculptorServer wrapping the primary process.
-    # For packaged-electron, this is the Electron process (which manages the backend).
-    # For packaged-backend, this is the backend process itself.
-    if isinstance(packaged_frontend, PackagedElectronFrontend):
-        server = SculptorServer(process=packaged_frontend._electron_proc, port=backend_port)
-        is_electron = True
-    else:
-        server = SculptorServer(process=packaged_frontend._backend_proc, port=backend_port)
-        is_electron = False
-
-    # Register the test project. Without this the app lands on /setup (no projects).
-    packaged_frontend.register_project(repo_path)
-
-    # Full-reload to the root URL so the SPA rootLoader re-evaluates routing.
-    # It will call getActiveProjects(), find the newly registered project,
-    # and redirect to /ws/new.  We navigate to the bare URL (no hash) so
-    # the hash router starts at "/" and the rootLoader fires.  The previous
-    # approach of page.goto("#/ws/new") + page.reload() was unreliable in
-    # CDP mode: the hash-only goto could race with reload, leaving the page
-    # stuck on #/setup.
-    base_url = page.url.split("#")[0].rstrip("/")
-    page.goto(base_url, wait_until="networkidle")
-
-    # Wait for the SPA to render — raise if onboarding shows instead of the main app.
-    logger.info("Waiting for SPA to render (checking for ADD_WORKSPACE_BUTTON or onboarding)")
-    add_ws_button = page.get_by_test_id(ElementIDs.ADD_WORKSPACE_BUTTON)
-    try:
-        expect_app_not_onboarding(page, add_ws_button, timeout=_INITIAL_RENDER_TIMEOUT_MS)
-    except Exception:
-        logger.error("SPA render failed. Page URL: {}", page.url)
-        logger.error("Page content preview: {}", page.content()[:2000])
-        packaged_frontend.__exit__(None, None, None)
-        raise
-    logger.info("SPA rendered successfully")
-
-    instance = SculptorInstance(
-        server=server,
-        page=page,
-        # base_url above was derived from page.url, so it is the SPA's origin.
-        frontend_url=base_url,
-        repo=initial_repo,
-        sculptor_folder=sculptor_folder,
-        fake_bin_dir=fake_bin_dir,
-        project_path=repo_path,
-        browser_context=browser_context,
-        browser=None,
-        is_electron=is_electron,
-        default_timeout_ms=default_timeout_ms,
-        forwarder=None,
-    )
-
-    setattr(config, "_sculptor_instance", instance)
-    setattr(config, "_packaged_frontend", packaged_frontend)
-
-    request.session.addfinalizer(
-        lambda: _packaged_session_teardown(instance, packaged_frontend, sculptor_folder, tmp_path)
-    )
-
-    return instance
-
-
-def _packaged_session_teardown(
-    instance: SculptorInstance,
-    packaged_frontend: PackagedElectronFrontend | PackagedBackendFrontend,
-    sculptor_folder: Path,
-    tmp_path: Path,
-) -> None:
-    instance._teardown()
-    try:
-        packaged_frontend.__exit__(None, None, None)
-    except Exception:
-        logger.debug("Packaged frontend cleanup error during teardown")
-    shutil.rmtree(sculptor_folder, ignore_errors=True)
-    shutil.rmtree(tmp_path, ignore_errors=True)
-
-
-def _create_custom_command_instance(
-    config: pytest.Config,
-    request: pytest.FixtureRequest,
-    playwright: Playwright,
-    port_manager: PortManager,
-    backend_port: int,
-    sculptor_folder: Path,
-    tmp_path: Path,
-    fake_bin_dir: Path,
-    default_timeout_ms: int,
-    initial_repo: MockRepoState,
-    repo_path: Path,
-    environment: dict[str, str | None],
-) -> SculptorInstance:
-    """Create a SculptorInstance where Electron manages the backend via a custom command.
-
-    Instead of starting the backend separately, we pass a shell command to
-    Electron via SCULPTOR_CUSTOM_BACKEND_CMD.  Electron spawns the command,
-    reads a URL from its stdout, and enters custom-command mode where file
-    uploads use HTTP instead of Electron IPC.
-    """
-    # Build a custom command that prints the URL then execs the backend.
-    # Use sys.executable so the custom command runs in the same virtualenv
-    # as the test process (the Electron child inherits a different PATH).
-    python = sys.executable
-    custom_backend_cmd = f"echo http://localhost:{backend_port} && exec {python} -m sculptor.cli.main --no-open-browser --port {backend_port} {repo_path}"
-
-    # Convert the testing environment dict to strings, filtering out None
-    # values (which represent env vars to unset).  These are passed as
-    # extra_env so the custom command inherits them.
-    extra_env = {k: str(v) for k, v in environment.items() if v is not None}
-
-    # Generate a known session token so Playwright's page.request calls can
-    # authenticate against the backend (which requires the token in custom
-    # command mode).  Electron will use this instead of generating a random one.
-    session_token = os.urandom(32).hex()
-    extra_env["SCULPTOR_SESSION_TOKEN"] = session_token
-
-    electron_frontend = ElectronFrontend(
-        playwright=playwright,
-        backend_port=backend_port,
-        port_manager=port_manager,
-        timeout_ms=default_timeout_ms,
-        custom_backend_cmd=custom_backend_cmd,
-        extra_env=extra_env,
-    )
-    browser_context, page = electron_frontend.__enter__()
-
-    # Add the session token as a cookie so that Playwright's page.request API
-    # (used by SculptorInstance._pre_test for cleanup) authenticates correctly.
-    browser_context.add_cookies(
-        [
-            {
-                "name": "x-session-token",
-                "value": session_token,
-                "url": f"http://127.0.0.1:{backend_port}",
-            }
-        ]
-    )
-
-    # Wait for the React SPA to render.
-    try:
-        expect(
-            page.get_by_test_id(ElementIDs.ADD_WORKSPACE_BUTTON).or_(page.get_by_test_id(ElementIDs.START_TASK_BUTTON))
-        ).to_be_visible()
-    except Exception:
-        electron_frontend.__exit__(None, None, None)
-        raise
-
-    # The backend is a child of the Electron process.  Wrap the Electron
-    # process in SculptorServer so teardown kills the entire tree.
-    assert electron_frontend._electron_proc is not None
-    server = SculptorServer(process=electron_frontend._electron_proc, port=backend_port)
-
-    instance = SculptorInstance(
-        server=server,
-        page=page,
-        frontend_url=page.url.split("#")[0].rstrip("/"),
-        repo=initial_repo,
-        sculptor_folder=sculptor_folder,
-        fake_bin_dir=fake_bin_dir,
-        project_path=repo_path,
-        browser_context=browser_context,
-        browser=None,
-        is_electron=True,
-        default_timeout_ms=default_timeout_ms,
-        forwarder=None,
-        session_token=session_token,
-    )
-
-    setattr(config, "_sculptor_instance", instance)
-    setattr(config, "_electron_frontend", electron_frontend)
-
-    request.session.addfinalizer(
-        lambda: _custom_command_session_teardown(instance, electron_frontend, sculptor_folder, tmp_path)
-    )
-
-    return instance
-
-
-def _custom_command_session_teardown(
-    instance: SculptorInstance,
-    electron_frontend: ElectronFrontend,
-    sculptor_folder: Path,
-    tmp_path: Path,
-) -> None:
-    instance._teardown()
-    try:
-        electron_frontend.__exit__(None, None, None)
-    except Exception:
-        logger.debug("ElectronFrontend cleanup error during teardown")
-    shutil.rmtree(sculptor_folder, ignore_errors=True)
-    shutil.rmtree(tmp_path, ignore_errors=True)
-
-
 @pytest.fixture
 def sculptor_instance_factory_(
     request: pytest.FixtureRequest,
-    playwright: Playwright,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> Generator[SculptorInstanceFactory, None, None]:
@@ -611,14 +294,6 @@ def sculptor_instance_factory_(
     if hasattr(request, "fixturenames") and "sculptor_instance_" in request.fixturenames:
         pytest.fail("Cannot use both sculptor_instance_ and sculptor_instance_factory_ in the same test")
 
-    launch_mode = request.config.getoption("--sculptor-launch-mode", default="browser")
-    if launch_mode == "packaged-backend":
-        pytest.fail(
-            "sculptor_instance_factory_ is not supported in packaged-backend mode."
-            + " Use sculptor_instance_ instead, or run with"
-            + " --sculptor-launch-mode=packaged-electron if the platform and environment support it."
-        )
-
     port_manager = PortManager()
     backend_port = port_manager.get_free_port()
 
@@ -628,10 +303,9 @@ def sculptor_instance_factory_(
     )
     folder_populator(sculptor_folder)
 
-    # Align the DB path with where the packaged backend looks
-    # ({SCULPTOR_FOLDER}/internal/database.db, derived in
-    # get_sculptor_folder) so populators that pre-seed a database work in
-    # both browser and packaged-electron modes.
+    # Keep the DB path aligned with where the backend derives it by default
+    # ({SCULPTOR_FOLDER}/internal/database.db, derived in get_sculptor_folder)
+    # so populators that pre-seed a database keep working.
     database_url = f"sqlite:///{sculptor_folder / 'internal' / 'database.db'}"
 
     default_timeout_ms = _DEFAULT_TIMEOUT_MS
@@ -640,9 +314,8 @@ def sculptor_instance_factory_(
 
     # Fake bin directory for test-owned CLI stubs; prepended to PATH so the
     # backend subprocesses this factory spawns find anything tests drop in.
-    # The subprocesses (raw backend in browser mode, packaged binary in
-    # packaged-electron mode) inherit PATH from os.environ when spawned, so
-    # we actually do need to mutate the process-global value rather than
+    # The spawned backend subprocesses inherit PATH from os.environ, so we
+    # actually do need to mutate the process-global value rather than
     # just building a local dict.  monkeypatch.setenv restores the
     # previous value at test teardown, so this is pollution-safe.
     fake_bin_dir = tmp_path / "fake_bin"
@@ -656,25 +329,6 @@ def sculptor_instance_factory_(
     # own stub further down, and we must not clobber it.
     if not has_stub_dependency_marker_for(request, "claude"):
         install_default_claude_stub(fake_bin_dir)
-
-    if launch_mode == "packaged-electron":
-        binary_path = _get_packaged_binary_path(request.config)
-        # The packaged binary inherits PATH via extra_env, so its dependency
-        # check sees the claude stub just like raw backend subprocesses do.
-        extra_env = {"PATH": os.environ["PATH"]}
-        factory = create_packaged_electron_instance_factory(
-            playwright=playwright,
-            binary_path=binary_path,
-            port_manager=port_manager,
-            backend_port=backend_port,
-            sculptor_folder=sculptor_folder,
-            default_timeout_ms=default_timeout_ms,
-            base_repo=base_repo,
-            fake_bin_dir=fake_bin_dir,
-            extra_env=extra_env,
-        )
-        yield factory
-        return
 
     environment = get_testing_environment(
         database_url=database_url,

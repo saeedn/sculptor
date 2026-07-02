@@ -14,14 +14,12 @@ from pathlib import Path
 
 import pytest
 import sqlalchemy
-from playwright.sync_api import expect
 
 from sculptor.config.user_config import UserConfig
 from sculptor.database.core import create_new_engine
 from sculptor.database.core import initialize_db
 from sculptor.foundation.async_monkey_patches_test import expect_at_least_logged_errors
 from sculptor.services.user_config.user_config import save_config
-from sculptor.testing.pages.error_page import PlaywrightErrorPage
 from sculptor.testing.resources import custom_sculptor_folder_populator
 from sculptor.testing.sculptor_instance import SculptorInstanceFactory
 from sculptor.testing.user_stories import user_story
@@ -83,24 +81,3 @@ def test_unknown_migration_head_causes_backend_to_exit_not_hang(
     assert "Sculptor database is not compatible" in error_text, (
         f"Expected the irrecoverable-error message in the backend output, got:\n{error_text}"
     )
-
-
-@pytest.mark.release
-@pytest.mark.packaged_electron
-@user_story("to see a fatal error page instead of a hang when my DB has a newer migration than this Sculptor build")
-@custom_sculptor_folder_populator.with_args(_populate_folder_with_unknown_migration_head)
-def test_unknown_migration_head_renders_backend_error_page(
-    sculptor_instance_factory_: SculptorInstanceFactory,
-) -> None:
-    """Under the packaged Electron binary, seed the DB with an unknown alembic
-    revision and assert the renderer lands on ``BACKEND_ERROR_PAGE`` (via
-    ``BackendStatusBoundary``) after the Python backend exits with the
-    irrecoverable-error code.
-
-    This end-to-end-validates the fix for the startup hang: the backend exits
-    promptly, Electron main surfaces the fatal error page, and the UI shows
-    the user a recoverable error rather than an indefinite loading spinner.
-    """
-    with sculptor_instance_factory_.spawn_instance(wait_until_ready=False) as instance:
-        error_page = PlaywrightErrorPage(instance.page)
-        expect(error_page.get_backend_error_page()).to_be_visible(timeout=60_000)

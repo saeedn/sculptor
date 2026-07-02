@@ -93,7 +93,6 @@ class SculptorFactory:
         self,
         *,
         project_path: Path | None = None,
-        wait_until_ready: bool = True,
     ) -> Generator[tuple[SculptorServer, Page, BrowserContext, str | None], None, None]:
         """Start a backend process and yield ``(server, page, context, session_token)``.
 
@@ -104,13 +103,7 @@ class SculptorFactory:
             project_path: If provided, the backend starts with this repo as
                 its initial project. If None, the backend starts with no
                 project (useful for onboarding / project-selection tests).
-            wait_until_ready: Only the default (True) is supported here;
-                passing False is reserved for the packaged-electron delegate
-                that can observe the renderer via CDP before the backend is
-                healthy.
         """
-        if not wait_until_ready:
-            raise NotImplementedError("wait_until_ready=False is only supported in packaged-electron mode")
         environment = self.environment.copy()
         command = get_sculptor_command_backend_only(project_path, port=self.port)
 

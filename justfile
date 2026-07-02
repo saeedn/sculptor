@@ -346,38 +346,6 @@ _run-check step:
       { echo "=== {{step}} ==="; cat "$step_log"; echo; } >> "$JUST_LOG_FILE"
     fi
 
-# Fail if a bundled plugin squats a reserved dynamic-mount path. The backend
-# serves /plugins/local and /plugins/from-workspace at runtime; a built-in named
-# `local` or `from-workspace` would be shadowed by the mount, so those names are
-# reserved. (The frontend plugin manager also drops such a built-in at runtime
-# as defense in depth; this catches it at build/CI time.)
-[group("ci")]
-check-reserved-plugin-names:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    {{ _quiet_by_default_fn }}
-    _do_check_reserved_plugin_names() {
-      cd "{{justfile_directory()}}"
-      echo "Checking for reserved built-in plugin names..."
-      reserved=("local" "from-workspace")
-      offenders=""
-      for base in sculptor/frontend/public/plugins sculptor/frontend/plugins; do
-        for name in "${reserved[@]}"; do
-          if [ -e "$base/$name" ]; then
-            offenders="$offenders  $base/$name\n"
-          fi
-        done
-      done
-      if [ -n "$offenders" ]; then
-        echo "ERROR: these built-in plugins use a reserved name (local, from-workspace):"
-        echo -e "$offenders"
-        echo "Rename them — those paths are reserved for backend-served plugins."
-        exit 1
-      fi
-      echo "No reserved built-in plugin names."
-    }
-    quiet_by_default check-reserved-plugin-names _do_check_reserved_plugin_names
-
 # Run all checks: format, lint, typecheck, newlines, and ratchets
 # Set JUST_VERBOSE=1 in the environment for full output (used in CI).
 [group("ci")]
@@ -394,7 +362,7 @@ check:
     # Note: check-large-files is not included here as it checks staged files only (for pre-commit hooks)
     # Run checks in parallel (fastest first for quicker feedback).
     ./sculptor/frontend/node_modules/.bin/concurrently \
-      --names check-yaml,check-uv-lock,check-shellcheck,ratchets,typecheck,check-file-hygiene,check-reserved-plugin-names,lint \
+      --names check-yaml,check-uv-lock,check-shellcheck,ratchets,typecheck,check-file-hygiene,lint \
       --prefix-colors auto \
       "just _run-check check-yaml" \
       "just _run-check check-uv-lock" \
@@ -402,7 +370,6 @@ check:
       "just _run-check ratchets" \
       "just _run-check typecheck" \
       "just _run-check check-file-hygiene" \
-      "just _run-check check-reserved-plugin-names" \
       "just _run-check lint" \
       2>&1 | grep -v 'exited with code 0'
 
@@ -581,29 +548,6 @@ frontend:
     cd "{{justfile_directory()}}/sculptor/frontend"
     env SCULPTOR_ICON_LABEL="src" \
       npm run electron:start -- --  --unhandled-rejections=strict --trace-warnings
-
-# Start Electron in custom-command mode WITHOUT Docker.
-# Runs the backend from source via uv, but exercises the full custom-command
-# code path (stdout URL parsing, HTTP file uploads, capabilities flags).
-# This is the fastest way to iterate on custom-command changes.
-# Usage:  just frontend-custom
-[group("dev")]
-frontend-custom:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    REPO_ROOT="{{justfile_directory()}}"
-    PORT="${SCULPTOR_API_PORT:-5050}"
-
-    export SESSION_TOKEN="${SESSION_TOKEN:-$(uuidgen)}"
-
-    # A minimal "custom backend command" that runs the backend from source.
-    # It prints the URL to stdout (so Electron can discover it) then execs the backend.
-    export SCULPTOR_CUSTOM_BACKEND_CMD="echo http://localhost:${PORT} && cd ${REPO_ROOT}/sculptor && exec uv run python -m sculptor.cli.main --no-open-browser --port ${PORT}"
-
-    just _patch-electron-app-name "Sculptor (from source)"
-    export SCULPTOR_ICON_LABEL="src"
-    cd "$REPO_ROOT/sculptor/frontend"
-    exec npm run electron:start -- --  --unhandled-rejections=strict --trace-warnings
 
 # Start the Storybook dev server
 [group("dev")]
@@ -1241,7 +1185,3 @@ test-integration-electron tests="sculptor/tests/integration/" buildargs="": buil
       ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude --sculptor-launch-mode=electron {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
     }
     quiet_by_default test-integration-electron _do_test_integration_electron
-
-[group("test")]
-benchmark tests="sculptor/tests/benchmark" buildargs="":
-    uv run --project sculptor pytest --show-capture=all --capture=tee-sys -v -ra {{tests}} {{buildargs}}

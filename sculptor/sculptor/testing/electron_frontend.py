@@ -54,15 +54,11 @@ class ElectronFrontend:
         backend_port: int,
         port_manager: PortManager,
         timeout_ms: int,
-        custom_backend_cmd: str | None = None,
-        extra_env: dict[str, str] | None = None,
     ) -> None:
         self.playwright = playwright
         self.backend_port = backend_port
         self.port_manager = port_manager
         self.timeout_ms = timeout_ms
-        self.custom_backend_cmd = custom_backend_cmd
-        self.extra_env = extra_env or {}
         self._electron_proc: subprocess.Popen | None = None
         self._forwarder: Forwarder | None = None
         self._user_data_dir: str | None = None
@@ -105,16 +101,9 @@ class ElectronFrontend:
             # protocol proxies to the Vite dev server) so integration tests
             # exercise the real packaged-app origin without a packaged build.
             "SCULPTOR_USE_APP_SCHEME": "1",
+            "SCULPTOR_API_PORT": str(self.backend_port),
         }
-        # In custom command mode, Electron spawns the backend itself via the
-        # custom command — so we do NOT set SCULPTOR_API_PORT (the command
-        # controls which port the backend listens on).  Instead we pass the
-        # command string so Electron enters custom-command mode.
-        if self.custom_backend_cmd:
-            electron_env["SCULPTOR_CUSTOM_BACKEND_CMD"] = self.custom_backend_cmd
-        else:
-            electron_env["SCULPTOR_API_PORT"] = str(self.backend_port)
-        full_env = {**os.environ, **self.extra_env, **electron_env}
+        full_env = {**os.environ, **electron_env}
 
         frontend_dir = get_v1_frontend_path()
         lock_path = Path("/tmp/sculptor_electron_forge.lock")

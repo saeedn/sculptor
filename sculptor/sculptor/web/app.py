@@ -2596,7 +2596,6 @@ def get_health_check(request: Request) -> HealthCheckResponse:
     return HealthCheckResponse(
         version=str(version.__version__),
         git_sha=str(version.__git_sha__),
-        python_version=sys.version.split()[0],
         platform=platform.system(),
         platform_version=platform.release(),
         free_disk_gb=free_gb,

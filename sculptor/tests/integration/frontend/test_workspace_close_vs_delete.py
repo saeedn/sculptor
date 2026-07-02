@@ -36,8 +36,8 @@ def test_close_workspace_tab_removes_tab_without_deletion(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace A")
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace A")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace B")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -69,8 +69,8 @@ def test_cmd_w_closes_workspace_tab(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="WS One")
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="WS Two")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS One")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS Two")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -104,8 +104,8 @@ def test_cmd_shift_w_deletes_active_workspace(
     layout = PlaywrightProjectLayoutPage(page=page)
 
     # "Delete WS" is active after creation.
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Keep WS")
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Delete WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Keep WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Delete WS")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -143,8 +143,8 @@ def test_reopen_closed_workspace_from_list(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Closeable WS")
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Remaining WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Closeable WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Remaining WS")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -179,8 +179,8 @@ def test_close_all_workspace_tabs_via_context_menu(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="WS Alpha")
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="WS Beta")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS Alpha")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS Beta")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -216,8 +216,8 @@ def test_close_others_workspace_tabs_via_context_menu(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="WS First")
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="WS Second")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS First")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS Second")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -247,8 +247,8 @@ def test_reopen_closed_workspace_from_home_page(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Home Reopen WS")
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Stay Open WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Home Reopen WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Stay Open WS")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -285,8 +285,8 @@ def test_closed_workspace_stays_closed(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Flappy WS")
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Stable WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Flappy WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Stable WS")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -333,8 +333,8 @@ def test_close_after_reopen_from_home_page(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Reopen Close A")
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Reopen Close B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Reopen Close A")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Reopen Close B")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -400,8 +400,8 @@ def test_close_after_reopen_from_home(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Home Close A")
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Home Close B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Home Close A")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Home Close B")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)

@@ -14,7 +14,6 @@ from sculptor.database.models import Project
 from sculptor.database.models import SavedAgentMessage
 from sculptor.database.models import Task
 from sculptor.database.models import TaskID
-from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
 from sculptor.database.workspace_enums import DiffStatus
 from sculptor.foundation.pydantic_serialization import FrozenModel
@@ -159,12 +158,6 @@ class DataModelTransaction(MutableModel, ABC):
     def get_projects(self, organization_reference: OrganizationReference | None = None) -> tuple[Project, ...]: ...
 
     @abstractmethod
-    def get_user_settings(self, user_reference: UserReference) -> UserSettings | None: ...
-
-    @abstractmethod
-    def get_or_create_user_settings(self, user_reference: UserReference) -> UserSettings: ...
-
-    @abstractmethod
     def get_project(self, project_id: ProjectID) -> Project | None: ...
 
     @abstractmethod
@@ -182,10 +175,6 @@ class DataModelTransaction(MutableModel, ABC):
         project_id: ProjectID | None = None,
         organization_reference: OrganizationReference | None = None,
     ) -> tuple[Workspace, ...]: ...
-
-    @abstractmethod
-    def get_workspace_include_deleted(self, workspace_id: WorkspaceID) -> Workspace | None:
-        """Get workspace by ID including soft-deleted ones. Used for deletion state checks."""
 
     @abstractmethod
     def upsert_workspace(self, workspace: Workspace) -> Workspace: ...

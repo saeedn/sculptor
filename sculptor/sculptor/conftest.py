@@ -118,7 +118,6 @@ def test_service_collection(
         concurrency_group=test_root_concurrency_group.make_concurrency_group("ci_babysitter"),
         data_model_service=_test_data_model_service,
         task_service=_test_task_service,
-        git_repo_service=_test_git_repo_service,
         pr_polling_service=pr_polling_service,
     )
     services = CompleteServiceCollection(

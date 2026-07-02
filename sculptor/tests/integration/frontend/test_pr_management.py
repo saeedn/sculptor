@@ -51,7 +51,7 @@ def test_banner_hides_pr_ui_for_non_github_origin(sculptor_instance_: SculptorIn
     """
     page = sculptor_instance_.page
 
-    task_page = start_task_and_wait_for_ready(page, "say hello")
+    task_page = start_task_and_wait_for_ready(page)
 
     # Non-GitHub workspace should not show the PR button (the target-branch
     # selector is host-agnostic and stays visible).
@@ -71,7 +71,7 @@ def test_banner_shows_target_branch_selector_for_non_github_origin(
     page = sculptor_instance_.page
     _set_remote(sculptor_instance_, _BITBUCKET_REMOTE)
 
-    task_page = start_task_and_wait_for_ready(page, "say hello")
+    task_page = start_task_and_wait_for_ready(page)
 
     # The selector renders so the user can see the current target...
     selector = task_page.get_target_branch_selector()
@@ -102,7 +102,7 @@ def test_banner_target_branch_lists_local_branches_when_no_remote(
     page = sculptor_instance_.page
     _remove_origin_and_add_local_branches(sculptor_instance_, ("feature/demo-target",))
 
-    task_page = start_task_and_wait_for_ready(page, "say hello")
+    task_page = start_task_and_wait_for_ready(page)
 
     selector = task_page.get_target_branch_selector()
     expect(selector).to_be_visible()

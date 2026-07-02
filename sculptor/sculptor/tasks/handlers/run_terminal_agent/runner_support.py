@@ -20,11 +20,9 @@ from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.errors import ExpectedError
 from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.serialization import SerializedException
-from sculptor.interfaces.agents.agent import AgentCrashedRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentCrashedRunnerMessage
 from sculptor.interfaces.agents.agent import PersistentRunnerMessageUnion
 from sculptor.interfaces.agents.agent import UnexpectedErrorRunnerMessage
-from sculptor.interfaces.agents.errors import AgentCrashed
 from sculptor.interfaces.environments.errors import EnvironmentFailure
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import TaskID
@@ -103,15 +101,8 @@ def on_exception(
     error = e
 
     # send a message to the user
-    is_worth_notifying = True
     agent_error_message: PersistentRunnerMessageUnion
     match error:
-        case AgentCrashed():
-            agent_error_message = AgentCrashedRunnerMessage(
-                message_id=AgentMessageID(),
-                exit_code=error.exit_code,
-                error=SerializedException.build(error),
-            )
         case EnvironmentFailure():
             agent_error_message = EnvironmentCrashedRunnerMessage(
                 message_id=AgentMessageID(),
@@ -126,19 +117,18 @@ def on_exception(
     def on_transaction(t: DataModelTransaction) -> None:
         services.task_service.create_message(agent_error_message, task_id, t)
 
-        # and send a notification to the user if necessary
-        if is_worth_notifying:
-            task_row = services.task_service.get_task(task_id, t)
-            assert task_row is not None
-            t.insert_notification(
-                Notification(
-                    user_reference=user_reference,
-                    object_id=NotificationID(),
-                    message="Agent failed.",
-                    importance=NotificationImportance.TIME_SENSITIVE,
-                    task_id=task_row.object_id,
-                ),
-            )
+        # and send a notification to the user
+        task_row = services.task_service.get_task(task_id, t)
+        assert task_row is not None
+        t.insert_notification(
+            Notification(
+                user_reference=user_reference,
+                object_id=NotificationID(),
+                message="Agent failed.",
+                importance=NotificationImportance.TIME_SENSITIVE,
+                task_id=task_row.object_id,
+            ),
+        )
 
     # During shutdown, any unrecognized exception should be treated as a pause rather than a failure.
     # This catches cases where exceptions from cleanup code (e.g., DB writes in finally blocks)

@@ -183,7 +183,7 @@ def test_env_var_names_shown_in_settings(sculptor_instance_: SculptorInstance) -
     (env_dir / ".env").write_text("SCTEST_SETTING_A=value_a\nSCTEST_SETTING_B=value_b\n")
 
     page = sculptor_instance_.page
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Settings Env WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Settings Env WS")
 
     settings_page = navigate_to_settings_page(page=page)
     env_vars_section = settings_page.click_on_env_vars()

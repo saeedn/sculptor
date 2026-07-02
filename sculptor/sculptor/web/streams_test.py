@@ -6,17 +6,14 @@ from sculptor.config.settings import SculptorSettings
 from sculptor.database.models import Notification
 from sculptor.database.models import NotificationID
 from sculptor.database.models import Project
-from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
 from sculptor.primitives.ids import OrganizationReference
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import UserReference
-from sculptor.primitives.ids import UserSettingsID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.web.data_types import OpenFileUiAction
 from sculptor.web.data_types import StreamingUpdateSourceTypes
-from sculptor.web.data_types import UserUpdateSourceTypes
 from sculptor.web.streams import _convert_to_streaming_update
 from sculptor.web.streams import _convert_to_user_update
 from sculptor.web.streams import _snapshot_setup_state
@@ -30,29 +27,20 @@ def test_convert_to_user_update_collects_models_and_overwrites_duplicates() -> N
     initial_project = Project(object_id=project_id, organization_reference=organization, name="Initial")
     updated_project = initial_project.model_copy(update={"name": "Updated"})
 
-    user_settings = UserSettings(
-        object_id=UserSettingsID(),
-        user_reference=user_reference,
-    )
-
-    server_settings = SculptorSettings()
-
     notification = Notification(
         object_id=NotificationID(),
         user_reference=user_reference,
         message="Streaming notification",
     )
 
-    transactions: list[UserUpdateSourceTypes | None] = [
+    transactions: list[CompletedTransaction | None] = [
         None,
         CompletedTransaction(request_id=None, updated_models=(initial_project,)),
-        server_settings,
-        CompletedTransaction(request_id=None, updated_models=(updated_project, user_settings, notification)),
+        CompletedTransaction(request_id=None, updated_models=(updated_project, notification)),
     ]
 
     update = _convert_to_user_update(transactions)
 
-    assert update.user_settings == user_settings
     assert update.projects == (updated_project,)
     assert update.notifications == (notification,)
 

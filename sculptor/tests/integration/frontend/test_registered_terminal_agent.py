@@ -38,7 +38,7 @@ _FAKE_TUI_COMMAND = (
 @user_story("to have a registered terminal agent launch its program in the terminal")
 def test_registered_terminal_agent_launches_program(sculptor_instance_: SculptorInstance) -> None:
     page = sculptor_instance_.page
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Registered Launch WS")
+    start_task_and_wait_for_ready(page, workspace_name="Registered Launch WS")
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
 
     registrations_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
@@ -101,7 +101,7 @@ def test_registered_terminal_agent_resumes_after_restart(
     — the reported session id flows TOML → signal → state → resume template."""
     with sculptor_instance_factory_.spawn_instance() as instance:
         page = instance.page
-        start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Resume WS")
+        start_task_and_wait_for_ready(page, workspace_name="Resume WS")
         agent_tab_bar = PlaywrightAgentTabBarElement(page)
 
         registrations_dir = instance.sculptor_folder / "terminal_agents"

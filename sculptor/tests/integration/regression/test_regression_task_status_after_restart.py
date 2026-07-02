@@ -67,7 +67,7 @@ def _launch_busy_terminal_agent(instance: SculptorInstance) -> None:
     page = instance.page
     agents_dir = instance.sculptor_folder / "terminal_agents"
 
-    start_task_and_wait_for_ready(page, prompt="Say hi to me")
+    start_task_and_wait_for_ready(page)
     register_fake_terminal_agent(agents_dir)
 
     agent_tab_bar = PlaywrightAgentTabBarElement(page)

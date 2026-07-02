@@ -127,18 +127,6 @@ class PlaywrightProjectLayoutPage(PlaywrightIntegrationTestPage):
         """Copy workspace id lives in the Diagnostics sub-menu (open it first)."""
         return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_COPY_WORKSPACE_ID)
 
-    def rename_workspace_tab(self, new_name: str, workspace_tab_index: int = 0) -> None:
-        """Rename a workspace tab via context menu."""
-        self.open_workspace_tab_context_menu(workspace_tab_index)
-        rename_item = self.get_tab_context_menu_rename()
-        expect(rename_item).to_be_visible()
-        rename_item.click()
-        rename_input = self.get_inline_rename_input()
-        expect(rename_input).to_be_visible()
-        rename_input.fill(new_name)
-        rename_input.press("Enter")
-        expect(rename_input).not_to_be_visible()
-
     def get_closed_workspaces_pill(self) -> Locator:
         return self.get_by_test_id(ElementIDs.CLOSED_WORKSPACES_PILL)
 
@@ -154,9 +142,6 @@ class PlaywrightProjectLayoutPage(PlaywrightIntegrationTestPage):
         """Get the topbar element."""
         topbar = self.get_by_test_id(ElementIDs.TOP_BAR)
         return PlaywrightTopBarElement(locator=topbar, page=self._page)
-
-    def get_top_bar_locator(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.TOP_BAR)
 
     def get_settings_page_locator(self) -> Locator:
         return self.get_by_test_id(ElementIDs.SETTINGS_PAGE)

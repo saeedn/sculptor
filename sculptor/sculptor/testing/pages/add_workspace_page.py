@@ -34,9 +34,6 @@ class PlaywrightAddWorkspacePage(PlaywrightProjectLayoutPage):
         expect(dialog.get_path_input()).to_be_visible()
         return dialog
 
-    def get_task_input(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.TASK_INPUT)
-
     def get_workspace_name_input(self) -> Locator:
         return self.get_by_test_id(ElementIDs.WORKSPACE_NAME_INPUT)
 

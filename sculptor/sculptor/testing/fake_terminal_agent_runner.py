@@ -31,7 +31,6 @@ from collections.abc import Callable
 from pathlib import Path
 
 # Filenames the runner treats specially inside the commands directory.
-QUIT_SENTINEL_NAME = "__quit__"
 DONE_SUFFIX = ".done"
 
 _POLL_INTERVAL_SECONDS = 0.05
@@ -149,8 +148,6 @@ def main(argv: list[str] | None = None) -> int:
 
     processed: set[str] = set()
     while True:
-        if (commands_dir / QUIT_SENTINEL_NAME).exists():
-            break
         command_file = _next_command_file(commands_dir, processed)
         if command_file is None:
             time.sleep(_POLL_INTERVAL_SECONDS)
@@ -163,9 +160,6 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             (command_file.with_suffix(command_file.suffix + DONE_SUFFIX)).write_text("ok")
             _signal("idle")
-
-    print("FAKE-TERMINAL-AGENT-EXITED", flush=True)
-    return 0
 
 
 if __name__ == "__main__":

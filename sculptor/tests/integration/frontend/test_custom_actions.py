@@ -26,7 +26,6 @@ def _create_task_and_navigate(sculptor_instance: SculptorInstance):
     """
     task_page = start_task_and_wait_for_ready(
         sculptor_page=sculptor_instance.page,
-        prompt="Test task for custom actions",
     )
     return task_page
 

@@ -2,7 +2,6 @@ from playwright.sync_api import Locator
 from playwright.sync_api import expect
 
 from sculptor.constants import ElementIDs
-from sculptor.testing.elements.base import PlaywrightIntegrationTestElement
 from sculptor.testing.elements.settings_actions import PlaywrightActionsSettingsElement
 from sculptor.testing.elements.settings_ci_babysitter import PlaywrightCIBabysitterSettingsElement
 from sculptor.testing.elements.settings_env_vars import PlaywrightEnvVarsSettingsElement
@@ -23,11 +22,6 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
         expect(toast).to_be_visible()
         toast.get_by_test_id(ElementIDs.TOAST_CLOSE_BUTTON).click()
         expect(toast).not_to_be_visible()
-
-    def click_on_general(self) -> PlaywrightIntegrationTestElement:
-        """Navigate to General settings and return the section element."""
-        self._get_general_nav().click()
-        return PlaywrightIntegrationTestElement(locator=self._get_settings_content(), page=self._page)
 
     def click_on_keybindings(self) -> PlaywrightKeybindingsSettingsElement:
         """Navigate to Keybindings settings and return the section element."""
@@ -62,10 +56,6 @@ class PlaywrightSettingsPage(PlaywrightProjectLayoutPage):
     def _get_settings_content(self) -> Locator:
         """Get the main settings page container."""
         return self.get_by_test_id(ElementIDs.SETTINGS_CONTENT)
-
-    def _get_general_nav(self) -> Locator:
-        """Get the General navigation item."""
-        return self.get_by_test_id(ElementIDs.SETTINGS_NAV_GENERAL)
 
     def _get_keybindings_nav(self) -> Locator:
         """Get the Keybindings navigation item."""

@@ -52,7 +52,7 @@ def test_prompt_features_route_to_capable_terminal_agent(sculptor_instance_: Scu
     # The opt-in fake terminal agent seeds the one uncommitted change itself at
     # launch — the Commit button needs a non-zero change count and the change
     # vehicle is the terminal agent, not a chat agent.
-    task_page = start_task_and_wait_for_ready(page, prompt="say hello", workspace_name="Automated Prompts WS")
+    task_page = start_task_and_wait_for_ready(page, workspace_name="Automated Prompts WS")
 
     registrations_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
     registrations_dir.mkdir(parents=True, exist_ok=True)
@@ -133,9 +133,7 @@ def test_non_auto_send_action_drafts_into_terminal_without_submitting(sculptor_i
     """
     page = sculptor_instance_.page
 
-    task_page = start_task_and_wait_for_ready(
-        page, prompt="Draft action terminal test", workspace_name="Draft Action WS"
-    )
+    task_page = start_task_and_wait_for_ready(page, workspace_name="Draft Action WS")
 
     registrations_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
     registrations_dir.mkdir(parents=True, exist_ok=True)

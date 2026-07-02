@@ -42,7 +42,7 @@ def test_terminal_panel_creates_single_websocket_connection(sculptor_instance_: 
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
 
     # Wait for the workspace page to load — the terminal sidebar icon only
     # exists on the workspace page (not the add workspace page).
@@ -116,7 +116,7 @@ def test_opt_left_moves_cursor_back_by_word(sculptor_instance_: SculptorInstance
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     terminal_textarea = get_terminal_textarea(page)
@@ -165,7 +165,7 @@ def test_ctrl_c_cancels_input(sculptor_instance_: SculptorInstance) -> None:
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     terminal_textarea = get_terminal_textarea(page)
@@ -210,7 +210,7 @@ def test_add_terminal_tab_creates_new_session(sculptor_instance_: SculptorInstan
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     # Verify initial state: one terminal tab.
@@ -262,7 +262,7 @@ def test_close_terminal_tab_switches_to_neighbor(sculptor_instance_: SculptorIns
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     # Add a second terminal tab.
@@ -296,7 +296,7 @@ def test_terminal_tab_reuses_lowest_available_number(sculptor_instance_: Sculpto
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     # Verify initial state: one tab labelled "Terminal 1".
@@ -344,7 +344,7 @@ def test_terminal_does_not_expose_sculptor_api_port(sculptor_instance_: Sculptor
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     terminal_textarea = get_terminal_textarea(page)
@@ -395,7 +395,7 @@ def test_decrqm_does_not_kill_xterm_write_buffer(sculptor_instance_: SculptorIns
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     terminal_textarea = get_terminal_textarea(page)
@@ -446,7 +446,7 @@ def test_ctrl_d_shows_process_exited_message(sculptor_instance_: SculptorInstanc
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     terminal_textarea = get_terminal_textarea(page)
@@ -490,7 +490,7 @@ def test_solicited_cursor_position_report_reaches_program(sculptor_instance_: Sc
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     terminal_textarea = get_terminal_textarea(page)

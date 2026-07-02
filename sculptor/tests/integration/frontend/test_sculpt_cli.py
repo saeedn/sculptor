@@ -514,7 +514,6 @@ def test_workspace_created_in_ui_visible_via_cli(sculptor_instance_: SculptorIns
 
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Hello from UI",
         workspace_name="UI Created Workspace",
     )
 
@@ -533,7 +532,6 @@ def test_workspace_deleted_via_cli_disappears_from_ui(sculptor_instance_: Sculpt
 
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Doomed workspace",
         workspace_name="Will Be Deleted",
     )
 
@@ -688,7 +686,6 @@ def test_agent_created_in_ui_visible_via_cli(sculptor_instance_: SculptorInstanc
 
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Hello from UI agent",
         workspace_name="UI Agent Workspace",
     )
 

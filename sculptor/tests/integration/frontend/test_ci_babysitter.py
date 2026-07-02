@@ -62,11 +62,10 @@ def _write_registration(
 
 
 _MERGED_MODE_STABLE_WAIT_MS = 25_000
-# Time to wait between baseline-recording poll and the next state-changing
-# poll. The polling service uses a 10s minimum interval in tests; under the
-# full-suite parallel (xdist) load the fresh-instance workspace registration +
-# first poll can slip past a tighter window, so the bump would land as the
-# baseline and no transition would fire. 20s gives the baseline poll headroom.
+# Time to give the polling service to record per-workspace state. The polling
+# service uses a 10s minimum interval in tests; under the full-suite parallel
+# (xdist) load the fresh-instance workspace registration + first poll can slip
+# past a tighter window. 20s gives the first poll headroom.
 _BASELINE_POLL_SETTLE_MS = 20_000
 
 _FAKE_GITHUB_REMOTE = "https://github.com/test-org/test-repo.git"
@@ -77,7 +76,7 @@ _FAKE_GITHUB_REMOTE = "https://github.com/test-org/test-repo.git"
 #   mode = running  → PR is open with a pending (running) check rollup.
 #   mode = failed   → PR is open with a failed check rollup.
 #   mode = merged   → PR is merged.
-#   mode = closed   → PR is closed without merging.
+#   anything else   → no PRs found for the branch.
 # The mode-file path is injected via ``.replace("{state_file}", ...)`` (not
 # ``.format``) so the JSON braces below don't need escaping.
 _FAKE_GH_STATE_SCRIPT = """\
@@ -361,7 +360,7 @@ def test_babysitter_drives_registered_terminal_agent(sculptor_instance_: Sculpto
         _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
 
         page = sculptor_instance_.page
-        start_task_and_wait_for_ready(page, "say hello")
+        start_task_and_wait_for_ready(page)
 
         # Make the registered terminal agent the workspace's most-recent agent.
         agent_tabs = PlaywrightAgentTabBarElement(page)
@@ -402,7 +401,7 @@ def test_plain_terminal_mru_shows_disabled_reason(sculptor_instance_: SculptorIn
     _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
 
     page = sculptor_instance_.page
-    start_task_and_wait_for_ready(page, "say hello")
+    start_task_and_wait_for_ready(page)
 
     # Make the workspace's most-recent agent a plain terminal (never driveable).
     agent_tabs = PlaywrightAgentTabBarElement(page)

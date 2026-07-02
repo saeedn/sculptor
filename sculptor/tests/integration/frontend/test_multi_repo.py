@@ -61,7 +61,7 @@ def test_create_new_project_from_add_workspace_page(
     add_ws_page.select_project_by_name(other_project_name)
 
     # Create a workspace in the new project
-    task_page = start_task_and_wait_for_ready(page, prompt="hello world", workspace_name="New Project Workspace")
+    task_page = start_task_and_wait_for_ready(page, workspace_name="New Project Workspace")
 
     # Verify the terminal panel is visible (workspace was created successfully)
     expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
@@ -253,7 +253,7 @@ def test_mru_project_updates_after_creating_workspace(
     # The project selector should still show A since it's the first project.
     navigate_to_add_workspace_page(page)
     PlaywrightAddWorkspacePage(page=page).select_project_by_name(project_a_name)
-    start_task_and_wait_for_ready(page, prompt="Alpha task", workspace_name="Alpha Workspace")
+    start_task_and_wait_for_ready(page, workspace_name="Alpha Workspace")
 
     # Step 3: Navigate back to the Add Workspace page.
     navigate_to_add_workspace_page(page)

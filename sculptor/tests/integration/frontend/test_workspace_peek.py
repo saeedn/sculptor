@@ -42,7 +42,7 @@ def test_workspace_peek_popover_idle_state(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Idle WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Idle WS")
 
     # Navigate away so we can hover over the workspace tab
     navigate_to_add_workspace_page(page)
@@ -106,7 +106,7 @@ def test_workspace_peek_popover_hover_mechanics(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Hover WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Hover WS")
 
     # Navigate away so we can hover over the workspace tab
     navigate_to_add_workspace_page(page)
@@ -143,7 +143,6 @@ def test_workspace_peek_popover_on_scrolled_tab(
         start_task_and_wait_for_ready(
             sculptor_page=page,
             agent_type="terminal",
-            model_name=None,
             workspace_name=f"WS {i + 1}",
         )
 

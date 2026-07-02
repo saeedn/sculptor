@@ -26,7 +26,7 @@ def test_agent_type_menu_creates_terminal_agent_and_remembers_type(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # The first agent is a plain terminal ("Terminal 1"), created by the helper.
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Agent Type WS")
+    start_task_and_wait_for_ready(page, workspace_name="Agent Type WS")
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(1)
     expect(agent_tab_bar.get_agent_tab_by_name("Terminal 1")).to_have_count(1)
@@ -56,7 +56,7 @@ def test_registered_terminal_agent_appears_in_menu_and_creates(
     task_page = PlaywrightTaskPage(page=page)
     agent_tab_bar = task_page.get_agent_tab_bar()
 
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Registered Agent WS")
+    start_task_and_wait_for_ready(page, workspace_name="Registered Agent WS")
 
     # The registration does not exist yet — the menu shows no registered entry.
     agent_tab_bar.open_agent_type_menu()
@@ -95,7 +95,7 @@ def test_bundled_claude_code_registration_installed_by_default(
     task_page = PlaywrightTaskPage(page=page)
     agent_tab_bar = task_page.get_agent_tab_bar()
 
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Bundled Claude WS")
+    start_task_and_wait_for_ready(page, workspace_name="Bundled Claude WS")
 
     registrations_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
     assert (registrations_dir / "claude-code.toml").is_file()

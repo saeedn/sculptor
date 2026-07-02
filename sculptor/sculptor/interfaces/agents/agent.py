@@ -15,7 +15,6 @@ from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import build_discriminator
 from sculptor.foundation.serialization import SerializedException
 from sculptor.interfaces.agents.messages import EphemeralMessage
-from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import TaskID as TaskID
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.state.messages import AgentMessageSource
@@ -49,17 +48,6 @@ class EnvironmentReleasedRunnerMessage(EphemeralRunnerMessage):
     object_type: str = "EnvironmentReleasedRunnerMessage"
 
 
-class AgentCrashedRunnerMessage(PersistentRunnerMessage):
-    """
-    Note that (like EnvironmentCrashedRunnerMessage and UnexpectedErrorRunnerMessage),
-    this can happen before *or after* the agent has finished processing a given message.
-    """
-
-    object_type: str = "AgentCrashedRunnerMessage"
-    exit_code: int | None
-    error: SerializedException
-
-
 class EnvironmentCrashedRunnerMessage(PersistentRunnerMessage):
     object_type: str = "EnvironmentCrashedRunnerMessage"
     error: SerializedException
@@ -71,8 +59,9 @@ class UnexpectedErrorRunnerMessage(PersistentRunnerMessage):
 
 
 class TaskStatusRunnerMessage(EphemeralRunnerMessage):
+    """Carries no payload: it exists to poke task-update subscribers when a task's outcome changes."""
+
     object_type: str = "TaskStatusRunnerMessage"
-    outcome: TaskState
 
 
 class TerminalStatusSignal(StrEnum):
@@ -100,8 +89,7 @@ class TerminalAgentSignalRunnerMessage(EphemeralRunnerMessage):
 
 
 PersistentRunnerMessageUnion = (
-    Annotated[AgentCrashedRunnerMessage, Tag("AgentCrashedRunnerMessage")]
-    | Annotated[EnvironmentCrashedRunnerMessage, Tag("EnvironmentCrashedRunnerMessage")]
+    Annotated[EnvironmentCrashedRunnerMessage, Tag("EnvironmentCrashedRunnerMessage")]
     | Annotated[UnexpectedErrorRunnerMessage, Tag("UnexpectedErrorRunnerMessage")]
 )
 EphemeralRunnerMessageUnion = (

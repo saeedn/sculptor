@@ -7,7 +7,6 @@ from typing import Literal
 
 from pydantic import Field
 
-from sculptor.config.settings import SculptorSettings
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.interfaces.agents.artifacts import DiffArtifact
 from sculptor.primitives.ids import ProjectID
@@ -81,11 +80,9 @@ class PrStatusInfo(SerializableModel):
     error_category: (
         Literal["cli_missing", "not_authenticated", "no_access", "network_error", "rate_limited", "transient"] | None
     ) = None
-    error_provider: Literal["github"] | None = None
     error_message: str | None = None
     mismatched_pr_iid: int | None = None
     mismatched_pr_target_branch: str | None = None
-    mismatched_pr_web_url: str | None = None
 
 
 class PrStatusInfoCleared(SerializableModel):
@@ -395,7 +392,6 @@ class ToolAvailability(SerializableModel):
 class HealthCheckResponse(SerializableModel):
     version: str
     git_sha: str
-    python_version: str
     platform: str
     platform_version: str
     free_disk_gb: float
@@ -509,11 +505,9 @@ class DirectoryEntry(SerializableModel):
 
 
 TaskUpdateTypes = CompletedTransaction
-UserUpdateSourceTypes = CompletedTransaction | SculptorSettings
 StreamingUpdateSourceTypes = (
     TaskMessageContainer
     | TaskUpdateTypes
-    | UserUpdateSourceTypes
     | WorkspaceBranchInfo
     | WorkspaceTargetBranchesInfo
     | WorkspaceSetupStatus

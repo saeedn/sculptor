@@ -49,7 +49,7 @@ def _create_fake_cli(directory: Path, name: str, script: str) -> None:
     create_cli_stub(directory, name, textwrap.dedent(script))
 
 
-def _start_task_and_wait_for_pr_status(page: Page, prompt: str, expected_button: str) -> PlaywrightTaskPage:
+def _start_task_and_wait_for_pr_status(page: Page, expected_button: str) -> PlaywrightTaskPage:
     """Start a task and wait for the *specific* expected PR button to appear.
 
     Worktree workspaces are initialized on the target branch, so the first
@@ -64,7 +64,7 @@ def _start_task_and_wait_for_pr_status(page: Page, prompt: str, expected_button:
     specific element id the test expects so we block until the UI has settled
     on it.
     """
-    task_page = start_task_and_wait_for_ready(page, prompt)
+    task_page = start_task_and_wait_for_ready(page)
     # The backend poll cadence on slow CI runners plus the
     # workspace-on-target-branch transient means the initial PR button can take
     # a non-trivial amount of time to reach its final state — give it a
@@ -132,9 +132,7 @@ def test_cli_missing_shows_error_for_github(
 
     with sculptor_instance_factory_.spawn_instance() as instance:
         _set_remote(instance, _FAKE_GITHUB_REMOTE)
-        task_page = _start_task_and_wait_for_pr_status(
-            instance.page, "say hello", expected_button=ElementIDs.PR_BUTTON_ERROR
-        )
+        task_page = _start_task_and_wait_for_pr_status(instance.page, expected_button=ElementIDs.PR_BUTTON_ERROR)
 
         _assert_error_button_with_popover(
             task_page,
@@ -175,9 +173,7 @@ def test_github_cli_error_variants(sculptor_instance_: SculptorInstance, tmp_pat
 
     # --- Auth error ---
     mode_file.write_text("auth")
-    task_page = _start_task_and_wait_for_pr_status(
-        sculptor_instance_.page, "say hello", expected_button=ElementIDs.PR_BUTTON_ERROR
-    )
+    task_page = _start_task_and_wait_for_pr_status(sculptor_instance_.page, expected_button=ElementIDs.PR_BUTTON_ERROR)
 
     _assert_error_button_with_popover(
         task_page,
@@ -192,9 +188,7 @@ def test_github_cli_error_variants(sculptor_instance_: SculptorInstance, tmp_pat
     _cleanup_workspaces(sculptor_instance_)
     mode_file.write_text("403")
     _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
-    task_page = _start_task_and_wait_for_pr_status(
-        sculptor_instance_.page, "say hello", expected_button=ElementIDs.PR_BUTTON_ERROR
-    )
+    task_page = _start_task_and_wait_for_pr_status(sculptor_instance_.page, expected_button=ElementIDs.PR_BUTTON_ERROR)
 
     _assert_error_button_with_popover(
         task_page,
@@ -207,9 +201,7 @@ def test_github_cli_error_variants(sculptor_instance_: SculptorInstance, tmp_pat
     _cleanup_workspaces(sculptor_instance_)
     mode_file.write_text("dns")
     _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
-    task_page = _start_task_and_wait_for_pr_status(
-        sculptor_instance_.page, "say hello", expected_button=ElementIDs.PR_BUTTON_ERROR
-    )
+    task_page = _start_task_and_wait_for_pr_status(sculptor_instance_.page, expected_button=ElementIDs.PR_BUTTON_ERROR)
 
     _assert_error_button_with_popover(
         task_page,
@@ -250,7 +242,7 @@ def test_github_happy_paths(sculptor_instance_: SculptorInstance, tmp_path: Path
     # --- No PR exists → Create PR button ---
     mode_file.write_text("no_pr")
     task_page = _start_task_and_wait_for_pr_status(
-        sculptor_instance_.page, "say hello", expected_button=ElementIDs.PR_BUTTON_CREATE
+        sculptor_instance_.page, expected_button=ElementIDs.PR_BUTTON_CREATE
     )
 
     create_button = task_page.get_pr_button_create()
@@ -261,9 +253,7 @@ def test_github_happy_paths(sculptor_instance_: SculptorInstance, tmp_path: Path
     _cleanup_workspaces(sculptor_instance_)
     mode_file.write_text("open_pr")
     _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
-    task_page = _start_task_and_wait_for_pr_status(
-        sculptor_instance_.page, "say hello", expected_button=ElementIDs.PR_BUTTON_OPEN
-    )
+    task_page = _start_task_and_wait_for_pr_status(sculptor_instance_.page, expected_button=ElementIDs.PR_BUTTON_OPEN)
 
     open_button = task_page.get_pr_button_open()
     expect(open_button).to_be_visible()

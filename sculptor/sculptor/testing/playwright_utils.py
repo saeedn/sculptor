@@ -233,9 +233,6 @@ _workspace_name_counter = itertools.count(1)
 
 def start_task_and_wait_for_ready(
     sculptor_page: Page,
-    prompt: str = "",
-    wait_for_agent_to_finish: bool = True,
-    model_name: str | None = None,
     workspace_name: str | None = None,
     agent_type: str | None = None,
 ) -> PlaywrightTaskPage:
@@ -253,10 +250,6 @@ def start_task_and_wait_for_ready(
     chat backend. Tests that need to *drive* an agent (run bash, write files,
     emit lifecycle signals) should use the fake terminal agent harness
     (``sculptor.testing.fake_terminal_agent``) instead.
-
-    ``prompt``, ``wait_for_agent_to_finish``, and ``model_name`` are accepted for
-    backward compatibility but are no-ops: terminal agents have no chat stream,
-    model selector, or initial prompt. A non-empty ``prompt`` is ignored.
 
     Workspaces are always created in WORKTREE mode (the only supported mode).
     """
@@ -447,22 +440,6 @@ def soft_reload_page(page: Page, wait_until: str | None = None) -> None:
         page.goto(page.url)
 
 
-def navigate_away_and_back(page: Page) -> None:
-    """Navigate to the Add Workspace page and back to force Jotai store reinitialization.
-
-    The Sculptor frontend caches state in Jotai atoms that are initialized from
-    localStorage on first load.  A hash-only navigation within the SPA does not
-    unload/reload atoms.  By navigating to a different route (``#/ws/new``) and
-    then back, we force the atoms to reinitialize from whatever values are
-    currently in localStorage.
-    """
-    current_url = page.url
-    base_url = current_url.split("#")[0].rstrip("/")
-    page.goto(f"{base_url}#/ws/new")
-    expect(page.get_by_test_id(ElementIDs.START_TASK_BUTTON)).to_be_visible()
-    page.goto(current_url)
-
-
 def full_spa_reload(page: Page, target_hash: str = "#/") -> None:
     """Force a full SPA unload/reload by navigating through ``about:blank``.
 
@@ -497,31 +474,6 @@ def set_local_storage_items(page: Page, items: Mapping[str, str]) -> None:
     page.evaluate(f"""() => {{
         {js_body}
     }}""")
-
-
-def get_local_storage_item(page: Page, key: str) -> str | None:
-    """Read a single value from localStorage and JSON-parse it.
-
-    Returns the parsed value, or ``None`` if the key does not exist.
-    This is the read counterpart to ``set_local_storage_items``.
-    """
-    return page.evaluate(
-        """(key) => {
-            const raw = localStorage.getItem(key);
-            return raw === null ? null : JSON.parse(raw);
-        }""",
-        key,
-    )
-
-
-def remove_local_storage_item(page: Page, key: str) -> None:
-    """Remove a single key from localStorage.
-
-    Used to simulate pre-upgrade state where a localStorage key does not
-    yet exist, forcing the frontend to fall through to a migration or
-    default-initialization path.
-    """
-    page.evaluate("(key) => localStorage.removeItem(key)", key)
 
 
 def blur_page(page: Page) -> None:

@@ -36,7 +36,7 @@ def test_workspace_context_menu_copy_name_branch_id(
     # Step 1: Create a workspace with a known name (the name becomes the
     # workspace description, which is what "Copy workspace name" copies).
     workspace_name = "Copy Targets WS"
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name=workspace_name)
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name=workspace_name)
 
     # Step 2: Install clipboard interceptor.
     install_clipboard_interceptor(page)

@@ -52,8 +52,6 @@ from sculptor.services.ci_babysitter_service.coordinator import DriveableTermina
 from sculptor.services.ci_babysitter_service.transitions import Transition
 from sculptor.services.data_model_service.api import DataModelService
 from sculptor.services.data_model_service.data_types import DataModelTransaction
-from sculptor.services.git_repo_service.api import GitRepoService
-from sculptor.services.git_repo_service.git_repos import ReadOnlyGitRepo
 from sculptor.services.task_service.api import TaskService
 from sculptor.services.terminal_agent_registry.registry import TerminalAgentRegistration
 from sculptor.services.workspace_service.api import WorkspaceService
@@ -84,12 +82,6 @@ class _StubTransaction(DataModelTransaction):
     def get_projects(self, organization_reference: Any = None) -> Any:
         return _stub(organization_reference)
 
-    def get_user_settings(self, user_reference: Any) -> Any:
-        return _stub(user_reference)
-
-    def get_or_create_user_settings(self, user_reference: Any) -> Any:
-        return _stub(user_reference)
-
     def get_project(self, project_id: ProjectID) -> Project | None:
         return _stub(project_id)
 
@@ -101,9 +93,6 @@ class _StubTransaction(DataModelTransaction):
 
     def get_workspaces(self, project_id: Any = None, organization_reference: Any = None) -> Any:
         return _stub(project_id, organization_reference)
-
-    def get_workspace_include_deleted(self, workspace_id: WorkspaceID) -> Workspace | None:
-        return _stub(workspace_id)
 
     def count_active_tasks_for_workspace(self, workspace_id: WorkspaceID) -> int:
         return _stub(workspace_id)
@@ -183,43 +172,11 @@ class _StubTaskService(TaskService):
         yield _stub()
 
 
-class _StubGitRepo(ReadOnlyGitRepo):
-    def get_current_commit_hash(self) -> str:
-        return _stub()
-
-    def get_repo_path(self) -> Any:
-        return _stub()
-
-    def get_repo_url(self) -> Any:
-        return _stub()
-
-    def get_all_branches(self) -> list[str]:
-        return _stub()
-
-    def get_current_git_branch(self) -> str:
-        return _stub()
-
-    def is_branch_ref(self, branch: str) -> bool:
-        return _stub(branch)
-
-    def _run_git(self, args: list[str]) -> str:
-        return _stub(args)
-
-
 # Set abstract methods on stub classes that may have inherited abstracts we
 # haven't enumerated. The explicit stubs above satisfy the type checker; this hides any
 # parent-class abstracts at runtime that we don't actually need.
-for _stub_cls in (_StubTransaction, _StubDataModelService, _StubTaskService, _StubGitRepo):
+for _stub_cls in (_StubTransaction, _StubDataModelService, _StubTaskService):
     _stub_cls.__abstractmethods__ = frozenset()
-
-
-class _StubGitRepoService(GitRepoService):
-    @contextmanager
-    def open_local_user_git_repo_for_read(
-        self, project: Project, log_command: bool = True
-    ) -> Generator[ReadOnlyGitRepo, None, None]:
-        del project, log_command
-        yield _stub()
 
 
 # WorkspaceService has many abstracts; tests don't call any. Build a stub
@@ -230,10 +187,6 @@ def _make_workspace_service(concurrency_group: ConcurrencyGroup) -> WorkspaceSer
     # pyrefly: ignore [missing-attribute]
     cls.__abstractmethods__ = frozenset()
     return cast(WorkspaceService, cls(concurrency_group=concurrency_group))
-
-
-def _make_fake_git_repo_service(concurrency_group: ConcurrencyGroup) -> "_FakeGitRepoService":
-    return _FakeGitRepoService(concurrency_group)
 
 
 class _FakeEnv:
@@ -355,32 +308,6 @@ class _FakeTaskService(_StubTaskService):
             self._live_terminal_queue = None
 
 
-class _FakeGitRepo(_StubGitRepo):
-    _commit_hash: str = PrivateAttr()
-
-    def __init__(self, commit_hash: str) -> None:
-        super().__init__()
-        self._commit_hash = commit_hash
-
-    def get_current_commit_hash(self) -> str:
-        return self._commit_hash
-
-
-class _FakeGitRepoService(_StubGitRepoService):
-    _commit_hash: str = PrivateAttr()
-
-    def __init__(self, concurrency_group: ConcurrencyGroup, commit_hash: str = "abc123") -> None:
-        super().__init__(concurrency_group=concurrency_group)
-        self._commit_hash = commit_hash
-
-    @contextmanager
-    def open_local_user_git_repo_for_read(
-        self, project: Project, log_command: bool = True
-    ) -> Generator[ReadOnlyGitRepo, None, None]:
-        del project, log_command
-        yield _FakeGitRepo(self._commit_hash)
-
-
 def _make_user_config(
     enabled: bool = True,
     retry_cap: int = 3,
@@ -442,7 +369,6 @@ def _build_coordinator(
         concurrency_group=concurrency_group,
         data_model_service=data_model_service,
         task_service=task_service,
-        git_repo_service=_make_fake_git_repo_service(concurrency_group),
         pr_polling_service=pr_polling_service,
     )
     return coordinator, task_service

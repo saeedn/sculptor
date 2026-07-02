@@ -17,7 +17,6 @@ from sculptor.database.models import AgentTaskInputsV2
 from sculptor.database.models import Notification
 from sculptor.database.models import Project
 from sculptor.database.models import TaskID
-from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import CompoundEvent
@@ -39,7 +38,6 @@ from sculptor.state.messages import Message
 from sculptor.web.auth import UserSession
 from sculptor.web.data_types import OpenFileUiAction
 from sculptor.web.data_types import StreamingUpdateSourceTypes
-from sculptor.web.data_types import UserUpdateSourceTypes
 from sculptor.web.data_types import WorkspaceSetupOutputChunk
 from sculptor.web.data_types import WorkspaceSetupStatus
 from sculptor.web.derived import CodingAgentTaskView
@@ -260,7 +258,6 @@ def stream_everything(
                     shutdown_event=combined_event,
                     is_blocking_allowed=False,
                 )
-                initial_data.append(services.settings)
                 if setup_runner is not None:
                     for state, snapshot_chunk in _snapshot_setup_state(services, setup_runner):
                         initial_data.append(state)
@@ -366,7 +363,7 @@ def _convert_to_streaming_update(
     """
     changed_task_ids: set[TaskID] = set()
     finished_request_ids: list[RequestID] = []
-    user_update_sources: list[UserUpdateSourceTypes] = []
+    user_update_sources: list[CompletedTransaction] = []
     updated_workspace_branch_by_workspace_id: dict[WorkspaceID, WorkspaceBranchInfo | None] = {}
     updated_workspace_target_branches_by_workspace_id: dict[WorkspaceID, WorkspaceTargetBranchesInfo | None] = {}
     updated_workspace_setup_status_by_workspace_id: dict[WorkspaceID, WorkspaceSetupStatus] = {}
@@ -391,9 +388,6 @@ def _convert_to_streaming_update(
                 finished_request_ids=finished_request_ids,
                 user_update_sources=user_update_sources,
             )
-
-        elif isinstance(model, SculptorSettings):
-            user_update_sources.append(model)
 
         elif isinstance(model, WorkspaceBranchInfo):
             updated_workspace_branch_by_workspace_id[model.workspace_id] = model
@@ -424,7 +418,7 @@ def _convert_to_streaming_update(
         task_views_by_task_id=task_views_by_task_id,
     )
 
-    user_update = _convert_to_user_update(all_data=cast(list[UserUpdateSourceTypes | None], user_update_sources))
+    user_update = _convert_to_user_update(all_data=cast(list[CompletedTransaction | None], user_update_sources))
 
     return StreamingUpdate(
         task_views_by_task_id=updated_task_views_by_task_id,
@@ -439,14 +433,13 @@ def _convert_to_streaming_update(
     )
 
 
-def _convert_to_user_update(all_data: list[UserUpdateSourceTypes | None]) -> UserUpdate:
+def _convert_to_user_update(all_data: list[CompletedTransaction | None]) -> UserUpdate:
     """Converts a list of models into a UserUpdate."""
     if len(all_data) == 0:
         return UserUpdate()
     notifications: list[Notification] = []
     projects_by_id: dict[ProjectID, Project] = {}
     workspaces_by_id: dict[WorkspaceID, Workspace] = {}
-    user_settings = None
     for model in all_data:
         match model:
             case None:
@@ -459,19 +452,13 @@ def _convert_to_user_update(all_data: list[UserUpdateSourceTypes | None]) -> Use
                             notifications.append(request_model)
                         case Project():
                             projects_by_id[request_model.object_id] = request_model
-                        case UserSettings():
-                            user_settings = request_model
                         case Workspace():
                             workspaces_by_id[request_model.object_id] = request_model
                         case _ as unreachable:
                             assert_never(unreachable)
-            case SculptorSettings():
-                # Settings are no longer surfaced to clients; consume to keep the match exhaustive.
-                pass
             case _ as also_unreachable:
                 assert_never(also_unreachable)
     return UserUpdate(
-        user_settings=user_settings,
         projects=tuple(projects_by_id.values()),
         workspaces=tuple(workspaces_by_id.values()),
         notifications=tuple(notifications),
@@ -506,7 +493,7 @@ def _process_task_message_container(
 def _process_completed_transaction(
     transaction: CompletedTransaction,
     finished_request_ids: list[RequestID],
-    user_update_sources: list[UserUpdateSourceTypes],
+    user_update_sources: list[CompletedTransaction],
 ) -> None:
     if transaction.request_id is not None:
         finished_request_ids.append(transaction.request_id)

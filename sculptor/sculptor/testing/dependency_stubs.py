@@ -313,29 +313,6 @@ def create_claude_stub_dir(parent_dir: Path) -> Path:
     return stub_dir
 
 
-def create_claude_version_stub_dir(parent_dir: Path, version: str) -> Path:
-    """Create a directory containing a stub ``claude`` binary that reports a specific version.
-
-    Returns the directory path so it can be prepended to PATH.
-    """
-    stub_dir = parent_dir / "claude_version_stub"
-    stub_dir.mkdir(exist_ok=True)
-    script = f"""#!/bin/bash
-case "$1" in
-    --version|-v)
-        echo "claude {version}"
-        exit 0
-        ;;
-    *)
-        echo '{{"type":"error","error":{{"type":"stub_error","message":"Claude stub: not a real installation"}}}}' >&2
-        exit 1
-        ;;
-esac
-"""
-    create_cli_stub(stub_dir, "claude", script)
-    return stub_dir
-
-
 def apply_stubs_from_request(
     request: pytest.FixtureRequest,
     environment: dict[str, str | None],

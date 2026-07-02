@@ -18,7 +18,6 @@ from sculptor.database.models import Project
 from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.database.models import TaskInputs
-from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
 from sculptor.foundation.itertools import only
 from sculptor.foundation.pydantic_serialization import SerializableModel
@@ -343,7 +342,6 @@ TaskViewTypes = CodingAgentTaskView
 
 
 class UserUpdate(SerializableModel):
-    user_settings: UserSettings | None = None
     projects: tuple[Project, ...] = ()
     workspaces: tuple[Workspace, ...] = ()
     notifications: tuple[Notification, ...] = ()

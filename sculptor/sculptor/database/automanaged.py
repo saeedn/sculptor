@@ -21,7 +21,6 @@ from typing import get_type_hints
 
 from pydantic import AnyUrl
 from pydantic import ConfigDict
-from pydantic import EmailStr
 from pydantic import Field
 from pydantic import HttpUrl
 from sqlalchemy import Column
@@ -54,7 +53,6 @@ _PYDANTIC_TO_SQLALCHEMY_TYPES: dict[type, SQLAlchemyTypes] = {
     ObjectID: String,
     SerializableModel: JSON,
     HttpUrl: String,
-    EmailStr: String,
     AnyUrl: String,
     int: Integer,
     float: Float,

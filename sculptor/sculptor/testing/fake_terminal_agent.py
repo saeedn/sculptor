@@ -244,17 +244,6 @@ def release_fake_agent_wait(
     return candidate
 
 
-def stop_fake_terminal_agent(
-    terminal_agents_dir: Path,
-    *,
-    registration_id: str = DEFAULT_REGISTRATION_ID,
-) -> None:
-    """Ask the runner to exit cleanly (lands the shell at a usable prompt)."""
-    commands_dir = commands_dir_for(terminal_agents_dir, registration_id)
-    commands_dir.mkdir(parents=True, exist_ok=True)
-    (commands_dir / fake_terminal_agent_runner.QUIT_SENTINEL_NAME).write_text("quit")
-
-
 # --- Playwright entry point ----------------------------------------------------
 
 
@@ -294,7 +283,6 @@ def start_fake_terminal_agent(
     *,
     registration_id: str = DEFAULT_REGISTRATION_ID,
     workspace_name: str | None = None,
-    prompt: str = "Say hello",
 ) -> tuple[PlaywrightTaskPage, PlaywrightAgentTabBarElement]:
     """Create a workspace, register the fake, and launch it as a new agent.
 
@@ -303,7 +291,7 @@ def start_fake_terminal_agent(
     menu and waits for its terminal panel + ready banner. Returns the task page
     (for the changes/diff panel) and the agent tab bar POM.
     """
-    task_page = start_task_and_wait_for_ready(page, prompt=prompt, workspace_name=workspace_name)
+    task_page = start_task_and_wait_for_ready(page, workspace_name=workspace_name)
     register_fake_terminal_agent(terminal_agents_dir, registration_id=registration_id)
 
     agent_tab_bar = PlaywrightAgentTabBarElement(page)

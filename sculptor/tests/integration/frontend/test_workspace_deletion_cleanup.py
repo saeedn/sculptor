@@ -163,7 +163,7 @@ def test_delete_workspace_with_open_terminal_kills_pty_and_removes_worktree(
     user_repo_path = sculptor_instance_.project_path
 
     worktrees_before = set(_worktree_paths(user_repo_path))
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Deletion Cleanup WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Deletion Cleanup WS")
     workspace_id = _workspace_id_from_url(page)
 
     new_worktrees = set(_worktree_paths(user_repo_path)) - worktrees_before

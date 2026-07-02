@@ -16,6 +16,7 @@ import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import inspect
+from sqlalchemy import select
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.exc import OperationalError
@@ -85,7 +86,6 @@ def test_db_service_with_user_organization_and_project(
     with test_db_service.open_transaction(RequestID()) as transaction:
         project = Project(object_id=ProjectID(), name="Example Project", organization_reference=organization_reference)
         transaction.upsert_project(project)
-        transaction.get_or_create_user_settings(user_reference)
     return (test_db_service, user_reference, organization_reference, project)
 
 
@@ -439,8 +439,6 @@ def test_observer_notification_project_upsert(test_db_service: SQLDataModelServi
     """Test that Project upsert operations trigger observer notifications."""
     organization_reference = OrganizationReference("test-org-id")
     user_reference = UserReference("test-user-id")
-    with test_db_service.open_transaction(RequestID()) as transaction:
-        transaction.get_or_create_user_settings(user_reference)
 
     project = Project(object_id=ProjectID(), name="Test Project", organization_reference=organization_reference)
 
@@ -475,9 +473,6 @@ def test_observer_notification_tolerates_observer_unregistering_during_notificat
     organization_reference = OrganizationReference("test-org-id")
     first_user_reference = UserReference("test-user-id-1")
     second_user_reference = UserReference("test-user-id-2")
-    with test_db_service.open_transaction(RequestID()) as transaction:
-        transaction.get_or_create_user_settings(first_user_reference)
-        transaction.get_or_create_user_settings(second_user_reference)
 
     second_observation = ExitStack()
     second_user_queue = MagicMock()
@@ -518,7 +513,6 @@ def test_observer_notification_project_update_upsert(test_db_service: SQLDataMod
     organization_reference = OrganizationReference("test-org-id")
     project = Project(object_id=ProjectID(), name="Test Project", organization_reference=organization_reference)
     with test_db_service.open_transaction(RequestID()) as transaction:
-        transaction.get_or_create_user_settings(user_reference)
         transaction.upsert_project(project)
 
     # Create a mock queue to act as an observer
@@ -682,9 +676,10 @@ def test_observer_notification_mixed_operations_behavior(
 
 
 def _slow_transaction_thread(service: SQLDataModelService, user_reference: UserReference) -> None:
+    del user_reference
     with service.open_transaction(RequestID()) as transaction:
         time.sleep(5)
-        _user_settings = transaction.get_user_settings(user_reference)
+        _projects = transaction.get_projects()
 
 
 def test_debugging_report_from_concurrent_transactions(
@@ -702,7 +697,7 @@ def test_debugging_report_from_concurrent_transactions(
         with expect_exact_logged_errors(["Database is locked, inspect the transaction summary to see why"]):
             # now open a transaction in the main thread, which should detect the concurrent transaction:
             with service.open_transaction(RequestID()) as transaction:
-                _user_settings = transaction.get_user_settings(user_reference)
+                _projects = transaction.get_projects()
                 raise OperationalError(
                     statement="TEST", params={}, orig=sqlite3.OperationalError("database is locked")
                 )
@@ -842,7 +837,7 @@ def test_observe_user_changes_includes_workspaces_in_initial_state(
         assert len(initial_calls) >= 1, "Expected at least one initial state call (request_id=None)"
         initial_transaction = initial_calls[0][0][0]
 
-        # Verify the workspace is in the initial state (along with user_settings and project)
+        # Verify the workspace is in the initial state (along with the project)
         workspace_models = [m for m in initial_transaction.updated_models if isinstance(m, Workspace)]
         assert len(workspace_models) == 1
         assert workspace_models[0] == workspace
@@ -1701,10 +1696,13 @@ def test_update_workspace_fields_returns_none_for_soft_deleted_row(
         assert result is None
 
     with service.open_transaction(RequestID()) as transaction:
-        after = transaction.get_workspace_include_deleted(workspace_id)
-        assert after is not None
-        assert after.is_deleted is True
-        assert after.diff_status == DiffStatus.NONE, "tombstone column was written through"
+        assert isinstance(transaction, SQLTransaction)
+        row = transaction.connection.execute(
+            select(WORKSPACE_TABLE).where(WORKSPACE_TABLE.c.object_id == str(workspace_id))
+        ).fetchone()
+        assert row is not None
+        assert bool(row.is_deleted) is True
+        assert row.diff_status == DiffStatus.NONE, "tombstone column was written through"
 
 
 def test_update_workspace_fields_rejects_bad_inputs(

@@ -1,4 +1,3 @@
-import re
 from typing import Literal
 
 from playwright.sync_api import Locator
@@ -31,9 +30,6 @@ class PlaywrightTaskPage(PlaywrightProjectLayoutPage):
         expect(branch_name).to_be_visible()
         expect(branch_name, "to be generated").not_to_have_attribute("data-is-skeleton", "true")
         return branch_name
-
-    def get_branch_name(self) -> str:
-        return self.get_branch_name_element().text_content() or ""
 
     def get_workspace_banner(self) -> Locator:
         """Get the workspace banner (the repo/branch/target header strip)."""
@@ -89,17 +85,6 @@ class PlaywrightTaskPage(PlaywrightProjectLayoutPage):
     def get_target_branch_options(self) -> Locator:
         """Get the branch option items inside the open target-branch selector."""
         return self._page.get_by_test_id(ElementIDs.BRANCH_OPTION)
-
-    def get_task_id(self) -> str:
-        """Extract the task ID from the current URL.
-
-        The URL format is: /ws/{workspaceID}/agent/{agentID}
-        """
-        current_url = self._page.url
-        match = re.search(r"/agent/([a-zA-Z0-9_-]+)", current_url)
-        if not match:
-            raise ValueError(f"Could not extract task ID from URL: {current_url}")
-        return match.group(1)
 
     def activate_file_browser(self) -> None:
         """Ensure the file browser panel is visible by clicking its sidebar icon if needed."""

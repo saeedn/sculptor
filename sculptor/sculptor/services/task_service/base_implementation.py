@@ -96,7 +96,7 @@ class BaseTaskService(TaskService, ABC):
     def create_task(self, task: Task, transaction: DataModelTransaction) -> Task:
         assert isinstance(transaction, SQLTransaction)
         upserted_task = transaction.upsert_task(task)
-        message = TaskStatusRunnerMessage(outcome=TaskState.QUEUED, message_id=AgentMessageID())
+        message = TaskStatusRunnerMessage(message_id=AgentMessageID())
         self.create_message(message, upserted_task.object_id, transaction)
         self._task_ids_pending_creation.add(upserted_task.object_id)
         transaction.add_callback(lambda: self.on_new_task(task=upserted_task))
@@ -439,8 +439,9 @@ class BaseTaskService(TaskService, ABC):
 
             # If the task was marked for deletion while running, finalize as DELETED.
             # NOTE: Even if this check sees a stale is_deleting=False (due to SQLite
-            # snapshot isolation), the monotonic trigger on task_latest will prevent
-            # the upsert below from overwriting a committed is_deleting=True.
+            # snapshot isolation), the upsert's MAX() latching on is_deleting (see
+            # ``_upsert_model``) prevents the upsert below from overwriting a
+            # committed is_deleting=True.
             if logged_task.is_deleting:
                 self._finalize_task_as_deleted(logged_task, transaction)
                 return
@@ -454,7 +455,7 @@ class BaseTaskService(TaskService, ABC):
                 transaction.upsert_task(task_with_new_outcome)
 
             assert outcome is not None
-            final_update_message = TaskStatusRunnerMessage(outcome=outcome, message_id=AgentMessageID())
+            final_update_message = TaskStatusRunnerMessage(message_id=AgentMessageID())
             self.create_message(final_update_message, task.object_id, transaction)
 
     def _finalize_task_as_deleted(self, task: Task, transaction: TaskAndDataModelTransaction) -> None:
@@ -464,9 +465,8 @@ class BaseTaskService(TaskService, ABC):
         new_task = new_task.evolve(new_task.ref().is_deleting, False)
         transaction.upsert_task(new_task)
         task_id = task.object_id
-        # Publish before cleanup: any live subscriber (notably scope=agent
-        # WebSocket connections) needs to observe is_deleted=True so it can
-        # close the stream — otherwise --follow hangs after the task dies.
+        # Publish before cleanup: any live task-update subscriber needs to
+        # observe is_deleted=True so it can drop the task from its view.
         # Cleanup must run after the publish so the post-publish cache state
         # doesn't retain the just-deleted task.
         transaction.add_callback(lambda: self._publish_task_update(task=new_task))

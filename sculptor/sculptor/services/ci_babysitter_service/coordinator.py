@@ -40,7 +40,6 @@ from sculptor.services.ci_babysitter_service.transitions import Transition
 from sculptor.services.ci_babysitter_service.transitions import classify_transitions
 from sculptor.services.data_model_service.api import DataModelService
 from sculptor.services.data_model_service.data_types import DataModelTransaction
-from sculptor.services.git_repo_service.api import GitRepoService
 from sculptor.services.task_service.api import TaskService
 from sculptor.services.terminal_agent_registry.registry import get_registration
 from sculptor.services.user_config.user_config import get_user_config_instance
@@ -151,7 +150,6 @@ class CIBabysitterCoordinator(Service):
 
     _data_model_service: DataModelService = PrivateAttr()
     _task_service: TaskService = PrivateAttr()
-    _git_repo_service: GitRepoService = PrivateAttr()
     _pr_polling_service: PrPollingService = PrivateAttr()
     _queue: Queue[StreamingUpdateSourceTypes] = PrivateAttr(default_factory=Queue)
     _state: dict[WorkspaceID, CIBabysitterState] = PrivateAttr(default_factory=dict)
@@ -164,13 +162,11 @@ class CIBabysitterCoordinator(Service):
         concurrency_group: ConcurrencyGroup,
         data_model_service: DataModelService,
         task_service: TaskService,
-        git_repo_service: GitRepoService,
         pr_polling_service: PrPollingService,
     ) -> None:
         super().__init__(concurrency_group=concurrency_group)
         self._data_model_service = data_model_service
         self._task_service = task_service
-        self._git_repo_service = git_repo_service
         self._pr_polling_service = pr_polling_service
 
     def start(self) -> None:
@@ -259,7 +255,7 @@ class CIBabysitterCoordinator(Service):
             prev = state.prev_status
             # Transient "lost PR" gap: when the workspace's branch flips
             # (e.g. detached HEAD during a babysitter-driven rebase), the
-            # polling service can't match the workspace to an PR and emits
+            # polling service can't match the workspace to a PR and emits
             # pr_state="none". Treating this as a real transition would
             # clobber the coordinator's prev_status with an "unknown"
             # value, and the next poll that re-finds the PR would look

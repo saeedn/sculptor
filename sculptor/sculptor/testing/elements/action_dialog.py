@@ -45,14 +45,6 @@ class PlaywrightActionDialogElement(PlaywrightIntegrationTestElement):
         expect(name_input).to_be_visible()
         name_input.fill(group_name)
 
-    def get_prompt_input(self) -> Locator:
-        """Get the prompt textarea locator."""
-        return self.get_by_test_id(ElementIDs.ACTION_DIALOG_PROMPT_INPUT)
-
-    def get_group_select(self) -> Locator:
-        """Get the group select trigger."""
-        return self.get_by_test_id(ElementIDs.ACTION_DIALOG_GROUP_SELECT)
-
     def get_auto_submit_switch(self) -> Locator:
         """Get the auto-submit switch."""
         return self.get_by_test_id(ElementIDs.ACTION_DIALOG_AUTO_SUBMIT_SWITCH)

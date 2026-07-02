@@ -40,7 +40,6 @@ def test_terminal_first_agent(
     start_task_and_wait_for_ready(
         sculptor_page=page,
         workspace_name="Terminal First Agent WS",
-        model_name=None,
         agent_type="terminal",
     )
 
@@ -59,7 +58,6 @@ def test_first_agent_type_defaults_to_shared_last_used(
     start_task_and_wait_for_ready(
         sculptor_page=page,
         workspace_name="MRU Source WS",
-        model_name=None,
         agent_type="terminal",
     )
 

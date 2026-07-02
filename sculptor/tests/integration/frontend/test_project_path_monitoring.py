@@ -1,12 +1,11 @@
 """Integration tests for project path monitoring functionality."""
 
 import shutil
+from pathlib import Path
 
 import pytest
 from playwright.sync_api import expect
 
-from sculptor.foundation.common import get_temp_dir
-from sculptor.foundation.test_utils import create_temp_dir
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -16,21 +15,20 @@ from sculptor.testing.user_stories import user_story
 @pytest.mark.release
 @pytest.mark.skip(reason="Flakey (PROD-2871)")
 @user_story("to be notified when the project directory is moved or deleted")
-def test_project_path_monitoring(sculptor_instance_: SculptorInstance) -> None:
+def test_project_path_monitoring(sculptor_instance_: SculptorInstance, tmp_path: Path) -> None:
     page = sculptor_instance_.page
 
     # Create a workspace (terminal agent, no model) to activate the project.
     # Activating it first avoids a race where moving the project path mid-
     # activation fails the activation. No chat agent is needed.
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Path Monitoring WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Path Monitoring WS")
     layout = PlaywrightProjectLayoutPage(page=page)
 
     original_path = sculptor_instance_.repo.base_path
 
-    with create_temp_dir(root_dir=get_temp_dir()) as temp_dir:
-        moved_path = temp_dir / original_path.name
-        shutil.move(str(original_path), str(moved_path))
-
+    moved_path = tmp_path / original_path.name
+    shutil.move(str(original_path), str(moved_path))
+    try:
         warning_banner_element = layout.get_warning_banner()
         expect(warning_banner_element).to_be_visible()
 
@@ -41,7 +39,8 @@ def test_project_path_monitoring(sculptor_instance_: SculptorInstance) -> None:
 
         dialog.close()
         expect(dialog).not_to_be_visible()
+    finally:
+        if moved_path.exists():
+            shutil.move(str(moved_path), str(original_path))
 
-        shutil.move(str(moved_path), str(original_path))
-
-        expect(warning_banner_element).not_to_be_visible()
+    expect(warning_banner_element).not_to_be_visible()

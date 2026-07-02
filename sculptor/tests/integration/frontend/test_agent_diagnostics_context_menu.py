@@ -39,7 +39,7 @@ def test_agent_diagnostics_claude_items_disabled_for_terminal_agent(
     tab_bar = PlaywrightAgentTabBarElement(page)
 
     # Step 1: Create a workspace with a terminal agent (no chat surface).
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Diag Disabled WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Diag Disabled WS")
 
     # Step 2: Right-click the agent tab, open Diagnostics.
     agent_tabs = tab_bar.get_agent_tabs()
@@ -75,7 +75,7 @@ def test_agent_context_menu_copy_name_and_id(
     tab_bar = PlaywrightAgentTabBarElement(page)
 
     # Step 1: Create a workspace with a terminal agent.
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Diag Name Id WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Diag Name Id WS")
 
     # Step 2: Install clipboard interceptor.
     install_clipboard_interceptor(page)

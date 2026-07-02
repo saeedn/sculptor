@@ -1,6 +1,5 @@
 import os
 import shutil
-import sqlite3
 import time
 import traceback
 from contextlib import contextmanager
@@ -21,14 +20,12 @@ from filelock import BaseFileLock
 from filelock import Timeout
 from filelock import UnixFileLock
 from loguru import logger
-from pydantic import EmailStr
 from pydantic import PrivateAttr
 from pydantic.alias_generators import to_snake
 from sqlalchemy import Connection
 from sqlalchemy import Engine
 from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy import Index
-from sqlalchemy import UniqueConstraint
 from sqlalchemy import func
 from sqlalchemy import text
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
@@ -54,7 +51,6 @@ from sculptor.database.models import Notification
 from sculptor.database.models import Project
 from sculptor.database.models import SavedAgentMessage
 from sculptor.database.models import Task
-from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
 from sculptor.database.utils import maybe_get_db_path
 from sculptor.foundation.async_monkey_patches import log_exception
@@ -69,7 +65,6 @@ from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import TaskID
 from sculptor.primitives.ids import TransactionID
 from sculptor.primitives.ids import UserReference
-from sculptor.primitives.ids import UserSettingsID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.services.data_model_service.api import TQ
@@ -80,12 +75,6 @@ from sculptor.services.data_model_service.data_types import WorkspaceFieldUpdate
 from sculptor.services.data_model_service.data_types import WorkspaceListingRow
 from sculptor.utils.process_utils import get_original_parent_pid
 from sculptor.utils.type_utils import extract_leaf_types
-
-USER_SETTINGS_TABLE, USER_SETTINGS_LATEST_TABLE = create_tables(
-    to_snake(UserSettings.__name__),
-    UserSettings,
-    constraints=(UniqueConstraint("user_reference", name="unique_user_reference"),),
-)
 
 PROJECT_TABLE, PROJECT_LATEST_TABLE = create_tables(
     to_snake(Project.__name__),
@@ -152,7 +141,7 @@ NOTIFICATION_TABLE, _ = create_tables(
 
 
 T2 = TypeVar("T2", bound=DatabaseModel)
-T4 = TypeVar("T4", bound=Project | UserSettings | Notification | Task | Workspace)
+T4 = TypeVar("T4", bound=Project | Notification | Task | Workspace)
 
 _WAIT_FOR_LOCK_TIMEOUT_SEC = 10.0
 
@@ -195,33 +184,6 @@ class SQLTransaction(BaseDataModelTransaction):
             return None
         return _row_to_pydantic_model(row, Project)
 
-    def get_user_settings(self, user_reference: UserReference) -> UserSettings | None:
-        statement = select(USER_SETTINGS_LATEST_TABLE).where(
-            USER_SETTINGS_LATEST_TABLE.c.user_reference == str(user_reference)
-        )
-        result = self.connection.execute(statement)
-        row = result.fetchone()
-        if row is None:
-            return None
-        return _row_to_pydantic_model(row, UserSettings)
-
-    def get_or_create_user_settings(self, user_reference: UserReference) -> UserSettings:
-        user_settings = self.get_user_settings(user_reference)
-        if user_settings is not None:
-            return user_settings
-        logger.debug("Creating user settings for {}", user_reference)
-        user_settings = UserSettings(object_id=UserSettingsID(), user_reference=user_reference)
-        statement = USER_SETTINGS_TABLE.insert().values(**_pydantic_model_to_row_values(user_settings))
-        try:
-            self.connection.execute(statement)
-        except (sqlalchemy.exc.IntegrityError, sqlite3.IntegrityError):
-            # If the user settings already exist (e.g. because it was created in another thread), it's fine.
-            logger.debug("User settings already created for {}; falling back to what is in the DB", user_reference)
-
-        user_settings = self.get_user_settings(user_reference)
-        assert user_settings is not None
-        return user_settings
-
     def insert_notification(self, notification: Notification) -> Notification:
         self._insert_model(notification, NOTIFICATION_TABLE)
         return notification
@@ -232,15 +194,6 @@ class SQLTransaction(BaseDataModelTransaction):
             .where(WORKSPACE_LATEST_TABLE.c.object_id == str(workspace_id))
             .where(WORKSPACE_LATEST_TABLE.c.is_deleted.is_(False))
         )
-        result = self.connection.execute(statement)
-        row = result.fetchone()
-        if row is None:
-            return None
-        return _row_to_pydantic_model(row, Workspace)
-
-    def get_workspace_include_deleted(self, workspace_id: WorkspaceID) -> Workspace | None:
-        """Get workspace by ID including soft-deleted ones. Used for deletion state checks."""
-        statement = select(WORKSPACE_LATEST_TABLE).where(WORKSPACE_LATEST_TABLE.c.object_id == str(workspace_id))
         result = self.connection.execute(statement)
         row = result.fetchone()
         if row is None:
@@ -559,9 +512,6 @@ def _pydantic_value_to_row_value(value: Any) -> Any:
         return value.model_dump(mode="json")
     if isinstance(value, ObjectID):
         return str(value)
-    # pyrefly: ignore [invalid-argument]
-    if isinstance(value, EmailStr):
-        return str(value)
     return value
 
 
@@ -798,11 +748,11 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
 
         transaction.run_post_commit_hooks()
 
-        # Filter database operations to only include observable models (Project, User, Notification, Workspace)
+        # Filter database operations to only include observable models (Project, Notification, Workspace)
         # The observer system only cares about these specific model types, not all database operations
         observable_models = []
         for operation, model in transaction.get_updated_models():
-            if isinstance(model, (Project, UserSettings, Notification, Workspace)):
+            if isinstance(model, (Project, Notification, Workspace)):
                 observable_models.append(model)
 
         completed_transaction = CompletedTransaction(request_id=request_id, updated_models=tuple(observable_models))
@@ -862,14 +812,12 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
                 user_reference, []
             ) + [queue]
 
-        # put the current project, workspace, and user in the queue
+        # put the current projects and workspaces in the queue
         with self.open_transaction(RequestID()) as transaction:
-            user_settings = transaction.get_user_settings(user_reference)
-            assert user_settings is not None
             projects = transaction.get_projects(organization_reference)
             workspaces = transaction.get_workspaces(organization_reference=organization_reference)
 
-        existing_models: list[Project | UserSettings | Notification | Workspace] = [user_settings]
+        existing_models: list[Project | Notification | Workspace] = []
         for project in projects:
             existing_models.append(project)
         for workspace in workspaces:

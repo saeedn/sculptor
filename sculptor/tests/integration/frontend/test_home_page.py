@@ -31,7 +31,6 @@ def test_recent_workspaces_shown_on_home_page(
 
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Build the feature",
         workspace_name="My Feature Workspace",
     )
 
@@ -70,13 +69,11 @@ def test_workspace_search_filters_list(
     # Create two workspaces with distinct names
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Fix auth bug",
         workspace_name="Auth Bug Fix",
     )
 
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Add dark mode",
         workspace_name="Dark Mode Feature",
     )
 
@@ -106,7 +103,6 @@ def test_clicking_workspace_row_navigates_to_workspace(
 
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Build feature",
         workspace_name="Navigation Test",
     )
 
@@ -143,14 +139,12 @@ def test_clicking_recent_workspace_after_reload_navigates_without_spinner(
     # Step 1: Create workspace A.
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Task for workspace A",
         workspace_name="Workspace Alpha",
     )
 
     # Step 2: Create workspace B (navigates away from A).
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Task for workspace B",
         workspace_name="Workspace Beta",
     )
 

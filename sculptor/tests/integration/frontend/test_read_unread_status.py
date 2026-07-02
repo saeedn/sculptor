@@ -40,9 +40,7 @@ def test_focused_agents_stay_read_within_workspace(
     agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
     # Create first agent in a new workspace (a terminal agent).
-    task_page = start_task_and_wait_for_ready(
-        page, agent_type="terminal", model_name=None, workspace_name="Read Test WS"
-    )
+    task_page = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Read Test WS")
 
     # Agent 1 should be read (we're viewing it and it is ready).
     agent_tab_bar = task_page.get_agent_tab_bar()
@@ -89,16 +87,14 @@ def test_unread_workspace_indicator_across_workspaces(
     page = sculptor_instance_.page
 
     # Create workspace A with a terminal agent.
-    task_page_a = start_task_and_wait_for_ready(
-        page, agent_type="terminal", model_name=None, workspace_name="Workspace A"
-    )
+    task_page_a = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace A")
 
     workspace_tabs = task_page_a.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(1)
     expect(workspace_tabs.first).to_have_attribute("data-has-unread", "false")
 
     # Create workspace B (navigates away from A).
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace B")
 
     expect(workspace_tabs).to_have_count(2)
 
@@ -133,9 +129,7 @@ def test_focused_agent_stays_read_while_receiving_updates(
     agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
     # Create a workspace, then add a registered fake terminal agent we can drive.
-    task_page = start_task_and_wait_for_ready(
-        page, agent_type="terminal", model_name=None, workspace_name="Focused WS"
-    )
+    task_page = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Focused WS")
     add_registered_fake_terminal_agent(page, agents_dir)
 
     agent_tab_bar = task_page.get_agent_tab_bar()
@@ -186,9 +180,7 @@ def test_read_status_persists_after_restart(
         page = instance.page
 
         # Step 1: Create a terminal agent and wait for it to be ready.
-        task_page = start_task_and_wait_for_ready(
-            page, agent_type="terminal", model_name=None, workspace_name="Persist WS"
-        )
+        task_page = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Persist WS")
 
         # Step 2: Verify the workspace and agent show as read.
         agent_tab_bar = task_page.get_agent_tab_bar()

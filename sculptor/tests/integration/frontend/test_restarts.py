@@ -7,11 +7,9 @@ agent task-list popover and the rich chat surface do not survive the slim-down,
 so the chat-panel vehicle is replaced by the terminal-agent harness.
 """
 
-import pytest
 from playwright.sync_api import Page
 from playwright.sync_api import expect
 
-from sculptor.constants import ElementIDs
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
 from sculptor.testing.elements.terminal import focus_agent_terminal
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
@@ -23,7 +21,6 @@ from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wai
 from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
-from sculptor.testing.playwright_utils import navigate_to_add_workspace_page
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.sculptor_instance import SculptorInstanceFactory
@@ -45,7 +42,7 @@ def _launch_registered_terminal_agent(instance: SculptorInstance) -> None:
     page = instance.page
     agents_dir = instance.sculptor_folder / "terminal_agents"
 
-    start_task_and_wait_for_ready(page, prompt="Say hi to me")
+    start_task_and_wait_for_ready(page)
     register_fake_terminal_agent(agents_dir)
 
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
@@ -74,25 +71,6 @@ def _reopen_persisted_workspace(page: Page) -> PlaywrightAgentTabBarElement:
     expect(workspace_tab).to_be_visible()
     workspace_tab.click()
     return PlaywrightAgentTabBarElement(page)
-
-
-@pytest.mark.skip(reason="AddWorkspacePage does not persist prompt drafts yet (useNewTaskPromptDraft is unused)")
-@user_story("my selections to stay on backend restarts")
-def test_home_page_prompts_persist_on_restart(sculptor_instance_factory_: SculptorInstanceFactory) -> None:
-    prompt_text = "This prompt should persist across restarts"
-
-    with sculptor_instance_factory_.spawn_instance() as instance:
-        page = instance.page
-        navigate_to_add_workspace_page(page)
-        task_input = page.get_by_test_id(ElementIDs.TASK_INPUT)
-        expect(task_input).to_have_attribute("contenteditable", "true")
-        task_input.click()
-        task_input.fill(prompt_text)
-
-    with sculptor_instance_factory_.spawn_instance() as instance:
-        navigate_to_add_workspace_page(instance.page)
-        task_input = instance.page.get_by_test_id(ElementIDs.TASK_INPUT)
-        expect(task_input).to_have_text(prompt_text)
 
 
 @user_story("my progress to stay on backend restarts")

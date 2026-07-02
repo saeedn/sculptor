@@ -6,7 +6,6 @@ EXPECTED_TABLES = {
     "project",
     "task",
     "workspace",
-    "user_settings",
     "notification",
     "saved_agent_message",
 }

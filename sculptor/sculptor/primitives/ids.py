@@ -102,10 +102,6 @@ class RequestID(ObjectID):
     tag: str = "rqst"
 
 
-class UserSettingsID(ObjectID):
-    tag: str = "usr"
-
-
 class TransactionID(ObjectID):
     tag: str = "txn"
 

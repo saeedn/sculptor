@@ -43,7 +43,7 @@ def test_mark_active_tab_unread_stays_unread(
     page = sculptor_instance_.page
 
     # Step 1: Create workspace with a terminal agent (no chat surface).
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Active Unread WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Active Unread WS")
 
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -79,7 +79,7 @@ def test_mark_adjacent_tab_unread(
     agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
     # Step 1: Create workspace with agent 1 (a terminal agent).
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Adjacent Unread WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Adjacent Unread WS")
 
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
 
@@ -128,14 +128,12 @@ def test_mark_unread_then_leave_and_return_marks_read(
     page = sculptor_instance_.page
 
     # Step 1: Create workspace A.
-    task_page_a = start_task_and_wait_for_ready(
-        page, agent_type="terminal", model_name=None, workspace_name="Workspace A"
-    )
+    task_page_a = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace A")
 
     agent_tab_bar = task_page_a.get_agent_tab_bar()
 
     # Step 2: Create workspace B.
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace B")
 
     workspace_tabs = task_page_a.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -185,9 +183,7 @@ def test_unread_persists_on_unfocused_agent_across_workspace_switches(
     agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
     # Step 1: Create workspace A with agent 1 (a terminal agent).
-    task_page = start_task_and_wait_for_ready(
-        page, agent_type="terminal", model_name=None, workspace_name="Workspace A"
-    )
+    task_page = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace A")
 
     agent_tab_bar = task_page.get_agent_tab_bar()
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -211,7 +207,7 @@ def test_unread_persists_on_unfocused_agent_across_workspace_switches(
     expect(agent_tabs.first).to_have_attribute("data-dot-status", "unread")
 
     # Step 5: Create workspace B (navigates away from workspace A).
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace B")
 
     workspace_tabs = task_page.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)

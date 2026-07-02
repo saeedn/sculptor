@@ -223,7 +223,7 @@ class LocalWritableGitRepo(LocalReadOnlyGitRepo, _WritableGitRepoSharedMethods):
                     command=["git", "config", "user.name", user_name], cwd=repo_path, is_checked_after=True
                 )
                 # Log without the values — git identity is personal data and
-                # the log file is bundled into bug-report diagnostics uploads.
+                # doesn't belong in the log file.
                 logger.debug("Configured git user.email and user.name for {}", repo_path)
             except ProcessError as e:
                 raise GitRepoError(

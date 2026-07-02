@@ -202,7 +202,7 @@ class ConcurrentTaskService(BaseTaskService, ABC):
             for task in running_tasks:
                 # mark them as QUEUED so that they can be picked up again
                 transaction.upsert_task(task.evolve(task.ref().outcome, TaskState.QUEUED))
-                message = TaskStatusRunnerMessage(outcome=TaskState.QUEUED, message_id=AgentMessageID())
+                message = TaskStatusRunnerMessage(message_id=AgentMessageID())
                 self.create_message(message=message, task_id=task.object_id, transaction=transaction)
 
     def _prepare_queued_tasks(self, project_id: ProjectID) -> tuple[Task, ...]:
@@ -214,7 +214,7 @@ class ConcurrentTaskService(BaseTaskService, ABC):
             acknowledged_tasks = tuple(task.evolve(task.ref().outcome, TaskState.RUNNING) for task in existing_tasks)
             for task in acknowledged_tasks:
                 transaction.upsert_task(task)
-                message = TaskStatusRunnerMessage(outcome=TaskState.RUNNING, message_id=AgentMessageID())
+                message = TaskStatusRunnerMessage(message_id=AgentMessageID())
                 self.create_message(message=message, task_id=task.object_id, transaction=transaction)
             return acknowledged_tasks
 

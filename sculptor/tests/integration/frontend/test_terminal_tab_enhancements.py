@@ -13,7 +13,6 @@ from sculptor.testing.elements.terminal import get_add_terminal_button
 from sculptor.testing.elements.terminal import get_inline_rename_input
 from sculptor.testing.elements.terminal import get_tab_context_menu_close_others
 from sculptor.testing.elements.terminal import get_tab_context_menu_rename
-from sculptor.testing.elements.terminal import get_terminal_heading
 from sculptor.testing.elements.terminal import get_terminal_tabs
 from sculptor.testing.elements.terminal import open_terminal_and_wait
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
@@ -37,7 +36,7 @@ def test_terminal_tab_double_click_rename(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="Terminal test", workspace_name="Term WS")
+    start_task_and_wait_for_ready(page, workspace_name="Term WS")
     open_terminal_and_wait(page)
 
     terminal_tabs = get_terminal_tabs(page)
@@ -67,7 +66,7 @@ def test_terminal_context_menu_has_close_all_and_rename(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="Term menu test", workspace_name="Term Menu WS")
+    start_task_and_wait_for_ready(page, workspace_name="Term Menu WS")
     open_terminal_and_wait(page)
 
     add_terminal_button = get_add_terminal_button(page)
@@ -89,20 +88,16 @@ def test_terminal_context_menu_has_close_all_and_rename(
 def test_terminal_compact_layout_no_heading(
     sculptor_instance_: SculptorInstance,
 ) -> None:
-    """Terminal panel uses compact tab variant: heading removed, tabs above content.
+    """Terminal panel uses compact tab variant: tabs render directly above content.
 
     Steps:
     1. Create workspace and open terminal
-    2. Verify the terminal heading is not visible
-    3. Verify terminal tabs are rendered
+    2. Verify terminal tabs are rendered
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="Layout test", workspace_name="Layout WS")
+    start_task_and_wait_for_ready(page, workspace_name="Layout WS")
     open_terminal_and_wait(page)
-
-    terminal_heading = get_terminal_heading(page)
-    expect(terminal_heading).to_have_count(0)
 
     terminal_tabs = get_terminal_tabs(page)
     expect(terminal_tabs).to_have_count(1)

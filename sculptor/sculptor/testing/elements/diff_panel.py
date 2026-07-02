@@ -38,15 +38,6 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
         expect(close_btn).to_be_visible()
         close_btn.click()
 
-    def get_file_view_marker(self) -> Locator:
-        """Hidden marker element rendered inside file-view tab labels.
-
-        File-view, single-diff, and commit-diff tabs all share the
-        ``DIFF_TAB`` test id; the marker is what distinguishes a file-view
-        tab from the others.
-        """
-        return self._page.get_by_test_id(ElementIDs.FILE_VIEW_TAB_MARKER)
-
     def get_file_header(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_FILE_HEADER)
 
@@ -104,12 +95,6 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
     def get_rename_banner(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_RENAME_BANNER)
 
-    def get_file_header_menu_trigger(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.DIFF_FILE_HEADER_MENU_TRIGGER)
-
-    def get_copy_file_path_menu_item(self) -> Locator:
-        return self._page.get_by_test_id("copy-path")
-
     def ensure_unified_mode(self) -> None:
         split_toggle = self.get_split_view_toggle()
         expect(split_toggle).to_be_visible()
@@ -123,16 +108,6 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
         if split_toggle.get_attribute("data-state") != "split":
             split_toggle.click()
         expect(split_toggle).to_have_attribute("data-state", "split")
-
-    def expect_shows_file_view(self, tab_text: str) -> None:
-        """Assert a file-view tab with ``tab_text`` is open and rendering content."""
-        expect(self).to_be_visible()
-        tab = self.get_tab_by_name(tab_text)
-        expect(tab.first).to_be_visible()
-        file_view_tab = tab.filter(has=self.get_file_view_marker())
-        expect(file_view_tab.first).to_be_visible()
-        expect(self.get_read_only_preview()).to_be_visible()
-        expect(self).not_to_contain_text("Could not load file content")
 
 
 def get_diff_panel_from_page(page: Page) -> PlaywrightDiffPanelElement:

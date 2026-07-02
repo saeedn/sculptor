@@ -26,9 +26,6 @@ class PlaywrightAgentTabBarElement:
     def get_agent_type_menu(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.AGENT_TYPE_MENU)
 
-    def get_agent_type_menu_item_claude(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.AGENT_TYPE_MENU_ITEM_CLAUDE)
-
     def get_agent_type_menu_item_terminal(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.AGENT_TYPE_MENU_ITEM_TERMINAL)
 
@@ -91,9 +88,6 @@ class PlaywrightAgentTabBarElement:
         """Right-click a tab to open the context menu."""
         tab.click(button="right")
 
-    def get_context_menu_close_item(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_CLOSE)
-
     def get_context_menu_rename_item(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_RENAME)
 
@@ -111,17 +105,6 @@ class PlaywrightAgentTabBarElement:
 
     def get_inline_rename_input(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.INLINE_RENAME_INPUT)
-
-    def rename_tab(self, tab: Locator, new_name: str) -> None:
-        self.open_context_menu(tab)
-        rename_item = self.get_context_menu_rename_item()
-        expect(rename_item).to_be_visible()
-        rename_item.click()
-        rename_input = self.get_inline_rename_input()
-        expect(rename_input).to_be_visible()
-        rename_input.fill(new_name)
-        rename_input.press("Enter")
-        expect(rename_input).not_to_be_visible()
 
     def get_tab_close_button(self, tab: Locator) -> Locator:
         return tab.get_by_test_id(ElementIDs.TAB_CLOSE_BUTTON)

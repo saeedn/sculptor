@@ -119,7 +119,7 @@ def test_close_terminal_tab_kills_shell_process(sculptor_instance_: SculptorInst
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     # Read the first tab's shell pid from inside the terminal.

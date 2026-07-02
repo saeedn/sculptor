@@ -133,7 +133,7 @@ def _dismiss_startup_dialogs(page) -> None:
 @pytest.mark.timeout(600)
 def test_claude_code_terminal_agent(sculptor_instance_: SculptorInstance) -> None:
     page = sculptor_instance_.page
-    start_task_and_wait_for_ready(page, prompt="", model_name=None, workspace_name="Claude Code TUI WS")
+    start_task_and_wait_for_ready(page, workspace_name="Claude Code TUI WS")
     _install_sample(sculptor_instance_.sculptor_folder)
 
     agent_tab_bar = PlaywrightAgentTabBarElement(page)

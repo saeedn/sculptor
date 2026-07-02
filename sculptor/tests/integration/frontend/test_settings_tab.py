@@ -30,7 +30,7 @@ def test_settings_opens_as_tab(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Settings test", workspace_name="Settings WS")
+    start_task_and_wait_for_ready(page, workspace_name="Settings WS")
 
     layout.get_settings_button().click()
 
@@ -56,7 +56,7 @@ def test_settings_tab_is_closeable(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Close settings test", workspace_name="Close WS")
+    start_task_and_wait_for_ready(page, workspace_name="Close WS")
 
     layout.open_settings_tab()
 
@@ -86,7 +86,7 @@ def test_settings_tab_singleton(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Singleton test", workspace_name="Singleton WS")
+    start_task_and_wait_for_ready(page, workspace_name="Singleton WS")
 
     layout.open_settings_tab()
 
@@ -111,7 +111,7 @@ def test_settings_tab_context_menu_no_rename_or_delete(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Menu test", workspace_name="Menu WS")
+    start_task_and_wait_for_ready(page, workspace_name="Menu WS")
 
     settings_tab = layout.open_settings_tab()
 

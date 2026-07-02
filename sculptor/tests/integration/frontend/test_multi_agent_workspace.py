@@ -34,7 +34,7 @@ def test_create_second_agent_in_existing_workspace(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create first agent in a new workspace
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Multi Agent WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Multi Agent WS")
 
     # Verify one agent tab exists
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -63,7 +63,7 @@ def test_multiple_agent_tabs_shown_for_shared_workspace(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create first agent in a new workspace
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Shared WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Shared WS")
 
     # Add a second agent to the same workspace
     agent_tab_bar.add_terminal_agent()
@@ -83,7 +83,7 @@ def test_single_agent_shows_one_agent_tab(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create one agent in a new workspace
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Solo WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Solo WS")
 
     # Verify exactly one agent tab
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -109,7 +109,7 @@ def test_workspaces_have_isolated_agent_tabs(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create workspace A with first agent
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace A")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace A")
 
     # Add a second agent to workspace A
     agent_tab_bar.add_terminal_agent()
@@ -120,7 +120,7 @@ def test_workspaces_have_isolated_agent_tabs(
 
     # Create workspace B with one agent (this navigates to the Add Workspace page
     # and creates a new workspace)
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace B")
 
     # Verify workspace B has 1 agent tab
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -162,7 +162,7 @@ def test_workspace_deleted_when_last_agent_deleted(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create a workspace with one agent
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Deletable WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Deletable WS")
 
     # Verify workspace tab and agent tab exist
     workspace_tabs = task_page.get_workspace_tabs()
@@ -220,7 +220,7 @@ def test_workspace_survives_when_other_agents_remain(
     dirs_before_creation = {p for p in workspaces_dir.iterdir() if p.is_dir()} if workspaces_dir.exists() else set()
 
     # Create a workspace with first agent
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Surviving WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Surviving WS")
 
     # Add a second agent to the same workspace
     agent_tab_bar.add_terminal_agent()
@@ -283,7 +283,7 @@ def test_agent_tab_reuses_lowest_available_number(
     agent_tab_bar = task_page.get_agent_tab_bar()
 
     # Create a workspace — the first agent is auto-named "Terminal 1".
-    start_task_and_wait_for_ready(page, agent_type="terminal", model_name=None, workspace_name="Reuse WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Reuse WS")
 
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(1)

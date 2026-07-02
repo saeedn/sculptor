@@ -46,7 +46,7 @@ def test_restart_restores_active_workspace_and_agent(
 ) -> None:
     """The sync rootLoader should redirect to the saved /ws/<ws>/agent/<id> on cold start."""
     with sculptor_instance_factory_.spawn_instance() as instance:
-        start_task_and_wait_for_ready(instance.page, prompt="Hi", workspace_name="MRU Test WS")
+        start_task_and_wait_for_ready(instance.page, workspace_name="MRU Test WS")
         first_url_hash = _hash_of(instance.page)
         assert re.match(r"^#/ws/[^/]+/agent/[^/]+$", first_url_hash), first_url_hash
 
@@ -85,7 +85,7 @@ def test_restart_clears_pointer_when_workspace_deleted(
     bogus_ws_id = "ws_01" + "0" * 24
     with sculptor_instance_factory_.spawn_instance() as instance:
         page = instance.page
-        start_task_and_wait_for_ready(page, prompt="X", workspace_name="To Delete")
+        start_task_and_wait_for_ready(page, workspace_name="To Delete")
         # Overwrite sculptor-tabs to point at a non-existent workspace, simulating
         # the workspace being deleted in another window between sessions.
         _set_sculptor_tabs(

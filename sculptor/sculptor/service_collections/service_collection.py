@@ -43,7 +43,6 @@ def get_services(
         concurrency_group=concurrency_group.make_concurrency_group("ci_babysitter"),
         data_model_service=services.data_model_service,
         task_service=services.task_service,
-        git_repo_service=services.git_repo_service,
         pr_polling_service=pr_polling_service,
     )
     return CompleteServiceCollection(

@@ -67,7 +67,6 @@ def test_workspace_from_worktree_user_repo(
     # Creating a workspace from the worktree-derived repo must succeed.
     task_page = start_task_and_wait_for_ready(
         page,
-        prompt="hello world",
         workspace_name="Workspace From Worktree",
     )
     expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)

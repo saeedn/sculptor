@@ -1,5 +1,3 @@
-from playwright.sync_api import Locator
-
 from sculptor.constants import ElementIDs
 from sculptor.testing.elements.onboarding import PlaywrightAddRepoStepElement
 from sculptor.testing.elements.onboarding import PlaywrightPathCheckStepElement
@@ -18,7 +16,3 @@ class PlaywrightOnboardingPage(PlaywrightIntegrationTestPage):
         """Get the add-repo step component."""
         add_repo_step_locator = self.get_by_test_id(ElementIDs.ONBOARDING_ADD_REPO_STEP)
         return PlaywrightAddRepoStepElement(locator=add_repo_step_locator, page=self._page)
-
-    def get_step_indicator_dot(self, index: int) -> Locator:
-        """Get a step indicator dot by zero-based index."""
-        return self.get_by_test_id(ElementIDs.ONBOARDING_STEP_INDICATOR_DOT).nth(index)

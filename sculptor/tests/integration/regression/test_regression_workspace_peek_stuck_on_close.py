@@ -28,7 +28,6 @@ def test_workspace_peek_dismissed_on_middle_click_close(
     start_task_and_wait_for_ready(
         page,
         agent_type="terminal",
-        model_name=None,
         workspace_name="Peek WS",
     )
 

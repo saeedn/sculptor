@@ -33,7 +33,7 @@ def test_home_page_opens_as_tab(
     page = sculptor_instance_.page
 
     # Step 1: Create a workspace.
-    start_task_and_wait_for_ready(page, prompt="Home tab test", workspace_name="Home Tab WS")
+    start_task_and_wait_for_ready(page, workspace_name="Home Tab WS")
 
     # Step 2: Navigate to the Home page.
     navigate_to_home_page(page)
@@ -65,7 +65,7 @@ def test_clicking_workspace_replaces_home_tab(
     page = sculptor_instance_.page
 
     # Step 1: Create a workspace.
-    start_task_and_wait_for_ready(page, prompt="Replace tab test", workspace_name="Replace Tab WS")
+    start_task_and_wait_for_ready(page, workspace_name="Replace Tab WS")
 
     # Step 2: Navigate to the Home page.
     navigate_to_home_page(page)
@@ -109,7 +109,7 @@ def test_home_tab_is_closeable(
     page = sculptor_instance_.page
 
     # Step 1: Create a workspace.
-    start_task_and_wait_for_ready(page, prompt="Close home test", workspace_name="Close Home WS")
+    start_task_and_wait_for_ready(page, workspace_name="Close Home WS")
 
     # Step 2: Navigate to the Home page.
     navigate_to_home_page(page)

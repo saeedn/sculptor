@@ -371,10 +371,6 @@ def get_inline_rename_input(page: Page) -> Locator:
     return page.get_by_test_id(ElementIDs.INLINE_RENAME_INPUT)
 
 
-def get_terminal_heading(page: Page) -> Locator:
-    return page.get_by_test_id(ElementIDs.TERMINAL_HEADING)
-
-
 def get_xterm_theme_foreground(page: Page) -> str:
     """Return the current xterm foreground color from the terminal options."""
     return page.evaluate(

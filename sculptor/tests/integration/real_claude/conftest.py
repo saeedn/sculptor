@@ -30,12 +30,6 @@ from sculptor.testing.resources import invalidate_shared_instance
 real_claude = pytest.mark.real_claude
 
 
-@pytest.fixture(scope="session")
-def sculptor_launch_mode(request: pytest.FixtureRequest) -> str:
-    """Return the launch mode selected via ``--sculptor-launch-mode``."""
-    return request.config.getoption("--sculptor-launch-mode", default="electron")
-
-
 @pytest.fixture(autouse=True, scope="session")
 def _expose_real_claude_credentials(request: pytest.FixtureRequest) -> None:
     """Let the Claude CLI use its real OAuth credentials instead of the test stub.

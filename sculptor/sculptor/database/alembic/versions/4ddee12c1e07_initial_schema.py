@@ -35,14 +35,6 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("object_id"),
     )
     op.create_table(
-        "user_settings",
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("object_id", sa.String(), nullable=False),
-        sa.Column("user_reference", sa.String(), nullable=False),
-        sa.PrimaryKeyConstraint("object_id"),
-        sa.UniqueConstraint("user_reference", name="unique_user_reference"),
-    )
-    op.create_table(
         "task",
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("object_id", sa.String(), nullable=False),
@@ -92,11 +84,10 @@ def upgrade() -> None:
         "notification",
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("object_id", sa.String(), nullable=False),
-        sa.Column("user_reference", sa.String(), nullable=True),
+        sa.Column("user_reference", sa.String(), nullable=False),
         sa.Column("message", sa.String(), nullable=False),
         sa.Column("importance", sa.String(), nullable=False),
         sa.Column("task_id", sa.String(), nullable=True),
-        sa.Column("project_id", sa.String(), nullable=True),
         sa.ForeignKeyConstraint(["task_id"], ["task.object_id"], name="foreign_key_task_id"),
         sa.PrimaryKeyConstraint("object_id"),
     )
@@ -124,6 +115,5 @@ def downgrade() -> None:
     op.drop_table("notification")
     op.drop_table("workspace")
     op.drop_table("task")
-    op.drop_table("user_settings")
     op.drop_table("project")
     # ### end Alembic commands ###

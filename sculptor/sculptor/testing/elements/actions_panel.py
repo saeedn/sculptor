@@ -12,10 +12,6 @@ class PlaywrightActionsPanelElement(PlaywrightIntegrationTestElement):
         """Get the '+' button in the panel header."""
         return self.get_by_test_id(ElementIDs.ACTIONS_PANEL_ADD_BUTTON)
 
-    def get_action_chips(self) -> Locator:
-        """Get all action chip buttons."""
-        return self.get_by_test_id(ElementIDs.ACTION_CHIP)
-
     def get_action_chip_by_name(self, name: str) -> Locator:
         """Find an action chip by its text label."""
         return self.get_by_test_id(ElementIDs.ACTION_CHIP).filter(has_text=name)

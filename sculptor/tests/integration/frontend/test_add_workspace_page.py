@@ -51,7 +51,6 @@ def test_workspace_form_draft_persists_after_navigation(
     # Step 1: Create a workspace so we have somewhere to navigate to.
     task_page = start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Setup task",
         workspace_name="Initial Workspace",
     )
 
@@ -121,7 +120,6 @@ def test_workspace_form_branch_state_persists_after_navigation(
     # Step 1: Create a workspace so we have somewhere to navigate to.
     task_page = start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Setup task",
         workspace_name="Initial Workspace",
     )
 
@@ -508,7 +506,6 @@ def test_deleting_project_also_deletes_its_workspaces(
 
         start_task_and_wait_for_ready(
             sculptor_page=page,
-            prompt="Setup task",
             workspace_name="Workspace To Delete",
         )
 

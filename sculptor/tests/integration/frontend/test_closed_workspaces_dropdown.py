@@ -24,9 +24,9 @@ def test_pill_visibility_toggles_with_closed_workspace_count(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="WS One")
-    start_task_and_wait_for_ready(page, prompt="Agent 2", workspace_name="WS Two")
-    start_task_and_wait_for_ready(page, prompt="Agent 3", workspace_name="WS Three")
+    start_task_and_wait_for_ready(page, workspace_name="WS One")
+    start_task_and_wait_for_ready(page, workspace_name="WS Two")
+    start_task_and_wait_for_ready(page, workspace_name="WS Three")
 
     pill = layout.get_closed_workspaces_pill()
     expect(pill).not_to_be_visible()
@@ -51,8 +51,8 @@ def test_dropdown_opens_and_shows_closed_workspace_rows(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="My Closed WS")
-    start_task_and_wait_for_ready(page, prompt="Agent 2", workspace_name="My Open WS")
+    start_task_and_wait_for_ready(page, workspace_name="My Closed WS")
+    start_task_and_wait_for_ready(page, workspace_name="My Open WS")
 
     layout.close_workspace_tab(workspace_tab_index=0)
 
@@ -80,8 +80,8 @@ def test_reopen_workspace_from_dropdown(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="Reopen WS")
-    start_task_and_wait_for_ready(page, prompt="Agent 2", workspace_name="Stay Open WS")
+    start_task_and_wait_for_ready(page, workspace_name="Reopen WS")
+    start_task_and_wait_for_ready(page, workspace_name="Stay Open WS")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -110,8 +110,8 @@ def test_delete_workspace_from_dropdown(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="Delete WS")
-    start_task_and_wait_for_ready(page, prompt="Agent 2", workspace_name="Keep WS")
+    start_task_and_wait_for_ready(page, workspace_name="Delete WS")
+    start_task_and_wait_for_ready(page, workspace_name="Keep WS")
 
     layout.close_workspace_tab(workspace_tab_index=0)
 
@@ -151,8 +151,8 @@ def test_pill_visible_on_add_workspace_page(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="WS One")
-    start_task_and_wait_for_ready(page, prompt="Agent 2", workspace_name="WS Two")
+    start_task_and_wait_for_ready(page, workspace_name="WS One")
+    start_task_and_wait_for_ready(page, workspace_name="WS Two")
 
     # Close one workspace so the pill appears
     layout.close_workspace_tab(workspace_tab_index=0)
@@ -176,9 +176,9 @@ def test_open_all_reopens_all_closed_workspaces(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="WS Alpha")
-    start_task_and_wait_for_ready(page, prompt="Agent 2", workspace_name="WS Beta")
-    start_task_and_wait_for_ready(page, prompt="Agent 3", workspace_name="WS Gamma")
+    start_task_and_wait_for_ready(page, workspace_name="WS Alpha")
+    start_task_and_wait_for_ready(page, workspace_name="WS Beta")
+    start_task_and_wait_for_ready(page, workspace_name="WS Gamma")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(3)

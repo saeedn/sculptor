@@ -16,7 +16,6 @@ from sculptor.primitives.ids import OrganizationReference
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import TaskID as AgentTaskID
 from sculptor.primitives.ids import UserReference
-from sculptor.primitives.ids import UserSettingsID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.state.messages import AgentMessageSource
 
@@ -24,13 +23,6 @@ TaskID = AgentTaskID
 
 
 # Basic tables
-
-
-class UserSettings(DatabaseModel):
-    """Settings for a locally stored user."""
-
-    object_id: UserSettingsID
-    user_reference: UserReference
 
 
 class Project(DatabaseModel):
@@ -260,12 +252,9 @@ class NotificationImportance(StrEnum):
 
 class Notification(DatabaseModel):
     object_id: NotificationID
-    # When user_reference is None, it applies to all users.
-    user_reference: UserReference | None
+    user_reference: UserReference
     # by convention, only the first line will be shown directly to the user, and of that, only the first X characters.
     # we assume that this is roughly markdown (eg, for formatting, links, etc).
     message: str
     importance: NotificationImportance = NotificationImportance.TIME_SENSITIVE
     task_id: TaskID | None = None
-    # Notifications can be related to a whole project, not necessarily a specific task.
-    project_id: ProjectID | None = None

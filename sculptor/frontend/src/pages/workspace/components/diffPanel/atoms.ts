@@ -8,10 +8,7 @@ import { getUncommittedFileStatusMap } from "~/pages/workspace/panels/fileBrowse
 import type { FileStatus } from "~/pages/workspace/panels/fileBrowser/types.ts";
 
 import type { DiffPanelTabState, DiffScope, DiffTab, SplitPosition } from "./types.ts";
-import { COMBINED_REVIEW_PATH, COMMIT_DIFF_PREFIX, FILE_VIEW_PREFIX, TARGET_BRANCH_DIFF_PREFIX } from "./types.ts";
-
-/** Transient per-workspace scope for the combined diff view. Resets on page refresh. */
-export const diffScopeAtomFamily = atomFamily((_workspaceId: string) => atom<DiffScope>("uncommitted"));
+import { COMMIT_DIFF_PREFIX, FILE_VIEW_PREFIX, TARGET_BRANCH_DIFF_PREFIX } from "./types.ts";
 
 /** Ratio (0–100) controlling the left/right column split in side-by-side diffs. */
 export const splitDiffColumnRatioAtom = atom(50);
@@ -41,25 +38,17 @@ export const diffPanelStateAtomFamily = atomFamily((workspaceId: string) =>
 );
 
 /**
- * Whether the diff viewer column is visible.  Stored globally by default so
- * the panel behaves like the other docked panels (a single shared open/close
- * state across workspaces).  When the experimental "per-workspace panel
- * layout" flag is enabled, `usePerWorkspacePanelLayout` saves/restores this
- * value per workspace on switch — mirroring how zone visibility is handled.
+ * Whether the diff viewer column is visible.  Stored globally so the panel
+ * behaves like the other docked panels (a single shared open/close state
+ * across workspaces).
  */
 export const diffPanelOpenAtom = atomWithDebouncedStorage<boolean>("sculptor-diffPanel-open", false, 200);
 
 /**
- * Diff/chat split ratio (0–100).  Global with optional per-workspace
- * override, parallelling `diffPanelOpenAtom`.
+ * Diff/chat split ratio (0–100).  Stored globally, parallelling
+ * `diffPanelOpenAtom`.
  */
 export const diffPanelSplitRatioAtom = atomWithDebouncedStorage<number>("sculptor-diffPanel-splitRatio", 50, 200);
-
-/** Global preference for how `.md` / `.markdown` files are shown in ReadOnlyPreview. */
-type MarkdownRenderMode = "raw" | "rendered";
-export const markdownRenderModeAtom = atomWithStorage<MarkdownRenderMode>("diffPanel-markdownRenderMode", "rendered");
-
-export const isMarkdownPath = (filePath: string): boolean => /\.(md|markdown)$/i.test(filePath);
 
 // ---------------------------------------------------------------------------
 // Discriminated union payload for the unified setActiveDiffTabAtom
@@ -72,12 +61,6 @@ type SetActiveSingleDiff = {
   status: FileStatus;
   scope?: DiffScope;
   diffString?: string;
-};
-
-type SetActiveCombinedDiff = {
-  kind: "combined";
-  workspaceId: string;
-  defaultScope?: DiffScope;
 };
 
 type SetActiveFileView = {
@@ -93,7 +76,7 @@ type SetActiveCommitDiff = {
   filePath: string;
 };
 
-type SetActiveDiffPayload = SetActiveSingleDiff | SetActiveCombinedDiff | SetActiveFileView | SetActiveCommitDiff;
+type SetActiveDiffPayload = SetActiveSingleDiff | SetActiveFileView | SetActiveCommitDiff;
 
 /**
  * Build a DiffTab and its identity key from a discriminated union payload.
@@ -115,16 +98,7 @@ const buildTabFromPayload = (payload: SetActiveDiffPayload, now: number): { tab:
         tabPath,
       };
     }
-    case "combined":
-      return {
-        tab: {
-          kind: "combined",
-          filePath: COMBINED_REVIEW_PATH,
-          defaultScope: payload.defaultScope,
-          viewedAt: now,
-        },
-        tabPath: COMBINED_REVIEW_PATH,
-      };
+
     case "file-view": {
       const tabPath = FILE_VIEW_PREFIX + payload.filePath;
       return {
@@ -152,7 +126,7 @@ const buildTabFromPayload = (payload: SetActiveDiffPayload, now: number): { tab:
 /**
  * Unified atom that activates (or opens) a diff tab of any kind.
  */
-export const setActiveDiffTabAtom = atom(null, (get, set, payload: SetActiveDiffPayload) => {
+const setActiveDiffTabAtom = atom(null, (get, set, payload: SetActiveDiffPayload) => {
   const stateAtom = diffPanelStateAtomFamily(payload.workspaceId);
   const state = get(stateAtom);
   const now = Date.now();
@@ -171,11 +145,6 @@ export const setActiveDiffTabAtom = atom(null, (get, set, payload: SetActiveDiff
     });
   }
   set(diffPanelOpenAtom, true);
-
-  // When opening a combined tab with a default scope, set the scope atom.
-  if (payload.kind === "combined" && payload.defaultScope) {
-    set(diffScopeAtomFamily(payload.workspaceId), payload.defaultScope);
-  }
 });
 
 /**
@@ -188,7 +157,7 @@ export const setActiveDiffTabAtom = atom(null, (get, set, payload: SetActiveDiff
  *
  * Path-prefix limitation: status-map keys are git-relative (e.g.
  * "sculptor/web/app.py") while filePath in the event is absolute. For paths
- * inside the workspace clone this means auto-resolution may fall back to
+ * inside the workspace this means auto-resolution may fall back to
  * file-view when the prefixes don't match. Acceptable for v1; spec
  * (architecture §4.2) explicitly allows the file-view fallback.
  */
@@ -238,14 +207,6 @@ export const openDiffTabAtom = atom(
     params: { workspaceId: string; filePath: string; status: FileStatus; scope?: DiffScope; diffString?: string },
   ) => {
     set(setActiveDiffTabAtom, { kind: "single", ...params });
-  },
-);
-
-/** Open (or activate) the combined "Review All" tab. */
-export const openCombinedDiffTabAtom = atom(
-  null,
-  (_get, set, params: { workspaceId: string; defaultScope?: DiffScope }) => {
-    set(setActiveDiffTabAtom, { kind: "combined", ...params });
   },
 );
 

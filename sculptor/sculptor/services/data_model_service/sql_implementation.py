@@ -1,8 +1,5 @@
-import functools
 import os
-import re
 import shutil
-import sqlite3
 import time
 import traceback
 from contextlib import contextmanager
@@ -16,7 +13,6 @@ from typing import Callable
 from typing import Collection
 from typing import Generator
 from typing import Generic
-from typing import ParamSpec
 from typing import TypeVar
 
 import sqlalchemy
@@ -24,15 +20,15 @@ from filelock import BaseFileLock
 from filelock import Timeout
 from filelock import UnixFileLock
 from loguru import logger
-from pydantic import EmailStr
 from pydantic import PrivateAttr
 from pydantic.alias_generators import to_snake
 from sqlalchemy import Connection
 from sqlalchemy import Engine
 from sqlalchemy import ForeignKeyConstraint
 from sqlalchemy import Index
-from sqlalchemy import UniqueConstraint
+from sqlalchemy import func
 from sqlalchemy import text
+from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.sql import select
 from sqlalchemy.sql import update
@@ -44,7 +40,9 @@ from sculptor.config.settings import SculptorSettings
 from sculptor.constants import SCULPTOR_EXIT_CODE_COULD_NOT_ACQUIRE_LOCK
 from sculptor.constants import SCULPTOR_EXIT_CODE_IRRECOVERABLE_ERROR
 from sculptor.constants import SCULPTOR_EXIT_CODE_PARENT_DIED
+from sculptor.database.automanaged import CREATED_AT
 from sculptor.database.automanaged import DatabaseModel
+from sculptor.database.automanaged import OBJECT_ID
 from sculptor.database.automanaged import create_tables
 from sculptor.database.core import MigrationsFailedError
 from sculptor.database.core import create_new_engine
@@ -53,9 +51,7 @@ from sculptor.database.models import Notification
 from sculptor.database.models import Project
 from sculptor.database.models import SavedAgentMessage
 from sculptor.database.models import Task
-from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
-from sculptor.database.utils import is_read_only_sqlite_url
 from sculptor.database.utils import maybe_get_db_path
 from sculptor.foundation.async_monkey_patches import log_exception
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
@@ -69,7 +65,6 @@ from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import TaskID
 from sculptor.primitives.ids import TransactionID
 from sculptor.primitives.ids import UserReference
-from sculptor.primitives.ids import UserSettingsID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.services.data_model_service.api import TQ
@@ -80,12 +75,6 @@ from sculptor.services.data_model_service.data_types import WorkspaceFieldUpdate
 from sculptor.services.data_model_service.data_types import WorkspaceListingRow
 from sculptor.utils.process_utils import get_original_parent_pid
 from sculptor.utils.type_utils import extract_leaf_types
-
-USER_SETTINGS_TABLE, USER_SETTINGS_LATEST_TABLE = create_tables(
-    to_snake(UserSettings.__name__),
-    UserSettings,
-    constraints=(UniqueConstraint("user_reference", name="unique_user_reference"),),
-)
 
 PROJECT_TABLE, PROJECT_LATEST_TABLE = create_tables(
     to_snake(Project.__name__),
@@ -135,8 +124,6 @@ SAVED_AGENT_MESSAGE_TABLE, _ = create_tables(
     constraints=(
         ForeignKeyConstraint(["task_id"], [f"{TASK_LATEST_TABLE.name}.object_id"], name="foreign_key_task_id"),
     ),
-    # We don't need a latest table for saved agent messages -- it's really just a log
-    is_dual_table=False,
 )
 Index(
     "ix_saved_agent_message_task_id_created_at",
@@ -150,39 +137,13 @@ NOTIFICATION_TABLE, _ = create_tables(
     constraints=(
         ForeignKeyConstraint(["task_id"], [f"{TASK_LATEST_TABLE.name}.object_id"], name="foreign_key_task_id"),
     ),
-    # We don't need a latest table for notifications -- they are not edited
-    is_dual_table=False,
 )
 
 
 T2 = TypeVar("T2", bound=DatabaseModel)
-T4 = TypeVar("T4", bound=Project | UserSettings | Notification | Task | Workspace)
+T4 = TypeVar("T4", bound=Project | Notification | Task | Workspace)
 
 _WAIT_FOR_LOCK_TIMEOUT_SEC = 10.0
-
-
-P = ParamSpec("P")
-R = TypeVar("R")
-
-
-def overwrite_missing_table_error_for_sentry(
-    func: Callable[P, R],
-) -> Callable[P, R]:
-    """Replace sqlite3.OperationalError with MissingSQLTableError when it's for a missing table."""
-
-    _missing_table_regex = re.compile(r"no such table: (\w+)")
-
-    @functools.wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        try:
-            return func(*args, **kwargs)
-        except sqlite3.OperationalError as e:
-            match = _missing_table_regex.search(str(e))
-            if match:
-                raise MissingSQLTableError(match.group(1)) from e
-            raise
-
-    return wrapper
 
 
 class SQLTransaction(BaseDataModelTransaction):
@@ -203,8 +164,7 @@ class SQLTransaction(BaseDataModelTransaction):
         # runtime; ``_update_model_fields`` wants ``dict[str, Any]``.
         return self._update_model_fields(
             model_cls=Project,
-            snapshot_table=PROJECT_TABLE,
-            latest_table=PROJECT_LATEST_TABLE,
+            table=PROJECT_TABLE,
             object_id=project_id,
             fields={**fields},
         )
@@ -224,40 +184,10 @@ class SQLTransaction(BaseDataModelTransaction):
             return None
         return _row_to_pydantic_model(row, Project)
 
-    @overwrite_missing_table_error_for_sentry
-    def get_user_settings(self, user_reference: UserReference) -> UserSettings | None:
-        statement = select(USER_SETTINGS_LATEST_TABLE).where(
-            USER_SETTINGS_LATEST_TABLE.c.user_reference == str(user_reference)
-        )
-        result = self.connection.execute(statement)
-        row = result.fetchone()
-        if row is None:
-            return None
-        return _row_to_pydantic_model(row, UserSettings)
-
-    @overwrite_missing_table_error_for_sentry
-    def get_or_create_user_settings(self, user_reference: UserReference) -> UserSettings:
-        user_settings = self.get_user_settings(user_reference)
-        if user_settings is not None:
-            return user_settings
-        logger.debug("Creating user settings for {}", user_reference)
-        user_settings = UserSettings(object_id=UserSettingsID(), user_reference=user_reference)
-        statement = USER_SETTINGS_TABLE.insert().values(**_pydantic_model_to_row_values(user_settings))
-        try:
-            self.connection.execute(statement)
-        except (sqlalchemy.exc.IntegrityError, sqlite3.IntegrityError):
-            # If the user settings already exist (e.g. because it was created in another thread), it's fine.
-            logger.debug("User settings already created for {}; falling back to what is in the DB", user_reference)
-
-        user_settings = self.get_user_settings(user_reference)
-        assert user_settings is not None
-        return user_settings
-
     def insert_notification(self, notification: Notification) -> Notification:
         self._insert_model(notification, NOTIFICATION_TABLE)
         return notification
 
-    @overwrite_missing_table_error_for_sentry
     def get_workspace(self, workspace_id: WorkspaceID) -> Workspace | None:
         statement = (
             select(WORKSPACE_LATEST_TABLE)
@@ -270,17 +200,6 @@ class SQLTransaction(BaseDataModelTransaction):
             return None
         return _row_to_pydantic_model(row, Workspace)
 
-    @overwrite_missing_table_error_for_sentry
-    def get_workspace_include_deleted(self, workspace_id: WorkspaceID) -> Workspace | None:
-        """Get workspace by ID including soft-deleted ones. Used for deletion state checks."""
-        statement = select(WORKSPACE_LATEST_TABLE).where(WORKSPACE_LATEST_TABLE.c.object_id == str(workspace_id))
-        result = self.connection.execute(statement)
-        row = result.fetchone()
-        if row is None:
-            return None
-        return _row_to_pydantic_model(row, Workspace)
-
-    @overwrite_missing_table_error_for_sentry
     def get_workspaces(
         self,
         project_id: ProjectID | None = None,
@@ -294,25 +213,21 @@ class SQLTransaction(BaseDataModelTransaction):
         result = self.connection.execute(statement)
         return tuple(_row_to_pydantic_model(row, Workspace) for row in result.all())
 
-    @overwrite_missing_table_error_for_sentry
     def upsert_workspace(self, workspace: Workspace) -> Workspace:
         return self._upsert_model(workspace, WORKSPACE_TABLE, self.get_workspace)
 
-    @overwrite_missing_table_error_for_sentry
     def update_workspace_fields(
         self, workspace_id: WorkspaceID, **fields: Unpack[WorkspaceFieldUpdate]
     ) -> Workspace | None:
         # is_deleted is latched on Workspace; refuse writes through tombstones.
         return self._update_model_fields(
             model_cls=Workspace,
-            snapshot_table=WORKSPACE_TABLE,
-            latest_table=WORKSPACE_LATEST_TABLE,
+            table=WORKSPACE_TABLE,
             object_id=workspace_id,
             fields={**fields},
-            latest_where_extra=WORKSPACE_LATEST_TABLE.c.is_deleted.is_(False),
+            where_extra=WORKSPACE_TABLE.c.is_deleted.is_(False),
         )
 
-    @overwrite_missing_table_error_for_sentry
     def get_all_workspaces(self) -> list[WorkspaceListingRow]:
         """Get cross-project workspace listing with denormalized fields, ordered by recent activity."""
         rows = self.connection.execute(
@@ -321,7 +236,6 @@ class SQLTransaction(BaseDataModelTransaction):
                     w.object_id,
                     w.project_id,
                     w.description,
-                    w.initialization_strategy,
                     w.source_branch,
                     w.is_deleted,
                     w.is_open,
@@ -341,9 +255,9 @@ class SQLTransaction(BaseDataModelTransaction):
                         END),
                         w.created_at
                     ) AS last_activity_at
-                FROM workspace_latest w
-                JOIN project_latest p ON w.project_id = p.object_id
-                LEFT JOIN task_latest t ON json_extract(t.current_state, '$.workspace_id') = w.object_id
+                FROM workspace w
+                JOIN project p ON w.project_id = p.object_id
+                LEFT JOIN task t ON json_extract(t.current_state, '$.workspace_id') = w.object_id
                 WHERE w.is_deleted = 0
                   AND p.is_deleted = 0
                 GROUP BY w.object_id
@@ -353,11 +267,9 @@ class SQLTransaction(BaseDataModelTransaction):
 
         return [WorkspaceListingRow(**{str(k): v for k, v in row._mapping.items()}) for row in rows]
 
-    @overwrite_missing_table_error_for_sentry
     def upsert_task(self, task: Task) -> Task:
         return self._upsert_model(task, TASK_TABLE, self.get_task)
 
-    @overwrite_missing_table_error_for_sentry
     def get_task(self, task_id: TaskID) -> Task | None:
         statement = (
             select(TASK_LATEST_TABLE)
@@ -370,7 +282,6 @@ class SQLTransaction(BaseDataModelTransaction):
             return None
         return _row_to_pydantic_model(row, Task)
 
-    @overwrite_missing_table_error_for_sentry
     def get_tasks_for_project(
         self,
         project_id: ProjectID,
@@ -395,13 +306,6 @@ class SQLTransaction(BaseDataModelTransaction):
         result = self.connection.execute(query)
         return tuple(_row_to_pydantic_model(row, Task) for row in result.all())
 
-    @overwrite_missing_table_error_for_sentry
-    def get_all_tasks(self) -> tuple[Task, ...]:
-        query = select(TASK_LATEST_TABLE).order_by(TASK_LATEST_TABLE.c.created_at)
-        result = self.connection.execute(query)
-        return tuple(_row_to_pydantic_model(row, Task) for row in result.all())
-
-    @overwrite_missing_table_error_for_sentry
     def get_stuck_deleting_tasks(self) -> tuple[Task, ...]:
         query = (
             select(TASK_LATEST_TABLE)
@@ -412,7 +316,6 @@ class SQLTransaction(BaseDataModelTransaction):
         result = self.connection.execute(query)
         return tuple(_row_to_pydantic_model(row, Task) for row in result.all())
 
-    @overwrite_missing_table_error_for_sentry
     def get_active_tasks(self, input_data_classes: tuple[type, ...] = ()) -> tuple[Task, ...]:
         query = (
             select(TASK_LATEST_TABLE)
@@ -429,17 +332,6 @@ class SQLTransaction(BaseDataModelTransaction):
         self._insert_model(message, SAVED_AGENT_MESSAGE_TABLE)
         return message
 
-    def get_messages_for_task(self, task_id: TaskID) -> tuple[SavedAgentMessage, ...]:
-        query = (
-            select(SAVED_AGENT_MESSAGE_TABLE)
-            .where(SAVED_AGENT_MESSAGE_TABLE.c.task_id == str(task_id))
-            # FIXME: ordering by created_at alone is non-deterministic when two messages share a
-            #  timestamp; this log needs a monotonic/auto-incrementing ordering key.
-            .order_by(SAVED_AGENT_MESSAGE_TABLE.c.created_at)
-        )
-        result = self.connection.execute(query)
-        return tuple(_row_to_pydantic_model(row, SavedAgentMessage) for row in result.all())
-
     def get_messages_for_tasks(self, task_ids: Collection[TaskID]) -> dict[TaskID, tuple[SavedAgentMessage, ...]]:
         if not task_ids:
             return {}
@@ -455,7 +347,6 @@ class SQLTransaction(BaseDataModelTransaction):
             messages_by_task.setdefault(msg.task_id, []).append(msg)
         return {tid: tuple(msgs) for tid, msgs in messages_by_task.items()}
 
-    @overwrite_missing_table_error_for_sentry
     def get_tasks_for_user(self, user_reference: UserReference) -> tuple[Task, ...]:
         """Get all non-deleted tasks for a user in a project."""
         query = (
@@ -484,19 +375,15 @@ class SQLTransaction(BaseDataModelTransaction):
     def _update_model_fields(
         self,
         model_cls: type[T4],
-        snapshot_table: Table,
-        latest_table: Table,
+        table: Table,
         object_id: ObjectID,
         fields: dict[str, Any],
-        latest_where_extra: ColumnElement[bool] | None = None,
+        where_extra: ColumnElement[bool] | None = None,
     ) -> T4 | None:
-        """Targeted update: write ONLY the named columns to the ``_latest``
-        table, then write a snapshot row from the resulting post-update
-        values.
+        """Targeted update: write ONLY the named columns to the table.
 
-        ``latest_where_extra`` is AND-ed onto the ``object_id`` filter for
-        the LATEST UPDATE — used to refuse writes through soft-delete
-        tombstones (e.g. ``Workspace.is_deleted``).
+        ``where_extra`` is AND-ed onto the ``object_id`` filter — used to
+        refuse writes through soft-delete tombstones (e.g. ``Workspace.is_deleted``).
 
         Returns the full post-update model, or ``None`` if no row matched.
         """
@@ -517,31 +404,18 @@ class SQLTransaction(BaseDataModelTransaction):
         logger.debug("Updating {} fields: {}", model_cls.__name__, sorted(fields.keys()))
 
         update_stmt = (
-            update(latest_table)
-            .where(latest_table.c.object_id == str(object_id))
-            .values(**serialized_fields)
-            .returning(*latest_table.c)
+            update(table).where(table.c.object_id == str(object_id)).values(**serialized_fields).returning(*table.c)
         )
-        if latest_where_extra is not None:
-            update_stmt = update_stmt.where(latest_where_extra)
+        if where_extra is not None:
+            update_stmt = update_stmt.where(where_extra)
         result = self.connection.execute(update_stmt)
         row = result.fetchone()
         if row is None:
-            # No row matched — row doesn't exist (or was already deleted if
-            # our WHERE had filtered that; currently we don't, but
-            # targeted updaters on a specific table could add such a filter
-            # at the model-specific wrapper above).
+            # No row matched — row doesn't exist (or was filtered by where_extra,
+            # e.g. an update refused through a soft-delete tombstone).
             return None
 
         updated_model = _row_to_pydantic_model(row, model_cls)
-
-        # Write a snapshot row for audit history.  The existing
-        # ``<table>_before_insert`` trigger will fire on this INSERT and
-        # redundantly UPDATE the ``_latest`` row with identical values;
-        # that's a cosmetic cost, not a correctness issue.  See notes.md.
-        snapshot_stmt = snapshot_table.insert().values(**_pydantic_model_to_row_values(updated_model))
-        self.connection.execute(snapshot_stmt)
-
         self._updated_models.append(("UPDATE", updated_model))
         return updated_model
 
@@ -553,23 +427,35 @@ class SQLTransaction(BaseDataModelTransaction):
     ) -> T4:
         logger.debug("Upserting {}", obj.__class__.__name__)
         existing_object = getter(obj.object_id)
-        operation = None
 
         if existing_object is not None:
             if existing_object.is_content_equal(obj):
-                # No operation, so we don't need to make a db call or add this to our updated models.
+                # No change — skip the DB write and don't report an update.
                 return existing_object
-            else:
-                operation = "UPDATE"
+            operation = "UPDATE"
         else:
             operation = "INSERT"
 
-        statement = table.insert().values(**_pydantic_model_to_row_values(obj))
-        result = self.connection.execute(statement)
-        assert result.rowcount == 1, "Expected exactly one row to be inserted"
+        values = _pydantic_model_to_row_values(obj)
+        statement = sqlite_insert(table).values(**values)
+        # Replicate the former trigger's behaviour on conflict: overwrite every
+        # column with the new value, except ``object_id`` (the conflict key),
+        # ``created_at`` (set once, at first insert), and monotonic columns
+        # (which may only increase, e.g. a soft-delete flag that must not flip
+        # back to False under a concurrent stale write).
+        monotonic_columns = table.info.get("monotonic_columns", frozenset())
+        update_set: dict[str, Any] = {}
+        for column_name in values:
+            if column_name in (OBJECT_ID, CREATED_AT):
+                continue
+            if column_name in monotonic_columns:
+                update_set[column_name] = func.max(table.c[column_name], statement.excluded[column_name])
+            else:
+                update_set[column_name] = statement.excluded[column_name]
+        statement = statement.on_conflict_do_update(index_elements=[OBJECT_ID], set_=update_set)
+        self.connection.execute(statement)
 
         self._updated_models.append((operation, obj))
-
         return obj
 
 
@@ -626,25 +512,19 @@ def _pydantic_value_to_row_value(value: Any) -> Any:
         return value.model_dump(mode="json")
     if isinstance(value, ObjectID):
         return str(value)
-    # pyrefly: ignore [invalid-argument]
-    if isinstance(value, EmailStr):
-        return str(value)
     return value
 
 
-# Columns that ``update_*_fields`` refuses to write.  ``object_id`` and
-# ``snapshot_id`` are identity columns; ``created_at`` is populated by the
-# ``AFTER INSERT`` trigger on the snapshot row.  ``is_deleted`` (and
-# ``is_deleting`` on Task) has a latched, separate-path API for deletion —
-# allowing a targeted update to set it would bypass the monotonic
-# semantics and be a footgun.
+# Columns that ``update_*_fields`` refuses to write.  ``object_id`` is the
+# identity column; ``created_at`` is set once at first insert.  ``is_deleted``
+# (and ``is_deleting`` on Task) has a latched, separate-path API for deletion —
+# allowing a targeted update to set it would bypass the monotonic semantics
+# (the upsert's MAX()) and be a footgun.
 #
 # This runtime check is a belt alongside the suspenders of the
 # per-model ``<Model>FieldUpdate`` ``TypedDict``s below, which are the
 # primary (statically-enforced) gate.
-_UPDATE_FIELDS_PROTECTED_COLUMNS: frozenset[str] = frozenset(
-    {"object_id", "snapshot_id", "created_at", "is_deleted", "is_deleting"}
-)
+_UPDATE_FIELDS_PROTECTED_COLUMNS: frozenset[str] = frozenset({"object_id", "created_at", "is_deleted", "is_deleting"})
 
 
 # ``ProjectFieldUpdate`` is the statically-typed allowlist of fields that
@@ -665,8 +545,6 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
     # _observers_by_user_reference must hold this lock.
     _observers_lock: Lock = PrivateAttr(default_factory=Lock)
     _is_started: bool = PrivateAttr(default=False)
-    # Use this flag to skip initialization if the service is running in read-only mode.
-    _is_read_only: bool = PrivateAttr(default=False)
     # we track the currently active transactions for debugging -- we want to know what takes a long time when the DB is locked
     _active_transaction_by_id: dict[TransactionID, SQLTransaction] = PrivateAttr(default_factory=dict)
     # ensure that our parent process doesn't disappear. If it does, we must exit
@@ -689,7 +567,6 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
         return data_model_service
 
     def _initialize(self) -> None:
-        assert not self._is_read_only, "SQLDataModelService should not be initialized in the read-only mode."
         db_path = maybe_get_db_path(str(self._engine.url))
 
         if db_path is not None:
@@ -770,13 +647,7 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
 
     def start(self) -> None:
         assert not self._is_started, "SQLDataModelService can only be started once."
-        if self._is_read_only:
-            if not is_read_only_sqlite_url(str(self._engine.url)):
-                raise ReadOnlyConnectionStringExpectedError(
-                    "SQLDataModelService is configured to be read-only, but the database URL is not a read-only SQLite URL."
-                )
-        else:
-            self._initialize()
+        self._initialize()
         self._is_started = True
 
     def stop(self) -> None:
@@ -871,18 +742,17 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
                 )
                 log_exception(
                     e,
-                    "Database is locked, inspect extra data to see why",
-                    sentry_extra=dict(transaction_summary=transaction_summary),
+                    f"Database is locked, inspect the transaction summary to see why:\n{transaction_summary}",
                 )
             raise
 
         transaction.run_post_commit_hooks()
 
-        # Filter database operations to only include observable models (Project, User, Notification, Workspace)
+        # Filter database operations to only include observable models (Project, Notification, Workspace)
         # The observer system only cares about these specific model types, not all database operations
         observable_models = []
         for operation, model in transaction.get_updated_models():
-            if isinstance(model, (Project, UserSettings, Notification, Workspace)):
+            if isinstance(model, (Project, Notification, Workspace)):
                 observable_models.append(model)
 
         completed_transaction = CompletedTransaction(request_id=request_id, updated_models=tuple(observable_models))
@@ -942,14 +812,12 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
                 user_reference, []
             ) + [queue]
 
-        # put the current project, workspace, and user in the queue
+        # put the current projects and workspaces in the queue
         with self.open_transaction(RequestID()) as transaction:
-            user_settings = transaction.get_user_settings(user_reference)
-            assert user_settings is not None
             projects = transaction.get_projects(organization_reference)
             workspaces = transaction.get_workspaces(organization_reference=organization_reference)
 
-        existing_models: list[Project | UserSettings | Notification | Workspace] = [user_settings]
+        existing_models: list[Project | Notification | Workspace] = []
         for project in projects:
             existing_models.append(project)
         for workspace in workspaces:
@@ -965,20 +833,7 @@ class SQLDataModelService(TaskDataModelService, Generic[TQ]):
                     del self._observers_by_user_reference[user_reference]
 
 
-class MissingSQLTableError(sqlite3.OperationalError):
-    """Raised when an SQLite operation fails because a table is missing."""
-
-    def __init__(self, table: str):
-        # just put the table name in args
-        super().__init__(table)
-        self.table = table
-
-
 class AttemptedOperationBeforeStartError(Exception):
-    pass
-
-
-class ReadOnlyConnectionStringExpectedError(Exception):
     pass
 
 

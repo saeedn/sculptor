@@ -4,15 +4,11 @@ from uuid import uuid4
 
 from loguru import logger
 
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.pydantic_serialization import MutableModel
-from sculptor.interfaces.environments.base import Environment
 from sculptor.primitives.ids import LocalEnvironmentID
 from sculptor.primitives.ids import ProjectID
 from sculptor.services.data_model_service.api import TaskDataModelService
-from sculptor.services.workspace_service.environment_manager.api import EnvironmentManager
-from sculptor.services.workspace_service.environment_manager.env_file_parser import atomic_copy_env_file
 from sculptor.services.workspace_service.environment_manager.env_file_parser import load_project_env_vars
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.utils.build import get_workspaces_folder
@@ -35,7 +31,7 @@ def _cleanup_workspace(workspace_path: Path) -> None:
         shutil.rmtree(workspace_path, ignore_errors=True)
 
 
-class DefaultEnvironmentManager(MutableModel, EnvironmentManager):
+class DefaultEnvironmentManager(MutableModel):
     """Internal environment manager that creates local environments directly.
 
     This class is an implementation detail of WorkspaceService and should not be
@@ -52,22 +48,18 @@ class DefaultEnvironmentManager(MutableModel, EnvironmentManager):
         project_path: Path,
         project_id: ProjectID,
         concurrency_group: ConcurrencyGroup,
-        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.IN_PLACE,
         source_branch: str | None = None,
         requested_branch_name: str | None = None,
         env_var_override: bool = False,
-    ) -> Environment:
+    ) -> LocalEnvironment:
         """Create a new local environment.
 
         Args:
             project_path: Path to the project's repository.
             project_id: ID of the project.
             concurrency_group: Concurrency group for process management.
-            initialization_strategy: Strategy for workspace initialization.
-            source_branch: Branch to checkout after cloning (for CLONE mode) or base
-                ref off which to create the worktree branch (for WORKTREE mode).
-            requested_branch_name: For WORKTREE mode, the new branch name created by
-                `git worktree add -b`; required for WORKTREE, unused otherwise.
+            source_branch: Base ref off which to create the worktree branch.
+            requested_branch_name: The new branch name created by `git worktree add -b`.
             env_var_override: Whether project env vars override os.environ on collision.
 
         Returns:
@@ -81,7 +73,6 @@ class DefaultEnvironmentManager(MutableModel, EnvironmentManager):
             concurrency_group=concurrency_group,
             project_id=project_id,
             repo_host_path=project_path,
-            initialization_strategy=initialization_strategy,
             source_branch=source_branch,
             requested_branch_name=requested_branch_name,
             env_var_override=env_var_override,
@@ -93,10 +84,9 @@ class DefaultEnvironmentManager(MutableModel, EnvironmentManager):
         project_path: Path,
         project_id: ProjectID,
         concurrency_group: ConcurrencyGroup,
-        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.IN_PLACE,
         env_var_override: bool = False,
         sculptor_folder: Path | None = None,
-    ) -> Environment:
+    ) -> LocalEnvironment:
         """Resume an existing environment by its ID (workspace path).
 
         Args:
@@ -104,7 +94,6 @@ class DefaultEnvironmentManager(MutableModel, EnvironmentManager):
             project_path: Path to the project's repository.
             project_id: ID of the project.
             concurrency_group: Concurrency group for process management.
-            initialization_strategy: Strategy for workspace initialization.
             env_var_override: Whether project env vars override os.environ on collision.
             sculptor_folder: Override for the sculptor folder path (uses get_workspaces_folder() if None).
 
@@ -116,17 +105,7 @@ class DefaultEnvironmentManager(MutableModel, EnvironmentManager):
             project_id=project_id,
             concurrency_group=concurrency_group,
             repo_host_path=project_path,
-            initialization_strategy=initialization_strategy,
         )
-        # For clone mode, re-copy .sculptor/.env from the source repo so that
-        # edits made since the clone was created are picked up on resume.
-        if initialization_strategy == WorkspaceInitializationStrategy.CLONE:
-            source_env_file = project_path / ".sculptor" / ".env"
-            dest_env_file = env.get_working_directory() / ".sculptor" / ".env"
-            if source_env_file.exists():
-                atomic_copy_env_file(source_env_file, dest_env_file)
-            elif dest_env_file.exists():
-                dest_env_file.unlink()
         env._sculptor_folder = sculptor_folder
         env._project_env_vars = load_project_env_vars(env.get_working_directory(), sculptor_folder=sculptor_folder)
         env._env_var_override = env_var_override

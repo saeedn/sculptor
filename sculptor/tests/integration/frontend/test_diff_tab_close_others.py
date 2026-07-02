@@ -6,45 +6,14 @@ closes all other diff tabs but keeps the right-clicked tab open.
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
 from sculptor.testing.elements.file_tree import get_changes_tree
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-
-# Create a feature branch with 3 uncommitted files so they appear in the Changes tab.
-_THREE_FILES_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "alpha.py",
-        "content": "a = 1\\n"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "beta.py",
-        "content": "b = 2\\n"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "gamma.py",
-        "content": "c = 3\\n"
-      }
-    }
-  ]
-}`"""
 
 
 @user_story("to close other diff tabs via the context menu")
@@ -59,10 +28,21 @@ def test_diff_tab_close_others(sculptor_instance_: SculptorInstance) -> None:
     4. Verify only 1 diff tab remains (the one that was right-clicked).
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_THREE_FILES_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    # Create a feature branch with 3 uncommitted files so they appear in the Changes tab.
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("alpha.py", "a = 1\n"),
+                write_file("beta.py", "b = 2\n"),
+                write_file("gamma.py", "c = 3\n"),
+            ]
+        ),
+    )
 
     task_page.activate_changes_panel()
 

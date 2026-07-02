@@ -3,7 +3,6 @@ from typing import Generator
 
 from sculptor.config.settings import SculptorSettings
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
-from sculptor.services.btw_service.api import BtwService
 from sculptor.services.ci_babysitter_service.coordinator import CIBabysitterCoordinator
 from sculptor.services.task_service.data_types import TaskServiceCollection
 from sculptor.services.task_service.service_collection import get_task_service_collection
@@ -12,7 +11,6 @@ from sculptor.web.pr_polling_service import PrPollingService
 
 class CompleteServiceCollection(TaskServiceCollection):
     pr_polling_service: PrPollingService
-    btw_service: BtwService
     ci_babysitter_service: CIBabysitterCoordinator
 
     @contextmanager
@@ -21,14 +19,12 @@ class CompleteServiceCollection(TaskServiceCollection):
         # WorkspaceService manages EnvironmentManager internally.
         with (
             self.data_model_service.run(should_log_runtimes=True),
-            self.dependency_management_service.run(should_log_runtimes=True),
             self.project_service.run(should_log_runtimes=True),
             self.workspace_service.run(should_log_runtimes=True),
             self.git_repo_service.run(should_log_runtimes=True),
             self.task_service.run(should_log_runtimes=True),
             self.pr_polling_service.run(should_log_runtimes=True),
             self.ci_babysitter_service.run(should_log_runtimes=True),
-            self.btw_service.run(should_log_runtimes=True),
         ):
             yield
 
@@ -43,23 +39,19 @@ def get_services(
         data_model_service=services.data_model_service,
         workspace_service=services.workspace_service,
     )
-    btw_service = BtwService(concurrency_group=concurrency_group.make_concurrency_group("btw_service"))
     ci_babysitter_service = CIBabysitterCoordinator(
         concurrency_group=concurrency_group.make_concurrency_group("ci_babysitter"),
         data_model_service=services.data_model_service,
         task_service=services.task_service,
-        git_repo_service=services.git_repo_service,
         pr_polling_service=pr_polling_service,
     )
     return CompleteServiceCollection(
         settings=settings,
         data_model_service=services.data_model_service,
-        dependency_management_service=services.dependency_management_service,
         task_service=services.task_service,
         git_repo_service=services.git_repo_service,
         project_service=services.project_service,
         workspace_service=services.workspace_service,
         pr_polling_service=pr_polling_service,
-        btw_service=btw_service,
         ci_babysitter_service=ci_babysitter_service,
     )

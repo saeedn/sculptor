@@ -114,18 +114,25 @@ def start_backend(repo_dir, port, data_dir):
 
 
 def setup_instance(port):
-    """Complete onboarding and create a task. Returns (workspace_id, task_id)."""
-    api(port, "POST", "/config/email", {"userEmail": "test@example.com", "fullName": "Test", "didOptInToMarketing": False})
-    api(port, "POST", "/config/complete")
+    """Create a worktree workspace with a terminal agent. Returns (workspace_id, agent_id).
+
+    Onboarding is implied by having a project, and the backend auto-registers
+    the repo passed on its CLI during startup — so no config calls are needed.
+    Note: workspace creation makes a real `perf-measure-*` branch in the repo;
+    delete it after the run.
+    """
     projects = api(port, "GET", "/projects")
     project_id = projects[0]["objectId"]
-    task = api(port, "POST", f"/projects/{project_id}/tasks", {
-        "prompt": "Say hello",
-        "interface": "API",
-        "model": "CLAUDE-4-SONNET",
-        "mode": "IN_PLACE",
+    branch_info = api(port, "GET", f"/projects/{project_id}/current_branch")
+    workspace = api(port, "POST", "/workspaces", {
+        "projectId": project_id,
+        "sourceBranch": branch_info["currentBranch"],
+        "requestedBranchName": f"perf-measure-{port}-{int(time.time())}",
+        "description": "Render perf measurement",
     })
-    return task["workspaceId"], task["id"]
+    workspace_id = workspace["objectId"]
+    agent = api(port, "POST", f"/workspaces/{workspace_id}/agents", {"agentType": "terminal"})
+    return workspace_id, agent["id"]
 
 
 def measure_renders(port, workspace_id, task_id, scenario, label):

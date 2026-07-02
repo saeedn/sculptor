@@ -6,7 +6,6 @@ import { ErrorPage } from "./ErrorPage.tsx";
 export const NotFoundErrorPage = (): ReactElement => {
   return (
     <ErrorPage
-      isCapturingErrorWithSentry={false}
       headerText={
         <>
           The page you are looking for does not exist. Return to the{" "}

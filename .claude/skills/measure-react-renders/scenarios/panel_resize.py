@@ -1,11 +1,11 @@
 """Scenario: Panel resize render cascade.
 
 Measures re-renders triggered by resizing the panel divider between the
-center content area and the right/left sidebar via keyboard arrow keys.
+center content area and the side/bottom panels via keyboard arrow keys.
 
-We open a side panel first via the sidebar keyboard shortcut (Cmd+shift+e for
-file browser, or directly clicking a sidebar icon) to ensure a resize handle
-is present, then resize 5 left and 5 right.
+The default workspace layout opens the file browser (top-left) and terminal
+(bottom) panels, so resize handles are present. If none are found we click a
+sidebar panel icon to open one, then resize 5 steps left and 5 right.
 """
 
 import time
@@ -22,10 +22,8 @@ TARGET_COMPONENTS = [
     "ZoneContent",
     "ZoneContentInner",
     "DiffSplitContainer",
-    "DiffSplitContainerInner",
-    "AlphaChatInterface",
-    "AlphaChatInterfaceInner",
-    "ChatInput",
+    "ChatPanelContent",
+    "AgentTerminalPanel",
     "WorkspaceBanner",
     "DiffSummary",
     "FileBrowserPanel",
@@ -33,23 +31,25 @@ TARGET_COMPONENTS = [
 
 
 def _open_side_panel(page):
-    """Ensure at least one side panel is open so a resize handle exists."""
+    """Ensure at least one panel is open so a resize handle exists."""
     # Check if any resize handle already exists
     handles = page.locator('[role="separator"]').all()
     if handles:
         return
 
-    # Try clicking the first sidebar icon to open a panel
-    # Look for sidebar icon buttons (panel icons in LeftSidebar / RightSidebar)
-    sidebar_icons = page.locator('[data-panel-icon]').all()
-    if sidebar_icons:
-        sidebar_icons[0].click()
+    # Click a sidebar panel icon to open a panel. SidebarIcon renders
+    # data-panel-icon="files" | "actions" | "terminal".
+    file_icon = page.locator('[data-panel-icon="files"]')
+    if file_icon.count() > 0:
+        file_icon.first.click()
         time.sleep(0.5)
         return
 
-    # Fallback: try keyboard shortcut for file browser (Cmd+Shift+E on mac)
-    page.keyboard.press("Meta+Shift+e")
-    time.sleep(0.5)
+    # Fallback: any panel icon
+    sidebar_icons = page.locator("[data-panel-icon]").all()
+    if sidebar_icons:
+        sidebar_icons[0].click()
+        time.sleep(0.5)
 
 
 def setup(page, base_url, workspace_id, task_id):
@@ -74,8 +74,8 @@ def action(page):
             "No resize handles found. Ensure a side panel is visible."
         )
 
-    # Use the last separator (typically the outer left/center divider)
-    handle = handles[-1]
+    # Use the first separator (the left-panel/center divider by default)
+    handle = handles[0]
     handle.focus()
     time.sleep(0.3)
     for _ in range(5):

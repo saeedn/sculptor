@@ -3,7 +3,7 @@
 Measures re-renders triggered when the user opens and closes side panels
 via the sidebar icon buttons. Toggling panel visibility changes
 zoneVisibilityAtom which DockingLayout subscribes to — this should NOT
-cause chat content, message list, or terminal to re-render.
+cause the agent terminal panel or diff content to re-render.
 """
 
 import time
@@ -20,45 +20,45 @@ TARGET_COMPONENTS = [
     "ZoneContent",
     "ZoneContentInner",
     "DiffSplitContainer",
-    "DiffSplitContainerInner",
-    "AlphaChatInterface",
-    "AlphaChatInterfaceInner",
-    "ChatInput",
+    "ChatPanelContent",
+    "AgentTerminalPanel",
     "WorkspaceBanner",
     "AgentTabs",
     "SidebarIcon",
-    "PanelModal",
 ]
+
+# The Actions panel lives in the top-right zone and is closed by default,
+# so toggling it exercises a clean open/close cycle of the right side.
+# SidebarIcon renders data-panel-icon="files" | "actions" | "terminal".
+_RIGHT_PANEL_ICON = '[data-panel-icon="actions"]'
 
 
 def setup(page, base_url, workspace_id, task_id):
     page.goto(f"{base_url}/#/ws/{workspace_id}/agent/{task_id}")
     page.wait_for_load_state("networkidle")
     time.sleep(5)
-    # Ensure the right panel is closed to start from a consistent state.
-    # Click a sidebar icon to open the right panel if it's not already visible.
-    right_panel_area = page.locator('[data-testid="panel-right-area"]')
+    # Ensure the right panel is closed to start from a consistent state
+    # (it is closed by default; close it if a persisted layout opened it).
+    right_panel_area = page.locator('[data-testid="PANEL_RIGHT_AREA"]')
     if right_panel_area.count() > 0 and right_panel_area.is_visible():
-        # Close it first so we measure a clean open+close cycle
-        icons = page.locator('[data-sidebar="right"] [data-panel-icon]').all()
+        icons = page.locator(_RIGHT_PANEL_ICON).all()
         if icons:
             icons[0].click()
             time.sleep(0.5)
 
 
 def action(page):
-    # Find sidebar icons in the right sidebar and click the first one to toggle
-    # the right panel open and closed twice. We use aria-label or data attributes
-    # that the sidebar icons expose.
-    right_icons = page.locator('[data-sidebar="right"] [data-panel-icon]').all()
-    if not right_icons:
-        # Fall back: look for any panel icon buttons
-        right_icons = page.locator('[data-panel-icon]').all()
+    # Click the Actions panel's sidebar icon to toggle the right panel
+    # open and closed twice.
+    icons = page.locator(_RIGHT_PANEL_ICON).all()
+    if not icons:
+        # Fall back: any panel icon button
+        icons = page.locator("[data-panel-icon]").all()
 
-    if not right_icons:
+    if not icons:
         raise RuntimeError("No sidebar panel icons found")
 
-    icon = right_icons[0]
+    icon = icons[0]
 
     # Open the panel
     icon.click()

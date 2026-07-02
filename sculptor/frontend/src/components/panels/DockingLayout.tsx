@@ -1,5 +1,3 @@
-import type { DragEndEvent, DragMoveEvent, DragStartEvent } from "@dnd-kit/core";
-import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors } from "@dnd-kit/core";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -10,7 +8,6 @@ import {
   isBottomVisibleAtom,
   isLeftSideVisibleAtom,
   isRightSideVisibleAtom,
-  isZoneVisibleAtom,
   zoneAssignmentsAtom,
   zoneSizesAtom,
   zoneVisibilityAtom,
@@ -18,49 +15,18 @@ import {
 import {
   CENTER_PANEL_MIN_WIDTH_PX,
   DEFAULT_BOTTOM_PANEL_HEIGHT_PX,
-  DEFAULT_INNER_BOTTOM_HEIGHT_PX,
   DEFAULT_SIDE_PANEL_WIDTH_PX,
   PANEL_MIN_PX,
   SIDE_PANEL_MIN_WIDTH_PX,
 } from "~/components/panels/constants.ts";
-import {
-  usePanelActions,
-  usePanelById,
-  usePanelKeyboardShortcuts,
-  usePanelsByZone,
-} from "~/components/panels/hooks.ts";
+import { usePanelKeyboardShortcuts } from "~/components/panels/hooks.ts";
 import { LeftSidebar } from "~/components/panels/LeftSidebar";
 import { ResizeHandle } from "~/components/panels/ResizeHandle";
 import { RightSidebar } from "~/components/panels/RightSidebar";
-import type { DropTarget } from "~/components/panels/SidebarDropZone";
-import type { PanelId, ZoneId } from "~/components/panels/types.ts";
-import { ZONE_IDS } from "~/components/panels/types.ts";
-import { isZoneMoveDisabled } from "~/components/panels/utils.ts";
-import { VerticalSplit } from "~/components/panels/VerticalSplit";
+import type { ZoneId } from "~/components/panels/types.ts";
 import { ZoneContent } from "~/components/panels/ZoneContent";
 
 import styles from "./DockingLayout.module.scss";
-
-/** Find the insertion index for a drop target based on pointer Y position. */
-const computeDropIndex = (zoneId: ZoneId, pointerY: number): number => {
-  const zoneEl = document.querySelector(`[data-droppable-id="${zoneId}"]`);
-  if (!zoneEl) return 0;
-
-  const iconEls = zoneEl.querySelectorAll("[data-panel-icon]");
-  if (iconEls.length === 0) return 0;
-
-  for (let i = 0; i < iconEls.length; i++) {
-    const rect = iconEls[i].getBoundingClientRect();
-    const centerY = rect.top + rect.height / 2;
-    if (pointerY < centerY) return i;
-  }
-  return iconEls.length;
-};
-
-type DragOperation = {
-  activeDragId: PanelId | null;
-  dropTarget: DropTarget | undefined;
-};
 
 type DockingLayoutProps = {
   centerContent?: ReactNode;
@@ -70,38 +36,20 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
   const isLeftVisibleBase = useAtomValue(isLeftSideVisibleAtom);
   const isRightVisibleBase = useAtomValue(isRightSideVisibleAtom);
   const isBottomVisibleBase = useAtomValue(isBottomVisibleAtom);
-  const isTopLeftVisibleBase = useAtomValue(isZoneVisibleAtom("top-left"));
-  const isBottomLeftVisibleBase = useAtomValue(isZoneVisibleAtom("bottom-left"));
-  const isTopRightVisibleBase = useAtomValue(isZoneVisibleAtom("top-right"));
-  const isBottomRightVisibleBase = useAtomValue(isZoneVisibleAtom("bottom-right"));
   const zoneSizes = useAtomValue(zoneSizesAtom);
   const setZoneSizes = useSetAtom(zoneSizesAtom);
   const zoneAssignments = useAtomValue(zoneAssignmentsAtom);
-  const panelsByZone = usePanelsByZone();
   const [expandedPanelId, setExpandedPanelId] = useAtom(expandedPanelIdAtom);
 
   // In expand mode, only the zone containing the expanded panel is visible.
-  // All other zones (including sidebars and bottom) are hidden.
+  // The only panel that ever expands is "files" (top-left), so expand mode
+  // shows the left side and hides everything else.
   const expandedZone = expandedPanelId ? (zoneAssignments[expandedPanelId] as ZoneId | undefined) : undefined;
   const isExpanded = expandedPanelId != null;
 
-  const isTopLeftVisible = isExpanded ? expandedZone === "top-left" : isTopLeftVisibleBase;
-  const isBottomLeftVisible = isExpanded ? expandedZone === "bottom-left" : isBottomLeftVisibleBase;
-  const isTopRightVisible = isExpanded ? expandedZone === "top-right" : isTopRightVisibleBase;
-  const isBottomRightVisible = isExpanded ? expandedZone === "bottom-right" : isBottomRightVisibleBase;
-  const isLeftVisible = isExpanded ? expandedZone === "top-left" || expandedZone === "bottom-left" : isLeftVisibleBase;
-  const isRightVisible = isExpanded
-    ? expandedZone === "top-right" || expandedZone === "bottom-right"
-    : isRightVisibleBase;
+  const isLeftVisible = isExpanded ? expandedZone === "top-left" : isLeftVisibleBase;
+  const isRightVisible = isExpanded ? false : isRightVisibleBase;
   const isBottomVisible = isExpanded ? false : isBottomVisibleBase;
-
-  const { movePanel } = usePanelActions();
-
-  const [dragOp, setDragOp] = useState<DragOperation>({ activeDragId: null, dropTarget: undefined });
-  // dropTargetRef is the source of truth for the current drop target during
-  // drag-move; dragOp.dropTarget drives the UI.  The ref avoids a setState on
-  // every pointer-move while still giving handleDragEnd synchronous access.
-  const dropTargetRef = useRef<DropTarget | undefined>(undefined);
 
   usePanelKeyboardShortcuts();
 
@@ -118,76 +66,6 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isExpanded, setExpandedPanelId]);
-
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
-
-  const clearDropTarget = (): void => {
-    if (dropTargetRef.current !== undefined) {
-      dropTargetRef.current = undefined;
-      setDragOp((prev) => ({ ...prev, dropTarget: undefined }));
-    }
-  };
-
-  const handleDragStart = (event: DragStartEvent): void => {
-    setDragOp({ activeDragId: event.active.id as PanelId, dropTarget: undefined });
-    dropTargetRef.current = undefined;
-  };
-
-  const handleDragMove = (event: DragMoveEvent): void => {
-    if (!event.over) {
-      clearDropTarget();
-      return;
-    }
-
-    const overId = event.over.id as string;
-    if (!ZONE_IDS.includes(overId as ZoneId)) {
-      clearDropTarget();
-      return;
-    }
-
-    const zoneId = overId as ZoneId;
-    const draggedPanelId = event.active.id as PanelId;
-
-    // Reject drops onto invalid zones (e.g. bottom-left when top-left would be empty)
-    if (isZoneMoveDisabled({ panelId: draggedPanelId, targetZone: zoneId, panelsByZone })) {
-      clearDropTarget();
-      return;
-    }
-
-    const pointerY = event.activatorEvent instanceof PointerEvent ? event.activatorEvent.clientY + event.delta.y : 0;
-    const index = computeDropIndex(zoneId, pointerY);
-
-    const prev = dropTargetRef.current;
-    if (prev?.zoneId !== zoneId || prev?.index !== index) {
-      const next = { zoneId, index };
-      dropTargetRef.current = next;
-      setDragOp((current) => ({ ...current, dropTarget: next }));
-    }
-  };
-
-  const handleDragEnd = (event: DragEndEvent): void => {
-    const currentDropTarget = dropTargetRef.current;
-    setDragOp({ activeDragId: null, dropTarget: undefined });
-    dropTargetRef.current = undefined;
-
-    const { active } = event;
-    if (!currentDropTarget) return;
-
-    const panelId = active.id as PanelId;
-    const targetZone = currentDropTarget.zoneId;
-    const insertIndex = currentDropTarget.index;
-
-    if (isZoneMoveDisabled({ panelId, targetZone, panelsByZone })) return;
-
-    movePanel(panelId, targetZone, insertIndex);
-  };
-
-  const handleDragCancel = (): void => {
-    setDragOp({ activeDragId: null, dropTarget: undefined });
-    dropTargetRef.current = undefined;
-  };
-
-  const draggedPanel = usePanelById(dragOp.activeDragId);
 
   // Track the PanelGroup's size so we can (a) detect when the window can't
   // fit both sides alongside the center at their minimum widths, and
@@ -216,7 +94,7 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
   // stable even if the user later resizes the window. We do NOT write these
   // defaults to zoneSizesAtom — that caused downstream re-renders that
   // destabilised other tests (e.g. clipboard/toast flows). The atom only
-  // holds values the user has explicitly dragged to.
+  // holds values the user has explicitly resized to via a resize handle.
   const [initialGroupSize, setInitialGroupSize] = useState<{ width: number; height: number } | null>(null);
   useLayoutEffect(() => {
     if (initialGroupSize !== null) return;
@@ -236,8 +114,6 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
   const topLeftPx = zoneSizes["top-left"] ?? defaultSideWidthPx;
   const topRightPx = zoneSizes["top-right"] ?? defaultSideWidthPx;
   const bottomPx = zoneSizes["bottom"] ?? defaultBottomHeightPx;
-  const bottomLeftPx = zoneSizes["bottom-left"] ?? DEFAULT_INNER_BOTTOM_HEIGHT_PX;
-  const bottomRightPx = zoneSizes["bottom-right"] ?? DEFAULT_INNER_BOTTOM_HEIGHT_PX;
 
   // When the window can't fit the minimum layout, hide zones — right side
   // first, then left. This is a one-way change (not restored when the
@@ -250,17 +126,17 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
     const rightMin = isRightVisible ? SIDE_PANEL_MIN_WIDTH_PX : 0;
     if (leftMin + CENTER_PANEL_MIN_WIDTH_PX + rightMin <= panelGroupWidth) return;
     if (isRightVisible) {
-      setZoneVisibility((v) => ({ ...v, "top-right": false, "bottom-right": false }));
+      setZoneVisibility((v) => ({ ...v, "top-right": false }));
       return;
     }
 
     if (isLeftVisible) {
-      setZoneVisibility((v) => ({ ...v, "top-left": false, "bottom-left": false }));
+      setZoneVisibility((v) => ({ ...v, "top-left": false }));
     }
   }, [panelGroupWidth, isLeftVisible, isRightVisible, isExpanded, setZoneVisibility]);
 
   // Refs keep the latest values accessible from within the resize-handle
-  // callbacks without re-creating them on every pixel of drag.
+  // callbacks without re-creating them on every resize step.
   const sizesRef = useRef(zoneSizes);
   sizesRef.current = zoneSizes;
   const defaultSideWidthRef = useRef(defaultSideWidthPx);
@@ -287,111 +163,72 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
   const getBottom = useCallback(() => readSize("bottom", defaultBottomHeightRef.current), [readSize]);
   const setBottom = useCallback((px: number) => writeSize("bottom", px, PANEL_MIN_PX), [writeSize]);
 
-  const getBottomLeft = useCallback(() => readSize("bottom-left", DEFAULT_INNER_BOTTOM_HEIGHT_PX), [readSize]);
-  const setBottomLeft = useCallback((px: number) => writeSize("bottom-left", px, PANEL_MIN_PX), [writeSize]);
-
-  const getBottomRight = useCallback(() => readSize("bottom-right", DEFAULT_INNER_BOTTOM_HEIGHT_PX), [readSize]);
-  const setBottomRight = useCallback((px: number) => writeSize("bottom-right", px, PANEL_MIN_PX), [writeSize]);
-
   return (
-    <DndContext
-      sensors={sensors}
-      onDragStart={handleDragStart}
-      onDragMove={handleDragMove}
-      onDragEnd={handleDragEnd}
-      onDragCancel={handleDragCancel}
-    >
-      <div className={styles.container}>
-        {!isExpanded && <LeftSidebar dropTarget={dragOp.dropTarget} activeDragId={dragOp.activeDragId} />}
+    <div className={styles.container}>
+      {!isExpanded && <LeftSidebar />}
 
-        <div ref={panelGroupRef} className={styles.panelGroup}>
-          <div className={styles.outerVertical}>
-            <div className={styles.topRow}>
-              {isLeftVisible && (
-                <>
-                  <div className={styles.sidePanel} style={{ width: topLeftPx, minWidth: SIDE_PANEL_MIN_WIDTH_PX }}>
-                    <VerticalSplit
-                      topZoneId="top-left"
-                      bottomZoneId="bottom-left"
-                      isTopVisible={isTopLeftVisible}
-                      isBottomVisible={isBottomLeftVisible}
-                      bottomPx={bottomLeftPx}
-                      getBottomSize={getBottomLeft}
-                      onBottomResize={setBottomLeft}
-                      handleAriaLabel="Resize bottom-left zone"
-                    />
-                  </div>
-                  <ResizeHandle axis="x" getSize={getTopLeft} onResize={setTopLeft} ariaLabel="Resize left panel" />
-                </>
-              )}
-
-              <div className={styles.centerPanel}>
-                <div className={styles.centerWrapper}>
-                  <div className={styles.centerInner}>
-                    {centerContent ?? <div className={styles.centerContent}>Center Content</div>}
+      <div ref={panelGroupRef} className={styles.panelGroup}>
+        <div className={styles.outerVertical}>
+          <div className={styles.topRow}>
+            {isLeftVisible && (
+              <>
+                <div className={styles.sidePanel} style={{ width: topLeftPx, minWidth: SIDE_PANEL_MIN_WIDTH_PX }}>
+                  <div className={styles.innerTop}>
+                    <ZoneContent zoneId="top-left" />
                   </div>
                 </div>
-              </div>
+                <ResizeHandle axis="x" getSize={getTopLeft} onResize={setTopLeft} ariaLabel="Resize left panel" />
+              </>
+            )}
 
-              {isRightVisible && (
-                <>
-                  <ResizeHandle
-                    axis="x"
-                    getSize={getTopRight}
-                    onResize={setTopRight}
-                    direction={-1}
-                    ariaLabel="Resize right panel"
-                  />
-                  <div
-                    className={styles.sidePanel}
-                    style={{ width: topRightPx, minWidth: SIDE_PANEL_MIN_WIDTH_PX }}
-                    data-testid={ElementIds.PANEL_RIGHT_AREA}
-                  >
-                    <VerticalSplit
-                      topZoneId="top-right"
-                      bottomZoneId="bottom-right"
-                      isTopVisible={isTopRightVisible}
-                      isBottomVisible={isBottomRightVisible}
-                      bottomPx={bottomRightPx}
-                      getBottomSize={getBottomRight}
-                      onBottomResize={setBottomRight}
-                      handleAriaLabel="Resize bottom-right zone"
-                      topTestId={ElementIds.PANEL_TOP_RIGHT}
-                      bottomTestId={ElementIds.PANEL_BOTTOM_RIGHT}
-                      handleTestId={ElementIds.PANEL_RIGHT_RESIZE_HANDLE}
-                    />
-                  </div>
-                </>
-              )}
+            <div className={styles.centerPanel}>
+              <div className={styles.centerWrapper}>
+                <div className={styles.centerInner}>
+                  {centerContent ?? <div className={styles.centerContent}>Center Content</div>}
+                </div>
+              </div>
             </div>
 
-            {isBottomVisible && (
+            {isRightVisible && (
               <>
                 <ResizeHandle
-                  axis="y"
-                  getSize={getBottom}
-                  onResize={setBottom}
+                  axis="x"
+                  getSize={getTopRight}
+                  onResize={setTopRight}
                   direction={-1}
-                  ariaLabel="Resize bottom panel"
+                  ariaLabel="Resize right panel"
                 />
-                <div className={styles.bottomPanel} style={{ height: bottomPx }}>
-                  <ZoneContent zoneId="bottom" />
+                <div
+                  className={styles.sidePanel}
+                  style={{ width: topRightPx, minWidth: SIDE_PANEL_MIN_WIDTH_PX }}
+                  data-testid={ElementIds.PANEL_RIGHT_AREA}
+                >
+                  <div className={styles.innerTop} data-testid={ElementIds.PANEL_TOP_RIGHT}>
+                    <ZoneContent zoneId="top-right" />
+                  </div>
                 </div>
               </>
             )}
           </div>
-        </div>
 
-        {!isExpanded && <RightSidebar dropTarget={dragOp.dropTarget} activeDragId={dragOp.activeDragId} />}
+          {isBottomVisible && (
+            <>
+              <ResizeHandle
+                axis="y"
+                getSize={getBottom}
+                onResize={setBottom}
+                direction={-1}
+                ariaLabel="Resize bottom panel"
+              />
+              <div className={styles.bottomPanel} style={{ height: bottomPx }}>
+                <ZoneContent zoneId="bottom" />
+              </div>
+            </>
+          )}
+        </div>
       </div>
 
-      <DragOverlay dropAnimation={null}>
-        {draggedPanel && (
-          <div className={styles.dragOverlayIcon}>
-            <draggedPanel.icon size={18} />
-          </div>
-        )}
-      </DragOverlay>
-    </DndContext>
+      {!isExpanded && <RightSidebar />}
+    </div>
   );
 };

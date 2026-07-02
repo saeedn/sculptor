@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { typeid } from "typeid-js";
 
-import { useThemeAppearance } from "./state/hooks/useThemeBuilder.ts";
+import { useThemeAppearance } from "./state/hooks/useTheme.ts";
 
 export const mergeClasses = (...classes: ReadonlyArray<string | undefined>): string => {
   return classes.filter((c) => c).join(" ");

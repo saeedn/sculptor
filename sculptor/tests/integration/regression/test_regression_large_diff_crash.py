@@ -23,8 +23,12 @@ import json
 from playwright.sync_api import Response
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import edit_file
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
@@ -35,42 +39,13 @@ from sculptor.testing.user_stories import user_story
 # The uncommittedDiff (HEAD → working dir) has hunks referencing old lines up
 # to ~590, but useFileLines fetches oldLines from "main" (~2 lines).  Pierre
 # tries to look up context at old line 100+ but oldLines only has 2 entries.
-_LONG_README = "\\n".join(f"# Section {i}" for i in range(600))
+_LONG_README = "\n".join(f"# Section {i}" for i in range(600))
 
 # Build edit steps that modify lines at spread positions to create multiple
 # hunks, ensuring the diff spans widely-spaced line numbers.
-_EDIT_STEPS = ",".join(
-    f"""
-    {{
-      "command": "edit_file",
-      "args": {{
-        "file_path": "README.md",
-        "old_string": "# Section {i}",
-        "new_string": "# Section {i} MODIFIED"
-      }}
-    }}"""
-    for i in (5, 100, 200, 300, 400, 500, 590)
-)
-
-_PROMPT = f"""\
-fake_claude:multi_step `{{
-  "steps": [
-    {{
-      "command": "write_file",
-      "args": {{
-        "file_path": "README.md",
-        "content": "{_LONG_README}\\n"
-      }}
-    }},
-    {{
-      "command": "bash",
-      "args": {{
-        "command": "git add README.md && git commit -m 'Expand README to 600 lines'"
-      }}
-    }},
-    {_EDIT_STEPS}
-  ]
-}}`"""
+_EDIT_STEPS = [
+    edit_file("README.md", f"# Section {i}", f"# Section {i} MODIFIED") for i in (5, 100, 200, 300, 400, 500, 590)
+]
 
 
 @user_story("to view an individual file diff without the diff panel crashing")
@@ -86,6 +61,7 @@ def test_individual_file_diff_does_not_crash_with_committed_line_count_changes(
     count, causing Pierre to crash.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
     # Capture the gitRef used in read-file-at-ref requests for README.md.
     captured_git_refs: list[str] = []
@@ -103,14 +79,25 @@ def test_individual_file_diff_does_not_crash_with_committed_line_count_changes(
 
     page.on("response", _on_response)
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(
+        agents_dir,
+        multi_step(
+            [
+                write_file("README.md", _LONG_README + "\n"),
+                bash("git add README.md && git commit -m 'Expand README to 600 lines'"),
+                *_EDIT_STEPS,
+            ]
+        ),
+    )
 
     # Switch to the Changes tab and explicitly select the "Uncommitted" scope.
     # The default scope is "All" (vs-target-branch), which correctly uses the
     # target branch ref.  This test verifies the uncommitted scope uses HEAD.
     task_page.activate_changes_panel(scope="uncommitted")
+    # Force a fresh diff fetch (cold-start: the initial files-changed signal can
+    # land before the frontend's diff subscription is ready).
+    task_page.get_file_browser().get_refresh_button().click()
 
     changes_panel = task_page.get_changes_panel()
     changes_tree = changes_panel.get_changes_tree()

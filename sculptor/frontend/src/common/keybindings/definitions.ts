@@ -2,20 +2,6 @@ import type { KeybindingDefinition } from "./types.ts";
 
 export const KEYBINDING_DEFINITIONS: ReadonlyArray<KeybindingDefinition> = [
   {
-    id: "send_message",
-    name: "Send message",
-    description: "Send the current message",
-    category: "chat",
-    defaultBinding: "Meta+Enter",
-  },
-  {
-    id: "interrupt_agent",
-    name: "Stop agent",
-    description: "Interrupt the running agent (when chat input is focused)",
-    category: "chat",
-    defaultBinding: "Ctrl+C",
-  },
-  {
     id: "new_workspace",
     name: "New workspace",
     description: "Create a new workspace",
@@ -56,20 +42,6 @@ export const KEYBINDING_DEFINITIONS: ReadonlyArray<KeybindingDefinition> = [
     description: "Switch to the previous workspace tab",
     category: "workspaces",
     defaultBinding: "Meta+[",
-  },
-  {
-    id: "focus_input",
-    name: "Focus input",
-    description: "Focus the chat input field",
-    category: "general",
-    defaultBinding: "Meta+I",
-  },
-  {
-    id: "chat_search",
-    name: "Chat search",
-    description: "Open or focus the chat search bar",
-    category: "general",
-    defaultBinding: "Meta+Shift+F",
   },
   {
     id: "find_in_file",
@@ -114,41 +86,6 @@ export const KEYBINDING_DEFINITIONS: ReadonlyArray<KeybindingDefinition> = [
     defaultBinding: "Meta+Shift+D",
   },
   {
-    id: "focus_mode",
-    name: "Focus mode",
-    description: "Hide or restore all panels",
-    category: "general",
-    defaultBinding: "Meta+\\",
-  },
-  {
-    id: "zen_mode",
-    name: "Zen mode",
-    description: "Maximize chat by hiding all panels and UI chrome",
-    category: "general",
-    defaultBinding: "Meta+Shift+\\",
-  },
-  {
-    id: "toggle_left_panel",
-    name: "Toggle left panel",
-    description: "Show or hide the left sidebar",
-    category: "general",
-    defaultBinding: "Meta+Alt+ArrowLeft",
-  },
-  {
-    id: "toggle_bottom_panel",
-    name: "Toggle bottom panel",
-    description: "Show or hide the bottom panel",
-    category: "general",
-    defaultBinding: "Meta+Alt+ArrowDown",
-  },
-  {
-    id: "toggle_right_panel",
-    name: "Toggle right panel",
-    description: "Show or hide the right sidebar",
-    category: "general",
-    defaultBinding: "Meta+Alt+ArrowRight",
-  },
-  {
     id: "previous_agent",
     name: "Previous agent",
     description: "Switch to the agent on the left",
@@ -175,13 +112,6 @@ export const KEYBINDING_DEFINITIONS: ReadonlyArray<KeybindingDefinition> = [
     description: "Open the repo in the preferred external app",
     category: "general",
     defaultBinding: "Meta+O",
-  },
-  {
-    id: "toggle_tool_density",
-    name: "Toggle tool call density",
-    description: "Switch chat between compact pill and expanded row layouts for tool calls",
-    category: "chat",
-    defaultBinding: "Meta+Shift+E",
   },
   {
     id: "clear_terminal",

@@ -2,7 +2,7 @@ import { Button, Dialog, Flex, Spinner } from "@radix-ui/themes";
 import type { ReactElement } from "react";
 
 import { ElementIds } from "~/api";
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 
 import styles from "./DeleteActionDialog.module.scss";
 

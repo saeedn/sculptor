@@ -2,14 +2,12 @@ import { Link } from "@radix-ui/themes";
 import { GitBranchIcon } from "lucide-react";
 import type { ReactElement } from "react";
 
-import type { WorkspaceInitializationStrategy } from "~/api";
-import { ElementIds, WorkspaceInitializationStrategy as Strategy } from "~/api";
+import { ElementIds } from "~/api";
 
 import type { BranchNameCollisionState } from "../hooks/useBranchNamePreview";
 import styles from "./BranchNameField.module.scss";
 
 type BranchNameFieldProps = {
-  mode: WorkspaceInitializationStrategy;
   /** The displayed value (override-or-preview). */
   value: string;
   /** Whether the user has typed into the field; controls auto-fill and the reset link. */
@@ -28,7 +26,6 @@ type BranchNameFieldProps = {
 };
 
 export const BranchNameField = ({
-  mode,
   value,
   isManuallyEdited,
   isLoading,
@@ -38,12 +35,8 @@ export const BranchNameField = ({
   onReset,
   disabled,
 }: BranchNameFieldProps): ReactElement | null => {
-  if (mode === Strategy.IN_PLACE) {
-    return null;
-  }
-
-  const shouldShowRequiredHint = mode === Strategy.WORKTREE && value.trim() === "";
-  const placeholder = mode === Strategy.WORKTREE ? "Branch name (required)" : "Branch name (optional)";
+  const shouldShowRequiredHint = value.trim() === "";
+  const placeholder = "Branch name (required)";
 
   return (
     <div className={styles.container}>

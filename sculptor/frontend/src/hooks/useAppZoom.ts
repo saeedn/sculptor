@@ -18,10 +18,9 @@ export const useAppZoom = (): void => {
 
   // Skip pushing the renderer zoom factor on mount when the user hasn't
   // actually zoomed yet — Electron's default is already 1.0, and an
-  // unsolicited setZoomFactor(1) call appears to disturb the Browser panel's
-  // <webview> guest-visible-size calculation on Linux (passes locally on
-  // macOS, fails reliably on the Linux CI runner). Once we've ever pushed a
-  // non-default factor, every subsequent level change (including a return
+  // unsolicited setZoomFactor(1) call has historically disturbed embedded
+  // guest content's visible-size calculation on Linux. Once we've ever pushed
+  // a non-default factor, every subsequent level change (including a return
   // to 1.0) goes through setZoomFactor so the renderer stays in sync.
   const hasAppliedRef = useRef(false);
 

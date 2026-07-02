@@ -174,20 +174,23 @@ def test_command_palette_open_button_visible_in_topbar(sculptor_instance_: Sculp
 
 
 @pytest.mark.release
-@user_story("to file a bug report from the command palette")
-def test_command_palette_report_problem_opens_popover(sculptor_instance_: SculptorInstance) -> None:
-    # Regression lock: the new help.report_problem command must trigger the
-    # ReportProblemPopover (opened via runtime.ui.openReportProblem).
+@user_story("to no longer see the removed theme-builder and Report-a-problem commands in the palette")
+def test_command_palette_removed_commands_absent(sculptor_instance_: SculptorInstance) -> None:
+    # Regression lock for the slim-down: the "Report a problem" command
+    # (help.report_problem, removed in Task 2.2) and the standalone
+    # theme-builder Settings section (settings.page.theme_builder, removed in
+    # Task 5.1) must not surface in the palette for any query.
     layout = _layout(sculptor_instance_)
     palette = layout.open_command_palette()
 
     palette.type_query("Report a problem")
-    palette.select_by_command_id("help.report_problem")
+    expect(palette.get_item_by_command_id("help.report_problem")).to_have_count(0)
 
-    # The palette closes after a non-keepOpen command, and the bug-report
-    # popover surfaces with its REPORT_PROBLEM_POPOVER test id.
-    expect(palette).not_to_be_visible()
-    expect(layout.get_report_problem_popover()).to_be_visible()
+    palette.type_query("Theme builder")
+    expect(palette.get_item_by_command_id("settings.page.theme_builder")).to_have_count(0)
+
+    palette.clear_search()
+    dismiss_with_escape(palette)
 
 
 @pytest.mark.release
@@ -199,15 +202,21 @@ def test_command_palette_cross_page_reveal_finds_subpage_item(sculptor_instance_
     layout = _layout(sculptor_instance_)
     palette = layout.open_command_palette()
 
-    # The "Theme builder" Settings section command lives on the
-    # `settings.section` sub-page (id "settings.page.theme_builder"). It
-    # must NOT appear when the query is empty (root list only).
+    # The "General" Settings section command lives on the `settings.section`
+    # sub-page (id "settings.page.general"). It must NOT appear when the query
+    # is empty (root list only).
     palette.type_query("")
-    expect(palette.get_item_by_command_id("settings.page.theme_builder")).not_to_be_visible()
+    expect(palette.get_item_by_command_id("settings.page.general")).not_to_be_visible()
 
     # Typing a matching query reveals it via cross-page fuzzy search.
+    palette.type_query("General")
+    expect(palette.get_item_by_command_id("settings.page.general")).to_be_visible()
+
+    # The slim-down removed the standalone theme-builder Settings section
+    # (Task 5.1): its old palette row must never surface, even on a query
+    # that previously matched it.
     palette.type_query("Theme builder")
-    expect(palette.get_item_by_command_id("settings.page.theme_builder")).to_be_visible()
+    expect(palette.get_item_by_command_id("settings.page.theme_builder")).to_have_count(0)
 
     palette.clear_search()
     dismiss_with_escape(palette)
@@ -317,17 +326,17 @@ def test_command_palette_list_does_not_animate_scrolls(sculptor_instance_: Sculp
     dismiss_with_escape(palette)
 
 
+@pytest.mark.release
 @user_story("to create a new agent in the current workspace from the command palette")
 def test_command_palette_creates_new_agent(sculptor_instance_: SculptorInstance) -> None:
     # Regression lock for the `nav.new_agent` command: inside a workspace it
     # must run the same create-agent path as the "+" tab button / the
     # `new_agent` keybinding (via runtime.ui.createAgent), adding a new agent
-    # and navigating to it. An empty prompt creates a single waiting agent
-    # with no LLM run, so the test stays fast and deterministic.
-    # Not @release-marked: the helper selects the Fake Claude model, which
-    # is gated off in packaged-release runs.
+    # and navigating to it. A plain terminal first agent is the vehicle: it
+    # needs no model and exercises the create-agent path without an LLM run,
+    # so the test stays fast and deterministic.
     page = sculptor_instance_.page
-    task_page = start_task_and_wait_for_ready(page, prompt="", workspace_name="Cmd+K New Agent")
+    task_page = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Cmd+K New Agent")
 
     agent_tabs = page.get_by_test_id(ElementIDs.AGENT_TAB)
     expect(agent_tabs).to_have_count(1)

@@ -5,10 +5,6 @@ from sculptor.testing.elements.base import PlaywrightIntegrationTestElement
 
 
 class PlaywrightWarningBannerElement(PlaywrightIntegrationTestElement):
-    def get_message(self) -> str:
-        """Get the warning message text."""
-        return self._locator.text_content() or ""
-
     def get_link(self) -> Locator:
         """Get the link within the banner."""
         return self.get_by_test_id(ElementIDs.WARNING_STATUS_BANNER_LINK)

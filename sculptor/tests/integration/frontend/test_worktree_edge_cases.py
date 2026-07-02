@@ -1,8 +1,7 @@
 """Integration tests for worktree-mode edge cases.
 
-Three orthogonal spec requirements bundled for suite manageability:
-- Mode selector visibility around the now-opt-in CLONE option.
-- Workspace setup command runs in worktree mode just like in clone.
+Two orthogonal spec requirements bundled for suite manageability:
+- Workspace setup command runs in a worktree workspace.
 - Missing local repo surfaces a clear error state.
 
 The "missing local repo" case is intentionally last: the project-accessibility
@@ -18,38 +17,11 @@ from playwright.sync_api import expect
 
 from sculptor.constants import ElementIDs
 from sculptor.testing.elements.setup_status import PlaywrightSetupStatusElement
-from sculptor.testing.elements.user_config import enable_clone_workspaces
-from sculptor.testing.elements.user_config import enable_in_place_workspaces
 from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
 from sculptor.testing.playwright_utils import navigate_to_add_workspace_page
 from sculptor.testing.playwright_utils import navigate_to_settings_page
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-
-
-@user_story("to only see the CLONE option when the opt-in clone flag is enabled")
-def test_clone_mode_hidden_when_flag_off(sculptor_instance_: SculptorInstance) -> None:
-    page = sculptor_instance_.page
-    enable_in_place_workspaces(page)
-
-    # With clone disabled but in-place enabled, the mode selector is visible
-    # (since one opt-in flag is on) and lists Worktree + In-place but NOT
-    # Clone.
-    navigate_to_add_workspace_page(page)
-    add_ws = PlaywrightAddWorkspacePage(page=page)
-    add_ws.get_mode_selector().click()
-
-    expect(add_ws.get_mode_option_worktree()).to_be_visible()
-    expect(add_ws.get_mode_option_in_place()).to_be_visible()
-    expect(add_ws.get_mode_option_clone()).to_have_count(0)
-
-    page.keyboard.press("Escape")
-
-    # Flip on the clone flag — Clone option appears in the selector.
-    enable_clone_workspaces(page)
-    navigate_to_add_workspace_page(page)
-    add_ws.get_mode_selector().click()
-    expect(add_ws.get_mode_option_clone()).to_be_visible()
 
 
 @user_story("to have my worktree workspace automatically set up when created")
@@ -70,10 +42,12 @@ def test_setup_command_runs_in_worktree_workspace(sculptor_instance_: SculptorIn
     add_ws.get_workspace_name_input().fill("setup-in-worktree")
     branch_input = add_ws.get_branch_name_input()
     expect(branch_input).to_have_value(re.compile(r".+"), timeout=5_000)
+    add_ws.select_terminal_agent_type()
     add_ws.get_submit_button().click()
 
-    chat_panel = add_ws.get_chat_panel()
-    expect(chat_panel).to_be_visible(timeout=60_000)
+    # The workspace/agent page loaded once the terminal panel appears.
+    terminal_panel = page.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
+    expect(terminal_panel).to_be_visible(timeout=60_000)
 
     # The setup command no longer runs in a PTY tab; it streams into the
     # SetupStatusCard popover. Wait for a known terminal state before opening
@@ -105,7 +79,7 @@ def test_missing_local_repo_surfaces_error(sculptor_instance_: SculptorInstance)
     branch_input = add_ws.get_branch_name_input()
     expect(branch_input).to_have_value(re.compile(r".+"))
 
-    add_ws.submit_and_wait_for_chat_panel()
+    add_ws.submit_and_wait_for_workspace()
 
     user_repo_path = sculptor_instance_.project_path
     moved_path = user_repo_path.parent / f"{user_repo_path.name}-moved-by-test"

@@ -2,54 +2,29 @@
 
 Sculptor is a desktop app for running coding agents in parallel.
 
-[Open a GitHub issue](https://github.com/imbue-ai/sculptor/issues/new) for any bug, idea, or feedback.
+This repo is a fork of [imbue-ai/sculptor](https://github.com/imbue-ai/sculptor) that heavily slims down the product. The goal is to emphasize the core value-add of Sculptor — its organization of workspaces and agents, and the supporting tools that enable good development workflows (diffs, PRs, skills).
 
-Sculptor is actively under development and should be treated as an experimental research preview. We are still learning what rigorous engineering looks like with agents.
+The biggest change: the rich chat interface is gone, in favor of each agent's own terminal UI. This removes most of Sculptor's complexity, bugs, and slowdowns, and gives users an agent's full feature set without ever lagging behind because Sculptor's UI hasn't caught up.
 
-What this means:
+## Privacy
 
-- Things will not be perfect. Expect mistakes and bugs.
-- Things may change quickly and significantly. We are optimizing for learning and may make drastic changes if we believe they lead to the best possible outcomes.
+This version has no telemetry and no data uploads of any kind. Upstream's analytics, crash reporting, session replay, and diagnostics uploads are all removed. Your agent talks to its own provider and git talks to your remotes — nothing else leaves your machine.
 
-At this time we don't have the bandwidth to take on a large volume of external contributions. We know it's not truly open source until the community is involved, and we're committed to embarking on that journey when we're truly ready. See [CONTRIBUTING.md](CONTRIBUTING.md) for how we handle issues and pull requests in the meantime.
+- **No auto-update** — Sculptor never phones home to check for updates; you update by pulling this repo.
+- **No email needed** — there is no signup or account; onboarding is just a check that your agent is installed.
 
-## Download
-- [Mac (Apple Silicon)](https://tryimbue.link/sculptor-for-apple-silicon)
-- [Linux](https://tryimbue.link/sculptor-for-linux)
+## Agents
 
-**Getting started:** Connect a repo, create a workspace (an isolated copy of your code), and prompt an agent. Review the changes when it's done and merge back to main. To explore a different project, open another workspace. To collaborate with another agent on the same project, add one to the existing workspace.
-
-## See it in action
-
-**Skills to ship faster:** The full library in one session: spec, mocks, and fix-bug across parallel workspaces. [Watch demo video.](https://www.loom.com/share/c9a9546122024844aeabff5b5a68514c)
-
-**Fixing UI bugs fast:** `/sculptor-workflow:fix-bug` runs a short reproduction interview, writes failing tests, then makes them pass. Agents that ask before they answer. [Watch demo video.](https://www.loom.com/share/45ae363eb4fa40cfb04f5ade93754477)
-
-## Docs
-
-- [Getting Started](docs/help/getting_started.md): first-run setup and your first task
-- [Workspaces](docs/help/workspaces.md): isolated worktrees of your repo, branches, and setup
-- [Chat](docs/help/chat.md): the chat input, models, context, plan/effort, and mentions
-- [Terminal](docs/help/terminal.md): the built-in terminal scoped to the workspace
-- [Agents](docs/help/agents.md): running multiple agents and complex tasks
-- [Changes](docs/help/changes.md): reviewing and committing agent changes
-- [Pull Requests](docs/help/pull_requests.md): opening a GitHub PR and tracking its status
-- [Skills](docs/help/skills.md): the bundled workflow and experimental skills
-- [Command Palette](docs/help/command_palette.md): Cmd+K to search and jump around the app
-- [Settings](docs/help/settings.md): a tour of the settings sections
-- [Container Backend](docs/help/experimental/container_backend.md): running in Docker or on a remote (experimental)
-
+[Claude Code](https://claude.com/claude-code) is bundled as the default agent and needs the `claude` CLI installed. Any terminal-based agent can be added by dropping a registration file into `~/.sculptor/terminal_agents/` — the bundled [claude-code registration](samples/terminal_agents/claude-code/) serves as the reference example.
 
 ## Running locally
 
-For a quick local setup see the full details in [Getting Started](docs/development/getting_started.md).
+You'll need [tmux](https://github.com/tmux/tmux), [just](https://github.com/casey/just), [uv](https://github.com/astral-sh/uv), and [nvm](https://github.com/nvm-sh/nvm). For full setup and build instructions see [Getting Started](docs/development/getting_started.md).
 
-## Why
+## Status
 
-How we develop software is changing. Sculptor is our attempt to both understand that shift and help others follow us on the journey. We also strongly believe software development should stay open, and we want to live by that value. Ironically, without the industry's commitment to open source software, we wouldn't have the powerful agentic systems we have today. There's a strong desire among model providers to keep things closed, as it best serves their own interests — and their interests are not always aligned with ours.
+This fork is experimental and changes quickly and significantly. Expect rough edges, and expect things to break or disappear without notice.
 
-We're also trying to develop at the frontier to understand what works and what doesn't. Our feeds are filled with hype, but they rarely delve into the nuance and tradeoffs. We have decades of experience building software systems and only a handful of years using LLMs to build them. The marketing pitches tell us AGI is around the corner; the reality is that it will take time for the world to adjust.
+## License
 
-## About Imbue
-
-Sculptor is open source and built by [Imbue](https://imbue.com). We make tools that help people think, create, and build with code. We share our work openly because progress in AI should be collaborative and developer-driven, with agents that stay accountable to the people they serve.
+MIT, same as the original — see [LICENSE.md](LICENSE.md). Sculptor was created by [Imbue](https://imbue.com).

@@ -78,7 +78,7 @@ class DefaultProjectService(ProjectService):
         if existing_project is not None:
             # IMPORTANT: This method only owns name, user_git_repo_url, and
             # is_deleted. All other Project fields (workspace_setup_command,
-            # default_system_prompt, etc.) are user-configured and must be
+            # naming_pattern, etc.) are user-configured and must be
             # preserved. If you add a new field to Project that should be set
             # during initialization, add an evolve call here; otherwise leave
             # it alone so existing values survive server restarts.
@@ -172,7 +172,7 @@ class DefaultProjectService(ProjectService):
         try:
             # SCU-474: targeted field-level update — only writes is_path_accessible,
             # so this background thread cannot clobber disjoint fields
-            # (default_system_prompt, workspace_setup_command, name, user_git_repo_url)
+            # (naming_pattern, workspace_setup_command, name, user_git_repo_url)
             # set by concurrent HTTP writers while we held a stale in-memory copy
             # of `project`.
             with self.data_model_service.open_transaction(request_id=RequestID(), is_user_request=True) as transaction:
@@ -206,7 +206,7 @@ class DefaultProjectService(ProjectService):
         # Re-read the project inside this transaction instead of trusting the
         # in-memory copy passed in: the caller read it before deleting all of the
         # project's tasks and workspaces (app.py), so a full-object upsert of that
-        # stale copy could clobber disjoint fields (default_system_prompt,
+        # stale copy could clobber disjoint fields (naming_pattern,
         # workspace_setup_command, name, ...) written by a concurrent request.
         # is_deleted is a protected column (see ProjectFieldUpdate), so it can't go
         # through update_project_fields; flipping it on a freshly-read copy is the

@@ -10,7 +10,7 @@ import {
 } from "~/components/panels/atoms.ts";
 import type { PanelId, ZoneId } from "~/components/panels/types.ts";
 
-import { isPanelLayoutPerWorkspaceAtom, userConfigAtom } from "../atoms/userConfig.ts";
+import { userConfigAtom } from "../atoms/userConfig.ts";
 import { useUserConfig } from "./useUserConfig.ts";
 
 const DEBOUNCE_MS = 2000;
@@ -37,7 +37,6 @@ export const usePanelLayoutSync = (): void => {
   const zoneSizes = useAtomValue(zoneSizesAtom);
   const zoneOrder = useAtomValue(zoneOrderAtom);
   const userConfig = useAtomValue(userConfigAtom);
-  const isPerWorkspace = useAtomValue(isPanelLayoutPerWorkspaceAtom);
 
   const setZoneAssignments = useSetAtom(zoneAssignmentsAtom);
   const setActivePanelPerZone = useSetAtom(activePanelPerZoneAtom);
@@ -50,15 +49,6 @@ export const usePanelLayoutSync = (): void => {
   const isInitialRenderRef = useRef(true);
   const hasSeededRef = useRef(false);
   const lastSyncedLayoutRef = useRef<string | null>(null);
-
-  // Keep refs so the write-path effect can read latest values without subscribing
-  // to visibility/sizes changes when per-workspace mode is active.
-  const zoneVisibilityRef = useRef(zoneVisibility);
-  zoneVisibilityRef.current = zoneVisibility;
-  const zoneSizesRef = useRef(zoneSizes);
-  zoneSizesRef.current = zoneSizes;
-  const isPerWorkspaceRef = useRef(isPerWorkspace);
-  isPerWorkspaceRef.current = isPerWorkspace;
 
   // Read path: seed from backend if localStorage is empty
   useEffect(() => {
@@ -76,27 +66,12 @@ export const usePanelLayoutSync = (): void => {
     // Seed atoms from backend data (atomWithStorage will persist to localStorage)
     if (backendLayout.zoneAssignments) setZoneAssignments(backendLayout.zoneAssignments);
     if (backendLayout.activePanelPerZone) setActivePanelPerZone(backendLayout.activePanelPerZone);
-    // When per-workspace is active, visibility and sizes are managed locally per workspace
-    if (!isPerWorkspace) {
-      if (backendLayout.zoneVisibility) setZoneVisibility(backendLayout.zoneVisibility);
-      if (backendLayout.zoneSizes) setZoneSizes(backendLayout.zoneSizes);
-    }
+    if (backendLayout.zoneVisibility) setZoneVisibility(backendLayout.zoneVisibility);
+    if (backendLayout.zoneSizes) setZoneSizes(backendLayout.zoneSizes);
     if (backendLayout.zoneOrder) setZoneOrder(backendLayout.zoneOrder);
-  }, [
-    userConfig,
-    isPerWorkspace,
-    setZoneAssignments,
-    setActivePanelPerZone,
-    setZoneVisibility,
-    setZoneSizes,
-    setZoneOrder,
-  ]);
+  }, [userConfig, setZoneAssignments, setActivePanelPerZone, setZoneVisibility, setZoneSizes, setZoneOrder]);
 
   // Write path: debounced sync to backend.
-  // When per-workspace is active, visibility/sizes are excluded from the synced
-  // payload but still appear in the dependency array (unavoidable since hooks
-  // subscribe unconditionally). Refs are used inside the timeout so the payload
-  // always reflects the latest values at fire time.
   useEffect(() => {
     // Skip the initial render to avoid writing back localStorage data immediately
     if (isInitialRenderRef.current) {
@@ -112,20 +87,13 @@ export const usePanelLayoutSync = (): void => {
     }
 
     timerRef.current = setTimeout(() => {
-      // When per-workspace is active, only sync positions (not visibility/sizes)
-      const layout = isPerWorkspaceRef.current
-        ? {
-            zoneAssignments,
-            activePanelPerZone,
-            zoneOrder,
-          }
-        : {
-            zoneAssignments,
-            activePanelPerZone,
-            zoneVisibility: zoneVisibilityRef.current,
-            zoneSizes: zoneSizesRef.current,
-            zoneOrder,
-          };
+      const layout = {
+        zoneAssignments,
+        activePanelPerZone,
+        zoneVisibility,
+        zoneSizes,
+        zoneOrder,
+      };
       const serialized = JSON.stringify(layout);
       if (serialized === lastSyncedLayoutRef.current) return;
 
@@ -141,5 +109,5 @@ export const usePanelLayoutSync = (): void => {
         clearTimeout(timerRef.current);
       }
     };
-  }, [zoneAssignments, activePanelPerZone, zoneVisibility, zoneSizes, zoneOrder, isPerWorkspace, updateConfig]);
+  }, [zoneAssignments, activePanelPerZone, zoneVisibility, zoneSizes, zoneOrder, updateConfig]);
 };

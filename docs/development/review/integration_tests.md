@@ -59,13 +59,13 @@ When you need to wait for a structural condition that `expect()` can't express (
 
 ```python
 # Bad: arbitrary sleep before interacting with a virtual list
-alpha_view.click()
+browse_tab.click()
 page.wait_for_timeout(500)
 
 # Good: wait for the virtual list to render the expected items
-alpha_view.click()
+browse_tab.click()
 page.wait_for_function(
-    """() => document.querySelectorAll('[data-testid="ALPHA_CHAT_VIEW"] [data-index]').length >= 6"""
+    """() => document.querySelectorAll('[data-testid="FILE_BROWSER_TREE_ROW"]').length >= 6"""
 )
 ```
 
@@ -84,14 +84,14 @@ page.wait_for_function(
 
 ```python
 # Bad: .all() captures a point-in-time snapshot that may be incomplete
-options = chat_panel.get_model_options()
+options = target_branch_selector.get_branch_options()
 expect(options.first).to_be_visible()
-target = only([opt for opt in options.all() if opt.inner_text().strip() == model_name])
+target = only([opt for opt in options.all() if opt.inner_text().strip() == branch_name])
 target.click()
 
 # Good: locator filtering auto-retries until the match appears
-options = chat_panel.get_model_options()
-target = options.filter(has=page.get_by_text(model_name, exact=True))
+options = target_branch_selector.get_branch_options()
+target = options.filter(has=page.get_by_text(branch_name, exact=True))
 expect(target).to_be_visible()
 target.click()
 ```
@@ -112,10 +112,10 @@ Only lower the timeout when you're intentionally asserting performance (e.g., "t
 
 ```python
 # Bad: lowered timeout that flakes on slower runners
-expect(messages).to_have_count(4, timeout=5_000)
+expect(agent_tabs).to_have_count(4, timeout=5_000)
 
 # Good: use the default — it's already 30s
-expect(messages).to_have_count(4)
+expect(agent_tabs).to_have_count(4)
 ```
 
 **Exceptions:** Timeouts *above* the default are fine for operations known to be slow (e.g., initial SPA render, long streaming responses). Lowered timeouts are fine when the test is specifically verifying responsiveness.
@@ -168,56 +168,56 @@ Wait on the element whose state you're about to assert. Waiting on a proxy (e.g.
 
 **What to look for:**
 - A helper that waits on element A, followed by a separate assertion on element B
-- Waiting for a status indicator to disappear as a proxy for "streaming finished" or "agent idle"
-- The wait target was defined in a different rendering context (before a page reload, `switch_to_alpha_view`, or navigation)
+- Waiting for the agent tab's `data-dot-status` to settle as a proxy for some *other* backend side effect having landed
+- The wait target was defined in a different rendering context (before a page reload or navigation)
 
 ```python
-# Bad: STATUS_PILL may never render after switch_to_alpha_view's page reload,
-# so this times out even though streaming already finished
-def _wait_for_agent_idle_alpha(page, *, timeout=60000):
-    status_pill = page.get_by_test_id(ElementIDs.STATUS_PILL)
-    expect(status_pill).not_to_be_visible(timeout=timeout)
+# Bad: the tab dot settling to calm is a proxy — the dot can read
+# "read"/"unread" for reasons unrelated to the side effect the test needs
+# (e.g. session-id persistence), so the next step races the backend.
+expect(terminal_tab).to_have_attribute("data-dot-status", re.compile(r"^(read|unread)$"))
+# ... tear the instance down and assert the resume path ...
 
-_wait_for_agent_idle_alpha(page)
-expect(cursor).to_have_count(0)
-
-# Good: wait directly on the element you care about
-expect(cursor).to_have_count(0, timeout=120_000)
+# Good: wait on evidence of the actual condition. The fake terminal agent's
+# runner prints SESSION-REPORTED-<id> only after its blocking
+# `sculpt signal session-id` call returned, so this proves persistence.
+wait_for_xterm_substring(page, f"SESSION-REPORTED-{session_id}")
 ```
+
+(The canonical fix is in `test_restarts.py::_launch_registered_terminal_agent`.)
 
 ---
 
-### `no_wall_clock_in_fake_claude`
+### `no_wall_clock_in_fake_agent`
 
-**Question:** Is this test using `fake_claude:sleep` (or any other wall-clock pause inside fake_claude) to keep the agent busy through a sequence of UI actions?
+**Question:** Is this test using the fake terminal agent's `sleep` op (or any other wall-clock pause) to keep the agent busy through a sequence of UI actions?
 
-The agent must outlast all the UI overhead between "agent starts" and "test finishes its assertions." Any wall-clock window — even a generous one — is asymptotically racy under CI load: when the runner is slow, the agent finishes before the test's assertions land, and the test exercises the wrong code path (or fails outright). Bumping the sleep is a treadmill — SCU-845 hit this three times in the same file before being fixed properly. The same applies to *any* sleep inside fake_claude that the test relies on to expose a transient state (e.g. a pause embedded inside a multi-step handler like `background_subagent`).
+The agent must outlast all the UI overhead between "agent starts" and "test finishes its assertions." Any wall-clock window — even a generous one — is asymptotically racy under CI load: when the runner is slow, the agent finishes before the test's assertions land, and the test exercises the wrong code path (or fails outright). Bumping the sleep is a treadmill — SCU-845 hit this three times in the same file before being fixed properly. The same applies to a `sleep` step embedded inside a `multi_step` command that the test relies on to expose a transient state.
 
 **What to look for:**
-- `fake_claude:sleep` in a prompt where the agent needs to stay busy until the test does something
-- Any `*_seconds` / `*_ms` arg passed to a fake_claude command that the test relies on to observe a transient state
+- `sleep(N)` sent to the fake terminal agent where the agent needs to stay busy until the test does something
+- Any `seconds` arg the test relies on to observe a transient state (e.g. the running dot)
 - Comments like "sized generously so a slower runner can still…" — these are warning signs that a wall-clock is being asked to absorb arbitrary CI latency
 
 ```python
 # Bad: a 12-second wall-clock sleep to keep the agent busy until the test is
 # ready. Asymptotically racy under CI load; "increase the timeout" is the same
 # trap SCU-845 hit three times.
-SLOW_COMMAND = 'fake_claude:sleep `{"seconds": 12}`'
+send_fake_agent_command(agents_dir, sleep(12))
 
-# Good: a sentinel file the test touches when it's ready for the agent to
-# proceed. No wall-clock — the agent stays busy until release() is called.
-from sculptor.testing.fake_claude_pause import FakeClaudePause
+# Good: gate busy→idle on a sentinel file the test creates when it's ready.
+# No wall-clock — the agent stays busy until the test releases it.
+from sculptor.testing.fake_terminal_agent import release_fake_agent_wait, wait_for_file
 
-pause = FakeClaudePause()
-bg_command = "fake_claude:background_subagent `" + json.dumps({
-    "description": "Find Python files",
-    "pause_path": str(pause.release_path),
-}) + "`"
-# ... start the agent with bg_command, assert mid-state ...
-pause.release()  # agent's next poll sees the sentinel; turn finishes naturally
+send_fake_agent_command(
+    agents_dir,
+    multi_step([write_file("hello.txt", "hi"), wait_for_file("release.sentinel")]),
+)
+# ... assert the mid-turn state (running dot, diff contents) ...
+release_fake_agent_wait(agents_dir, "release.sentinel")  # turn finishes naturally
 ```
 
-**Fix:** Use the `FakeClaudePause` helper (`sculptor/sculptor/testing/fake_claude_pause.py`) — it generates a per-test sentinel path under `/tmp/` and exposes both `prompt` (for the simple "pause the whole turn" case via `fake_claude:wait_for_file`) and `release_path` (for embedding the same sentinel into other fake_claude commands that support a `pause_path` arg). If you need a brand-new pause point inside an existing fake_claude command, add a `pause_path` arg there and use `_wait_until(..., done=sentinel.exists)` rather than `handle_sleep`. The change that introduced `FakeClaudePause` (SCU-845) converted the existing tests and is the canonical example.
+**Fix:** Use the fake terminal agent's `wait_for_file` op (`sculptor/sculptor/testing/fake_terminal_agent.py`) — the agent holds busy until the sentinel exists, and `release_fake_agent_wait()` creates it relative to the harness's commands directory so the sentinel never pollutes the workspace diff. `test_fake_terminal_agent_harness.py` is the canonical example.
 
 ---
 
@@ -261,40 +261,14 @@ The default integration run uses headless Chromium (`--sculptor-launch-mode=brow
 The launch-mode markers (defined in `sculptor/pytest.ini`):
 
 - *(no marker)* — runs only in **browser** mode. The default for most tests.
-- `@pytest.mark.electron` — runs only in **electron** mode (Electron dev server via CDP). Use for behaviour that requires a real Electron renderer or main process: native clipboard, native file dialogs, auto-update, dock badge, drag-and-drop with real paths.
+- `@pytest.mark.electron` — runs only in **electron** mode (Electron dev server via CDP). Use for behaviour that requires a real Electron renderer or main process: native clipboard, native file dialogs, dock badge, drag-and-drop with real paths.
 - `@pytest.mark.browser_and_electron` — runs in **both** browser and electron modes. Use when the same assertion should hold across both runtimes (rare; usually one or the other suffices).
-- `@pytest.mark.electron_custom_command` — runs only in `electron-custom-command` mode (Electron started with `SCULPTOR_CUSTOM_BACKEND_CMD`; file uploads go over HTTP instead of Electron IPC). Today the only consumer is `test_image_upload.py`, where each test is co-marked `@electron` + `@electron_custom_command` to lock in upload behaviour for both transport paths. Add this marker only if your test exercises a code path that switches on whether Electron starts the backend itself or hands off to a custom command.
-- `@pytest.mark.packaged_electron` — runs only in `packaged-electron` mode (the *launch mode*, not the CI pipeline). It is the packaged-build analogue of `@electron` and must always be combined with `@release` — the harness rejects `@packaged_electron` without `@release` at collection time.
 
 **What to look for:**
 - A test asserting on Electron-only behaviour (clipboard read-back, native menu, dock badge) with no marker → silently skipped in CI (browser mode cannot satisfy it; the electron run will not pick it up either).
 - `@pytest.mark.electron` on a test whose assertions do not depend on Electron at all → runs only in the slower Electron job and adds no coverage over an unmarked version.
-- `@pytest.mark.electron_custom_command` added alone, without `@electron` → loses coverage in the standard Electron job, where the IPC path also matters.
-- `@pytest.mark.packaged_electron` without `@release` → collection fails loudly. Add `@release` (the CI gate) alongside the launch-mode filter, or drop `@packaged_electron`.
 
 **Fix:** Match the marker to the runtime the test actually depends on. If the test can pass headless, leave it unmarked.
-
----
-
-### `release_marker_requires_release_safe_setup`
-
-**Question:** Does this test's `@pytest.mark.release` setup match what the packaged build can actually provide?
-
-`@pytest.mark.release` adds the test to the release pipeline, where it runs against the **packaged** Sculptor build. By default a release-marked test runs in both `packaged-electron` (Linux AppImage) and `packaged-backend` (macOS, headless backend) modes. The packaged build ships without Fake Claude. Two failure modes show up only in the release run, which makes them easy to miss in review:
-
-1. **Fake Claude dependency** — the test calls `start_task_and_wait_for_ready(...)` and lets the helper take its default `model_name=FAKE_CLAUDE_MODEL_NAME`. In packaged mode the Fake Claude `MODEL_OPTION` never appears; the helper hangs for 30s and fails. The test passes in regular CI (where Fake Claude exists), so the regression is invisible until the release job runs.
-2. **The `packaged-backend` mode cannot satisfy the test** — the test asserts on behaviour that requires a real Electron main process (auto-update wiring, native menus, dock badge, real file dialogs, IPC-mediated behaviour). `@release` alone runs in `packaged-backend` too, where there is no Electron process, and the test fails there even though it would pass on Linux. The fix is to add `@pytest.mark.packaged_electron` alongside `@release` so the test is narrowed to `packaged-electron` only — the packaged-build analogue of marking an Electron-only test with `@electron` in the regular suite.
-
-**What to look for:**
-- `@pytest.mark.release` on a test that calls `start_task_and_wait_for_ready(...)` and relies on its default model selection (Fake Claude).
-- `@pytest.mark.release` on a test whose assertions require Electron main-process behaviour without also carrying `@pytest.mark.packaged_electron` — will fail in `packaged-backend` mode on macOS.
-- A new release-marked test added alongside a feature that has not been verified end-to-end against the packaged artifact.
-
-**Fix:**
-- If the test does not need to exercise the agent itself, drop `@pytest.mark.release` — it still runs in the regular integration suite. Routing it through real Claude (so it works against the packaged build) is a separate, heavier exercise.
-- If the test legitimately needs a fully packaged Electron host (so `packaged-backend` cannot satisfy it), add `@pytest.mark.packaged_electron` alongside `@release` so it is skipped in the headless-backend variant.
-
-**Exceptions:** Tests that exercise functionality available in any packaged build without spinning up an agent (UI shell, navigation, settings) are fine to mark `@release` as long as their setup does not reach for Fake Claude.
 
 ---
 

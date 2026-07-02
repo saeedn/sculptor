@@ -24,19 +24,16 @@ from loguru import logger
 from playwright.sync_api import Browser
 from playwright.sync_api import BrowserContext
 from playwright.sync_api import Page
-from playwright.sync_api import Playwright
 
 from sculptor.constants import ElementIDs
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.testing.dependency_stubs import install_default_claude_stub
 from sculptor.testing.frontend_utils import DEFAULT_TEST_VIEWPORT
 from sculptor.testing.mock_repo import MockRepoState
-from sculptor.testing.packaged_electron_frontend import PackagedElectronFactory
 from sculptor.testing.playwright_utils import delete_all_workspaces_via_ui
 from sculptor.testing.playwright_utils import delete_project_via_settings
 from sculptor.testing.playwright_utils import expect_app_not_onboarding
 from sculptor.testing.playwright_utils import reset_active_panel_to_files
-from sculptor.testing.port_manager import PortManager
 from sculptor.testing.repo_resources import get_test_project_state
 from sculptor.testing.server_utils import SculptorFactory
 from sculptor.testing.server_utils import SculptorServer
@@ -158,7 +155,6 @@ class SculptorInstance:
     _project_path: Path
     _browser_context: BrowserContext
     _browser: Browser | None = None
-    _is_electron: bool = False
     _default_timeout_ms: int = 30_000
     _forwarder: Forwarder | None = None
     _session_token: str | None = None
@@ -308,7 +304,7 @@ class SculptorInstance:
         # has been unloaded.  If we PUT the reset while the old page is
         # still alive, a debounced sync hook (e.g. usePanelLayoutSync)
         # can fire afterwards and PUT the full stale config back —
-        # silently re-enabling flags like enableInPlaceWorkspaces and
+        # silently re-enabling flags like envVarOverrideEnabled and
         # breaking the next test.  about:blank tears down the React
         # tree, which cancels those pending timers.
         self._reset_user_config_defaults()
@@ -365,19 +361,18 @@ class SculptorInstance:
         """Reset persistent user-config flags that tests may have mutated.
 
         User config lives on disk and is shared across tests in the same
-        instance, so any flag a test enables (enableInPlaceWorkspaces,
-        enableCloneWorkspaces, ...) leaks into the next test unless
-        reset here. Each flag listed below must default to False in the
-        shipping config; add new entries when a test starts toggling a
-        new flag.
+        instance, so any flag a test enables (e.g. envVarOverrideEnabled) leaks
+        into the next test unless reset here. Each flag listed below must default
+        to False in the shipping config; add new entries when a test starts
+        toggling a new flag.
 
         The most-recently-used harness (lastUsedAgentType) is the same kind
         of shared, persistent state: the server records it whenever an agent
         is created with an explicit type, and a later create that omits the
         type resolves back to it. Without resetting it, a prior test that
-        created a Pi or terminal agent makes the next agent-type-less create
-        resolve to that harness (e.g. Pi, whose binary is absent in CI)
-        instead of Claude, so it is cleared back to None here too.
+        created a specific terminal agent makes the next agent-type-less create
+        resolve to that harness instead of the default, so it is cleared back to
+        None here too.
 
         Transient PUT failures under load would silently leave a flag stuck,
         so we retry and raise loudly if the reset never succeeds — a leaked
@@ -401,24 +396,11 @@ class SculptorInstance:
             logger.warning("GET /api/v1/config returned {} during pre-test cleanup", response.status)
             return
         config = response.json()
-        # Persistent flags that tests can mutate. Each must be reset between
-        # tests because the user config lives on disk in the shared instance.
-        # enablePiAgent is included because it gates harness resolution: a
-        # leaked "pi" most-recently-used type only resolves to Pi while it is
-        # on, so clearing it keeps an omitted agent_type defaulting to Claude.
-        flags_to_reset_to_false = (
-            "enableInPlaceWorkspaces",
-            "enableCloneWorkspaces",
-            "enablePiAgent",
-        )
-        # The recorded most-recently-used harness (see the docstring); reset to
-        # None so an agent-type-less create defaults to Claude.
-        needs_flag_reset = any(config.get(flag) is not False for flag in flags_to_reset_to_false)
-        needs_mru_reset = config.get("lastUsedAgentType") not in (None, "")
-        if not (needs_flag_reset or needs_mru_reset):
+        # The recorded most-recently-used harness lives on disk in the shared
+        # instance and leaks between tests; reset it to None so an
+        # agent-type-less create defaults to the bundled registration.
+        if config.get("lastUsedAgentType") in (None, ""):
             return
-        for flag in flags_to_reset_to_false:
-            config[flag] = False
         config["lastUsedAgentType"] = None
         last_status: int | None = None
         for attempt in range(3):
@@ -435,8 +417,8 @@ class SculptorInstance:
                 logger.warning("PUT /api/v1/config raised on attempt {}", attempt + 1, exc_info=True)
             self.page.wait_for_timeout(500)
         raise RuntimeError(
-            f"Failed to reset experimental flags to False after 3 attempts (last status={last_status}). "
-            + "Subsequent tests would run with stale flags; failing fast here."
+            f"Failed to reset the most-recently-used agent type after 3 attempts (last status={last_status}). "
+            + "Subsequent tests would run with a stale MRU; failing fast here."
         )
 
     def _delete_all_workspaces_via_api(self) -> None:
@@ -643,37 +625,25 @@ class SculptorInstanceFactory:
     process against those shared resources, enabling restart testing while preserving
     data across restarts.
 
-    The underlying spawner can be either a raw backend ``SculptorFactory`` (for
-    ``browser`` / ``electron`` launch modes) or a ``PackagedElectronFactory``
-    that launches the shipped Electron binary via CDP. Most options behave
-    identically; exceptions are documented on individual methods.
+    The underlying spawner is a raw backend ``SculptorFactory`` (for the
+    ``browser`` / ``electron`` launch modes).
     """
 
-    _delegate: SculptorFactory | PackagedElectronFactory
+    _delegate: SculptorFactory
     base_repo: MockRepoState
     fake_bin_dir: Path
 
     def update_environment(self, sculptor_folder: Path | None = None, **env_overrides: str | None) -> None:
-        """Update the environment for subsequent spawn_instance() calls.
-
-        Environment variable overrides are only honoured by the raw backend
-        delegate; the packaged-electron delegate freezes its environment at
-        construction (the packaged binary launches its own backend child
-        process whose env is set once up front).
-        """
+        """Update the environment for subsequent spawn_instance() calls."""
         if sculptor_folder is not None:
             self._delegate.sculptor_folder = sculptor_folder
-        if isinstance(self._delegate, SculptorFactory):
-            self._delegate.environment.update(env_overrides)
-        elif env_overrides:
-            raise NotImplementedError("update_environment env overrides are not supported in packaged-electron mode")
+        self._delegate.environment.update(env_overrides)
 
     @contextmanager
     def spawn_instance(
         self,
         *,
         auto_project: bool = True,
-        wait_until_ready: bool = True,
     ) -> Generator[SculptorInstance, None, None]:
         """Start a new Sculptor instance and yield a ``SculptorInstance`` wrapping it.
 
@@ -682,18 +652,10 @@ class SculptorInstanceFactory:
                 test repo as its initial project. When False, the backend
                 starts with no project — useful for testing onboarding /
                 project selection.
-            wait_until_ready: When True (default), wait for the app to reach
-                a happy steady state (backend healthy + page navigated)
-                before yielding. When False, yield as soon as the renderer
-                is reachable — use for fatal-startup-error tests that assert
-                on renderer state when the backend has exited by design.
-                Only supported in packaged-electron mode.
         """
         project_path = self.base_repo.base_path if auto_project else None
-        is_electron = isinstance(self._delegate, PackagedElectronFactory)
         with self._delegate.spawn_sculptor_instance(
             project_path=project_path,
-            wait_until_ready=wait_until_ready,
         ) as (server, sculptor_page, browser_context, session_token):
             instance = SculptorInstance(
                 server=server,
@@ -704,7 +666,6 @@ class SculptorInstanceFactory:
                 fake_bin_dir=self.fake_bin_dir,
                 project_path=self.base_repo.base_path,
                 browser_context=browser_context,
-                is_electron=is_electron,
                 session_token=session_token,
             )
             yield instance
@@ -728,34 +689,6 @@ def create_sculptor_instance_factory(
         default_timeout_ms=default_timeout_ms,
         request=request,
         sculptor_folder=sculptor_folder,
-    )
-    return SculptorInstanceFactory(
-        delegate=delegate,
-        base_repo=base_repo,
-        fake_bin_dir=fake_bin_dir,
-    )
-
-
-def create_packaged_electron_instance_factory(
-    playwright: Playwright,
-    binary_path: Path,
-    port_manager: PortManager,
-    backend_port: int,
-    sculptor_folder: Path,
-    default_timeout_ms: int,
-    base_repo: MockRepoState,
-    fake_bin_dir: Path,
-    extra_env: dict[str, str] | None = None,
-) -> SculptorInstanceFactory:
-    """Build a SculptorInstanceFactory backed by the packaged Electron binary."""
-    delegate = PackagedElectronFactory(
-        playwright=playwright,
-        binary_path=binary_path,
-        port_manager=port_manager,
-        backend_port=backend_port,
-        sculptor_folder=sculptor_folder,
-        default_timeout_ms=default_timeout_ms,
-        extra_env=extra_env,
     )
     return SculptorInstanceFactory(
         delegate=delegate,

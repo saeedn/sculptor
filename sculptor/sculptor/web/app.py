@@ -1,13 +1,12 @@
 import asyncio
 import base64
-import contextlib
 import json
 import logging
 import mimetypes
 import os
 import platform
-import queue
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -22,31 +21,22 @@ from typing import Generator
 from typing import Iterator
 from typing import Literal
 from typing import TypeVar
-from uuid import uuid4
 
 import anyio
 import psutil
 import typeid.errors
 from fastapi import Depends
-from fastapi import File as FastAPIFile
 from fastapi import HTTPException
 from fastapi import Request
 from fastapi import Response
-from fastapi import UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse
 from fastapi.responses import StreamingResponse
 from fastapi.websockets import WebSocket
 from fastapi.websockets import WebSocketDisconnect
 from loguru import logger
-from pydantic import ValidationError
-from pydantic.alias_generators import to_camel
 
 from sculptor import version
-from sculptor.agents.default.claude_code_sdk.btw_process_manager import NoBtwSessionAvailable
-from sculptor.agents.harness_registry import get_harness_for_config
-from sculptor.common.plugin import get_plugin_dirs
 from sculptor.config.settings import SculptorSettings
 from sculptor.config.user_config import UserConfig
 from sculptor.config.user_config import UserConfigField
@@ -58,7 +48,6 @@ from sculptor.database.models import Project
 from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.database.models import Workspace
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches import log_exception
 from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.event_utils import MutableEvent
@@ -68,42 +57,21 @@ from sculptor.foundation.log_utils import log_and_exit_program
 from sculptor.foundation.processes.local_process import run_blocking
 from sculptor.foundation.pydantic_serialization import SerializableModel
 from sculptor.foundation.pydantic_serialization import model_dump
-from sculptor.foundation.pydantic_utils import model_update
 from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.subprocess_utils import ProcessSetupError
 from sculptor.interfaces.agents.agent import AgentConfigTypes
-from sculptor.interfaces.agents.agent import AgentMessageID
-from sculptor.interfaces.agents.agent import ClaudeCodeSDKAgentConfig
-from sculptor.interfaces.agents.agent import ClearContextUserMessage
-from sculptor.interfaces.agents.agent import InterruptProcessUserMessage
-from sculptor.interfaces.agents.agent import PersistentRequestCompleteAgentMessage
-from sculptor.interfaces.agents.agent import PiAgentConfig
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
-from sculptor.interfaces.agents.agent import RemoveQueuedMessageUserMessage
-from sculptor.interfaces.agents.agent import RequestFailureAgentMessage
-from sculptor.interfaces.agents.agent import SetModelUserMessage
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentSignalRunnerMessage
 from sculptor.interfaces.agents.agent import TerminalStatusSignal
-from sculptor.interfaces.agents.agent import UserQuestionAnswerMessage
 from sculptor.interfaces.agents.agent import is_terminal_agent_config
-from sculptor.interfaces.agents.artifacts import ArtifactType
-from sculptor.interfaces.agents.artifacts import DiffArtifact
-from sculptor.interfaces.agents.artifacts import TaskListArtifact
-from sculptor.interfaces.environments.agent_execution_environment import Dependency
-from sculptor.interfaces.environments.base import ARTIFACTS_DIRECTORY
-from sculptor.interfaces.environments.base import STATE_DIRECTORY
-from sculptor.interfaces.environments.base import TASKS_SUBDIRECTORY
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import TypeIDPrefixMismatchError
 from sculptor.primitives.ids import WorkspaceID
-from sculptor.primitives.ids import create_organization_id
-from sculptor.primitives.ids import create_user_id
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.data_model_service.data_types import TaskAndDataModelTransaction
-from sculptor.services.dependency_management_service import InstallResult
 from sculptor.services.git_repo_service.default_implementation import LocalReadOnlyGitRepo
 from sculptor.services.git_repo_service.default_implementation import LocalWritableGitRepo
 from sculptor.services.git_repo_service.error_types import GitRepoError
@@ -111,15 +79,11 @@ from sculptor.services.git_repo_service.error_types import GitRepoNotFoundError
 from sculptor.services.git_repo_service.git_commands import run_git_command_local
 from sculptor.services.project_service.default_implementation import get_most_recently_used_project_id
 from sculptor.services.project_service.default_implementation import update_most_recently_used_project
-from sculptor.services.task_service.errors import InvalidTaskOperation
 from sculptor.services.task_service.errors import TaskNotFound
 from sculptor.services.terminal_agent_registry.bundled import install_bundled_registrations
 from sculptor.services.terminal_agent_registry.registry import get_registration
 from sculptor.services.terminal_agent_registry.registry import load_registrations
-from sculptor.services.user_config.telemetry_info import get_onboarding_telemetry_info
-from sculptor.services.user_config.telemetry_info import get_telemetry_info as get_telemetry_info_impl
 from sculptor.services.user_config.user_config import get_config_path
-from sculptor.services.user_config.user_config import get_privacy_settings_for_telemetry
 from sculptor.services.user_config.user_config import get_user_config_instance
 from sculptor.services.user_config.user_config import get_user_config_instance_if_set
 from sculptor.services.user_config.user_config import save_config
@@ -133,9 +97,9 @@ from sculptor.services.workspace_service.branch_naming import resolve_pattern
 from sculptor.services.workspace_service.branch_naming import slugify_workspace_name
 from sculptor.services.workspace_service.default_implementation import DefaultWorkspaceService
 from sculptor.services.workspace_service.environment_manager.env_file_parser import parse_env_file
-from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
-    LocalAgentExecutionEnvironment,
-)
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import ARTIFACTS_DIRECTORY
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import STATE_DIRECTORY
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import TASKS_SUBDIRECTORY
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     create_terminal_for_environment,
 )
@@ -148,19 +112,14 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     unregister_terminal_manager,
 )
-from sculptor.startup_checks import check_is_user_email_field_valid
 from sculptor.startup_checks import check_sculptor_directory_writable
-from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import LLMModel
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import create_agent_terminal
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import make_agent_terminal_id
-from sculptor.telemetry import telemetry
 from sculptor.utils import build as build_utils
 from sculptor.utils.build import get_install_path
 from sculptor.utils.build import get_sculptor_folder
 from sculptor.utils.build import is_packaged
 from sculptor.utils.errors import is_irrecoverable_exception
-from sculptor.utils.timeout import log_runtime
 from sculptor.utils.tracing import ELECTRON_MAIN_PID
 from sculptor.utils.tracing import RENDERER_PID
 from sculptor.utils.tracing import add_external_events
@@ -171,13 +130,8 @@ from sculptor.web.auth import SessionTokenMiddleware
 from sculptor.web.auth import UserSession
 from sculptor.web.data_types import AgentDiagnosticsResponse
 from sculptor.web.data_types import AgentTypeName
-from sculptor.web.data_types import AnswerQuestionRequest
-from sculptor.web.data_types import ArtifactDataResponse
-from sculptor.web.data_types import AuthResult
-from sculptor.web.data_types import AuthStartResult
 from sculptor.web.data_types import BatchUpdateOpenStateRequest
 from sculptor.web.data_types import BranchExistsResponse
-from sculptor.web.data_types import BtwRequest
 from sculptor.web.data_types import CommitDiffResponse
 from sculptor.web.data_types import CommitFileInfo
 from sculptor.web.data_types import CommitHistoryResponse
@@ -187,10 +141,8 @@ from sculptor.web.data_types import CreateAgentRequest
 from sculptor.web.data_types import CreateInitialCommitRequest
 from sculptor.web.data_types import CreateWorkspaceRequestV2
 from sculptor.web.data_types import CurrentBranchInfo
-from sculptor.web.data_types import DependenciesStatus
 from sculptor.web.data_types import DirectoryEntry
 from sculptor.web.data_types import DiscardFileRequest
-from sculptor.web.data_types import EmailConfigRequest
 from sculptor.web.data_types import EnvVarNamesResponse
 from sculptor.web.data_types import HealthCheckResponse
 from sculptor.web.data_types import InitializeGitRepoRequest
@@ -211,22 +163,11 @@ from sculptor.web.data_types import ReadFileRequest
 from sculptor.web.data_types import RecentWorkspaceResponse
 from sculptor.web.data_types import RenameAgentRequest
 from sculptor.web.data_types import RepoInfo
-from sculptor.web.data_types import SendMessageRequest
-from sculptor.web.data_types import SetModelRequest
-from sculptor.web.data_types import SetTelemetryRequest
 from sculptor.web.data_types import SignalEventRequest
-from sculptor.web.data_types import SkillInfo
-from sculptor.web.data_types import SkipAccountSetupRequest
-from sculptor.web.data_types import StartTaskRequest
-from sculptor.web.data_types import SubmitAuthCodeRequest
 from sculptor.web.data_types import TerminalInputRequest
+from sculptor.web.data_types import ToolAvailability
 from sculptor.web.data_types import UpdateUserConfigRequest
 from sculptor.web.data_types import UpdateWorkspaceRequest
-from sculptor.web.data_types import UploadDiagnosticsRequest
-from sculptor.web.data_types import UploadDiagnosticsResponse
-from sculptor.web.data_types import UploadFileResponse
-from sculptor.web.data_types import WebviewCommandUiAction
-from sculptor.web.data_types import WebviewNavigateRequest
 from sculptor.web.data_types import WorkspaceDiffResponse
 from sculptor.web.data_types import WorkspaceFileEntry
 from sculptor.web.data_types import WorkspaceFileListResponse
@@ -235,10 +176,8 @@ from sculptor.web.data_types import WorkspaceResponse
 from sculptor.web.data_types import WorkspaceSetupCommandRequest
 from sculptor.web.data_types import WorkspaceSetupSnapshot
 from sculptor.web.derived import CodingAgentTaskView
-from sculptor.web.derived import TaskInterface
 from sculptor.web.derived import TaskViewTypes
 from sculptor.web.derived import create_initial_task_view
-from sculptor.web.message_conversion import convert_agent_messages_to_task_update
 from sculptor.web.middleware import App
 from sculptor.web.middleware import DecoratedAPIRouter
 from sculptor.web.middleware import add_logging_context
@@ -249,20 +188,15 @@ from sculptor.web.middleware import get_user_session
 from sculptor.web.middleware import get_user_session_for_websocket
 from sculptor.web.middleware import lifespan
 from sculptor.web.middleware import register_on_startup
-from sculptor.web.middleware import resolve_stream_scope
 from sculptor.web.middleware import run_sync_function_with_debugging_support_if_enabled
 from sculptor.web.middleware import shutdown_event as shutdown_event_impl
 from sculptor.web.open_with import open_path_in_external_app
-from sculptor.web.skills import discover_skills
-from sculptor.web.streams import Scope
 from sculptor.web.streams import ServerStopped
 from sculptor.web.streams import StreamingUpdate
 from sculptor.web.streams import stream_everything
 from sculptor.web.terminal_input import TerminalDeliveryResult
 from sculptor.web.terminal_input import deliver_prompt_to_terminal_agent
-from sculptor.web.ui_actions import next_webview_seq
 from sculptor.web.ui_actions import publish_ui_action
-from sculptor.web.upload_diagnostics import upload_diagnostics as perform_upload_diagnostics
 
 UpdateT = TypeVar("UpdateT", bound=StreamingUpdate)
 
@@ -321,7 +255,6 @@ def _workspace_to_response(workspace: Workspace, workspace_setup_command: str | 
         object_id=workspace.object_id,
         project_id=workspace.project_id,
         description=workspace.description,
-        initialization_strategy=workspace.initialization_strategy,
         source_branch=workspace.source_branch,
         target_branch=workspace.target_branch,
         requested_branch_name=workspace.requested_branch_name,
@@ -474,194 +407,6 @@ def set_session_token_cookie(
     )
 
 
-@router.post("/api/v1/projects/{project_id}/tasks")
-def start_task(
-    project_id: ProjectID,
-    request: Request,
-    task_request: StartTaskRequest,
-    user_session: UserSession = Depends(get_user_session),
-    settings: SculptorSettings = Depends(get_settings),
-) -> CodingAgentTaskView:
-    """Start a new task with the given prompt"""
-    prompt = task_request.prompt
-    interface = task_request.interface
-    model = task_request.model
-    initialization_strategy = task_request.initialization_strategy
-    task_name = task_request.name
-    source_branch = task_request.source_branch
-    workspace_id = task_request.workspace_id
-    task_id = TaskID()
-
-    with logger.contextualize(task_id=task_id), log_runtime("start_task"):
-        if not prompt:
-            logger.error("Start task request without prompt")
-            raise HTTPException(
-                status_code=422,
-                detail=[{"loc": ["body", "prompt"], "msg": "Prompt is required", "type": "value_error.missing"}],
-            )
-
-        services = get_services_from_request_or_websocket(request)
-        _prevent_action_if_out_of_free_space(services)
-
-        try:
-            interface = TaskInterface(interface)
-        except ValueError as e:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Invalid interface: {interface}. Must be 'terminal' or 'api'",
-            ) from e
-
-        logger.info(
-            "Starting new task with interface {} and initialization_strategy {}", interface, initialization_strategy
-        )
-
-        if model in (LLMModel.FAKE_CLAUDE, LLMModel.FAKE_CLAUDE_2) and not settings.TESTING.INTEGRATION_ENABLED:
-            raise HTTPException(
-                status_code=422,
-                detail="Testing model is only available when integration testing is enabled",
-            )
-
-        # little transaction here -- we don't want to span the whole thing bc then it will be slow
-        with user_session.open_transaction(services) as transaction:
-            project = transaction.get_project(project_id)
-            assert project is not None, f"Project {project_id} not found"
-
-            if workspace_id is not None:
-                # Use existing workspace
-                workspace = transaction.get_workspace(workspace_id)
-                if workspace is None or workspace.is_deleted:
-                    raise HTTPException(status_code=404, detail=f"Workspace {workspace_id} not found")
-                if workspace.project_id != project_id:
-                    raise HTTPException(
-                        status_code=400,
-                        detail=f"Workspace {workspace_id} belongs to a different project",
-                    )
-                logger.debug("Using existing workspace {} for task {}", workspace.object_id, task_id)
-            else:
-                # Create implicit workspace for this task
-                workspace = services.workspace_service.create_workspace(
-                    project=project,
-                    initialization_strategy=initialization_strategy,
-                    source_branch=source_branch,
-                    requested_branch_name=None,
-                    description=task_name,
-                    transaction=transaction,
-                )
-                logger.debug("Created workspace {} for task {}", workspace.object_id, task_id)
-
-            # Prompt-ful creation is always a chat agent — terminal agents have
-            # no chat stream to deliver the prompt to. Reject only an EXPLICIT
-            # terminal type; an omitted type resolves to the user's MRU, where a
-            # terminal default falls back to Claude.
-            if task_request.agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED):
-                raise HTTPException(status_code=422, detail="terminal agents do not take an initial prompt")
-            resolved_agent_type, _ = _resolve_requested_agent_type(task_request.agent_type, None, has_prompt=True)
-            agent_config = _agent_config_for_request(resolved_agent_type, None)
-            if task_request.agent_type is not None:
-                _record_most_recently_used_agent_type(resolved_agent_type, None)
-
-            # Auto-assign a type-derived name ("Claude N" / "Pi N") when no
-            # explicit name is provided.
-            if not task_name:
-                workspace_tasks = _get_tasks_for_workspace(workspace, transaction)
-                task_name = _compute_next_agent_name(workspace_tasks, _default_agent_name_prefix(agent_config))
-
-        with services.git_repo_service.open_local_user_git_repo_for_read(project) as repo:
-            # Get the current commit hash to use as the starting point for diffs
-            initial_commit_hash = repo.get_current_commit_hash()
-
-        max_seconds = None
-
-        # Create initial task state with workspace_id
-        initial_task_state = AgentTaskStateV2(
-            title=task_name,
-            workspace_id=workspace.object_id,
-        )
-
-        task = Task(
-            object_id=task_id,
-            max_seconds=max_seconds,
-            organization_reference=user_session.organization_reference,
-            user_reference=user_session.user_reference,
-            project_id=project.object_id,
-            input_data=AgentTaskInputsV2(
-                agent_config=agent_config,
-                git_hash=initial_commit_hash,
-                system_prompt=project.default_system_prompt,
-                default_model=model,
-            ),
-            current_state=initial_task_state,
-        )
-
-        logger.debug("Creating root concurrency group and opening transaction.")
-        root_concurrency_group = get_root_concurrency_group(request)
-        with (
-            root_concurrency_group.make_concurrency_group(name="start_task") as _concurrency_group,
-            user_session.open_transaction(services) as transaction,
-        ):
-            logger.debug("Creating task and inserting it into the database.")
-            inserted_task = services.task_service.create_task(task, transaction)
-            task_id = inserted_task.object_id
-
-            logger.debug("Creating initial messages...")
-            messages = []
-            input_user_message = ChatInputUserMessage(
-                text=prompt,
-                message_id=AgentMessageID(),
-                model_name=model,
-                files=task_request.files,
-                enter_plan_mode=task_request.enter_plan_mode,
-                fast_mode=task_request.fast_mode,
-                effort=task_request.effort,
-                sent_via=task_request.sent_via,
-            )
-            messages.append(input_user_message)
-            services.task_service.create_message(
-                message=input_user_message,
-                task_id=task_id,
-                transaction=transaction,
-            )
-
-        logger.debug("Creating initial task view.")
-        task_view = create_initial_task_view(task, settings)
-        assert isinstance(task_view, CodingAgentTaskView)
-        logger.debug("Adding messages to task view.")
-        for message in messages:
-            task_view.add_message(message)
-        logger.debug("Done adding messages to task view.")
-        return task_view
-
-
-def _cleanup_task_file_attachments(
-    task_id: TaskID,
-    services: CompleteServiceCollection,
-    transaction: DataModelTransaction,
-) -> None:
-    """Clean up files associated with a task.
-
-    Collects all file paths from ChatInputUserMessage messages and deletes them from disk.
-    """
-    messages = services.task_service.get_saved_messages_for_task(task_id, transaction)
-    file_paths: set[str] = set()
-
-    for message in messages:
-        if isinstance(message, ChatInputUserMessage) and message.files:
-            file_paths.update(message.files)
-
-    if not file_paths:
-        return
-
-    for file_path in file_paths:
-        try:
-            file_file = Path(file_path)
-            if file_file.exists():
-                file_file.unlink()
-                logger.debug("Deleted file: {}", file_path)
-        except Exception as e:
-            log_exception(e, "Failed to delete {file_path}", file_path=file_path)
-    logger.info("Cleaned up {} file(s) for task {}", len(file_paths), task_id)
-
-
 @router.post("/api/v1/workspaces")
 def create_workspace_v2(
     request: Request,
@@ -677,30 +422,18 @@ def create_workspace_v2(
         if project is None:
             raise HTTPException(status_code=404, detail=f"Project {workspace_request.project_id} not found")
 
-        strategy = workspace_request.initialization_strategy
         branch_name = workspace_request.requested_branch_name
-        if strategy == WorkspaceInitializationStrategy.IN_PLACE:
-            if branch_name is not None:
-                raise HTTPException(
-                    status_code=400,
-                    detail="requested_branch_name is not supported for IN_PLACE workspaces",
-                )
-        elif strategy == WorkspaceInitializationStrategy.WORKTREE:
-            if branch_name is None or not branch_name.strip():
-                raise HTTPException(
-                    status_code=400, detail="requested_branch_name is required for WORKTREE workspaces"
-                )
-            if workspace_request.source_branch is None:
-                raise HTTPException(status_code=400, detail="source_branch is required for WORKTREE workspaces")
+        if branch_name is None or not branch_name.strip():
+            raise HTTPException(status_code=400, detail="requested_branch_name is required for WORKTREE workspaces")
+        if workspace_request.source_branch is None:
+            raise HTTPException(status_code=400, detail="source_branch is required for WORKTREE workspaces")
 
-        if branch_name:
-            with services.git_repo_service.open_local_user_git_repo_for_read(project, log_command=False) as repo:
-                if repo.is_branch_ref(branch_name):
-                    raise HTTPException(status_code=409, detail=f"Branch '{branch_name}' already exists")
+        with services.git_repo_service.open_local_user_git_repo_for_read(project, log_command=False) as repo:
+            if repo.is_branch_ref(branch_name):
+                raise HTTPException(status_code=409, detail=f"Branch '{branch_name}' already exists")
 
         workspace = services.workspace_service.create_workspace(
             project=project,
-            initialization_strategy=workspace_request.initialization_strategy,
             source_branch=workspace_request.source_branch,
             requested_branch_name=branch_name,
             description=workspace_request.description,
@@ -709,12 +442,7 @@ def create_workspace_v2(
         )
         update_most_recently_used_project(project_id=validated_project_id)
         logger.info("Created workspace {} for project {}", workspace.object_id, workspace_request.project_id)
-        setup_command = (
-            resolve_workspace_setup_command(project.workspace_setup_command)
-            if workspace.initialization_strategy
-            in (WorkspaceInitializationStrategy.CLONE, WorkspaceInitializationStrategy.WORKTREE)
-            else None
-        )
+        setup_command = resolve_workspace_setup_command(project.workspace_setup_command)
         return _workspace_to_response(workspace, workspace_setup_command=setup_command)
 
 
@@ -726,19 +454,14 @@ def preview_branch_name(
     request: Request,
     project_id: str,
     workspace_name: str = "",
-    mode: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.WORKTREE,
     user_session: UserSession = Depends(get_user_session),
 ) -> PreviewBranchNameResponse:
     """Resolve the auto-filled branch-name preview for the Add Workspace form.
 
-    In-place mode returns an empty string since the field is hidden. Clone and
-    worktree modes resolve the project's or user-global naming pattern against
-    a `<slug>` derived from the workspace name (random if empty) and a `<user>`
-    slug derived from the repo's `git config user.name`.
+    Resolves the project's or user-global naming pattern against a `<slug>`
+    derived from the workspace name (random if empty) and a `<user>` slug
+    derived from the repo's `git config user.name`.
     """
-    if mode == WorkspaceInitializationStrategy.IN_PLACE:
-        return PreviewBranchNameResponse(branch_name="")
-
     validated_project_id = validate_project_id(project_id)
     services = get_services_from_request_or_websocket(request)
 
@@ -831,7 +554,6 @@ def rerun_workspace_setup(
         environment_id = workspace.environment_id
         project_path = project.get_local_user_path() if project is not None else None
         project_id = project.object_id if project is not None else None
-        initialization_strategy = workspace.initialization_strategy
         # Resolve through the project's tri-state default helper so a `None`
         # stored value runs the current default and `""` (user-cleared) blocks.
         command = resolve_workspace_setup_command(project.workspace_setup_command) if project is not None else None
@@ -848,7 +570,6 @@ def rerun_workspace_setup(
         project_path=project_path,
         project_id=project_id,
         concurrency_group=workspace_service.concurrency_group,
-        initialization_strategy=initialization_strategy,
     )
     state_dir = environment.to_host_path(environment.get_state_path())
     workspace_service.setup_runner.start(
@@ -882,7 +603,6 @@ def list_recent_workspaces(
             object_id=row.object_id,
             project_id=row.project_id,
             description=row.description,
-            initialization_strategy=row.initialization_strategy,
             source_branch=row.source_branch,
             is_deleted=row.is_deleted,
             created_at=row.created_at,
@@ -952,23 +672,6 @@ def batch_update_open_state(
                 pass  # Skip workspaces that no longer exist
 
 
-@router.get("/api/v1/workspaces/{workspace_id}")
-def get_workspace(
-    workspace_id: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> WorkspaceResponse:
-    """Get a workspace by ID."""
-    validated_workspace_id = validate_workspace_id(workspace_id)
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = transaction.get_workspace(validated_workspace_id)
-        if workspace is None or workspace.is_deleted:
-            raise HTTPException(status_code=404, detail=f"Workspace {workspace_id} not found")
-        return _workspace_to_response(workspace)
-
-
 @router.get("/api/v1/projects/{project_id}/workspaces")
 def list_workspaces(
     project_id: str,
@@ -1005,7 +708,6 @@ def delete_workspace(
         # Cascade delete: clean up all agents in the workspace
         workspace_tasks = _get_tasks_for_workspace(workspace, transaction)
         for task in workspace_tasks:
-            _cleanup_task_file_attachments(task.object_id, services, transaction)
             try:
                 services.task_service.delete_task(task.object_id, transaction)
                 logger.debug("Cascade-deleted agent {} from workspace {}", task.object_id, workspace_id)
@@ -1253,74 +955,6 @@ def workspace_ui_open_file(
     return Response(status_code=204)
 
 
-def _ensure_webview_target_workspace(
-    workspace_id: str,
-    request: Request,
-    user_session: UserSession,
-) -> WorkspaceID:
-    validated_workspace_id = validate_workspace_id(workspace_id)
-    services = get_services_from_request_or_websocket(request)
-    with user_session.open_transaction(services) as transaction:
-        workspace = transaction.get_workspace(validated_workspace_id)
-        if workspace is None or workspace.is_deleted:
-            raise HTTPException(
-                status_code=404,
-                detail={"code": "workspace_not_found", "message": f"workspace {workspace_id} not found"},
-            )
-        if not workspace.is_open:
-            raise HTTPException(
-                status_code=409,
-                detail={
-                    "code": "workspace_not_open",
-                    "message": f"workspace {workspace_id} is not open (is_open=False); cannot drive the webview in a closed workspace",
-                },
-            )
-        return workspace.object_id
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/ui/webview/navigate")
-def workspace_ui_webview_navigate(
-    workspace_id: str,
-    request: Request,
-    navigate_request: WebviewNavigateRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> Response:
-    """Drive the in-app Browser panel for this workspace to navigate to a URL.
-
-    Emits a WebviewCommandUiAction event over the per-user WebSocket fan-out so
-    connected frontends update their per-workspace browser-panel atoms.
-    """
-    target_workspace_id = _ensure_webview_target_workspace(workspace_id, request, user_session)
-    publish_ui_action(
-        WebviewCommandUiAction(
-            workspace_id=target_workspace_id,
-            seq=next_webview_seq(target_workspace_id),
-            kind="navigate",
-            url=navigate_request.url,
-        )
-    )
-    return Response(status_code=204)
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/ui/webview/refresh")
-def workspace_ui_webview_refresh(
-    workspace_id: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> Response:
-    """Drive the in-app Browser panel for this workspace to reload the current URL."""
-    target_workspace_id = _ensure_webview_target_workspace(workspace_id, request, user_session)
-    publish_ui_action(
-        WebviewCommandUiAction(
-            workspace_id=target_workspace_id,
-            seq=next_webview_seq(target_workspace_id),
-            kind="refresh",
-            url=None,
-        )
-    )
-    return Response(status_code=204)
-
-
 @router.post("/api/v1/workspaces/{workspace_id}/read-file")
 def workspace_read_file(
     workspace_id: str,
@@ -1524,145 +1158,6 @@ def workspace_read_file_at_ref(
     return ReadFileAtRefResponse(content=result.content, encoding=result.encoding)
 
 
-class LocalPluginInfo(SerializableModel):
-    """A frontend plugin discovered in the Sculptor plugins directory.
-
-    That directory is the backend data folder's ``plugins/`` subdirectory (e.g.
-    ``~/.sculptor/plugins``; it varies by build and environment — see
-    ``get_sculptor_folder``).
-
-    ``manifest_url`` is the origin-relative path to the plugin's manifest; the
-    frontend resolves it against the backend origin, registers it as a read-only
-    "local" plugin source, and loads it through the normal plugin loader (the
-    files are served by the ``/plugins/local`` static mount).
-    """
-
-    id: str
-    manifest_url: str
-
-
-@router.get("/api/v1/plugins/local")
-def get_local_plugins() -> list[LocalPluginInfo]:
-    """List frontend plugins the user has dropped into the Sculptor plugins directory.
-
-    The directory is the backend data folder's ``plugins/`` subdirectory (e.g.
-    ``~/.sculptor/plugins``; varies by build/environment).
-    Each immediate subdirectory that contains a ``manifest.json`` is reported as
-    a loadable source, sorted by directory name for a stable order. Returns an
-    empty list when the directory is absent. This only enumerates; the manifest
-    and bundle bytes are served by the ``/plugins/local`` static mount (see
-    ``sculptor.web.middleware.mount_plugin_files``).
-    """
-    plugins_dir = get_sculptor_folder() / "plugins"
-    if not plugins_dir.is_dir():
-        return []
-    try:
-        entries = sorted(plugins_dir.iterdir())
-    except OSError as e:
-        log_exception(e, "Failed to list local plugins directory")
-        return []
-    plugins: list[LocalPluginInfo] = []
-    for entry in entries:
-        if entry.is_dir() and (entry / "manifest.json").is_file():
-            # Percent-encode the directory name: a name with URL-special chars
-            # (#, ?, space) would otherwise corrupt the manifest URL the frontend
-            # fetches. `safe=""` encodes everything but unreserved chars.
-            encoded_name = urllib.parse.quote(entry.name, safe="")
-            plugins.append(LocalPluginInfo(id=entry.name, manifest_url=f"/plugins/local/{encoded_name}/manifest.json"))
-    return plugins
-
-
-class LocalPluginsDirectory(SerializableModel):
-    """The on-disk directory Sculptor scans for drop-in frontend plugins.
-
-    ``path`` is formatted for display — the user's home directory is collapsed to
-    ``~`` (see ``_display_path``), so the settings UI can show e.g.
-    ``~/.sculptor/plugins`` rather than an absolute path that embeds the username.
-    A from-source checkout outside ``$HOME`` shows its full path instead.
-    """
-
-    path: str
-
-
-@router.get("/api/v1/plugins/dir")
-def get_local_plugins_directory() -> LocalPluginsDirectory:
-    """Report where drop-in frontend plugins are loaded from, formatted for display.
-
-    The directory is the backend data folder's ``plugins/`` subdirectory; it need
-    not exist yet (the settings copy tells the user where to create it). This only
-    reports the path — enumerating the plugins inside it is ``get_local_plugins``.
-    """
-    return LocalPluginsDirectory(path=_display_path(get_sculptor_folder() / "plugins"))
-
-
-@router.get("/api/v1/skills")
-def get_skills(
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-    project_id: str | None = None,
-    workspace_id: str | None = None,
-) -> list[SkillInfo]:
-    """Get available Claude Code skills.
-
-    Exactly one of project_id or workspace_id must be provided.
-
-    When workspace_id is given, discovers skills from the workspace's working
-    directory (which may be a clone in CLONE mode). Falls back to the project's
-    local repo if the workspace environment hasn't been initialized yet.
-
-    When project_id is given, discovers skills from the project's local
-    repository. Used on the Add Workspace page where no workspace exists yet.
-    """
-    if workspace_id is not None and project_id is not None:
-        raise HTTPException(status_code=400, detail="Provide either project_id or workspace_id, not both")
-    if workspace_id is None and project_id is None:
-        raise HTTPException(status_code=400, detail="Either project_id or workspace_id is required")
-
-    services = get_services_from_request_or_websocket(request)
-    plugin_dirs = get_plugin_dirs()
-
-    if workspace_id is not None:
-        validated_workspace_id = validate_workspace_id(workspace_id)
-        with user_session.open_transaction(services) as transaction:
-            workspace = transaction.get_workspace(validated_workspace_id)
-            if workspace is None or workspace.is_deleted:
-                raise HTTPException(status_code=404, detail=f"Workspace {workspace_id} not found")
-
-            working_dir = services.workspace_service.get_workspace_working_directory(workspace, transaction)
-
-            if working_dir is None:
-                # Environment not yet initialized — fall back to the project's local repo.
-                project = transaction.get_project(workspace.project_id)
-                if project is None:
-                    raise HTTPException(status_code=404, detail="Workspace project not found")
-                try:
-                    with services.git_repo_service.open_local_user_git_repo_for_read(project) as repo:
-                        return discover_skills(repo.get_repo_path(), plugin_dirs=plugin_dirs)
-                except Exception as e:
-                    log_exception(e, "Failed to get skills")
-                    raise HTTPException(status_code=500, detail="Failed to get skills") from e
-
-        try:
-            return discover_skills(working_dir, plugin_dirs=plugin_dirs)
-        except Exception as e:
-            log_exception(e, "Failed to get skills")
-            raise HTTPException(status_code=500, detail="Failed to get skills") from e
-
-    else:
-        assert project_id is not None
-        validated_project_id = validate_project_id(project_id)
-        with user_session.open_transaction(services) as transaction:
-            project = transaction.get_project(validated_project_id)
-            if project is None:
-                raise HTTPException(status_code=404, detail=f"Project {project_id} not found")
-            try:
-                with services.git_repo_service.open_local_user_git_repo_for_read(project) as repo:
-                    return discover_skills(repo.get_repo_path(), plugin_dirs=plugin_dirs)
-            except Exception as e:
-                log_exception(e, "Failed to get skills")
-                raise HTTPException(status_code=500, detail="Failed to get skills") from e
-
-
 def _get_workspace_or_404(
     workspace_id: str,
     transaction: DataModelTransaction,
@@ -1678,6 +1173,23 @@ def _get_workspace_or_404(
 # Encoding for a registered terminal agent in UserConfig.last_used_agent_type,
 # matching the frontend's ``registered:<id>`` StoredAgentType form.
 _REGISTERED_AGENT_TYPE_PREFIX = "registered:"
+
+# The bundled Claude Code terminal-agent registration installed on first run
+# (see ``terminal_agent_registry/bundled.py``). It is the default harness a
+# new agent uses when the user has made no explicit choice.
+_BUNDLED_CLAUDE_REGISTRATION_ID = "claude-code"
+
+
+def _default_new_agent_type() -> tuple[AgentTypeName, str | None]:
+    """The harness a create with no usable choice falls back to.
+
+    The bundled ``claude-code`` registered terminal agent when it is installed,
+    and a plain terminal otherwise (so creation never throws on a missing
+    registration).
+    """
+    if get_registration(_BUNDLED_CLAUDE_REGISTRATION_ID) is not None:
+        return AgentTypeName.REGISTERED, _BUNDLED_CLAUDE_REGISTRATION_ID
+    return AgentTypeName.TERMINAL, None
 
 
 def _encode_stored_agent_type(agent_type: AgentTypeName, registration_id: str | None) -> str:
@@ -1700,41 +1212,35 @@ def _decode_stored_agent_type(value: str) -> tuple[AgentTypeName, str | None] | 
     return (agent_type, None) if agent_type != AgentTypeName.REGISTERED else None
 
 
-def _resolve_most_recently_used_agent_type(*, has_prompt: bool) -> tuple[AgentTypeName, str | None]:
+def _resolve_most_recently_used_agent_type() -> tuple[AgentTypeName, str | None]:
     """Resolve the harness a create with no explicit ``agent_type`` should use.
 
     Mirrors the app's "+" button default: decode ``UserConfig.last_used_agent_type``
     and apply the same fallbacks so the app and the sculpt CLI agree — a stored
-    Pi is unusable once the pi agent is disabled, a stored registered agent may
-    have been unregistered, and a prompt-ful create is always a chat agent (so a
-    terminal harness falls back to Claude). Defaults to Claude when unset.
+    registered agent may have been unregistered. Defaults to the bundled
+    ``claude-code`` registered terminal agent (or a plain terminal if it is
+    absent) when unset.
     """
     config = get_user_config_instance()
     stored = config.last_used_agent_type
     decoded = _decode_stored_agent_type(stored) if stored else None
     if decoded is None:
-        return AgentTypeName.CLAUDE, None
+        return _default_new_agent_type()
     agent_type, registration_id = decoded
-    if agent_type == AgentTypeName.PI and not config.enable_pi_agent:
-        return AgentTypeName.CLAUDE, None
     if agent_type == AgentTypeName.REGISTERED and (
         registration_id is None or get_registration(registration_id) is None
     ):
-        return AgentTypeName.CLAUDE, None
-    if has_prompt and agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED):
-        return AgentTypeName.CLAUDE, None
+        return _default_new_agent_type()
     return agent_type, registration_id
 
 
 def _resolve_requested_agent_type(
     agent_type: AgentTypeName | None,
     registration_id: str | None,
-    *,
-    has_prompt: bool,
 ) -> tuple[AgentTypeName, str | None]:
     """Resolve a create request's harness, falling back to the MRU when omitted."""
     if agent_type is None:
-        return _resolve_most_recently_used_agent_type(has_prompt=has_prompt)
+        return _resolve_most_recently_used_agent_type()
     return agent_type, registration_id
 
 
@@ -1787,9 +1293,7 @@ def _agent_config_for_request(
             resume_command_template=registration.resume_command_template,
             accepts_automated_prompts=registration.accepts_automated_prompts,
         )
-    if agent_type == AgentTypeName.PI:
-        return PiAgentConfig()
-    return ClaudeCodeSDKAgentConfig()
+    raise HTTPException(status_code=422, detail=f"Unsupported agent type: {agent_type}")
 
 
 def _get_tasks_for_workspace(
@@ -1828,20 +1332,16 @@ def _validate_agent_in_workspace(
 
 
 def _default_agent_name_prefix(agent_config: AgentConfigTypes) -> str:
-    """The default-name prefix for an agent's type ("Claude 1", "Pi 2", ...).
+    """The default-name prefix for an agent's type.
 
     Registered terminal agents default-name from their registration's display
-    name; every other type names from the type itself so a tab is identifiable
+    name; a plain terminal names from the type itself so a tab is identifiable
     before (or without) a generated title.
     """
     if isinstance(agent_config, RegisteredTerminalAgentConfig):
         return agent_config.display_name
     if isinstance(agent_config, TerminalAgentConfig):
         return "Terminal"
-    if isinstance(agent_config, PiAgentConfig):
-        return "Pi"
-    if isinstance(agent_config, ClaudeCodeSDKAgentConfig):
-        return "Claude"
     return "Agent"
 
 
@@ -1887,45 +1387,8 @@ def create_workspace_agent(
         if project is None:
             raise HTTPException(status_code=404, detail="Workspace project not found")
 
-        if agent_request.prompt:
-            if agent_request.agent_type in (AgentTypeName.TERMINAL, AgentTypeName.REGISTERED):
-                raise HTTPException(status_code=422, detail="terminal agents do not take an initial prompt")
-            # Delegate to existing start_task logic
-            model = agent_request.model
-            if model is None:
-                raise HTTPException(
-                    status_code=422,
-                    detail=[
-                        {
-                            "loc": ["body", "model"],
-                            "msg": "Model is required when providing a prompt",
-                            "type": "value_error.missing",
-                        }
-                    ],
-                )
-
-            task_request = StartTaskRequest(
-                prompt=agent_request.prompt,
-                interface=agent_request.interface,
-                model=model,
-                files=agent_request.files,
-                name=agent_request.name,
-                workspace_id=validated_workspace_id,
-                enter_plan_mode=agent_request.enter_plan_mode,
-                fast_mode=agent_request.fast_mode,
-                effort=agent_request.effort,
-                sent_via=agent_request.sent_via,
-                agent_type=agent_request.agent_type,
-            )
-            return start_task(
-                project_id=workspace.project_id,
-                request=request,
-                task_request=task_request,
-                user_session=user_session,
-                settings=settings,
-            )
-
-        # No prompt — create agent in waiting state
+        # Create the agent in a waiting state. Terminal agents take no initial
+        # prompt — input is typed into the PTY after creation.
         _prevent_action_if_out_of_free_space(services)
 
         workspace_tasks = _get_tasks_for_workspace(workspace, transaction)
@@ -1933,7 +1396,7 @@ def create_workspace_agent(
         # (the same default the app's "+" button uses); an explicit one is used
         # as-is and recorded as the new MRU once validated.
         resolved_agent_type, resolved_registration_id = _resolve_requested_agent_type(
-            agent_request.agent_type, agent_request.registration_id, has_prompt=False
+            agent_request.agent_type, agent_request.registration_id
         )
         agent_config = _agent_config_for_request(resolved_agent_type, resolved_registration_id)
         if agent_request.agent_type is not None:
@@ -1943,23 +1406,6 @@ def create_workspace_agent(
         )
         task_id = TaskID()
 
-        # Check if this is the user's very first agent ever (including deleted ones).
-        # get_all_tasks() includes deleted tasks, so this stays False once any agent
-        # has ever been created — even if all workspaces were later deleted.
-        # Skip during integration tests to avoid injecting unexpected messages.
-        # Terminal agents (resolved config, so registered ones too) have no chat
-        # stream — an intro message would sit in their queue forever, so skip it.
-        is_first_agent = (
-            not settings.TESTING.INTEGRATION_ENABLED
-            and not is_terminal_agent_config(agent_config)
-            and len(workspace_tasks) == 0
-            # pyrefly: ignore [missing-attribute]
-            and len(transaction.get_all_tasks()) == 0
-        )
-
-        with services.git_repo_service.open_local_user_git_repo_for_read(project) as repo:
-            initial_commit_hash = repo.get_current_commit_hash()
-
         initial_task_state = AgentTaskStateV2(
             title=task_name,
             workspace_id=validated_workspace_id,
@@ -1967,44 +1413,24 @@ def create_workspace_agent(
 
         task = Task(
             object_id=task_id,
-            max_seconds=None,
             organization_reference=user_session.organization_reference,
             user_reference=user_session.user_reference,
             project_id=project.object_id,
             input_data=AgentTaskInputsV2(
                 agent_config=agent_config,
-                git_hash=initial_commit_hash,
-                system_prompt=project.default_system_prompt,
-                default_model=agent_request.model,
             ),
             current_state=initial_task_state,
         )
 
     root_concurrency_group = get_root_concurrency_group(request)
-    intro_message = None
     with (
         root_concurrency_group.make_concurrency_group(name="create_agent") as _concurrency_group,
         user_session.open_transaction(services) as transaction,
     ):
         inserted_task = services.task_service.create_task(task, transaction)
 
-        # Auto-send intro help message for first-time users
-        if is_first_agent:
-            intro_message = ChatInputUserMessage(
-                text="/sculptor:help I just set up Sculptor for the first time. What should I know to get started?",
-                message_id=AgentMessageID(),
-                model_name=agent_request.model or LLMModel.CLAUDE_4_OPUS,
-            )
-            services.task_service.create_message(
-                message=intro_message,
-                task_id=inserted_task.object_id,
-                transaction=transaction,
-            )
-
     task_view = create_initial_task_view(inserted_task, settings)
     assert isinstance(task_view, CodingAgentTaskView)
-    if intro_message is not None:
-        task_view.add_message(intro_message)
     return task_view
 
 
@@ -2150,8 +1576,6 @@ def delete_workspace_agent(
         workspace = _get_workspace_or_404(workspace_id, transaction)
         task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
 
-        _cleanup_task_file_attachments(task.object_id, services, transaction)
-
         try:
             services.task_service.delete_task(task.object_id, transaction)
         except TaskNotFound as e:
@@ -2229,28 +1653,6 @@ def mark_workspace_agent_unread(
     return True
 
 
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/restore")
-def restore_workspace_agent(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Restore a failed agent."""
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-        try:
-            services.task_service.restore_task(task.object_id, transaction)
-        except TaskNotFound as e:
-            raise HTTPException(status_code=404, detail="Agent not found") from e
-        except InvalidTaskOperation as e:
-            raise HTTPException(status_code=400, detail="Agent is not in a failed state - cannot restore") from e
-
-
 @router.get("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/diagnostics")
 def get_workspace_agent_diagnostics(
     workspace_id: str,
@@ -2276,21 +1678,11 @@ def get_workspace_agent_diagnostics(
     state_file = environment_root / STATE_DIRECTORY / TASKS_SUBDIRECTORY / str(task.object_id) / "session_id"
 
     session_id: str | None = None
-    transcript_file_path: str | None = None
 
     try:
         session_id = state_file.read_text().strip()
     except (FileNotFoundError, OSError):
         pass
-
-    if session_id and isinstance(task.input_data, AgentTaskInputsV2):
-        # We don't hold an AgentExecutionEnvironment here (only the host-side
-        # working directory), so call the harness's path-from-primitives
-        # helper instead of the env-bound method.
-        harness = get_harness_for_config(task.input_data.agent_config)
-        jsonl_dir = harness.get_jsonl_path_for_working_directory(Path.home(), working_dir.resolve())
-        if jsonl_dir is not None:
-            transcript_file_path = str(jsonl_dir / f"{session_id}.jsonl")
 
     sculptor_transcript = (
         environment_root / ARTIFACTS_DIRECTORY / TASKS_SUBDIRECTORY / str(task.object_id) / "transcript.jsonl"
@@ -2299,381 +1691,8 @@ def get_workspace_agent_diagnostics(
 
     return AgentDiagnosticsResponse(
         session_id=session_id,
-        transcript_file_path=transcript_file_path,
         sculptor_transcript_file_path=sculptor_transcript_file_path,
     )
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/messages")
-def send_workspace_agent_messages(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    message_request: SendMessageRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Send a message to an agent via API interface."""
-    services = get_services_from_request_or_websocket(request)
-    _prevent_action_if_out_of_free_space(services)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-        message_str = message_request.message
-        if not message_str:
-            raise HTTPException(
-                status_code=422,
-                detail=[{"loc": ["body", "message"], "msg": "Message required", "type": "value_error.missing"}],
-            )
-
-        saved_messages = services.task_service.get_saved_messages_for_task(task.object_id, transaction)
-        assert isinstance(task.input_data, AgentTaskInputsV2), (
-            f"Expected AgentTaskInputsV2 for agent message endpoint, got {type(task.input_data).__name__}"
-        )
-        harness = get_harness_for_config(task.input_data.agent_config)
-        if message_request.enter_plan_mode and not harness.capabilities().supports_interactive_backchannel:
-            raise HTTPException(
-                status_code=400,
-                detail="plan mode requires a harness that supports the interactive backchannel",
-            )
-        task_state = convert_agent_messages_to_task_update(
-            saved_messages, task_id=task.object_id, completed_message_by_id={}, harness=harness
-        )
-        if task_state.pending_user_question is not None:
-            raise HTTPException(
-                status_code=409,
-                detail="Cannot send a message while the agent is waiting for a response to AskUserQuestion.",
-            )
-
-        message_id = AgentMessageID()
-        logger.info("Sending message {} to agent {}: {}", message_id, agent_id, message_str[:100])
-
-        message = ChatInputUserMessage(
-            message_id=message_id,
-            text=message_str,
-            model_name=message_request.model,
-            files=message_request.files,
-            enter_plan_mode=message_request.enter_plan_mode,
-            exit_plan_mode=message_request.exit_plan_mode,
-            fast_mode=message_request.fast_mode,
-            effort=message_request.effort,
-            sent_via=message_request.sent_via,
-        )
-
-        services.task_service.create_message(
-            message=message,
-            task_id=task.object_id,
-            transaction=transaction,
-        )
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/answer_question")
-def answer_workspace_agent_question(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    answer_request: AnswerQuestionRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Submit answers to an AskUserQuestion tool invocation."""
-    services = get_services_from_request_or_websocket(request)
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-        # Persist the answer message. Since UserQuestionAnswerMessage is a PersistentUserMessage,
-        # the agent runner picks it up and sends it to the agent to resume processing.
-        answer_message = UserQuestionAnswerMessage(
-            message_id=AgentMessageID(),
-            answers=answer_request.answers,
-            notes=answer_request.notes,
-            question_data=answer_request.question_data,
-            tool_use_id=answer_request.tool_use_id,
-        )
-        services.task_service.create_message(
-            message=answer_message,
-            task_id=task.object_id,
-            transaction=transaction,
-        )
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/clear_context")
-def clear_workspace_agent_context(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Clear agent context."""
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-        # Defense-in-depth mirror of the frontend context-reset gate (and the
-        # plan-mode guard on the messages endpoint): a harness that cannot reset
-        # context must not be sent a ClearContextUserMessage.
-        assert isinstance(task.input_data, AgentTaskInputsV2), (
-            f"Expected AgentTaskInputsV2 for clear-context endpoint, got {type(task.input_data).__name__}"
-        )
-        harness = get_harness_for_config(task.input_data.agent_config)
-        if not harness.capabilities().supports_context_reset:
-            raise HTTPException(
-                status_code=400,
-                detail="context reset requires a harness that supports it",
-            )
-
-    message_id = AgentMessageID()
-    with await_message_response(message_id, task.object_id, services):
-        with user_session.open_transaction(services) as transaction:
-            services.task_service.create_message(
-                message=ClearContextUserMessage(message_id=message_id),
-                task_id=task.object_id,
-                transaction=transaction,
-            )
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/interrupt")
-def interrupt_workspace_agent(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Interrupt a running agent."""
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-    message_id = AgentMessageID()
-    with await_message_response(message_id, task.object_id, services):
-        with user_session.open_transaction(services) as transaction:
-            services.task_service.create_message(
-                message=InterruptProcessUserMessage(message_id=message_id),
-                task_id=task.object_id,
-                transaction=transaction,
-            )
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/set_model")
-def set_workspace_agent_model(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    set_model_request: SetModelRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Switch a running agent's model (the pi out-of-band `set_model` path).
-
-    Used by harnesses with a backend model list (pi); Claude's model rides each
-    turn instead. The request blocks until the agent resolves the switch and
-    returns 400 with the agent's error message when the switch is rejected (e.g.
-    pi reports "Model not found"), so the frontend can toast it.
-    """
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-        # Defense-in-depth mirror of the frontend model-selection gate: a harness
-        # that cannot switch models must not be sent a SetModelUserMessage. A task
-        # whose inputs are not an agent config cannot support model selection.
-        if not isinstance(task.input_data, AgentTaskInputsV2):
-            raise HTTPException(
-                status_code=400,
-                detail="model selection is not supported for this agent",
-            )
-        harness = get_harness_for_config(task.input_data.agent_config)
-        if not harness.capabilities().supports_model_selection:
-            raise HTTPException(
-                status_code=400,
-                detail="model selection requires a harness that supports it",
-            )
-        # supports_model_selection also covers per-turn switching (Claude); the
-        # out-of-band set_model RPC is only honored by a harness that sources a
-        # backend model list (pi). A harness without a catalog has no
-        # SetModelUserMessage handler, so reject it rather than block the request
-        # forever on a message nothing resolves.
-        model_state = task.current_state if isinstance(task.current_state, AgentTaskStateV2) else None
-        if not harness.get_available_models(model_state):
-            raise HTTPException(
-                status_code=400,
-                detail="this agent does not support switching models",
-            )
-
-    message_id = AgentMessageID()
-    with await_request_outcome(message_id, task.object_id, services) as outcome:
-        with user_session.open_transaction(services) as transaction:
-            services.task_service.create_message(
-                message=SetModelUserMessage(
-                    message_id=message_id,
-                    provider=set_model_request.provider,
-                    model_id=set_model_request.model_id,
-                ),
-                task_id=task.object_id,
-                transaction=transaction,
-            )
-    # The adapter resolves a rejected switch (e.g. pi "Model not found") as a
-    # RequestFailure; surface it to the caller so the frontend toasts it.
-    terminal = outcome[0] if outcome else None
-    if isinstance(terminal, RequestFailureAgentMessage):
-        detail = str(terminal.error.args[0]) if terminal.error.args else "Failed to set model"
-        raise HTTPException(status_code=400, detail=detail)
-
-
-@router.post("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/btw")
-def btw_agent(
-    workspace_id: str,
-    agent_id: str,
-    request: Request,
-    btw_request: BtwRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> Response:
-    """Run a single forked `/btw` Haiku turn that streams back via the unified WS."""
-    if not btw_request.question.strip():
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["body", "question"], "msg": "Question required", "type": "value_error.missing"}],
-        )
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-        environment = services.task_service.get_task_environment(task.object_id, transaction)
-        saved_messages = services.task_service.get_saved_messages_for_task(task.object_id, transaction)
-
-    if environment is None:
-        raise HTTPException(status_code=409, detail={"reason": "no_session_yet"})
-
-    agent_environment = LocalAgentExecutionEnvironment(
-        environment=environment,
-        task_id=task.object_id,
-        dependency_management_service=services.dependency_management_service,
-    )
-    # Main-agent fake-claude detection: if the most recent user-authored chat
-    # message picked a fake-claude model, fork using FakeClaude instead of the
-    # real binary so integration tests exercise the /btw path end-to-end.
-    latest_model: LLMModel | None = None
-    is_main_agent_started = False
-    for saved in reversed(saved_messages):
-        if isinstance(saved, ChatInputUserMessage):
-            is_main_agent_started = True
-            latest_model = saved.model_name
-            break
-    if latest_model is None and isinstance(task.input_data, AgentTaskInputsV2):
-        latest_model = task.input_data.default_model
-    is_fake_claude = latest_model in (LLMModel.FAKE_CLAUDE, LLMModel.FAKE_CLAUDE_2)
-
-    try:
-        services.btw_service.run_btw_for_task(
-            environment=agent_environment,
-            task_id=task.object_id,
-            workspace_id=WorkspaceID(workspace_id),
-            question=btw_request.question,
-            request_id=btw_request.request_id,
-            is_fake_claude=is_fake_claude,
-            is_main_agent_started=is_main_agent_started,
-        )
-    except NoBtwSessionAvailable as exc:
-        raise HTTPException(status_code=409, detail={"reason": "no_session_yet"}) from exc
-
-    return Response(status_code=202)
-
-
-@router.get("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/artifacts/{artifact_name}")
-def get_workspace_agent_artifact(
-    workspace_id: str,
-    agent_id: str,
-    artifact_name: str,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> ArtifactDataResponse:
-    """Get an artifact for an agent."""
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-    return _get_typed_artifact_data(artifact_name, services, agent_id, user_session)
-
-
-@router.delete("/api/v1/workspaces/{workspace_id}/agents/{agent_id}/messages/{message_id}")
-def delete_workspace_agent_message(
-    workspace_id: str,
-    agent_id: str,
-    message_id: AgentMessageID,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> None:
-    """Delete a message from an agent."""
-    services = get_services_from_request_or_websocket(request)
-
-    with user_session.open_transaction(services) as transaction:
-        workspace = _get_workspace_or_404(workspace_id, transaction)
-        task = _validate_agent_in_workspace(agent_id, workspace, transaction, services)
-
-    new_message_id = AgentMessageID()
-    with await_message_response(new_message_id, task.object_id, services):
-        with user_session.open_transaction(services) as transaction:
-            services.task_service.create_message(
-                message=RemoveQueuedMessageUserMessage(message_id=new_message_id, target_message_id=message_id),
-                task_id=task.object_id,
-                transaction=transaction,
-            )
-
-
-@contextlib.contextmanager
-def await_message_response(
-    message_id: AgentMessageID,
-    task_id: TaskID,
-    services: CompleteServiceCollection,
-) -> Iterator[None]:
-    with services.task_service.subscribe_to_task(task_id) as updates_queue:
-        yield
-        logger.debug("Waiting for response to message {} in task {}", message_id, task_id)
-        while True:
-            try:
-                update = updates_queue.get(timeout=1.0)
-            except queue.Empty:
-                pass
-            else:
-                if isinstance(update, PersistentRequestCompleteAgentMessage):
-                    if update.request_id == message_id:
-                        break
-
-
-@contextlib.contextmanager
-def await_request_outcome(
-    message_id: AgentMessageID,
-    task_id: TaskID,
-    services: CompleteServiceCollection,
-) -> Iterator[list[PersistentRequestCompleteAgentMessage]]:
-    """Like `await_message_response`, but captures the terminal request message.
-
-    Yields a one-element list the caller reads after the block to inspect the
-    outcome (e.g. distinguish RequestSuccess from RequestFailure and surface the
-    failure to the HTTP caller). The list is empty only if the subscription is
-    torn down before the request resolves.
-    """
-    outcome: list[PersistentRequestCompleteAgentMessage] = []
-    with services.task_service.subscribe_to_task(task_id) as updates_queue:
-        yield outcome
-        logger.debug("Waiting for outcome of message {} in task {}", message_id, task_id)
-        while True:
-            try:
-                update = updates_queue.get(timeout=1.0)
-            except queue.Empty:
-                pass
-            else:
-                if isinstance(update, PersistentRequestCompleteAgentMessage):
-                    if update.request_id == message_id:
-                        outcome.append(update)
-                        break
 
 
 def _prevent_action_if_out_of_free_space(services: CompleteServiceCollection) -> None:
@@ -2685,28 +1704,6 @@ def _prevent_action_if_out_of_free_space(services: CompleteServiceCollection) ->
             status_code=422,
             detail=f"Insufficient disk space ({user_config.min_free_disk_gb} GB free space required to prevent filling your disk)\nPlease either free some space (eg, by deleting old tasks) or increase min_free_disk_gb in settings.",
         )
-
-
-@router.get("/api/v1/telemetry_info")
-def get_telemetry_info(user_session: UserSession = Depends(get_user_session)) -> telemetry.TelemetryInfo:
-    """Returns telemetry info for the current user.
-
-    If the current user has not initialized their configuration, use an
-    anonymous config.
-    """
-    return get_logged_in_or_anonymous_telemetry_info()
-
-
-def get_logged_in_or_anonymous_telemetry_info() -> telemetry.TelemetryInfo:
-    """Returns telemetry info for the current user.
-
-    If the current user has not initialized their configuration, use an
-    anonymous config.
-    """
-    logged_in_info = get_telemetry_info_impl()
-    if not logged_in_info:
-        return get_onboarding_telemetry_info()
-    return logged_in_info
 
 
 @router.get("/api/v1/config/status")
@@ -2724,187 +1721,47 @@ def get_config_status(
 
     if not user_config:
         return ConfigStatusResponse(
-            has_email=False,
-            has_privacy_consent=False,
             has_project=has_project,
             has_dependencies_passing=False,
         )
 
-    services = get_services_from_request_or_websocket(request)
-    dep_status = services.dependency_management_service.get_status()
-    deps_passing = (
-        dep_status.git.installed and dep_status.claude.installed and dep_status.claude.is_version_in_range is not False
-    )
+    deps_passing = shutil.which("git") is not None and shutil.which("claude") is not None
     return ConfigStatusResponse(
-        has_email=bool(user_config.user_email) and check_is_user_email_field_valid(user_config),
-        has_privacy_consent=user_config.is_privacy_policy_consented,
         has_project=has_project,
-        has_dependencies_passing=bool(deps_passing),
+        has_dependencies_passing=deps_passing,
     )
 
 
-@router.post("/api/v1/config/email")
-def save_user_email(
+@router.get("/api/v1/tool-availability")
+def get_tool_availability(
     request: Request,
-    email_config_request: EmailConfigRequest,
     user_session: UserSession = Depends(get_user_session),
-) -> telemetry.TelemetryInfo:
-    """Save user email during onboarding
+) -> ToolAvailability:
+    """Report whether the external CLI tools onboarding checks for are on PATH.
 
-    This function will determine the updated TelemetryInfo for the signed in user, and return that to the frontend.
+    Read-only: resolves ``claude`` and ``git`` via ``shutil.which`` and never
+    installs or modifies PATH. Backs the onboarding PATH-check screen.
     """
-    # Get or create user config (since this is the first step)
-    user_config = get_user_config_instance()
-
-    user_config = model_update(
-        user_config,
-        {
-            "user_email": email_config_request.user_email,
-            "user_id": create_user_id(str(email_config_request.user_email)),
-            "user_full_name": email_config_request.full_name,
-            "organization_id": create_organization_id(str(email_config_request.user_email)),
-            # Saving user email counts as consenting to the Policy email
-            "is_privacy_policy_consented": True,
-            # Telemetry choice comes from the welcome-step checkbox
-            "is_telemetry_level_set": True,
-            **get_privacy_settings_for_telemetry(email_config_request.is_telemetry_enabled).model_dump(),
-        },
+    return ToolAvailability(
+        claude=shutil.which("claude") is not None,
+        git=shutil.which("git") is not None,
     )
-
-    # The server log is bundled into bug-report diagnostics uploads, so never
-    # write the actual email/name into it.
-    logger.info(
-        "Saved user profile (has_full_name={}, did_opt_in_to_marketing={})",
-        email_config_request.full_name is not None,
-        email_config_request.did_opt_in_to_marketing,
-    )
-    save_config(user_config, get_config_path())
-    set_user_config_instance(user_config)
-
-    return get_logged_in_or_anonymous_telemetry_info()
-
-
-@router.post("/api/v1/config/skip_account")
-def skip_account_setup(
-    request: Request,
-    skip_account_request: SkipAccountSetupRequest,
-    user_session: UserSession = Depends(get_user_session),
-) -> telemetry.TelemetryInfo:
-    """Complete the onboarding welcome step without an account.
-
-    The user keeps the anonymous, instance-id-based identity (no email or
-    name); only their telemetry choice and the privacy-policy consent are
-    recorded. Telemetry events therefore stay anonymous.
-    """
-    user_config = get_user_config_instance()
-
-    user_config = model_update(
-        user_config,
-        {
-            # Continuing past the welcome step counts as consenting to the policy
-            "is_privacy_policy_consented": True,
-            "is_telemetry_level_set": True,
-            **get_privacy_settings_for_telemetry(skip_account_request.is_telemetry_enabled).model_dump(),
-        },
-    )
-
-    save_config(user_config, get_config_path())
-    set_user_config_instance(user_config)
-
-    return get_logged_in_or_anonymous_telemetry_info()
-
-
-@router.get("/api/v1/config/dependencies")
-def get_dependencies_status(
-    request: Request, user_session: UserSession = Depends(get_user_session)
-) -> DependenciesStatus:
-    """Check if required dependencies are installed."""
-    services = get_services_from_request_or_websocket(request)
-    service = services.dependency_management_service
-    ds = service.get_status()
-
-    return ds
-
-
-@router.post("/api/v1/dependencies/install")
-def install_dependency(
-    request: Request,
-    tool: str = "CLAUDE",
-    user_session: UserSession = Depends(get_user_session),
-) -> InstallResult:
-    """Trigger installation of a managed dependency binary."""
-    try:
-        dependency = Dependency(tool)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Unknown tool: {tool}") from e
-
-    services = get_services_from_request_or_websocket(request)
-    return services.dependency_management_service.install_managed(dependency)
-
-
-@router.post("/api/v1/dependencies/auth")
-def start_dependency_auth(
-    request: Request,
-    tool: str = "CLAUDE",
-    user_session: UserSession = Depends(get_user_session),
-) -> AuthStartResult:
-    """Begin interactive dependency authentication and return the sign-in URL.
-
-    The CLI keeps running, waiting for the code the user pastes back via
-    POST /api/v1/dependencies/auth/code. On a machine with a usable local
-    browser the flow self-completes and the response has ``success=True``.
-    """
-    try:
-        dependency = Dependency(tool)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=f"Unknown tool: {tool}") from e
-
-    services = get_services_from_request_or_websocket(request)
-    return services.dependency_management_service.start_auth_login(dependency)
-
-
-@router.post("/api/v1/dependencies/auth/code")
-def submit_dependency_auth_code(
-    body: SubmitAuthCodeRequest,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> AuthResult:
-    """Submit the code the user pasted from the sign-in page to finish authentication."""
-    try:
-        dependency = Dependency(body.tool)
-    except ValueError:
-        raise HTTPException(status_code=400, detail=f"Unknown tool: {body.tool}")
-
-    services = get_services_from_request_or_websocket(request)
-    return services.dependency_management_service.submit_auth_code(dependency, body.code)
 
 
 @router.post("/api/v1/config/complete")
 def complete_onboarding(request: Request, user_session: UserSession = Depends(get_user_session)) -> None:
-    """Complete onboarding by saving config to disk and initializing services"""
+    """Complete onboarding by persisting the user config to disk.
+
+    Onboarding completion is now implied by having added a project (see
+    `get_config_status`); this endpoint just makes sure the current config
+    (instance id and any defaults) is written to disk.
+    """
     user_config = get_user_config_instance()
     if not user_config:
         raise HTTPException(status_code=400, detail="User config not initialized")
-    # An empty email means the user skipped account setup on the welcome step
-    # (anonymous identity); only non-empty emails are validated.
-    if user_config.user_email and not check_is_user_email_field_valid(user_config):
-        raise HTTPException(status_code=400, detail="Invalid email address")
-    if not user_config.user_email and not user_config.is_privacy_policy_consented:
-        raise HTTPException(status_code=400, detail="Welcome step has not been completed")
 
-    # Ensure privacy consent and telemetry level are set for returning users
-    # who may have created their account before these fields were added.
-    updates: dict[str, Any] = {}
-    if not user_config.is_privacy_policy_consented:
-        updates["is_privacy_policy_consented"] = True
-    if not user_config.is_telemetry_level_set:
-        updates["is_telemetry_level_set"] = True
-        updates.update(get_privacy_settings_for_telemetry(True).model_dump())
-    if updates:
-        user_config = model_update(user_config, updates)
-        save_config(user_config, get_config_path())
-        set_user_config_instance(user_config)
-
+    save_config(user_config, get_config_path())
+    set_user_config_instance(user_config)
     logger.info("Onboarding completed successfully")
 
 
@@ -2912,15 +1769,6 @@ def complete_onboarding(request: Request, user_session: UserSession = Depends(ge
 def get_user_config(request: Request, user_session: UserSession = Depends(get_user_session)) -> UserConfig | None:
     """Get the current user config"""
     return get_user_config_instance()
-
-
-# The SDK-facing flags that POST /api/v1/config/telemetry owns. PUT
-# /api/v1/config rejects requests that would change any of them.
-_TELEMETRY_FLAGS = (
-    "is_error_reporting_enabled",
-    "is_product_analytics_enabled",
-    "is_session_recording_enabled",
-)
 
 
 @router.put("/api/v1/config")
@@ -2933,21 +1781,10 @@ def update_user_config(
 
     ``user_config`` is a partial dict; fields absent from it are left
     unchanged. This prevents stale full-object PUTs (e.g. a debounced
-    panel-layout sync) from clobbering fields like
-    ``enable_in_place_workspaces`` that a different code path just changed.
+    panel-layout sync) from clobbering fields that a different code path
+    just changed.
     """
     old_user_config = get_user_config_instance()
-
-    for flag in _TELEMETRY_FLAGS:
-        for key in (flag, to_camel(flag)):
-            if key not in update_config_request.user_config:
-                continue
-            new_value = update_config_request.user_config[key]
-            if new_value != getattr(old_user_config, flag):
-                raise HTTPException(
-                    status_code=400,
-                    detail="Use POST /api/v1/config/telemetry to change telemetry consent.",
-                )
 
     merged = old_user_config.model_dump(by_alias=True) if old_user_config else {}
     merged.update(update_config_request.user_config)
@@ -2956,35 +1793,6 @@ def update_user_config(
     save_config(new_user_config, get_config_path())
     set_user_config_instance(new_user_config)
 
-    # Push updated dependencies status when dependency paths change so the
-    # frontend atom reflects the new mode immediately.
-    new_dep = new_user_config.dependency_paths
-    old_dep = old_user_config.dependency_paths if old_user_config else None
-    if new_dep != old_dep:
-        services = get_services_from_request_or_websocket(request)
-        services.dependency_management_service.get_status()
-
-    return new_user_config
-
-
-@router.post("/api/v1/config/telemetry")
-def set_telemetry(
-    set_telemetry_request: SetTelemetryRequest,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> UserConfig:
-    """Flip the binary telemetry consent.
-
-    This is the only endpoint allowed to change the underlying telemetry
-    flags; PUT /api/v1/config rejects requests that would change them.
-    """
-    old_user_config = get_user_config_instance()
-    new_user_config = model_update(
-        old_user_config,
-        get_privacy_settings_for_telemetry(set_telemetry_request.enabled).model_dump(),
-    )
-    save_config(new_user_config, get_config_path())
-    set_user_config_instance(new_user_config)
     return new_user_config
 
 
@@ -3076,76 +1884,6 @@ def update_naming_pattern(
     return updated_project.naming_pattern
 
 
-@router.get("/api/v1/projects/{project_id}/files_and_folders")
-def get_files_and_folders(
-    project_id: str,
-    request: Request,
-    directory: str = "",
-    filter: str = "",
-    workspace_id: str | None = None,
-    user_session: UserSession = Depends(get_user_session),
-    settings: SculptorSettings = Depends(get_settings),
-) -> list[str]:
-    """List immediate contents of a directory in the project.
-
-    When ``workspace_id`` is provided the listing is rooted at the workspace's
-    working directory (e.g. a clone); otherwise it falls back to the project's
-    local repo path.  Absolute ``directory`` values bypass the root and list
-    the filesystem directly so users can reference files outside the repo.
-    """
-    services = get_services_from_request_or_websocket(request)
-    with user_session.open_transaction(services) as transaction:
-        project = transaction.get_project(ProjectID(project_id))
-        if project is None:
-            raise HTTPException(status_code=404, detail="Project not found")
-        if project.organization_reference != user_session.organization_reference:
-            raise HTTPException(status_code=403, detail="You do not have access to this project")
-
-        root: Path | None = None
-        if workspace_id is not None:
-            validated_workspace_id = validate_workspace_id(workspace_id)
-            workspace = transaction.get_workspace(validated_workspace_id)
-            if workspace is None or workspace.is_deleted:
-                raise HTTPException(status_code=404, detail=f"Workspace {workspace_id} not found")
-            root = services.workspace_service.get_workspace_working_directory(workspace, transaction)
-
-        if root is None:
-            root = project.get_local_user_path()
-
-    try:
-        entries = _list_directory_contents(root, directory)
-        if filter:
-            lower_filter = filter.lower()
-            entries = [e for e in entries if lower_filter in e.lower()]
-        return entries
-
-    except Exception as e:
-        log_exception(e, "Unexpected error getting files and folders")
-        raise HTTPException(status_code=500, detail="Unexpected error getting files and folders") from e
-
-
-def _list_directory_contents(repo_root: Path, directory: str) -> list[str]:
-    """List immediate children of a directory, sorted with folders first.
-
-    If ``directory`` is an absolute path it is used directly, bypassing
-    ``repo_root``.  This lets users browse files outside the repository.
-    """
-    expanded = Path(directory).expanduser()
-    target = expanded if expanded.is_absolute() else repo_root / directory
-    if not target.is_dir():
-        return []
-    dirs: list[str] = []
-    files: list[str] = []
-    for entry in target.iterdir():
-        if entry.is_dir():
-            dirs.append(entry.name + "/")
-        else:
-            files.append(entry.name)
-    dirs.sort()
-    files.sort()
-    return dirs + files
-
-
 _REPO_ACCESS_MAX_RETRIES = 3
 _REPO_ACCESS_RETRY_DELAY_SECONDS = 0.5
 _GIT_INFO_TIMEOUT_SECONDS = 10
@@ -3176,48 +1914,9 @@ def _extract_hostname(url: str) -> str:
     return parsed.hostname or ""
 
 
-def _is_gitlab_url(url: str) -> bool:
-    """Check if a URL points to a GitLab instance."""
-    return "gitlab" in _extract_hostname(url).lower()
-
-
 def _is_github_url(url: str) -> bool:
     """Check if a URL points to a GitHub instance."""
     return "github" in _extract_hostname(url).lower()
-
-
-def _get_remote_branches(repo_path: Path, remote_filter: str | None = "origin") -> list[str]:
-    """Get remote branch names (e.g. 'origin/main').
-
-    Args:
-        repo_path: Path to the git repository.
-        remote_filter: Only include branches from this remote (e.g. ``"origin"``).
-            Pass ``None`` to include branches from all remotes.
-    """
-    try:
-        result = subprocess.run(
-            ["git", "branch", "-r", "--format=%(refname:short)"],
-            cwd=repo_path,
-            capture_output=True,
-            text=True,
-            timeout=_GIT_INFO_TIMEOUT_SECONDS,
-        )
-        if result.returncode != 0:
-            return []
-        branches = []
-        for line in result.stdout.strip().splitlines():
-            branch = line.strip()
-            if not branch:
-                continue
-            if remote_filter is not None and not branch.startswith(f"{remote_filter}/"):
-                continue
-            # Skip HEAD pointer entries
-            if branch.endswith("/HEAD") or "HEAD ->" in line:
-                continue
-            branches.append(branch)
-        return branches
-    except (subprocess.TimeoutExpired, OSError):
-        return []
 
 
 @router.get("/api/v1/projects/{project_id}/current_branch")
@@ -3332,8 +2031,8 @@ def get_repo_info(
                 except ProcessSetupError as e:
                     # The is_path_accessible attribute is set in _check_and_update_project_accessibility, which
                     # used to fail when the project repo is a remote mounted directory which got disconnected.
-                    # Properly catching the OSError there should prevent an unnecessary re-raise here, preventing
-                    # Sentry spam and hopefully preventing the backend from crashing.
+                    # Properly catching the OSError there should prevent an unnecessary re-raise here, avoiding
+                    # log spam and hopefully preventing the backend from crashing.
                     if project.is_path_accessible:
                         raise
                     raise HTTPException(
@@ -3354,18 +2053,14 @@ def get_repo_info(
 
         # Get origin URL and provider detection info
         origin_url = _get_origin_url(repo_path)
-        is_gitlab_origin = _is_gitlab_url(origin_url) if origin_url is not None else False
         is_github_origin = _is_github_url(origin_url) if origin_url is not None else False
-        remote_branches = _get_remote_branches(repo_path)
 
         return RepoInfo(
             repo_path=repo_path,
             current_branch=current_branch,
             recent_branches=branches,
             project_id=project.object_id,
-            is_gitlab_origin=is_gitlab_origin,
             is_github_origin=is_github_origin,
-            remote_branches=remote_branches,
         )
     except HTTPException:
         raise
@@ -3382,7 +2077,6 @@ async def stream_everything_websocket(
     websocket: WebSocket,
     user_session: UserSession = Depends(get_user_session_for_websocket),
     shutdown_event: Event = Depends(shutdown_event_impl),
-    scope: Scope = Depends(resolve_stream_scope),
 ) -> None:
     """Unified stream for all updates: tasks, task details, user data, notifications.
 
@@ -3395,13 +2089,10 @@ async def stream_everything_websocket(
             user_session,
             stream_everything(
                 user_session=user_session,
-                scope=scope,
                 shutdown_event=shutdown_event,
                 services=services,
                 concurrency_group=stream_concurrency_group,
-                dependency_management_service=services.dependency_management_service,
                 pr_polling_service=services.pr_polling_service,
-                btw_service=services.btw_service,
             ),
             websocket,
             stream_concurrency_group.shutdown_event,
@@ -3892,107 +2583,6 @@ def _get_next_elem_for_websocket(
         return to_yield
 
 
-def _get_artifact_data(
-    artifact_name: str,
-    services: CompleteServiceCollection,
-    task_id_str: str,
-    user_session: UserSession,
-) -> str:
-    try:
-        task_id = TaskID(task_id_str)
-    except typeid.errors.SuffixValidationException as e:
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["path", "task_id"], "msg": "Invalid task ID format", "type": "value_error"}],
-        ) from e
-    with user_session.open_transaction(services) as transaction:
-        task = services.task_service.get_task(task_id, transaction)
-    if task is None:
-        raise HTTPException(status_code=404, detail="Task not found")
-    # Backfill from the workspace's stable artifacts dir if the cache was wiped
-    # (SCU-1245); returns False only when no snapshot exists anywhere.
-    if not services.task_service.ensure_artifact_cache_populated(task_id, artifact_name):
-        raise HTTPException(status_code=404, detail="Artifact not found")
-    artifact_data_url = services.task_service.get_artifact_file_url(task_id, artifact_name)
-    assert str(artifact_data_url).startswith("file://"), "Only local file artifacts are supported"
-    artifact_data_path = Path(str(artifact_data_url).replace("file://", ""))
-    if not artifact_data_path.exists():
-        raise HTTPException(status_code=404, detail="Artifact not found")
-    artifact_data = artifact_data_path.read_text(encoding="utf-8")
-    logger.debug("Returning artifact at path {}", artifact_data_path)
-    return artifact_data
-
-
-def _get_typed_artifact_data(
-    artifact_name: str,
-    services: CompleteServiceCollection,
-    task_id_str: str,
-    user_session: UserSession,
-) -> ArtifactDataResponse:
-    """Get artifact data and return it with proper typing based on artifact type."""
-    raw_data = _get_artifact_data(artifact_name, services, task_id_str, user_session)
-    try:
-        _artifact_type = ArtifactType(artifact_name)
-    except ValueError as e:
-        logger.error("Unknown artifact type: {}", artifact_name)
-        raise HTTPException(status_code=400, detail=f"Unknown artifact type: {artifact_name}") from e
-
-    # happens occasionally, better to do this than cause flaky test errors
-    if raw_data == "":
-        raise HTTPException(status_code=404, detail="Artifact is empty")
-
-    try:
-        parsed_json = json.loads(raw_data)
-
-        if not isinstance(parsed_json, dict) or "object_type" not in parsed_json:
-            logger.error("Artifact missing object_type field: {}", artifact_name)
-            raise HTTPException(status_code=500, detail="Invalid artifact format")
-
-        object_type = parsed_json["object_type"]
-        version = parsed_json.get("version")
-
-        if object_type == "TaskListArtifact" and version == 2:
-            return TaskListArtifact.model_validate(parsed_json)
-        if object_type == "TaskListArtifact":
-            logger.info(
-                "TaskListArtifact with unsupported version {} for {}; returning empty",
-                version,
-                artifact_name,
-            )
-            return TaskListArtifact(tasks=[])
-        if object_type == "TodoListArtifact":
-            logger.info(
-                "Legacy TodoListArtifact on disk for {}; returning empty TaskListArtifact",
-                artifact_name,
-            )
-            return TaskListArtifact(tasks=[])
-        if object_type == "DiffArtifact":
-            return DiffArtifact.model_validate(parsed_json)
-        logger.error("Unknown object_type: {}", object_type)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Unknown artifact object_type: {object_type}",
-        )
-
-    except json.JSONDecodeError as e:
-        log_exception(
-            e,
-            "Failed to parse artifact JSON",
-            priority=ExceptionPriority.MEDIUM_PRIORITY,
-        )
-        raise HTTPException(status_code=500, detail="Invalid artifact JSON") from e
-    except ValidationError as e:
-        log_exception(
-            e,
-            "Failed to validate artifact data",
-            priority=ExceptionPriority.MEDIUM_PRIORITY,
-        )
-        raise HTTPException(
-            status_code=422,
-            detail=[{"loc": ["body"], "msg": "Invalid artifact data", "type": "value_error"}],
-        ) from e
-
-
 @router.get("/api/v1/health")
 def get_health_check(request: Request) -> HealthCheckResponse:
     services = get_services_from_request_or_websocket(request)
@@ -4003,12 +2593,9 @@ def get_health_check(request: Request) -> HealthCheckResponse:
     with services.data_model_service.open_task_transaction() as transaction:
         active_task_count = len(transaction.get_active_tasks())
 
-    dependencies_status = services.dependency_management_service.get_status()
-
     return HealthCheckResponse(
         version=str(version.__version__),
         git_sha=str(version.__git_sha__),
-        python_version=sys.version.split()[0],
         platform=platform.system(),
         platform_version=platform.release(),
         free_disk_gb=free_gb,
@@ -4019,9 +2606,6 @@ def get_health_check(request: Request) -> HealthCheckResponse:
         data_directory=str(build_utils.get_sculptor_folder()),
         install_mode="packaged" if is_packaged() else "source",
         install_path=str(get_install_path()),
-        ci_job_id=version.ci_job_id,
-        ci_ref=version.ci_ref,
-        dependencies_status=dependencies_status,
     )
 
 
@@ -4287,64 +2871,6 @@ def open_path_in_app(
     """Open a file system path in an external application."""
     target_path = Path(open_path_in_app_request.path).expanduser()
     return open_path_in_external_app(open_path_in_app_request.app, target_path)
-
-
-MAX_UPLOAD_SIZE_BYTES = 20 * 1024 * 1024  # 20MB
-
-
-@router.post("/api/v1/upload-file")
-def upload_file(
-    file: UploadFile = FastAPIFile(...),
-    user_session: UserSession = Depends(get_user_session),
-) -> UploadFileResponse:
-    """Accept a multipart file upload and store it in the backend upload directory."""
-    content = file.file.read(MAX_UPLOAD_SIZE_BYTES + 1)
-    if len(content) > MAX_UPLOAD_SIZE_BYTES:
-        raise HTTPException(status_code=413, detail="File exceeds maximum size of 20MB")
-
-    original_ext = Path(file.filename or "").suffix
-    file_id = f"{uuid4()}{original_ext}"
-
-    settings = get_settings()
-    upload_dir = settings.upload_path
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    (upload_dir / file_id).write_bytes(content)
-
-    return UploadFileResponse(file_id=file_id)
-
-
-@router.get("/api/v1/uploaded-file/{file_id}")
-def get_uploaded_file(
-    file_id: str,
-    user_session: UserSession = Depends(get_user_session),
-) -> FileResponse:
-    """Serve a previously uploaded file by its file_id."""
-    settings = get_settings()
-    upload_dir = settings.upload_path.resolve()
-    file_path = (upload_dir / file_id).resolve()
-    if not file_path.is_relative_to(upload_dir):
-        raise HTTPException(status_code=400, detail="Invalid file_id")
-    if not file_path.is_file():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    return FileResponse(file_path)
-
-
-@router.post("/api/v1/upload-diagnostics")
-def upload_diagnostics(
-    request_body: UploadDiagnosticsRequest,
-    request: Request,
-    user_session: UserSession = Depends(get_user_session),
-) -> UploadDiagnosticsResponse:
-    """Bundle diagnostic data and logs into a zip, upload to S3, and return the report ID."""
-    settings = get_settings()
-    services = get_services_from_request_or_websocket(request)
-    return perform_upload_diagnostics(
-        request_body=request_body,
-        settings=settings,
-        server_start_time=_SERVER_START_TIME,
-        dependency_management_service=services.dependency_management_service,
-    )
 
 
 class TraceBatchRequest(SerializableModel):

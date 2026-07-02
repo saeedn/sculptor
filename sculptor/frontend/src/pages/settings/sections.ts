@@ -1,18 +1,4 @@
-import {
-  CodeIcon,
-  CogIcon,
-  DatabaseIcon,
-  FolderTreeIcon,
-  GitBranchIcon,
-  KeyboardIcon,
-  LayoutGridIcon,
-  PaintbrushIcon,
-  PlayIcon,
-  PuzzleIcon,
-  ShieldCheckIcon,
-  ShieldIcon,
-  TerminalIcon,
-} from "lucide-react";
+import { CodeIcon, CogIcon, FolderTreeIcon, GitBranchIcon, KeyboardIcon, ShieldIcon, TerminalIcon } from "lucide-react";
 import type { ComponentType } from "react";
 
 import { ElementIds } from "../../api";
@@ -32,21 +18,13 @@ import { ElementIds } from "../../api";
 
 export const SettingsSection = {
   GENERAL: "GENERAL",
-  AGENT: "AGENT",
   KEYBINDINGS: "KEYBINDINGS",
-  PANELS: "PANELS",
-  PLUGINS: "PLUGINS",
-  DEPENDENCIES: "DEPENDENCIES",
-  PI: "PI",
   REPOSITORIES: "REPOSITORIES",
   GIT: "GIT",
   CI: "CI",
   FILE_BROWSER: "FILE_BROWSER",
   PROJECT_ENV_VARS: "PROJECT_ENV_VARS",
-  PRIVACY: "PRIVACY",
-  EXPERIMENTAL: "EXPERIMENTAL",
   ACTIONS: "ACTIONS",
-  THEME_BUILDER: "THEME_BUILDER",
 } as const;
 
 export type SettingsSectionId = (typeof SettingsSection)[keyof typeof SettingsSection];
@@ -71,18 +49,10 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
   {
     id: SettingsSection.GENERAL,
     displayName: "General",
-    paletteSubtitle: "Theme, updates",
-    paletteKeywords: ["theme", "updates"],
+    paletteSubtitle: "Theme",
+    paletteKeywords: ["theme"],
     icon: CogIcon,
     testId: ElementIds.SETTINGS_NAV_GENERAL,
-  },
-  {
-    id: SettingsSection.AGENT,
-    displayName: "Agent",
-    paletteSubtitle: "Default model and effort",
-    paletteKeywords: ["model", "llm", "claude"],
-    icon: PlayIcon,
-    testId: ElementIds.SETTINGS_NAV_AGENT,
   },
   {
     id: SettingsSection.KEYBINDINGS,
@@ -91,42 +61,6 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
     paletteKeywords: ["shortcuts", "hotkeys"],
     icon: KeyboardIcon,
     testId: ElementIds.SETTINGS_NAV_KEYBINDINGS,
-  },
-  {
-    id: SettingsSection.PANELS,
-    displayName: "Panels",
-    paletteSubtitle: "Configure panel layout, shortcuts, and visibility",
-    paletteKeywords: ["layout", "docking", "zones"],
-    icon: LayoutGridIcon,
-    testId: ElementIds.SETTINGS_NAV_PANELS,
-  },
-  // Visibility of the Plugins section is gated on the experimental
-  // frontend-plugins flag at both consumers of this array (the Settings
-  // sidebar in SettingsPage and the Cmd+K palette builder) — with the flag
-  // off it appears in neither.
-  {
-    id: SettingsSection.PLUGINS,
-    displayName: "Plugins",
-    paletteSubtitle: "Installed plugins and their settings",
-    paletteKeywords: ["extensions", "addons"],
-    icon: PuzzleIcon,
-    testId: ElementIds.SETTINGS_NAV_PLUGINS,
-  },
-  {
-    id: SettingsSection.DEPENDENCIES,
-    displayName: "Dependencies",
-    paletteSubtitle: "Tools and managers",
-    paletteKeywords: ["packages"],
-    icon: DatabaseIcon,
-    testId: ElementIds.SETTINGS_NAV_DEPENDENCIES,
-  },
-  {
-    id: SettingsSection.PI,
-    displayName: "Pi (experimental)",
-    paletteSubtitle: "Pi agent harness configuration",
-    paletteKeywords: ["pi", "harness", "agent"],
-    icon: PlayIcon,
-    testId: ElementIds.SETTINGS_NAV_PI,
   },
   {
     id: SettingsSection.REPOSITORIES,
@@ -140,7 +74,7 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
     id: SettingsSection.GIT,
     displayName: "Git",
     paletteSubtitle: "Git provider configuration",
-    paletteKeywords: ["github", "gitlab"],
+    paletteKeywords: ["github", "pr", "pull request"],
     icon: GitBranchIcon,
     testId: ElementIds.SETTINGS_NAV_GIT,
   },
@@ -169,35 +103,11 @@ export const SETTINGS_SECTIONS: ReadonlyArray<SettingsSectionDescriptor> = [
     testId: ElementIds.SETTINGS_NAV_PROJECT_ENV_VARS,
   },
   {
-    id: SettingsSection.PRIVACY,
-    displayName: "Privacy",
-    paletteSubtitle: "Email and telemetry",
-    paletteKeywords: ["account", "profile", "telemetry", "tracking", "data", "opt out"],
-    icon: ShieldCheckIcon,
-    testId: ElementIds.SETTINGS_NAV_PRIVACY,
-  },
-  {
-    id: SettingsSection.EXPERIMENTAL,
-    displayName: "Experimental",
-    paletteSubtitle: "Feature flags",
-    paletteKeywords: ["flags", "beta"],
-    icon: ShieldIcon,
-    testId: ElementIds.SETTINGS_NAV_EXPERIMENTAL,
-  },
-  {
     id: SettingsSection.ACTIONS,
     displayName: "Actions",
     paletteSubtitle: "Custom actions",
     paletteKeywords: ["custom"],
     icon: CodeIcon,
     testId: ElementIds.SETTINGS_NAV_ACTIONS,
-  },
-  {
-    id: SettingsSection.THEME_BUILDER,
-    displayName: "Theme builder",
-    paletteSubtitle: "Tweak appearance",
-    paletteKeywords: ["colors", "appearance"],
-    icon: PaintbrushIcon,
-    testId: ElementIds.SETTINGS_NAV_THEME_BUILDER,
   },
 ];

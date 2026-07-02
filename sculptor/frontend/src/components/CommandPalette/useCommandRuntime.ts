@@ -3,34 +3,15 @@ import { useStore } from "jotai/react";
 import { useCallback, useLayoutEffect, useMemo, useRef } from "react";
 
 import type { UserConfigField } from "../../api";
-import { CHAT_INPUT_ELEMENT_ID } from "../../common/Constants.ts";
 import { useImbueNavigate } from "../../common/NavigateUtils.ts";
-import { chatSearchFocusRequestAtom, chatSearchVisibleAtom } from "../../common/state/atoms/chatSearch.ts";
-import { updateReportProblemAtom } from "../../common/state/atoms/reportProblem.ts";
-import { themeBuilderSettingsAtom } from "../../common/state/atoms/themeBuilder.ts";
+import { themeSettingsAtom } from "../../common/state/atoms/theme.ts";
 import { openWorkspaceTabAtom } from "../../common/state/atoms/workspaces.ts";
-import { useDevPanel } from "../../common/state/hooks/useDevPanel.ts";
 import { useHelpDialog } from "../../common/state/hooks/useHelpDialog.ts";
 import { useOpenSettings } from "../../common/state/hooks/useOpenSettings.ts";
 import { useUserConfig } from "../../common/state/hooks/useUserConfig.ts";
-import { useFocusMode, usePanelActions, useSideToggle, useZenMode } from "../panels/hooks.ts";
+import { usePanelActions } from "../panels/hooks.ts";
 import { type CommandActionId, commandActionsAtom } from "./commandActions.ts";
 import type { AppStore, CommandRuntime } from "./runtime.ts";
-
-const isElectronAvailable = (): boolean =>
-  typeof window !== "undefined" && Boolean((window as { sculptor?: unknown }).sculptor);
-
-const reloadElectronWindow = (): void => {
-  // The Electron preload exposes window.sculptor; when not present,
-  // fallback to the browser-side reload.
-  window.location.reload();
-};
-
-const focusChatInput = (): void => {
-  const chatInput = document.getElementById(CHAT_INPUT_ELEMENT_ID);
-  const editable = chatInput?.querySelector<HTMLElement>("[contenteditable='true']");
-  editable?.focus();
-};
 
 /**
  * Hook variant of `useCallback` whose returned function identity is
@@ -68,18 +49,9 @@ export const useCommandRuntime = (): CommandRuntime => {
   const openSettings = useOpenSettings();
 
   const { toggleHelpDialog } = useHelpDialog();
-  const { toggleDevPanel } = useDevPanel();
-  const { toggleFocusMode } = useFocusMode();
-  const { toggleZenMode } = useZenMode();
-  const { toggle: toggleLeftPanel } = useSideToggle("left");
-  const { toggle: toggleBottomPanel } = useSideToggle("bottom");
-  const { toggle: toggleRightPanel } = useSideToggle("right");
   const { togglePanel } = usePanelActions();
 
-  const setThemeSettings = useSetAtom(themeBuilderSettingsAtom);
-  const setChatSearchVisible = useSetAtom(chatSearchVisibleAtom);
-  const setChatSearchFocus = useSetAtom(chatSearchFocusRequestAtom);
-  const updateReportProblem = useSetAtom(updateReportProblemAtom);
+  const setThemeSettings = useSetAtom(themeSettingsAtom);
   const openWorkspaceTab = useSetAtom(openWorkspaceTabAtom);
 
   const { updateField } = useUserConfig();
@@ -111,34 +83,20 @@ export const useCommandRuntime = (): CommandRuntime => {
   });
 
   const uiToggleHelpDialog = useEvent((): void => toggleHelpDialog());
-  const uiToggleDevPanel = useEvent((): void => toggleDevPanel());
-  const uiToggleZenMode = useEvent((): void => toggleZenMode());
-  const uiToggleFocusMode = useEvent((): void => toggleFocusMode());
-  const uiToggleLeftPanel = useEvent((): void => toggleLeftPanel());
-  const uiToggleBottomPanel = useEvent((): void => toggleBottomPanel());
-  const uiToggleRightPanel = useEvent((): void => toggleRightPanel());
   const uiTogglePanel = useEvent((panelId: string): void => togglePanel(panelId));
   const setTheme = useEvent((mode: "light" | "dark" | "system"): void => {
     setThemeSettings((prev) => ({ ...prev, appearance: mode }));
   });
-  const uiFocusChatInput = useEvent((): void => focusChatInput());
-  const showChatSearch = useEvent((): void => {
-    setChatSearchVisible(true);
-    setChatSearchFocus((n: number) => n + 1);
-  });
-  const jumpChatToBottom = useEvent((): void => invokeAction("chat.jumpToBottom"));
   const nextWorkspaceTab = useEvent((): void => invokeAction("workspace.nextTab"));
   const previousWorkspaceTab = useEvent((): void => invokeAction("workspace.previousTab"));
   const nextAgent = useEvent((): void => invokeAction("agent.next"));
   const previousAgent = useEvent((): void => invokeAction("agent.previous"));
   const createAgent = useEvent((): void => invokeAction("agent.create"));
-  const openReportProblem = useEvent((): void => updateReportProblem({ isOpen: true }));
   const clearActiveTerminal = useEvent((): void => invokeAction("terminal.clearActive"));
 
   const updateConfigField = useEvent(
     (field: UserConfigField, value: unknown): Promise<unknown> => updateField(field, value),
   );
-  const reloadWindow = useEvent((): void => reloadElectronWindow());
 
   // The runtime object reference stays stable across renders because
   // every dep below is identity-stable for the lifetime of this
@@ -150,7 +108,6 @@ export const useCommandRuntime = (): CommandRuntime => {
   // recompute path is effectively dead code — it runs once. If a future
   // contributor adds a non-stable value to this list, expect cascading
   // re-registrations of every builtin and dynamic provider.
-  // `electron.isAvailable` is a module-level read, not reactive.
   return useMemo<CommandRuntime>(
     () => ({
       // The Jotai Provider's store is referentially stable across
@@ -160,27 +117,16 @@ export const useCommandRuntime = (): CommandRuntime => {
       navigate: { toHome, toSettings, toAddWorkspace, toWorkspace, toAgent },
       ui: {
         toggleHelpDialog: uiToggleHelpDialog,
-        toggleDevPanel: uiToggleDevPanel,
-        toggleZenMode: uiToggleZenMode,
-        toggleFocusMode: uiToggleFocusMode,
-        toggleLeftPanel: uiToggleLeftPanel,
-        toggleBottomPanel: uiToggleBottomPanel,
-        toggleRightPanel: uiToggleRightPanel,
         togglePanel: uiTogglePanel,
         setTheme,
-        focusChatInput: uiFocusChatInput,
-        showChatSearch,
-        jumpChatToBottom,
         nextWorkspaceTab,
         previousWorkspaceTab,
         nextAgent,
         previousAgent,
         createAgent,
-        openReportProblem,
         clearActiveTerminal,
       },
       config: { updateField: updateConfigField },
-      electron: { isAvailable: isElectronAvailable(), reloadWindow },
     }),
     [
       store,
@@ -190,26 +136,15 @@ export const useCommandRuntime = (): CommandRuntime => {
       toWorkspace,
       toAgent,
       uiToggleHelpDialog,
-      uiToggleDevPanel,
-      uiToggleZenMode,
-      uiToggleFocusMode,
-      uiToggleLeftPanel,
-      uiToggleBottomPanel,
-      uiToggleRightPanel,
       uiTogglePanel,
       setTheme,
-      uiFocusChatInput,
-      showChatSearch,
-      jumpChatToBottom,
       nextWorkspaceTab,
       previousWorkspaceTab,
       nextAgent,
       previousAgent,
       createAgent,
-      openReportProblem,
       clearActiveTerminal,
       updateConfigField,
-      reloadWindow,
     ],
   );
 };

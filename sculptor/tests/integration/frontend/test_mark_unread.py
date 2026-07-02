@@ -5,13 +5,18 @@ These tests verify:
 - Marking an adjacent (non-active) agent tab unread works
 - Marking unread then leaving/returning to the workspace marks it read
 - Unread persists on a non-focused agent across workspace switches
+
+Agents are driven by the fake registered terminal agent: its first agent is a
+plain terminal agent, and a second registered fake terminal agent is added so a
+test can advance that agent's activity remotely (via send_fake_agent_command)
+without focusing it — the terminal-agent equivalent of a background chat update.
 """
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.pages.task_page import PlaywrightTaskPage
+from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
+from sculptor.testing.elements.terminal import get_agent_terminal_panel
+from sculptor.testing.fake_terminal_agent import add_registered_fake_terminal_agent
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
@@ -29,7 +34,7 @@ def test_mark_active_tab_unread_stays_unread(
     updatedAt changes after the mark-unread action.
 
     Steps:
-    1. Create a workspace with an agent, wait for it to finish
+    1. Create a workspace with a terminal agent, wait for it to be ready
     2. Verify the agent shows as read
     3. Right-click the active agent tab and select "Mark unread"
     4. Verify the agent shows as unread
@@ -37,12 +42,10 @@ def test_mark_active_tab_unread_stays_unread(
     """
     page = sculptor_instance_.page
 
-    # Step 1: Create workspace with an agent.
-    task_page = start_task_and_wait_for_ready(page, prompt="Active tab test", workspace_name="Active Unread WS")
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel, expected_message_count=2)
+    # Step 1: Create workspace with a terminal agent (no chat surface).
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Active Unread WS")
 
-    agent_tab_bar = task_page.get_agent_tab_bar()
+    agent_tab_bar = PlaywrightAgentTabBarElement(page)
     agent_tabs = agent_tab_bar.get_agent_tabs()
 
     # Step 2: Verify agent is read.
@@ -67,37 +70,30 @@ def test_mark_adjacent_tab_unread(
     """Mark a non-active agent tab as unread via the context menu.
 
     Steps:
-    1. Create a workspace with two agents
+    1. Create a workspace with two terminal agents
     2. Ensure agent 2 is active and both are read
     3. Right-click agent 1 (not active) and select "Mark unread"
     4. Verify agent 1 shows unread and agent 2 stays read
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Step 1: Create workspace with agent 1.
-    task_page = start_task_and_wait_for_ready(page, prompt="Adjacent tab test", workspace_name="Adjacent Unread WS")
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel, expected_message_count=2)
+    # Step 1: Create workspace with agent 1 (a terminal agent).
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Adjacent Unread WS")
 
-    agent_tab_bar = task_page.get_agent_tab_bar()
+    agent_tab_bar = PlaywrightAgentTabBarElement(page)
 
-    # Add agent 2 (auto-navigates to it).
-    agent_tab_bar.get_add_agent_button().click()
+    # Add agent 2 (a registered fake terminal agent; auto-navigates to it).
+    add_registered_fake_terminal_agent(page, agents_dir)
 
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(2)
 
-    # Send a message on agent 2 so it has activity and shows as read.
-    task_page = PlaywrightTaskPage(page=page)
-    chat_panel = task_page.get_chat_panel()
-    send_chat_message(chat_panel, "Do something on agent 2")
-    wait_for_completed_message_count(chat_panel, expected_message_count=2)
-
     # Visit agent 1 to mark it read, then return to agent 2.
     agent_tabs.first.click()
-    expect(PlaywrightTaskPage(page=page).get_chat_panel().get_thinking_indicator()).not_to_be_visible()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
     agent_tabs.last.click()
-    expect(PlaywrightTaskPage(page=page).get_chat_panel().get_thinking_indicator()).not_to_be_visible()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
 
     # Step 2: Both agents should be read.
     expect(agent_tabs.first).to_have_attribute("data-dot-status", "read")
@@ -121,7 +117,7 @@ def test_mark_unread_then_leave_and_return_marks_read(
     for the focused agent, marking it as read.
 
     Steps:
-    1. Create workspace A with an agent, wait for it to finish
+    1. Create workspace A with a terminal agent
     2. Create workspace B (navigates away from A)
     3. Navigate back to workspace A, verify agent is read
     4. Mark agent in workspace A as unread
@@ -132,14 +128,12 @@ def test_mark_unread_then_leave_and_return_marks_read(
     page = sculptor_instance_.page
 
     # Step 1: Create workspace A.
-    task_page_a = start_task_and_wait_for_ready(page, prompt="WS A agent", workspace_name="Workspace A")
-    chat_panel_a = task_page_a.get_chat_panel()
-    wait_for_completed_message_count(chat_panel_a, expected_message_count=2)
+    task_page_a = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace A")
 
     agent_tab_bar = task_page_a.get_agent_tab_bar()
 
     # Step 2: Create workspace B.
-    start_task_and_wait_for_ready(page, prompt="WS B agent", workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace B")
 
     workspace_tabs = task_page_a.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -156,8 +150,7 @@ def test_mark_unread_then_leave_and_return_marks_read(
 
     # Step 5: Navigate to workspace B.
     workspace_tabs.last.click()
-    task_page_b = PlaywrightTaskPage(page=page)
-    expect(task_page_b.get_chat_panel().get_thinking_indicator()).not_to_be_visible()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
 
     # Step 6: Navigate back to workspace A.
     workspace_tabs.first.click()
@@ -177,8 +170,8 @@ def test_unread_persists_on_unfocused_agent_across_workspace_switches(
     verify it becomes read.
 
     Steps:
-    1. Create workspace A with agent 1, wait for it to finish
-    2. Add agent 2 to workspace A, send a message so it has activity
+    1. Create workspace A with agent 1 (terminal), wait for it to be ready
+    2. Add agent 2 to workspace A
     3. Switch to agent 1, then back to agent 2 so both are read
     4. Mark agent 1 unread (while on agent 2)
     5. Create workspace B (navigates away from workspace A)
@@ -187,31 +180,24 @@ def test_unread_persists_on_unfocused_agent_across_workspace_switches(
     8. Click agent 1, verify it becomes read
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Step 1: Create workspace A with agent 1.
-    task_page = start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="Workspace A")
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel, expected_message_count=2)
+    # Step 1: Create workspace A with agent 1 (a terminal agent).
+    task_page = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace A")
 
     agent_tab_bar = task_page.get_agent_tab_bar()
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(1)
 
-    # Step 2: Add agent 2 (auto-navigates to it).
-    agent_tab_bar.get_add_agent_button().click()
+    # Step 2: Add agent 2 (a registered fake terminal agent; auto-navigates to it).
+    add_registered_fake_terminal_agent(page, agents_dir)
     expect(agent_tabs).to_have_count(2)
-
-    # Send a message on agent 2 so it has response activity.
-    task_page = PlaywrightTaskPage(page=page)
-    chat_panel = task_page.get_chat_panel()
-    send_chat_message(chat_panel, "Do something on agent 2")
-    wait_for_completed_message_count(chat_panel, expected_message_count=2)
 
     # Step 3: Switch to agent 1 then back to agent 2 so both are read.
     agent_tabs.first.click()
-    expect(PlaywrightTaskPage(page=page).get_chat_panel().get_thinking_indicator()).not_to_be_visible()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
     agent_tabs.last.click()
-    expect(PlaywrightTaskPage(page=page).get_chat_panel().get_thinking_indicator()).not_to_be_visible()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
 
     expect(agent_tabs.first).to_have_attribute("data-dot-status", "read")
     expect(agent_tabs.last).to_have_attribute("data-dot-status", "read")
@@ -221,7 +207,7 @@ def test_unread_persists_on_unfocused_agent_across_workspace_switches(
     expect(agent_tabs.first).to_have_attribute("data-dot-status", "unread")
 
     # Step 5: Create workspace B (navigates away from workspace A).
-    start_task_and_wait_for_ready(page, prompt="WS B agent", workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace B")
 
     workspace_tabs = task_page.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)

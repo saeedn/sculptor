@@ -13,6 +13,7 @@ leaves the user on the Add Workspace page.
 
 from playwright.sync_api import expect
 
+from sculptor.constants import ElementIDs
 from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
 from sculptor.testing.playwright_utils import navigate_to_add_workspace_page
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -64,4 +65,5 @@ def test_add_repo_cmd_enter_stays_on_add_workspace_page(
     # the new repo selected and no workspace created.
     expect(add_ws_page.get_submit_button()).to_be_enabled(timeout=30_000)
     expect(add_ws_page.get_project_selector()).to_contain_text(target_repo_name)
-    expect(add_ws_page.get_chat_panel()).not_to_be_visible()
+    # No workspace was created, so the workspace terminal panel never appears.
+    expect(page.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)).not_to_be_visible()

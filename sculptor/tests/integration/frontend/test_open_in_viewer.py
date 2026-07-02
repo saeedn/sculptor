@@ -1,43 +1,36 @@
-"""Integration tests for opening a file in the diff viewer from the chat panel.
+"""Integration tests for opening a file in the diff viewer from the file browser.
 
-Tests verify that opening a file diff tool result from the chat opens the
-diff panel with actual file content (not "Could not load file content").
+Tests verify that opening a file's diff from the Changes tab opens the diff
+panel with actual file content (not "Could not load file content"), and that an
+edited file shows an actual diff view rather than a read-only full-file preview.
+
+(These flows previously entered via the chat-alpha file chip; they survive via
+the file-browser Changes tab, which is the entry point asserted here.)
 """
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import PlaywrightChatPanelElement
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
 from sculptor.testing.elements.diff_panel import PlaywrightDiffPanelElement
 from sculptor.testing.elements.diff_panel import get_diff_panel_from_page
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import edit_file
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
+from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
-WRITE_FILE_PROMPT = """\
-fake_claude:write_file `{
-  "file_path": "greeting.txt",
-  "content": "Hello, world!\\nThis is a new file.\\n"
-}`"""
 
-EDIT_FILE_PROMPT = """\
-fake_claude:edit_file `{
-  "file_path": "greeting.txt",
-  "old_string": "Hello, world!",
-  "new_string": "Hi, everyone!"
-}`"""
-
-
-def open_diff_via_alpha_chip(chat_panel: PlaywrightChatPanelElement, file_path: str) -> None:
-    """Click the most-recent alpha file chip for `file_path` and open its full diff."""
-    file_chip = chat_panel.get_file_chips().filter(has_text=file_path)
-    expect(file_chip.last).to_be_visible()
-    file_chip.last.click()
-
-    popover = chat_panel.get_chip_popover()
-    expect(popover).to_be_visible()
-    chat_panel.get_chip_view_full_diff_button().click()
+def open_file_diff_from_changes(task_page: PlaywrightTaskPage, file_path: str) -> None:
+    """Open ``file_path``'s diff via the Changes tab (Uncommitted scope)."""
+    task_page.activate_changes_panel(scope="uncommitted")
+    # Force a fresh diff fetch (cold-start: the initial files-changed signal can
+    # land before the frontend's diff subscription is ready).
+    task_page.get_file_browser().get_refresh_button().click()
+    changes_panel = task_page.get_changes_panel()
+    changes_tree = changes_panel.get_changes_tree()
+    expect(changes_tree).to_be_visible()
+    changes_tree.get_tree_rows().filter(has_text=file_path).click()
 
 
 def assert_diff_panel_shows_content(diff_panel: PlaywrightDiffPanelElement, tab_text: str) -> None:
@@ -64,59 +57,40 @@ def assert_diff_panel_shows_diff_view(diff_panel: PlaywrightDiffPanelElement, ta
     expect(diff_panel.get_read_only_preview()).to_have_count(0)
 
 
-@user_story("to open a created repo file in the diff viewer from the chat panel")
+@user_story("to open a created repo file in the diff viewer from the file browser")
 def test_open_created_file_in_diff_viewer(sculptor_instance_: SculptorInstance) -> None:
-    """Test that clicking 'Open in viewer' on a Write tool result opens the
-    diff panel with the file's content visible (not 'Could not load file content').
+    """Opening a written file's diff from the Changes tab opens the diff panel
+    with the file's content visible (not 'Could not load file content').
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(
-        sculptor_page=page,
-        prompt=WRITE_FILE_PROMPT,
-        wait_for_agent_to_finish=True,
-    )
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, write_file("greeting.txt", "Hello, world!\nThis is a new file.\n"))
 
-    # Open the file's full diff via the alpha file chip
-    open_diff_via_alpha_chip(chat_panel, "greeting.txt")
+    open_file_diff_from_changes(task_page, "greeting.txt")
 
-    # Verify the diff panel shows file content
     diff_panel = get_diff_panel_from_page(page)
     assert_diff_panel_shows_content(diff_panel, "greeting.txt")
 
 
-# SCU-366 outside-workspace routing is covered by the Vitest unit test in
-# chat-alpha/__tests__/AlphaChipDiffPopover.test.tsx — the integration flow
-# (file chip → popover) doesn't reliably open in headless Playwright for
-# outside-workspace paths.
-
-
-@user_story("to open an edited repo file in the diff viewer from the chat panel")
+@user_story("to open an edited repo file in the diff viewer from the file browser")
 def test_open_edited_file_in_diff_viewer(sculptor_instance_: SculptorInstance) -> None:
-    """Test that clicking 'Open in viewer' on an Edit tool result opens the
-    diff panel with an actual diff view showing the changes (not a read-only
-    full-file preview).
+    """Opening an edited file's diff from the Changes tab opens the diff panel
+    with an actual diff view showing the changes (not a read-only full-file
+    preview).
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Step 1: Create the file
-    task_page = start_task_and_wait_for_ready(
-        sculptor_page=page,
-        prompt=WRITE_FILE_PROMPT,
-        wait_for_agent_to_finish=True,
-    )
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    # Step 1: Create the file, then commit it so the later edit is a true diff.
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, write_file("greeting.txt", "Hello, world!\nThis is a new file.\n"))
+    send_fake_agent_command_and_wait(agents_dir, edit_file("greeting.txt", "Hello, world!", "Hi, everyone!"))
 
-    # Step 2: Edit the file in a follow-up turn
-    send_chat_message(chat_panel=chat_panel, message=EDIT_FILE_PROMPT)
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=4)
+    # Step 2: Open the edited file's diff via the Changes tab.
+    open_file_diff_from_changes(task_page, "greeting.txt")
 
-    # Step 3: Open the edited file's full diff via the alpha file chip
-    open_diff_via_alpha_chip(chat_panel, "greeting.txt")
-
-    # Step 4: Verify the diff panel shows an actual diff view, not a read-only preview
+    # Step 3: Verify the diff panel shows an actual diff view, not a read-only preview.
     diff_panel = get_diff_panel_from_page(page)
     assert_diff_panel_shows_diff_view(diff_panel, "greeting.txt")

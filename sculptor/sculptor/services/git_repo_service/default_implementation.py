@@ -42,7 +42,7 @@ class _ReadOnlyGitRepoSharedMethods(_GitRepoSharedMethods, ABC):
     def get_current_commit_hash(self) -> str:
         return self._run_git(["rev-parse", "HEAD"]).strip()
 
-    def get_current_git_branch(self, is_detached_head_ok: bool = True) -> str:
+    def get_current_git_branch(self) -> str:
         """Get the current git branch name for a repository."""
         args = ["rev-parse", "--abbrev-ref", "HEAD"]
         try:
@@ -51,9 +51,6 @@ class _ReadOnlyGitRepoSharedMethods(_GitRepoSharedMethods, ABC):
             if e.branch_name == "" or e.branch_name is None:
                 raise
             branch = e.branch_name
-        if branch == "HEAD" and (not is_detached_head_ok):
-            message = "in a detached HEAD state, which is not allowed in this context"
-            raise GitRepoError(message=message, operation="git " + " ".join(args), repo_url=self.get_repo_url())
         return branch
 
     @log_runtime_decorator("get_all_branches")
@@ -226,7 +223,7 @@ class LocalWritableGitRepo(LocalReadOnlyGitRepo, _WritableGitRepoSharedMethods):
                     command=["git", "config", "user.name", user_name], cwd=repo_path, is_checked_after=True
                 )
                 # Log without the values — git identity is personal data and
-                # the log file is bundled into bug-report diagnostics uploads.
+                # doesn't belong in the log file.
                 logger.debug("Configured git user.email and user.name for {}", repo_path)
             except ProcessError as e:
                 raise GitRepoError(

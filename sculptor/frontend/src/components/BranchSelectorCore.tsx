@@ -23,35 +23,29 @@ type BranchSelectorCoreProps = {
   selectedBranch: string;
   onBranchSelected: (branch: string) => void;
   branches: Array<BranchWithBadges>;
-  specialBranchFilter?: (branch: BranchWithBadges) => boolean;
 
   triggerContent: ReactNode;
-  triggerVariant?: "soft" | "ghost";
 
   disabled?: boolean;
   testId?: string;
-  contentTestId?: string;
   className?: string;
 
   isLoadingBranches?: boolean;
 
-  height?: number;
   onOpenChange?: (open: boolean) => void;
 };
+
+const MAX_CONTENT_HEIGHT_PX = 270;
 
 export const BranchSelectorCore = ({
   selectedBranch,
   onBranchSelected,
   branches,
-  specialBranchFilter,
   triggerContent,
-  triggerVariant = "soft",
   disabled = false,
   testId,
-  contentTestId,
   className,
   isLoadingBranches = false,
-  height = 270,
   onOpenChange,
 }: BranchSelectorCoreProps): ReactElement => {
   const [searchQuery, setSearchQuery] = useState("");
@@ -61,11 +55,11 @@ export const BranchSelectorCore = ({
   const contentRef = useRef<HTMLDivElement>(null);
 
   const { specialBranches, otherBranches } = useMemo(() => {
-    const specialFilter = specialBranchFilter ?? ((b: BranchWithBadges): boolean => b.badges.length > 0);
-    const special = branches.filter(specialFilter);
-    const others = branches.filter((b) => !specialFilter(b));
+    const isSpecial = (b: BranchWithBadges): boolean => b.badges.length > 0;
+    const special = branches.filter(isSpecial);
+    const others = branches.filter((b) => !isSpecial(b));
     return { specialBranches: special, otherBranches: others };
-  }, [branches, specialBranchFilter]);
+  }, [branches]);
 
   const { specialBranchesFiltered, otherBranchesFiltered } = useMemo(() => {
     const query = searchQuery.toLowerCase().trim();
@@ -138,7 +132,7 @@ export const BranchSelectorCore = ({
         onOpenChange?.(open);
       }}
     >
-      <Select.Trigger variant={triggerVariant} className={className} data-testid={testId}>
+      <Select.Trigger variant="ghost" className={className} data-testid={testId}>
         {triggerContent}
       </Select.Trigger>
       <Select.Content
@@ -147,7 +141,6 @@ export const BranchSelectorCore = ({
         side="bottom"
         align="start"
         sideOffset={5}
-        data-testid={contentTestId}
         onCloseAutoFocus={(e) => {
           e.preventDefault();
         }}
@@ -164,7 +157,7 @@ export const BranchSelectorCore = ({
             direction="column"
             overflow="hidden"
             style={{
-              maxHeight: `${height}px`,
+              maxHeight: `${MAX_CONTENT_HEIGHT_PX}px`,
               width: lockedWidth ? `${lockedWidth}px` : undefined,
               minWidth: lockedWidth ? undefined : "300px",
               position: "relative",

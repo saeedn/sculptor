@@ -46,14 +46,11 @@
    ============================================================================= */
 
 :root {
-  --z-base: 0;
   --z-above: 1;
   --z-dropdown: 10;
   --z-sticky: 100;
   --z-modal: 1000;
-  --z-popover: 2000;
   --z-tooltip: 3000;
-  --z-toast: 4000;
   --z-max: 2147483647;
 }
 
@@ -85,10 +82,6 @@
    ============================================================================= */
 
 :root {
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.15);
-  --shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.2);
   --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.28);
 }
 
@@ -98,22 +91,9 @@
    ============================================================================= */
 
 .radix-themes {
-  /* Terminal colors */
-  --terminal-bg: var(--gray-1);
-  --terminal-text: var(--gray-12);
-  --terminal-border: var(--gray-6);
-
   /* Button colors */
   --button-primary-bg: var(--indigo-9);
   --button-primary-bg-hover: var(--indigo-a10);
-
-  /* Code syntax colors (light theme) */
-  --code-syntax-color: rgb(192, 19, 67);
-
-  /* Lightbox navigation buttons */
-  --lightbox-nav-bg: var(--black-a9);
-  --lightbox-nav-bg-hover: var(--black-a11);
-  --lightbox-nav-color: white;
 }
 
 /* =============================================================================
@@ -130,18 +110,5 @@
 /* Dark theme overrides */
 .dark,
 .dark-theme {
-  --terminal-bg: #1a1814;
-  --terminal-text: #e6e2dc;
-
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.15);
-  --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.25);
-  --shadow-lg: 0 4px 8px rgba(0, 0, 0, 0.3);
-  --shadow-xl: 0 8px 16px rgba(0, 0, 0, 0.4);
   --shadow-overlay: 0 4px 16px rgba(0, 0, 0, 0.5);
-
-  --code-syntax-color: #e8912d;
-
-  --lightbox-nav-bg: var(--white-a9);
-  --lightbox-nav-bg-hover: var(--white-a11);
-  --lightbox-nav-color: black;
 }

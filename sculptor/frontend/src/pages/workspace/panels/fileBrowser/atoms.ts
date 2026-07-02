@@ -3,13 +3,10 @@ import { atomFamily, atomWithStorage } from "jotai/utils";
 
 import { getCachedWorkspaceDiff } from "~/common/state/hooks/useWorkspaceDiff.ts";
 import { parseDiff } from "~/components/DiffUtils.ts";
-import { activePanelPerZoneAtom, zoneAssignmentsAtom, zoneVisibilityAtom } from "~/components/panels/atoms.ts";
 import type { DiffScope } from "~/pages/workspace/components/diffPanel/types.ts";
 
 import type { FileBrowserState, FileStatus, ViewMode } from "./types.ts";
 import { determineFileStatus } from "./utils.ts";
-
-const FILE_BROWSER_PANEL_ID = "files";
 
 type FolderStateKey = "expandedFolders" | "changesExpandedFolders";
 
@@ -52,7 +49,7 @@ export const getUncommittedFileStatusMap = (
   return map;
 };
 
-/** Per-workspace scope for the Changes tab (independent of the Review All scope). Resets on page refresh. */
+/** Per-workspace scope for the Changes tab. Resets on page refresh. */
 export const changesScopeAtomFamily = atomFamily((_workspaceId: string) => atom<DiffScope>("vs-target-branch"));
 
 // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
@@ -104,56 +101,6 @@ export const toggleViewModeAtom = atom(null, (get, set, { workspaceId }: { works
   const state = get(stateAtom);
   const viewMode: ViewMode = state.viewMode === "tree" ? "flat" : "tree";
   set(stateAtom, { ...state, viewMode });
-});
-
-// Folder reveal: expand ancestors, show the file browser panel, and signal
-// FileTree to scroll + briefly highlight the row. Used by @-folder mention
-// chips in chat messages.
-
-export type FocusFolderRequest = {
-  workspaceId: string;
-  path: string;
-  nonce: number;
-};
-
-export const focusFolderAtom = atom<FocusFolderRequest | null>(null);
-
-const computeAncestorFolderPaths = (folderPath: string): Array<string> => {
-  const segments = folderPath.split("/").filter((s) => s.length > 0);
-  const ancestors: Array<string> = [];
-  for (let i = 0; i < segments.length; i += 1) {
-    ancestors.push(segments.slice(0, i + 1).join("/"));
-  }
-  return ancestors;
-};
-
-export const revealFolderAtom = atom(null, (get, set, { workspaceId, path }: { workspaceId: string; path: string }) => {
-  // Path-mode mentions (e.g. selected after drilling into a folder with Tab)
-  // carry a "./" prefix in their chip id — the file tree's node paths are
-  // workspace-relative without that prefix, so strip it before matching.
-  // Absolute ("/...") and home-relative ("~/...") paths point outside the
-  // workspace; they'll fail the row lookup and surface the "not viewable"
-  // toast, which is the correct outcome.
-  const withoutDotSlash = path.startsWith("./") ? path.slice(2) : path;
-  const normalised = withoutDotSlash.replace(/\/+$/, "");
-  if (normalised.length === 0) return;
-
-  set(expandFoldersAtom, { workspaceId, paths: computeAncestorFolderPaths(normalised) });
-
-  const zoneAssignments = get(zoneAssignmentsAtom);
-  const zone = zoneAssignments[FILE_BROWSER_PANEL_ID];
-  if (zone) {
-    const activePanel = get(activePanelPerZoneAtom);
-    if (activePanel[zone] !== FILE_BROWSER_PANEL_ID) {
-      set(activePanelPerZoneAtom, { ...activePanel, [zone]: FILE_BROWSER_PANEL_ID });
-    }
-    const visibility = get(zoneVisibilityAtom);
-    if (!visibility[zone]) {
-      set(zoneVisibilityAtom, { ...visibility, [zone]: true });
-    }
-  }
-
-  set(focusFolderAtom, { workspaceId, path: normalised, nonce: Date.now() });
 });
 
 export const setSearchAtom = atom(

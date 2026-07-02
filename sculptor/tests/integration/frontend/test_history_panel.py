@@ -8,9 +8,12 @@ import re
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import wait_for_command_done
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
@@ -23,53 +26,25 @@ def _extract_workspace_id(url: str) -> str:
     return match.group(1)
 
 
-_TWO_COMMITS_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "first.py",
-        "content": "x = 1\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add first.py'"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "second.py",
-        "content": "y = 2\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add second.py'"
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see commit history in the History panel")
 def test_history_panel_shows_commits(sculptor_instance_: SculptorInstance) -> None:
     """The History panel should show commits on the current branch."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_TWO_COMMITS_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("first.py", "x = 1\n"),
+                bash("git add -A && git commit -m 'Add first.py'"),
+                write_file("second.py", "y = 2\n"),
+                bash("git add -A && git commit -m 'Add second.py'"),
+            ]
+        ),
+    )
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
@@ -80,38 +55,15 @@ def test_history_panel_shows_commits(sculptor_instance_: SculptorInstance) -> No
     expect(history_panel).to_contain_text("Add first.py")
 
 
-_CREATE_BRANCH_PROMPT = """\
-fake_claude:bash `{"command": "git checkout -b feature"}`"""
-
-_COMMIT_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "new_feature.py",
-        "content": "print('hello')\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add new feature'"
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see the History panel update dynamically after a commit")
 def test_history_panel_updates_after_commit(sculptor_instance_: SculptorInstance) -> None:
     """The History panel should show new commits without a page refresh."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
     # Create a workspace with a feature branch but no commits yet
-    task_page = start_task_and_wait_for_ready(page, prompt=_CREATE_BRANCH_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(agents_dir, bash("git checkout -b feature"))
 
     # Ensure the Files panel is open, then switch to the History tab — should show branch start
     task_page.activate_history_panel()
@@ -119,57 +71,19 @@ def test_history_panel_updates_after_commit(sculptor_instance_: SculptorInstance
     expect(history_panel).to_be_visible()
     expect(history_panel).to_contain_text("start of branch")
 
-    # Now tell the agent to make a commit via a follow-up message
-    send_chat_message(chat_panel, _COMMIT_PROMPT)
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=4, timeout=60_000)
+    # Now tell the agent to make a commit via a follow-up command
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                write_file("new_feature.py", "print('hello')\n"),
+                bash("git add -A && git commit -m 'Add new feature'"),
+            ]
+        ),
+    )
 
     # The History panel should dynamically update to show the new commit
     expect(history_panel).to_contain_text("Add new feature")
-
-
-_TARGET_BRANCH_CHANGE_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature-tb-test"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "alpha.py",
-        "content": "a = 1\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add alpha.py'"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "beta.py",
-        "content": "b = 2\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add beta.py'"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git push origin feature-tb-test"
-      }
-    }
-  ]
-}`"""
 
 
 @user_story("to see the History panel refresh when the target branch changes")
@@ -177,21 +91,34 @@ def test_history_panel_refreshes_on_target_branch_change(sculptor_instance_: Scu
     """Changing the target branch should trigger a history refetch so the commit
     list reflects the new fork-point."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Create a branch with 2 commits and push it to origin. Clone mode is
-    # required because the agent pushes to ``origin`` and the test later
-    # references ``origin/feature-tb-test`` — neither exists in a worktree.
-    task_page = start_task_and_wait_for_ready(
-        page, prompt=_TARGET_BRANCH_CHANGE_PROMPT, wait_for_agent_to_finish=False, mode="CLONE"
+    # Create a branch with 2 commits, then mark a local branch ``tb-target`` at
+    # HEAD. Worktree-mode workspaces have no remote to push to, so we repoint the
+    # target branch at this local ref (merge-base(HEAD, tb-target) == HEAD).
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    command_path = send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature-tb-test"),
+                write_file("alpha.py", "a = 1\n"),
+                bash("git add -A && git commit -m 'Add alpha.py'"),
+                write_file("beta.py", "b = 2\n"),
+                bash("git add -A && git commit -m 'Add beta.py'"),
+                bash("git branch tb-target HEAD"),
+            ]
+        ),
     )
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    # Block until the commits + local branch ref have actually landed before we
+    # repoint the target branch to it.
+    wait_for_command_done(command_path)
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
     expect(history_panel).to_be_visible()
 
-    # Both commits should be visible (fork-point is origin/main).
+    # Both commits should be visible (fork-point is the original base branch).
     expect(history_panel).to_contain_text("Add alpha.py")
     expect(history_panel).to_contain_text("Add beta.py")
 
@@ -203,12 +130,11 @@ def test_history_panel_refreshes_on_target_branch_change(sculptor_instance_: Scu
     assert pre_patch.ok, f"Failed to read commits: {pre_patch.status}"
     head_short_hash = pre_patch.json()["commits"][0]["hash"][:11]
 
-    # Change the target branch to the branch we just pushed.  Since we pushed
-    # the same commits as HEAD, merge-base(HEAD, origin/feature-tb-test) = HEAD,
-    # so there are zero commits since the fork-point.
+    # Change the target branch to ``tb-target`` (== HEAD).  Since the fork-point
+    # is now HEAD, there are zero commits since the fork-point.
     response = page.request.patch(
         f"{base_url}/api/v1/workspaces/{workspace_id}",
-        data={"target_branch": "origin/feature-tb-test"},
+        data={"target_branch": "tb-target"},
     )
     assert response.ok, f"Failed to update target branch: {response.status}"
 
@@ -222,41 +148,24 @@ def test_history_panel_refreshes_on_target_branch_change(sculptor_instance_: Scu
     expect(history_panel.get_commit_entries()).to_have_count(0)
 
 
-_ONE_COMMIT_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature-terminus-test"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "feature.py",
-        "content": "x = 1\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add feature.py'"
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see the terminus indicator with a fork-point hash in the history panel")
 def test_terminus_shows_fork_point_hash(sculptor_instance_: SculptorInstance) -> None:
     """The terminus indicator should show 'start of branch' with an abbreviated
     commit hash in parentheses, indicating the fork point."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_ONE_COMMIT_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature-terminus-test"),
+                write_file("feature.py", "x = 1\n"),
+                bash("git add -A && git commit -m 'Add feature.py'"),
+            ]
+        ),
+    )
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
@@ -277,11 +186,10 @@ def test_terminus_visible_with_no_commits(sculptor_instance_: SculptorInstance) 
     """When a fresh branch has no commits, the terminus indicator should still
     be visible, showing 'start of branch'."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    prompt = 'fake_claude:bash `{"command": "git checkout -b empty-branch-test"}`'
-    task_page = start_task_and_wait_for_ready(page, prompt=prompt, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(agents_dir, bash("git checkout -b empty-branch-test"))
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
@@ -292,85 +200,31 @@ def test_terminus_visible_with_no_commits(sculptor_instance_: SculptorInstance) 
     expect(terminus).to_contain_text("start of branch")
 
 
-_MERGE_COMMIT_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature-merge-test"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "base.py",
-        "content": "x = 1\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add base.py on feature branch'"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b side-branch"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "side.py",
-        "content": "y = 2\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add side.py on side branch'"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout feature-merge-test"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "main_line.py",
-        "content": "z = 3\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add main_line.py on feature branch'"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git merge side-branch --no-ff -m 'Merge side-branch into feature'"
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see merge commit spur visualization in the history panel")
 def test_merge_commit_shows_spur(sculptor_instance_: SculptorInstance) -> None:
     """When a merge commit exists in the history, expanding it should show
     a merge spur row indicating the second parent branch."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_MERGE_COMMIT_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature-merge-test"),
+                write_file("base.py", "x = 1\n"),
+                bash("git add -A && git commit -m 'Add base.py on feature branch'"),
+                bash("git checkout -b side-branch"),
+                write_file("side.py", "y = 2\n"),
+                bash("git add -A && git commit -m 'Add side.py on side branch'"),
+                bash("git checkout feature-merge-test"),
+                write_file("main_line.py", "z = 3\n"),
+                bash("git add -A && git commit -m 'Add main_line.py on feature branch'"),
+                bash("git merge side-branch --no-ff -m 'Merge side-branch into feature'"),
+            ]
+        ),
+    )
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
@@ -398,10 +252,21 @@ def test_commit_entry_shows_metadata_line(sculptor_instance_: SculptorInstance) 
     """Each commit entry should show a second line with diff stats, file count,
     relative time, and short hash."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_TWO_COMMITS_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("first.py", "x = 1\n"),
+                bash("git add -A && git commit -m 'Add first.py'"),
+                write_file("second.py", "y = 2\n"),
+                bash("git add -A && git commit -m 'Add second.py'"),
+            ]
+        ),
+    )
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
@@ -425,10 +290,21 @@ def test_commit_hover_popover_shows_details(sculptor_instance_: SculptorInstance
     """Hovering over a commit entry should show a popover with the full message,
     author, date, commit id, and change stats."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_TWO_COMMITS_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("first.py", "x = 1\n"),
+                bash("git add -A && git commit -m 'Add first.py'"),
+                write_file("second.py", "y = 2\n"),
+                bash("git add -A && git commit -m 'Add second.py'"),
+            ]
+        ),
+    )
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
@@ -455,10 +331,21 @@ def test_click_dismisses_popover(sculptor_instance_: SculptorInstance) -> None:
     """Clicking a commit entry to expand it should dismiss the hover popover,
     not show both the expanded details and the popover simultaneously."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_TWO_COMMITS_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("first.py", "x = 1\n"),
+                bash("git add -A && git commit -m 'Add first.py'"),
+                write_file("second.py", "y = 2\n"),
+                bash("git add -A && git commit -m 'Add second.py'"),
+            ]
+        ),
+    )
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
@@ -477,27 +364,6 @@ def test_click_dismisses_popover(sculptor_instance_: SculptorInstance) -> None:
     expect(popover).not_to_be_visible()
 
 
-# Rename an entire folder so git reports the change using the compact
-# {old => new}/file notation in --numstat output.
-_FOLDER_RENAME_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature-folder-rename"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git mv src lib && git add -A && git commit -m 'Rename src to lib'"
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see renamed folder files with correct paths in the history panel")
 def test_folder_rename_shows_correct_paths(sculptor_instance_: SculptorInstance) -> None:
     """Renaming a folder should show files under the new folder name, not git's
@@ -508,10 +374,20 @@ def test_folder_rename_shows_correct_paths(sculptor_instance_: SculptorInstance)
     the files under their actual new folder name.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_FOLDER_RENAME_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    # Rename an entire folder so git reports the change using the compact
+    # {old => new}/file notation in --numstat output.
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature-folder-rename"),
+                bash("git mv src lib && git add -A && git commit -m 'Rename src to lib'"),
+            ]
+        ),
+    )
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
@@ -528,28 +404,6 @@ def test_folder_rename_shows_correct_paths(sculptor_instance_: SculptorInstance)
     expect(rename_entry).not_to_contain_text("=>")
 
 
-# Rename both a single file and a folder (containing multiple files) in one commit.
-# The single-file rename uses `git mv` directly; the folder rename moves
-# all remaining files from src/ to lib/.
-_RENAME_WITH_CONTENT_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature-rename-diff"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git mv stuff.txt notes.txt && git mv src lib && git add -A && git commit -m 'Rename file and folder'"
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see a rename banner when clicking a renamed file in the commits tab")
 def test_clicking_renamed_file_in_commits_shows_rename_banner(sculptor_instance_: SculptorInstance) -> None:
     """Clicking a renamed file in the Commits tab should show a rename banner.
@@ -559,10 +413,23 @@ def test_clicking_renamed_file_in_commits_shows_rename_banner(sculptor_instance_
     a rename banner with the old and new paths, not an empty panel.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_RENAME_WITH_CONTENT_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    # Rename both a single file and a folder (containing multiple files) in one
+    # commit. The single-file rename uses `git mv` directly; the folder rename
+    # moves all remaining files from src/ to lib/.
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature-rename-diff"),
+                bash(
+                    "git mv stuff.txt notes.txt && git mv src lib && git add -A && git commit -m 'Rename file and folder'"
+                ),
+            ]
+        ),
+    )
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()

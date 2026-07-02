@@ -2,35 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type { TreeNode } from "./types.ts";
 import type { FlatRowEntry } from "./utils.ts";
-import { collectAllFolderPaths, collectDescendantFolderPaths, getAncestorPaths } from "./utils.ts";
-
-type UseAgentFileTrackingParams = {
-  activeFilePath: string | undefined;
-  workspaceId: string;
-  expandFolders: (params: { workspaceId: string; paths: Array<string> }) => void;
-};
-
-/**
- * Auto-expand ancestor folders when the agent actively operates on a file
- * (e.g. writes, creates, deletes).
- */
-export const useAgentFileTracking = ({
-  activeFilePath,
-  workspaceId,
-  expandFolders,
-}: UseAgentFileTrackingParams): void => {
-  const prevActivePathRef = useRef<string | null>(null);
-  useEffect(() => {
-    const activePath = activeFilePath ?? null;
-    if (activePath && activePath !== prevActivePathRef.current) {
-      const ancestors = getAncestorPaths(activePath);
-      if (ancestors.length > 0) {
-        expandFolders({ workspaceId, paths: ancestors });
-      }
-    }
-    prevActivePathRef.current = activePath;
-  }, [activeFilePath, expandFolders, workspaceId]);
-};
+import { collectAllFolderPaths, collectDescendantFolderPaths } from "./utils.ts";
 
 type UseSearchAutoExpandParams = {
   isSearchActive: boolean;

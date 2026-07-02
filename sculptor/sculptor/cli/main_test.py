@@ -49,7 +49,7 @@ def test_bootstrap_import_does_not_spawn_threads() -> None:
     pays for the backend's thread-spawning imports.  This test runs the
     bare import in a clean subprocess and verifies the active thread
     count stays at 1 -- catching a future regression that pulls in
-    something like loguru or sentry at module top.
+    something like loguru at module top.
     """
     script = """
 import threading

@@ -18,7 +18,7 @@ client.
 Uses the factory fixture rather than hand-rolling backend startup so that
 process spawn, readiness, port allocation, and teardown stay consistent with
 the rest of the suite across launch modes. The WebSocket client is the
-``websockets`` sync client (no event loop of our own); the offload runner
+``websockets`` sync client (no event loop of our own); the CI runner
 dispatches each test under its own loop, so an ``async def`` test would fail
 with "This event loop is already running".
 """

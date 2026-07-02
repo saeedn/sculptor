@@ -19,13 +19,15 @@ from sculptor.constants import ElementIDs
 
 
 def get_terminal_textarea(page: Page) -> Locator:
-    """Return the xterm hidden textarea used for keyboard input.
+    """Return the workspace bottom terminal's xterm hidden input textarea.
 
-    xterm.js creates a hidden ``<textarea>`` with class ``xterm-helper-textarea``
-    to capture keyboard events.  This element is the correct target for
-    ``type()``, ``press()``, and ``focus()`` calls in terminal tests.
+    xterm.js creates a hidden ``<textarea>`` (``aria-label="Terminal input"``,
+    class ``xterm-helper-textarea``) to capture keyboard events. ``.last`` picks
+    the most-recently-mounted terminal — the workspace bottom terminal, which is
+    opened after the agent terminal — so this stays unambiguous even when the
+    main agent panel is itself a terminal (matching ``run_command_in_active_terminal``).
     """
-    return page.locator(".xterm-helper-textarea")
+    return page.get_by_label("Terminal input").last
 
 
 def run_command_in_active_terminal(page: Page, command: str) -> None:
@@ -71,22 +73,21 @@ def get_agent_terminal_panel(page: Page) -> Locator:
     return page.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
 
 
-def expect_terminal_panel_replaces_chat(page: Page) -> None:
-    """Assert the main panel is the terminal, not the chat.
+def focus_agent_terminal(page: Page) -> None:
+    """Click the visible agent terminal's xterm screen so the focus-tracked
+    ``window.__xterm`` test handle points at it.
 
-    Both halves of the panel switch for terminal agents: the agent terminal
-    panel is visible AND no chat input is mounted anywhere on the page
-    (page-level check — the chat-panel POM is scoped to a panel that does
-    not exist here).
+    Needed when more than one agent terminal is mounted (e.g. a plain first
+    agent plus a driven agent, or after a restart): selecting a tab alone does
+    not fire a focus event, so a subsequent buffer read could target the other
+    agent's terminal. A real click focuses this xterm and updates the handle.
     """
+    get_agent_terminal_panel(page).locator(".xterm-screen").click()
+
+
+def expect_agent_terminal_panel_visible(page: Page) -> None:
+    """Assert the agent's main panel is its terminal."""
     expect(get_agent_terminal_panel(page)).to_be_visible()
-    expect(page.get_by_test_id(ElementIDs.CHAT_INPUT)).to_have_count(0)
-
-
-def expect_chat_replaces_terminal_panel(page: Page) -> None:
-    """Assert the main panel is the chat, not the terminal (the inverse switch)."""
-    expect(page.get_by_test_id(ElementIDs.CHAT_INPUT)).to_be_visible()
-    expect(get_agent_terminal_panel(page)).to_have_count(0)
 
 
 def get_agent_terminal_textarea(page: Page) -> Locator:
@@ -116,15 +117,49 @@ def type_into_agent_terminal(page: Page, text: str, press_enter: bool = True) ->
 def run_command_in_agent_terminal(page: Page, command: str) -> None:
     """Type ``command`` into a terminal agent's xterm and press Enter.
 
-    Mirrors ``run_command_in_active_terminal`` (including the no-op padding
-    that absorbs xterm.js's freshly-mounted-terminal keystroke drops) but
-    scoped to the agent terminal panel.
+    A freshly-mounted xterm on the agent panel is racy with synthetic keyboard
+    events: ``focus()`` alone does not reliably engage xterm's input handler, and
+    the first burst of typed characters is silently dropped until the PTY is
+    fully attached. So we (1) click the panel to give xterm real keyboard focus,
+    (2) type a no-op-padded command, and (3) confirm the command echoed at the
+    prompt before committing with Enter — re-typing if the burst was dropped.
     """
     no_op = ": ; " * 8  # 32 chars of "no-op then sep" -- absorbs heavy drops
+    panel = get_agent_terminal_panel(page)
+    # Clicking the xterm *screen* (its rendered viewport) sets xterm.js's
+    # internal focus so it routes keystrokes to the PTY; focusing the hidden
+    # helper-textarea alone does not engage that handler on the agent panel.
+    xterm_screen = panel.locator(".xterm-screen")
     textarea = get_agent_terminal_textarea(page)
-    textarea.focus()
-    page.wait_for_timeout(200)
-    page.keyboard.type(no_op + command, delay=30)
+    for attempt in range(4):
+        xterm_screen.click()
+        textarea.focus()
+        page.wait_for_timeout(300)
+        page.keyboard.type(no_op + command, delay=30)
+        try:
+            # The shell echoes typed input at the prompt; once `command` is
+            # visible the keystrokes reached the PTY and Enter will run it.
+            page.wait_for_function(
+                """cmd => {
+                    const xterm = window.__xterm;
+                    if (!xterm) return false;
+                    const buffer = xterm.buffer.active;
+                    for (let i = 0; i <= buffer.baseY + buffer.cursorY; i++) {
+                        const line = buffer.getLine(i);
+                        if (line && line.translateToString(true).includes(cmd)) return true;
+                    }
+                    return false;
+                }""",
+                arg=command,
+                timeout=4000,
+            )
+            break
+        except PlaywrightTimeoutError:
+            if attempt == 3:
+                break  # let the caller's output assertion surface the failure
+            # Clear whatever partial line landed, then retry the whole type.
+            page.keyboard.press("Control+u")
+            page.wait_for_timeout(200)
     textarea.press("Enter")
 
 
@@ -160,13 +195,17 @@ def get_xterm_buffer_text(page: Page) -> str:
     )
 
 
-def wait_for_xterm_substring(page: Page, substring: str) -> None:
+def wait_for_xterm_substring(page: Page, substring: str, timeout_ms: float | None = None) -> None:
     """Wait until the xterm scrollback buffer contains ``substring``.
 
     Polls ``window.__xterm``'s scrollback via ``page.wait_for_function`` so
     the test observes shell output landing in the buffer instead of guessing
     with ``page.wait_for_timeout(N)``. On timeout, raises ``AssertionError``
     carrying the full buffer text for diagnostics.
+
+    ``timeout_ms`` overrides Playwright's default wait (useful when the output
+    is gated behind a slow async chain, e.g. the CI Babysitter spawning a fresh
+    terminal task + environment before writing its prompt).
 
     This is the right primitive for "did the shell write X to the terminal?"
     assertions -- ``expect()`` cannot target the xterm buffer (it is read via
@@ -185,6 +224,7 @@ def wait_for_xterm_substring(page: Page, substring: str) -> None:
                 return false;
             }""",
             arg=substring,
+            timeout=timeout_ms,
         )
     except PlaywrightTimeoutError as e:
         buffer_text = get_xterm_buffer_text(page)
@@ -329,10 +369,6 @@ def get_tab_context_menu_rename(page: Page) -> Locator:
 
 def get_inline_rename_input(page: Page) -> Locator:
     return page.get_by_test_id(ElementIDs.INLINE_RENAME_INPUT)
-
-
-def get_terminal_heading(page: Page) -> Locator:
-    return page.get_by_test_id(ElementIDs.TERMINAL_HEADING)
 
 
 def get_xterm_theme_foreground(page: Page) -> str:

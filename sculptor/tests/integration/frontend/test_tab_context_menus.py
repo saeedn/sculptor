@@ -27,7 +27,7 @@ def test_terminal_tab_context_menu_close_others(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(page, prompt="Terminal test", workspace_name="Terminal WS")
+    start_task_and_wait_for_ready(page, workspace_name="Terminal WS")
 
     # Open the terminal panel (it is not visible by default)
     open_terminal_and_wait(page)

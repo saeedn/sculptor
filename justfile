@@ -25,16 +25,6 @@ nvm use --silent 24.17.0
 set -u
 '''
 
-# Reusable snippet to abort early when the `offload` CLI is not installed.
-_require_offload := '''
-if ! command -v offload &>/dev/null; then
-    echo "Error: 'offload' is not installed."
-    echo "Install it with: cargo install offload"
-    echo "(On macOS, install Rust first if needed: brew install rust)"
-    exit 1
-fi
-'''
-
 # Pinned version of the `ratchets` lint binary (https://crates.io/crates/ratchets).
 # Bump this and re-run `just install-ratchets` (and update CI) when adopting a new release.
 ratchets_version := "0.4.0"
@@ -130,11 +120,6 @@ alias stop := tmux-stop
 alias app := build-desktop-app
 alias pkg := package-desktop-installer
 alias refresh := refresh-assets
-alias snapshot := snapshot-build-artifacts
-alias publish := publish-build-artifacts
-alias promote := promote-release
-alias fixup := fixup-release
-alias hotfix := hotfix-release
 
 # === CI Commands ===
 
@@ -279,7 +264,7 @@ check-yaml:
     _do_check_yaml() {
       cd "{{justfile_directory()}}"
       echo "Checking YAML file syntax..."
-      YAML_FILES=$(git ls-files '*.yaml' '*.yml' | grep -Ev '{{_style_exclude}}|authentik')
+      YAML_FILES=$(git ls-files '*.yaml' '*.yml' | grep -Ev '{{_style_exclude}}|authentik' || true)
       if [ -z "$YAML_FILES" ]; then
         echo "No YAML files to check."
         exit 0
@@ -361,38 +346,6 @@ _run-check step:
       { echo "=== {{step}} ==="; cat "$step_log"; echo; } >> "$JUST_LOG_FILE"
     fi
 
-# Fail if a bundled plugin squats a reserved dynamic-mount path. The backend
-# serves /plugins/local and /plugins/from-workspace at runtime; a built-in named
-# `local` or `from-workspace` would be shadowed by the mount, so those names are
-# reserved. (The frontend plugin manager also drops such a built-in at runtime
-# as defense in depth; this catches it at build/CI time.)
-[group("ci")]
-check-reserved-plugin-names:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    {{ _quiet_by_default_fn }}
-    _do_check_reserved_plugin_names() {
-      cd "{{justfile_directory()}}"
-      echo "Checking for reserved built-in plugin names..."
-      reserved=("local" "from-workspace")
-      offenders=""
-      for base in sculptor/frontend/public/plugins sculptor/frontend/plugins; do
-        for name in "${reserved[@]}"; do
-          if [ -e "$base/$name" ]; then
-            offenders="$offenders  $base/$name\n"
-          fi
-        done
-      done
-      if [ -n "$offenders" ]; then
-        echo "ERROR: these built-in plugins use a reserved name (local, from-workspace):"
-        echo -e "$offenders"
-        echo "Rename them — those paths are reserved for backend-served plugins."
-        exit 1
-      fi
-      echo "No reserved built-in plugin names."
-    }
-    quiet_by_default check-reserved-plugin-names _do_check_reserved_plugin_names
-
 # Run all checks: format, lint, typecheck, newlines, and ratchets
 # Set JUST_VERBOSE=1 in the environment for full output (used in CI).
 [group("ci")]
@@ -409,7 +362,7 @@ check:
     # Note: check-large-files is not included here as it checks staged files only (for pre-commit hooks)
     # Run checks in parallel (fastest first for quicker feedback).
     ./sculptor/frontend/node_modules/.bin/concurrently \
-      --names check-yaml,check-uv-lock,check-shellcheck,ratchets,typecheck,check-file-hygiene,check-reserved-plugin-names,lint \
+      --names check-yaml,check-uv-lock,check-shellcheck,ratchets,typecheck,check-file-hygiene,lint \
       --prefix-colors auto \
       "just _run-check check-yaml" \
       "just _run-check check-uv-lock" \
@@ -417,7 +370,6 @@ check:
       "just _run-check ratchets" \
       "just _run-check typecheck" \
       "just _run-check check-file-hygiene" \
-      "just _run-check check-reserved-plugin-names" \
       "just _run-check lint" \
       2>&1 | grep -v 'exited with code 0'
 
@@ -597,63 +549,6 @@ frontend:
     env SCULPTOR_ICON_LABEL="src" \
       npm run electron:start -- --  --unhandled-rejections=strict --trace-warnings
 
-# Start Electron with the backend running in a Docker container (dev mode).
-# Requires: Docker, ANTHROPIC_API_KEY (or ~/anthropic_key.txt).
-# Usage:  just frontend-container
-[group("dev")]
-frontend-container:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    REPO_ROOT="{{justfile_directory()}}"
-    IMAGE_NAME="sculptor-backend-dev"
-    SCRIPT="$REPO_ROOT/container/run-backend-in-container.sh"
-
-    # Build the Docker image if it doesn't exist
-    if ! docker image inspect "$IMAGE_NAME" >/dev/null 2>&1; then
-      echo "Building Docker image $IMAGE_NAME ..."
-      docker build -f "$REPO_ROOT/container/container-backend-dev.dockerfile" -t "$IMAGE_NAME" "$REPO_ROOT"
-    fi
-
-    # Resolve ANTHROPIC_API_KEY
-    if [ -z "${ANTHROPIC_API_KEY:-}" ] && [ -f "$HOME/anthropic_key.txt" ]; then
-      export ANTHROPIC_API_KEY="$(cat "$HOME/anthropic_key.txt")"
-    fi
-
-    # Generate a shared SESSION_TOKEN so backend and frontend agree on CSRF
-    export SESSION_TOKEN="${SESSION_TOKEN:-$(uuidgen)}"
-
-    # Tell Electron to spawn the container and where to proxy
-    export SCULPTOR_CUSTOM_BACKEND_CMD="$SCRIPT --dev"
-    export SCULPTOR_CUSTOM_BACKEND_URL="http://localhost:${HOST_PORT:-8080}"
-
-    just _patch-electron-app-name "Sculptor (from source)"
-    export SCULPTOR_ICON_LABEL="src"
-    cd "$REPO_ROOT/sculptor/frontend"
-    exec npm run electron:start -- --  --unhandled-rejections=strict --trace-warnings
-
-# Start Electron in custom-command mode WITHOUT Docker.
-# Runs the backend from source via uv, but exercises the full custom-command
-# code path (stdout URL parsing, HTTP file uploads, capabilities flags).
-# This is the fastest way to iterate on custom-command changes.
-# Usage:  just frontend-custom
-[group("dev")]
-frontend-custom:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    REPO_ROOT="{{justfile_directory()}}"
-    PORT="${SCULPTOR_API_PORT:-5050}"
-
-    export SESSION_TOKEN="${SESSION_TOKEN:-$(uuidgen)}"
-
-    # A minimal "custom backend command" that runs the backend from source.
-    # It prints the URL to stdout (so Electron can discover it) then execs the backend.
-    export SCULPTOR_CUSTOM_BACKEND_CMD="echo http://localhost:${PORT} && cd ${REPO_ROOT}/sculptor && exec uv run python -m sculptor.cli.main --no-open-browser --port ${PORT}"
-
-    just _patch-electron-app-name "Sculptor (from source)"
-    export SCULPTOR_ICON_LABEL="src"
-    cd "$REPO_ROOT/sculptor/frontend"
-    exec npm run electron:start -- --  --unhandled-rejections=strict --trace-warnings
-
 # Start the Storybook dev server
 [group("dev")]
 storybook:
@@ -731,24 +626,6 @@ tmux-stop:
 # Rebuilds everything needed to successfully `just start` after changing commits
 [group("dev")]
 rebuild: clean install install-ratchets generate-api generate-sculpt-client
-
-# Open the per-test runtime distribution visualization in a browser.
-# Reads offload-history.jsonl from the repo root (tracked; updated by every `offload` run).
-[group("dev")]
-visualize-test-runtimes:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{justfile_directory()}}"
-    PORT="$(uv run python -c 'import socket; s=socket.socket(); s.bind(("",0)); print(s.getsockname()[1]); s.close()')"
-    URL="http://localhost:${PORT}/tools/offload-stats/test-runtime-distributions.html"
-    echo "serving on http://localhost:${PORT}/  (Ctrl-C to stop)"
-    echo "opening ${URL}"
-    uv run python -m http.server "$PORT" >/dev/null 2>&1 &
-    SERVER_PID=$!
-    trap 'kill ${SERVER_PID} 2>/dev/null || true' EXIT
-    sleep 0.3
-    uv run python -m webbrowser "$URL" >/dev/null 2>&1 || true
-    wait "$SERVER_PID"
 
 # -------- Sculptor Build Commands --------
 
@@ -873,88 +750,11 @@ install:
     just install-build-deps
     just install-backend
     just install-frontend
-    # pi is not installed here: Sculptor provisions it in MANAGED mode (the
-    # default). Run `just install-pi` only for a CUSTOM or real_pi dev setup.
-
-# Installs the pinned, self-contained pi binary from GitHub Releases into
-# .venv/pi (the whole release tree — the binary loads sibling files like
-# package.json/wasm/theme relative to its real path) and symlinks it into
-# .venv/bin, which `uv run` puts first on PATH so a CUSTOM `pi` resolves to it.
-# We install the version PI_VERSION_RANGE pins. Sculptor provisions pi itself
-# in MANAGED mode (the default), so this is NOT part of `just install`/`rebuild`.
-# Opt-in dev helper: for a CUSTOM pi against .venv/bin/pi, or the real_pi suite.
-[group("install")]
-install-pi:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    {{ _quiet_by_default_fn }}
-    _do_install_pi() {
-      cd "{{justfile_directory()}}"
-      venv="{{justfile_directory()}}/.venv"
-      target="$venv/bin/pi"
-      # Source of truth for the pinned version: PI_VERSION_RANGE. (uv run also
-      # ensures the workspace venv exists, since we install into its bin.)
-      version="$(uv run --project sculptor python -c 'from sculptor.services.dependency_management_service import PI_VERSION_RANGE; print(PI_VERSION_RANGE.recommended_version)')"
-      if [ -x "$target" ] && [ "$("$target" --version 2>&1 | tr -dc '0-9.')" = "$version" ]; then
-        echo "pi $version already installed."
-        return 0
-      fi
-      case "$(uname -s)" in
-        Darwin) os_part=darwin ;;
-        Linux) os_part=linux ;;
-        *) echo "install-pi: unsupported OS '$(uname -s)'" >&2; return 1 ;;
-      esac
-      case "$(uname -m)" in
-        arm64|aarch64) arch_part=arm64 ;;
-        x86_64|amd64) arch_part=x64 ;;
-        *) echo "install-pi: unsupported arch '$(uname -m)'" >&2; return 1 ;;
-      esac
-      asset="pi-${os_part}-${arch_part}.tar.gz"
-      url="https://github.com/earendil-works/pi/releases/download/v${version}/${asset}"
-      echo "Downloading pi $version ($asset)..."
-      tmp="$(mktemp -d)"
-      trap 'rm -rf "$tmp"' RETURN
-      curl -fsSL "$url" -o "$tmp/pi.tar.gz"
-      rm -rf "$venv/pi"
-      tar -xzf "$tmp/pi.tar.gz" -C "$venv"
-      [ -x "$venv/pi/pi" ] || { echo "install-pi: pi binary missing in $asset" >&2; return 1; }
-      ln -sf ../pi/pi "$target"
-      echo "Installed pi $version -> $target"
-    }
-    quiet_by_default install-pi _do_install_pi
-
-# Recompute pi's per-platform sha256 pin: download each supported-platform tarball,
-# hash it, and print the platforms={...} block to paste into PI_PIN
-# (sculptor/services/managed_tools.py). The one manual step at a pi version bump.
-[group("install")]
-compute-pi-pin version:
-    uv run python "{{justfile_directory()}}/scripts/compute_pi_pin.py" "{{version}}"
 
 # Installs additional dependencies for testing
 [group("install")]
 install-test:
 	uv run --project sculptor -m playwright install --with-deps
-
-# Install git hooks that delegate to just commands
-[group("install")]
-install-hooks:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{justfile_directory()}}"
-    echo "Installing git hooks..."
-    ln -sf ../../scripts/git-hooks/pre-commit .git/hooks/pre-commit
-    echo "Git hooks installed successfully."
-    echo "  pre-commit: runs 'just check' + 'just check-large-files'"
-
-# Uninstall git hooks (restores to no hooks)
-[group("install")]
-uninstall-hooks:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    cd "{{justfile_directory()}}"
-    echo "Uninstalling git hooks..."
-    rm -f .git/hooks/pre-commit .git/hooks/pre-push
-    echo "Git hooks uninstalled."
 
 # Creates a FE distribution for the backend to serve statically
 [group("build")]
@@ -962,7 +762,6 @@ build-frontend: install-frontend
     #! /usr/bin/env bash
     {{ nvm_use }}
     cd "{{justfile_directory()}}/sculptor/frontend"
-    # NOTE: intentionally not calling setup-build-vars here so test/dev builds don't pelt sentry
     npm run build --mode {{MODE}}
     mkdir -p ./frontend-dist
     cp -a dist/. ../frontend-dist/
@@ -973,21 +772,6 @@ build-backend: install-backend
     cd "{{justfile_directory()}}/sculptor"
     echo "Creating an sdist for sculptor"
     uv run --project sculptor builder create-version-file
-
-# Create _version.py with version and git SHA. Pass --annotate-dev for CI dev builds.
-[group("build")]
-create-version-file *args="":
-    cd "{{justfile_directory()}}/sculptor" && uv run --project sculptor builder create-version-file {{ args }}
-
-# Fail fast if pyproject version is inconsistent with the build context. Pass the
-# tag (sculptor-v...) for tag builds; omit it for non-tag (dev) builds.
-# The tag is a named parameter passed through quote() — NOT an unquoted variadic
-# {{ args }} — because CI feeds github.ref_name through here and git refnames may
-# contain shell metacharacters ($, ;, |, ...); unquoted interpolation would both
-# drop an empty tag (the bug that failed every main build) and allow injection.
-[group("build")]
-verify-release-tag tag="":
-    cd "{{justfile_directory()}}/sculptor" && uv run --project sculptor builder verify-release-tag --tag {{ quote(tag) }}
 
 # Builds the Sculptor webapp in the default environment.
 [group("build")]
@@ -1010,9 +794,6 @@ pyrefly-check:
 # Creates a production build of the Sculptor webapp and backend.
 [group("build")]
 dist:
-    # The ENVIRONMENT variable gets eventually passed to sculptor/builder/cli.py,
-    # where it's used to derive environment variables defining sentry DSN and release ID,
-    # which then get picked up as Vite defines and affect the built JS files.
     @just ENVIRONMENT=production build-frontend build-backend
 
 # Builds a "sidecar" of the Sculptor webapp backend.
@@ -1058,10 +839,7 @@ build-desktop-app:
     #! /usr/bin/env bash
     {{ nvm_use }}
     cd "{{justfile_directory()}}/sculptor/frontend"
-    # Set up the environment variables for the correct version. Defaults to
-    # "dev" so `just refresh app` works locally without ceremony; CI sets
-    # MODE=production explicitly when packaging release artifacts.
-    eval $(uv run --project sculptor builder setup-build-vars "${MODE:-dev}") && npm run electron:package
+    npm run electron:package
     mkdir -p "{{justfile_directory()}}/dist/darwin-arm64"
     cp -r out/Sculptor-darwin-arm64/ "{{justfile_directory()}}/dist/darwin-arm64"
 
@@ -1077,10 +855,7 @@ build-desktop-app:
       aarch64|arm64) ELECTRON_ARCH="arm64" ;;
       *)             ELECTRON_ARCH="x64" ;;
     esac
-    # Set up the environment variables for the correct version. Defaults to
-    # "dev" so `just refresh app` works locally without ceremony; CI sets
-    # MODE=production explicitly when packaging release artifacts.
-    eval $(uv run --project sculptor builder setup-build-vars "${MODE:-dev}") && npm run electron:package
+    npm run electron:package
     mkdir -p "{{justfile_directory()}}/dist/linux-${ELECTRON_ARCH}"
     cp -r "out/Sculptor-linux-${ELECTRON_ARCH}/" "{{justfile_directory()}}/dist/linux-${ELECTRON_ARCH}"
 
@@ -1105,10 +880,7 @@ package-desktop-installer:
     just unmount-dmg
     {{ nvm_use }}
     cd "{{justfile_directory()}}/sculptor/frontend"
-    # Telemetry env baked into the installer. Defaults to production so a bare
-    # `just pkg` never ships a dev DSN; CI sets SCULPTOR_BUILD_ENV=dev for
-    # non-release builds.
-    eval "$(uv run --project sculptor builder setup-build-vars "${SCULPTOR_BUILD_ENV:-production}")" && npm run electron:make
+    npm run electron:make
     mkdir -p "{{justfile_directory()}}/dist"
     cp -r out/make/zip "{{justfile_directory()}}/dist"
     cp out/make/Sculptor.dmg "{{justfile_directory()}}/dist"
@@ -1137,10 +909,7 @@ pkg-dev:
     trap '(cd "$ROOT/sculptor" && uv run --project sculptor builder sync-frontend-version --reverse)' EXIT
     {{ nvm_use }}
     cd "$ROOT/sculptor/frontend"
-    # Use the "dev" sentry/posthog environment so daily-driver telemetry stays
-    # out of the production buckets.
-    eval $(uv run --project sculptor builder setup-build-vars dev) && \
-        SKIP_NOTARIZE_AND_SIGN=1 npm run electron:make
+    SKIP_NOTARIZE_AND_SIGN=1 npm run electron:make
     mkdir -p "$ROOT/dist"
     cp out/make/Sculptor.dmg "$ROOT/dist"
     echo "Built: $ROOT/dist/Sculptor.dmg"
@@ -1237,10 +1006,7 @@ package-desktop-installer:
       aarch64|arm64) ELECTRON_ARCH="arm64" ;;
       *)             ELECTRON_ARCH="x64" ;;
     esac
-    # Inject the telemetry env before packaging, like the macOS recipe; without
-    # it the renderer bakes an empty DSN. Defaults to production; CI sets
-    # SCULPTOR_BUILD_ENV=dev for non-release builds.
-    eval "$(uv run --project sculptor builder setup-build-vars "${SCULPTOR_BUILD_ENV:-production}")" && npm run electron:make
+    npm run electron:make
 
     # The AppImage maker includes the version in the filename.
     # Rename the file to remove the version for consistent filenames.
@@ -1251,39 +1017,6 @@ package-desktop-installer:
     cp -r out/make/* "{{justfile_directory()}}/dist"
 
 pkg_filename := if os() == "linux" { "AppImage/x64/Sculptor.AppImage" } else { "Sculptor.dmg" }
-
-# -------- Sculptor Release Commands --------
-
-# Generate an electron-updater auto-update manifest for the given platform and architecture.
-[group("build")]
-generate-autoupdate-manifest platform arch:
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder generate-autoupdate-manifest {{platform}} {{arch}}
-
-# Uploads Snapshots of the artifacts for a given target to the BUILD s3 bucket and location.
-[group("release")]
-snapshot-build-artifacts platform arch:
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder snapshot-build-artifacts -p {{platform}} -a {{arch}}
-
-# Pull down uploaded snapshots of the artifacts from the BUILD s3 bucket and location.
-[group("release")]
-retrieve-build-artifacts +args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder retrieve-build-artifacts {{ args }}
-
-
-[doc("""Publishes the artifacts for the given build to the public s3 buckets. This detects whether we're running in
-release-candidate or not, and makes the appropriate copies.""")]
-[group("release")]
-publish-build-artifacts *args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder publish-build-artifacts {{ args }}
-
 
 # -------- Sculptor Testing Commands --------
 
@@ -1362,7 +1095,7 @@ test-integration tests="sculptor/tests/integration/" buildargs="": build-fronten
     fi
     {{ _quiet_by_default_fn }}
     _do_test_integration() {
-      ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude --ignore=sculptor/tests/integration/real_pi {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
+      ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
     }
     quiet_by_default test-integration _do_test_integration
 
@@ -1421,31 +1154,6 @@ test-real-claude tests="sculptor/tests/integration/real_claude/" buildargs="": b
     }
     quiet_by_default test-real-claude _do_test_real_claude
 
-# Runs real pi integration tests (require ANTHROPIC_API_KEY). These tests hit
-# the real upstream model through real pi and are excluded from CI. The
-# `install-pi` dependency puts the pinned pi on PATH (.venv/bin/pi), which the
-# real_pi resolver requires. Run serially by default.
-# Set XDIST_WORKERS to override (e.g. XDIST_WORKERS=2 for parallel).
-[group("test")]
-test-real-pi tests="sculptor/tests/integration/real_pi/" buildargs="": install-pi build-frontend generate-sculpt-client
-    #!/usr/bin/env bash
-    set -euo pipefail
-    if [ "${JUST_VERBOSE:-}" != "1" ] && [ -z "${JUST_LOG_FILE:-}" ]; then
-      mkdir -p "{{ _logs_dir }}"
-      export JUST_LOG_FILE="{{ _logs_dir }}/test-real-pi-$(date +%Y%m%d-%H%M%S).log"
-      echo "log: $JUST_LOG_FILE"
-    fi
-    if [ -n "${XDIST_WORKERS:-}" ]; then
-      xdist_args="-n ${XDIST_WORKERS}"
-    else
-      xdist_args=""
-    fi
-    {{ _quiet_by_default_fn }}
-    _do_test_real_pi() {
-      uv run --project sculptor pytest ${xdist_args} -m real_pi --show-capture=all --capture=tee-sys -v -ra {{ if env("RUN_ALL", "") != "" { "" } else { "-x" } }} {{tests}} {{buildargs}}
-    }
-    quiet_by_default test-real-pi _do_test_real_pi
-
 # Runs Electron integration tests (marked @pytest.mark.electron or @pytest.mark.browser_and_electron).
 # Same env var overrides as test-integration: RUN_ALL=1, XDIST_WORKERS=N, JUST_VERBOSE=1.
 # Uses fewer parallel workers than test-integration (Electron is heavier than headless Chromium).
@@ -1474,115 +1182,6 @@ test-integration-electron tests="sculptor/tests/integration/" buildargs="": buil
     fi
     {{ _quiet_by_default_fn }}
     _do_test_integration_electron() {
-      ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude --ignore=sculptor/tests/integration/real_pi --sculptor-launch-mode=electron {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
+      ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude --sculptor-launch-mode=electron {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
     }
     quiet_by_default test-integration-electron _do_test_integration_electron
-
-[group("test")]
-benchmark tests="sculptor/tests/benchmark" buildargs="":
-    uv run --project sculptor pytest --show-capture=all --capture=tee-sys -v -ra {{tests}} {{buildargs}}
-
-# Run integration tests in parallel on Modal via Offload
-[group("test")]
-test-offload *args="":
-    #!/bin/bash
-    set -ueo pipefail
-    {{ _require_offload }}
-    ulimit -n 8192
-    offload run --trace {{args}} || [ $? -eq 2 ]
-
-# Run the @electron integration subset on Offload (Modal) in Electron launch
-# mode; see offload-electron.toml. These are skipped by the browser-mode lane.
-[group("test")]
-test-offload-electron *args="":
-    #!/bin/bash
-    set -ueo pipefail
-    {{ _require_offload }}
-    ulimit -n 8192
-    offload run -c offload-electron.toml --trace {{args}} || [ $? -eq 2 ]
-
-# Run the backend unit suite on Offload (Modal); see offload-unit.toml.
-# Alternative to `just test-unit-backend` (pytest -n 8).
-[group("test")]
-test-unit-offload *args="":
-    #!/bin/bash
-    set -ueo pipefail
-    {{ _require_offload }}
-    ulimit -n 8192
-    offload run -c offload-unit.toml --trace --show-estimated-cost {{args}} || [ $? -eq 2 ]
-
-# -------- Sculptor Release Commands --------
-
-# Runs the dev command to create a branch bumping the version
-[group("release")]
-bump-version args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder bump-version {{args}}
-
-# Run the dev command to cut a release
-[group("release")]
-cut-release *args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder cut-release {{args}}
-
-# Run the dev command to update a release
-[group("release")]
-fixup-release args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder fixup-release {{args}}
-
-# Begins a hotfix branch for a release that was already published
-[group("release")]
-hotfix-release args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder hotfix-release {{args}}
-
-
-# Promote a release to the latest version
-[group("release")]
-promote-release args="":
-    #!/usr/bin/env bash
-    cd "{{justfile_directory()}}/sculptor"
-    uv run --project sculptor builder promote-release {{args}}
-
-# Trigger a dev build pipeline from the current branch
-[group("release")]
-trigger-dev-build:
-    #!/usr/bin/env bash
-    set -euo pipefail
-    # Require clean working tree
-    if ! git diff --quiet HEAD; then
-        echo "Error: working tree is dirty. Commit or stash changes first."
-        exit 1
-    fi
-    # Reject release versions — dev builds must use a .dev suffix in pyproject.toml
-    VERSION=$(cd sculptor && python3 -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-    if [[ "$VERSION" != *".dev"* ]]; then
-        echo "Error: pyproject.toml version '$VERSION' is a release version."
-        echo "Dev builds require a .dev suffix (e.g. 0.15.0.dev0). Aborting."
-        exit 1
-    fi
-    REF="$(git rev-parse --abbrev-ref HEAD)"
-    if [ "$REF" = "HEAD" ]; then
-        echo "Error: detached HEAD state. Check out a branch first."
-        exit 1
-    fi
-    # Ensure branch is fully pushed to the remote
-    git fetch origin "$REF" 2>/dev/null || true
-    LOCAL_SHA="$(git rev-parse HEAD)"
-    REMOTE_SHA="$(git rev-parse "origin/$REF" 2>/dev/null || echo "")"
-    if [ -z "$REMOTE_SHA" ]; then
-        echo "Error: branch '$REF' does not exist on origin. Push it first."
-        exit 1
-    fi
-    if [ "$LOCAL_SHA" != "$REMOTE_SHA" ]; then
-        echo "Error: local branch '$REF' ($LOCAL_SHA) differs from origin ($REMOTE_SHA)."
-        echo "Push your changes first: git push origin $REF"
-        exit 1
-    fi
-    echo "Triggering dev build on ref: $REF (sha: $LOCAL_SHA)"
-    gh workflow run build-desktop.yml --ref "$REF"

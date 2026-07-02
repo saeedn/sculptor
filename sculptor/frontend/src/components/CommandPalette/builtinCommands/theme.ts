@@ -2,7 +2,7 @@ import { MoonIcon, PaletteIcon } from "lucide-react";
 
 import { APPEARANCE_MODES } from "~/common/theme/appearanceModes.ts";
 
-import { themeBuilderSettingsAtom } from "../../../common/state/atoms/themeBuilder.ts";
+import { themeAppearanceAtom } from "../../../common/state/atoms/theme.ts";
 import type { CommandRuntime } from "../runtime.ts";
 import type { Command } from "../types.ts";
 
@@ -34,7 +34,7 @@ export const buildThemeCommands = (runtime: CommandRuntime): Array<Command> => [
       // explicit light/dark — if the user is on "system" we flip to the
       // opposite of whatever the OS resolves to right now. Falls back to
       // dark when uncertain.
-      const current = runtime.store.get(themeBuilderSettingsAtom).appearance;
+      const current = runtime.store.get(themeAppearanceAtom);
       const isDarkResolved =
         current === "dark" ||
         (current === "system" &&

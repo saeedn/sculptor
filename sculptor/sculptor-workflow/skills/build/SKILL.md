@@ -47,7 +47,7 @@ Check for `.sculptor/docs.md` (for spec / plan paths). Same rule.
 - `Architecture path:` absolute or repo-relative
 - `Plan folder:` absolute or repo-relative path to the `plan/` folder
 
-If no slug is provided, ask with your question tool — `mcp__sculptor__ask_user_question` if it's available, otherwise the built-in `AskUserQuestion` — offering glob-discovered slugs. (The tool call raises the "waiting for input" status that alerts the user; don't ask in plain text.)
+If no slug is provided, ask with your question tool — the built-in `AskUserQuestion` — offering glob-discovered slugs. (The tool call raises the "waiting for input" status that alerts the user; don't ask in plain text.)
 
 Verify the plan folder exists at the resolved path. If not, stop and
 ask the user how to proceed with your question tool.

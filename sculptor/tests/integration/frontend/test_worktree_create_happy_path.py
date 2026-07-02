@@ -5,8 +5,7 @@ Covers the three scenarios from the spec:
 2. Custom branch name: user overrides preview before submit.
 3. Random slug: empty workspace name → preview uses `<user>/<adj>-<noun>`.
 
-Worktree mode is the default; no flag toggling is needed and the mode
-selector is hidden unless an opt-in mode (clone or in-place) is enabled.
+A worktree is the only kind of workspace; no flag toggling is needed.
 """
 
 import re
@@ -77,7 +76,7 @@ def test_worktree_create_with_default_branch_name(sculptor_instance_: SculptorIn
 
     branch_name = _wait_for_branch_preview(add_ws_page, r".*fix-login-bug$")
 
-    add_ws_page.submit_and_wait_for_chat_panel()
+    add_ws_page.submit_and_wait_for_workspace()
 
     paths = _worktree_paths(sculptor_instance_.project_path)
     assert paths, "no worktree created"
@@ -102,7 +101,7 @@ def test_worktree_create_with_custom_branch_name(sculptor_instance_: SculptorIns
     branch_input.fill(custom_name)
     expect(branch_input).to_have_value(custom_name)
 
-    add_ws_page.submit_and_wait_for_chat_panel()
+    add_ws_page.submit_and_wait_for_workspace()
 
     paths = _worktree_paths(sculptor_instance_.project_path)
     assert paths, "no worktree created"
@@ -119,7 +118,7 @@ def test_worktree_create_with_empty_workspace_name_random_slug(sculptor_instance
 
     branch_name = _wait_for_branch_preview(add_ws_page, r".*[a-z0-9]+-[a-z0-9]+$")
 
-    add_ws_page.submit_and_wait_for_chat_panel()
+    add_ws_page.submit_and_wait_for_workspace()
 
     paths = _worktree_paths(sculptor_instance_.project_path)
     assert paths, "no worktree created"

@@ -5,7 +5,7 @@ import type { ReactElement } from "react";
 import { useCallback } from "react";
 
 import { fileBrowserTabCloseBehaviorAtom } from "~/common/state/atoms/userConfig.ts";
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 
 import { closeDiffTabAtom } from "./atoms.ts";
 import styles from "./DeletedFileBanner.module.scss";

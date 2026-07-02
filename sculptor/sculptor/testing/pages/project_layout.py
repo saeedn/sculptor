@@ -8,7 +8,6 @@ from sculptor.testing.elements.command_palette import PlaywrightCommandPaletteEl
 from sculptor.testing.elements.git_init_dialog import PlaywrightGitInitDialogElement
 from sculptor.testing.elements.keyboard_shortcuts_dialog import PlaywrightKeyboardShortcutsDialogElement
 from sculptor.testing.elements.project_path_dialog import PlaywrightProjectPathDialogElement
-from sculptor.testing.elements.skills_panel import PlaywrightSkillsPanelElement
 from sculptor.testing.elements.topbar import PlaywrightTopBarElement
 from sculptor.testing.elements.warning_banner import PlaywrightWarningBannerElement
 from sculptor.testing.elements.workspace_peek import PlaywrightWorkspacePeekElement
@@ -128,18 +127,6 @@ class PlaywrightProjectLayoutPage(PlaywrightIntegrationTestPage):
         """Copy workspace id lives in the Diagnostics sub-menu (open it first)."""
         return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_COPY_WORKSPACE_ID)
 
-    def rename_workspace_tab(self, new_name: str, workspace_tab_index: int = 0) -> None:
-        """Rename a workspace tab via context menu."""
-        self.open_workspace_tab_context_menu(workspace_tab_index)
-        rename_item = self.get_tab_context_menu_rename()
-        expect(rename_item).to_be_visible()
-        rename_item.click()
-        rename_input = self.get_inline_rename_input()
-        expect(rename_input).to_be_visible()
-        rename_input.fill(new_name)
-        rename_input.press("Enter")
-        expect(rename_input).not_to_be_visible()
-
     def get_closed_workspaces_pill(self) -> Locator:
         return self.get_by_test_id(ElementIDs.CLOSED_WORKSPACES_PILL)
 
@@ -156,24 +143,12 @@ class PlaywrightProjectLayoutPage(PlaywrightIntegrationTestPage):
         topbar = self.get_by_test_id(ElementIDs.TOP_BAR)
         return PlaywrightTopBarElement(locator=topbar, page=self._page)
 
-    def get_top_bar_locator(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.TOP_BAR)
-
-    def get_bottom_bar(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.BOTTOM_BAR)
-
-    def get_component_gallery_tab(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.COMPONENT_GALLERY_TAB)
-
     def get_settings_page_locator(self) -> Locator:
         return self.get_by_test_id(ElementIDs.SETTINGS_PAGE)
 
     def get_keyboard_shortcuts_dialog(self) -> PlaywrightKeyboardShortcutsDialogElement:
         locator = self.get_by_test_id(ElementIDs.KEYBOARD_SHORTCUTS_DIALOG)
         return PlaywrightKeyboardShortcutsDialogElement(locator=locator, page=self._page)
-
-    def get_report_problem_popover(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.REPORT_PROBLEM_POPOVER)
 
     def get_command_palette(self) -> PlaywrightCommandPaletteElement:
         """Get the command palette locator (visible only when open)."""
@@ -223,24 +198,7 @@ class PlaywrightProjectLayoutPage(PlaywrightIntegrationTestPage):
         dialog_locator = self.get_by_test_id(ElementIDs.PROJECT_PATH_DIALOG)
         return PlaywrightProjectPathDialogElement(locator=dialog_locator, page=self._page)
 
-    def get_skills_panel(self) -> PlaywrightSkillsPanelElement:
-        """Get the SkillsPanel element. Only visible when its zone is open."""
-        return PlaywrightSkillsPanelElement(self.get_by_test_id(ElementIDs.SKILLS_PANEL), page=self._page)
-
     def toggle_theme(self) -> None:
         """Toggle between dark and light theme via Cmd/Ctrl+Shift+D."""
         mod_key = get_playwright_modifier_key()
         self.press_keyboard_shortcut(f"{mod_key}+Shift+d")
-
-    def open_skills_panel(self) -> PlaywrightSkillsPanelElement:
-        """Click the skills sidebar icon and return the visible SkillsPanel.
-
-        The panel lives in the right zone, collapsed by default. Clicking its
-        sidebar icon both reveals the zone and switches to the skills panel.
-        """
-        sidebar_icon = self.get_by_test_id(ElementIDs.PANEL_ICON_SKILLS)
-        expect(sidebar_icon).to_be_visible()
-        sidebar_icon.click()
-        panel = self.get_skills_panel()
-        expect(panel).to_be_visible()
-        return panel

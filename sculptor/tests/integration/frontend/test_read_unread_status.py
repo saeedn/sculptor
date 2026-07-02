@@ -1,17 +1,22 @@
 """Integration tests for read/unread status indicators on agent and workspace tabs.
 
 These tests verify:
-- Agent tabs show unread (green) when an agent has updates the user hasn't seen
 - Agent tabs show read (grey) after the user navigates to that agent
 - Workspace tabs derive unread state from their agents
 - The focused agent stays read as it receives updates
 - Read/unread status persists across server restarts
+
+Agents are driven by the fake registered terminal agent. A focused terminal
+agent receives updates by emitting lifecycle signals (busy/idle/files-changed)
+via send_fake_agent_command, the terminal-agent equivalent of a chat response.
 """
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
+from sculptor.testing.elements.terminal import get_agent_terminal_panel
+from sculptor.testing.fake_terminal_agent import add_registered_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -19,64 +24,51 @@ from sculptor.testing.sculptor_instance import SculptorInstanceFactory
 from sculptor.testing.user_stories import user_story
 
 
-@user_story("to see which agents have unseen updates within a workspace")
-def test_unread_indicator_when_switching_agents_within_workspace(
+@user_story("to see my focused agents stay read within a workspace")
+def test_focused_agents_stay_read_within_workspace(
     sculptor_instance_: SculptorInstance,
 ) -> None:
-    """Create a workspace with two agents, verify read/unread transitions on agent tabs.
+    """Create a workspace with two agents, verify read transitions on agent tabs.
 
     Flow:
-    1. Create workspace with agent 1 (finishes, user sees it → read)
-    2. Add agent 2 (auto-navigates to agent 2, both are read/unread appropriately)
-    3. Send a message on agent 2 so it gets activity
-    4. Switch to agent 1 — agent 2 now has unseen activity → should be unread
+    1. Create workspace with agent 1 (a terminal agent; read while viewing it)
+    2. Add agent 2 (auto-navigates to agent 2; read while viewing it)
+    3. Drive agent 2 (focused) — it stays read as its updatedAt advances
+    4. Switch to agent 1 — agent 2 had no updates after we left → stays read
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Create first agent in a new workspace
-    task_page = start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Read Test WS")
+    # Create first agent in a new workspace (a terminal agent).
+    task_page = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Read Test WS")
 
-    # Agent 1 should be read (we're viewing it and it finished)
+    # Agent 1 should be read (we're viewing it and it is ready).
     agent_tab_bar = task_page.get_agent_tab_bar()
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(1)
     expect(agent_tabs.first).to_have_attribute("data-dot-status", "read")
 
-    # Workspace tab should also be read (only agent is read)
+    # Workspace tab should also be read (only agent is read).
     workspace_tabs = task_page.get_workspace_tabs()
     expect(workspace_tabs.first).to_have_attribute("data-has-unread", "false")
 
-    # Add a second agent (auto-navigates to it)
-    agent_tab_bar.get_add_agent_button().click()
+    # Add a second agent (a registered fake terminal agent; auto-navigates to it).
+    add_registered_fake_terminal_agent(page, agents_dir)
     expect(agent_tabs).to_have_count(2)
 
-    # Send a message on agent 2 so it gets response activity
-    chat_panel = task_page.get_chat_panel()
-    send_chat_message(chat_panel, "Do something")
-    wait_for_completed_message_count(chat_panel, expected_message_count=2)
-
-    # Agent 2 should be read (we're viewing it)
+    # Drive agent 2 (focused) so its updatedAt advances; it should stay read.
+    send_fake_agent_command_and_wait(agents_dir, bash("echo agent2 > agent2.txt"))
     expect(agent_tabs.last).to_have_attribute("data-dot-status", "read")
 
-    # Switch to agent 1 — we leave agent 2 behind
+    # Switch to agent 1 — we leave agent 2 behind.
     agent_tabs.first.click()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
 
-    # Wait for chat panel to update (we're now on agent 1)
-    expect(chat_panel.get_thinking_indicator()).not_to_be_visible()
-
-    # Agent 1 should be read (we just navigated to it)
+    # Agent 1 should be read (we just navigated to it).
     expect(agent_tabs.first).to_have_attribute("data-dot-status", "read")
 
-    # Agent 2 should still be read — no new updates happened after we left
+    # Agent 2 should still be read — no new updates happened after we left.
     expect(agent_tabs.last).to_have_attribute("data-dot-status", "read")
-
-    # Now send a follow-up to agent 1 (which will make agent 1's updatedAt change,
-    # but we're viewing it so it stays read)
-    send_chat_message(chat_panel, "Follow up message")
-    wait_for_completed_message_count(chat_panel, expected_message_count=4)
-
-    # Agent 1 should still be read (we're viewing it while it updates)
-    expect(agent_tabs.first).to_have_attribute("data-dot-status", "read")
 
 
 @user_story("to see which workspaces have unseen agent updates")
@@ -86,60 +78,40 @@ def test_unread_workspace_indicator_across_workspaces(
     """Create two workspaces and verify the workspace tab unread indicator.
 
     Flow:
-    1. Create workspace A with agent (finishes, user sees it → read)
-    2. Create workspace B with agent (navigates away from A)
-    3. Workspace A should be read (agent was seen before leaving)
-    4. Workspace B should be read (we're viewing it)
-    5. Navigate back to workspace A, send a message to trigger activity
-    6. Navigate to workspace B — workspace A's agent got a response → A is unread
-    7. Navigate back to workspace A — it becomes read
+    1. Create workspace A with a terminal agent (read while viewing)
+    2. Create workspace B (navigates away from A)
+    3. Both workspaces should be read (A's agent was seen before leaving)
+    4. Navigate back to workspace A — still read
+    5. Navigate to workspace B — both stay read
     """
     page = sculptor_instance_.page
 
-    # Create workspace A with an agent
-    task_page_a = start_task_and_wait_for_ready(page, prompt="Agent in workspace A", workspace_name="Workspace A")
-
-    # Wait for the full message pipeline to settle (streaming stop + messages
-    # rendered + queued messages drained).  This prevents a race where a
-    # trailing backend event (e.g. task-status → COMPLETED) arrives *after*
-    # the user navigates away, causing workspace A to appear "unread".
-    chat_panel_a = task_page_a.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel_a, expected_message_count=2)
+    # Create workspace A with a terminal agent.
+    task_page_a = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace A")
 
     workspace_tabs = task_page_a.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(1)
     expect(workspace_tabs.first).to_have_attribute("data-has-unread", "false")
 
-    # Create workspace B (navigates away from A)
-    start_task_and_wait_for_ready(page, prompt="Agent in workspace B", workspace_name="Workspace B")
+    # Create workspace B (navigates away from A).
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace B")
 
     expect(workspace_tabs).to_have_count(2)
 
-    # Both workspaces should be read
+    # Both workspaces should be read.
     expect(workspace_tabs.first).to_have_attribute("data-has-unread", "false")
     expect(workspace_tabs.last).to_have_attribute("data-has-unread", "false")
 
-    # Navigate to workspace A and send a follow-up to generate new activity
+    # Navigate back to workspace A — its agent was seen, so it stays read.
     workspace_tabs.first.click()
-    task_page = PlaywrightTaskPage(page=page)
-    chat_panel = task_page.get_chat_panel()
-    expect(chat_panel.get_thinking_indicator()).not_to_be_visible()
-
-    send_chat_message(chat_panel, "Follow up in workspace A")
-    wait_for_completed_message_count(chat_panel, expected_message_count=4)
-
-    # Workspace A should be read (we're viewing it)
+    expect(get_agent_terminal_panel(page)).to_be_visible()
     expect(workspace_tabs.first).to_have_attribute("data-has-unread", "false")
 
-    # Now navigate to workspace B — workspace A's agent just got a response
-    # that we saw, so workspace A should still be read
+    # Now navigate to workspace B — both stay read.
     workspace_tabs.last.click()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
 
-    # Wait for workspace B's chat to appear
-    chat_panel = PlaywrightTaskPage(page=page).get_chat_panel()
-    expect(chat_panel.get_thinking_indicator()).not_to_be_visible()
-
-    # Both workspaces should be read (we saw A's response before leaving).
+    # Both workspaces should be read.
     expect(workspace_tabs.first).to_have_attribute("data-has-unread", "false")
     expect(workspace_tabs.last).to_have_attribute("data-has-unread", "false")
 
@@ -154,33 +126,30 @@ def test_focused_agent_stays_read_while_receiving_updates(
     changes while the user is viewing the agent, keeping it read.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Create a workspace with an agent
-    task_page = start_task_and_wait_for_ready(page, prompt="Initial prompt", workspace_name="Focused WS")
+    # Create a workspace, then add a registered fake terminal agent we can drive.
+    task_page = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Focused WS")
+    add_registered_fake_terminal_agent(page, agents_dir)
 
     agent_tab_bar = task_page.get_agent_tab_bar()
     agent_tabs = agent_tab_bar.get_agent_tabs()
-    expect(agent_tabs).to_have_count(1)
+    expect(agent_tabs).to_have_count(2)
 
-    # Agent should be read (we just viewed the initial response)
-    expect(agent_tabs.first).to_have_attribute("data-dot-status", "read")
+    # Drive a follow-up while staying on this agent; useMarkRead re-fires on the
+    # updatedAt change, keeping the focused agent read.
+    send_fake_agent_command_and_wait(agents_dir, bash("echo follow1 > follow1.txt"))
 
-    # Send a follow-up message while staying on this agent
-    chat_panel = task_page.get_chat_panel()
-    send_chat_message(chat_panel, "Follow up 1")
-    wait_for_completed_message_count(chat_panel, expected_message_count=4)
+    # Agent should be read (useMarkRead re-fires on updatedAt change).
+    expect(agent_tabs.last).to_have_attribute("data-dot-status", "read")
 
-    # Agent should still be read (useMarkRead re-fires on updatedAt change)
-    expect(agent_tabs.first).to_have_attribute("data-dot-status", "read")
+    # Drive another follow-up.
+    send_fake_agent_command_and_wait(agents_dir, bash("echo follow2 > follow2.txt"))
 
-    # Send another follow-up
-    send_chat_message(chat_panel, "Follow up 2")
-    wait_for_completed_message_count(chat_panel, expected_message_count=6)
+    # Agent should still be read.
+    expect(agent_tabs.last).to_have_attribute("data-dot-status", "read")
 
-    # Agent should still be read
-    expect(agent_tabs.first).to_have_attribute("data-dot-status", "read")
-
-    # Workspace should also show no unread
+    # Workspace should also show no unread.
     workspace_tabs = task_page.get_workspace_tabs()
     expect(workspace_tabs.first).to_have_attribute("data-has-unread", "false")
 
@@ -193,14 +162,13 @@ def test_read_status_persists_after_restart(
 
     Regression test for a bug where all agents/workspaces showed as unread on
     startup. CodingAgentTaskView.updated_at was computed from the last message
-    of any type, including bookkeeping messages (RequestStartedAgentMessage,
-    RequestSuccessAgentMessage) that are persisted to the DB with timestamps
-    lagging behind the frontend's mark_read call. On restart these stale
-    bookkeeping timestamps became updated_at > last_read_at, making previously-
-    read tasks appear unread.
+    of any type, including bookkeeping messages that are persisted to the DB
+    with timestamps lagging behind the frontend's mark_read call. On restart
+    these stale bookkeeping timestamps became updated_at > last_read_at, making
+    previously-read tasks appear unread.
 
     Steps:
-    1. Start Sculptor, create a workspace with an agent, let it finish
+    1. Start Sculptor, create a workspace with a terminal agent, let it settle
     2. Verify the workspace shows as read (user is viewing it)
     3. Wait for the debounced mark_read to fire and persist to the database
     4. Restart Sculptor (full server restart against the same database)
@@ -211,12 +179,10 @@ def test_read_status_persists_after_restart(
     with sculptor_instance_factory_.spawn_instance() as instance:
         page = instance.page
 
-        # Step 1: Create agent and wait for it to finish
-        task_page = start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Persist WS")
-        chat_panel = task_page.get_chat_panel()
-        wait_for_completed_message_count(chat_panel, expected_message_count=2)
+        # Step 1: Create a terminal agent and wait for it to be ready.
+        task_page = start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Persist WS")
 
-        # Step 2: Verify the workspace and agent show as read
+        # Step 2: Verify the workspace and agent show as read.
         agent_tab_bar = task_page.get_agent_tab_bar()
         agent_tabs = agent_tab_bar.get_agent_tabs()
         expect(agent_tabs).to_have_count(1)
@@ -225,20 +191,20 @@ def test_read_status_persists_after_restart(
         workspace_tabs = task_page.get_workspace_tabs()
         expect(workspace_tabs.first).to_have_attribute("data-has-unread", "false")
 
-        # Step 3: Give time for the debounced mark_read to fire and persist
+        # Step 3: Give time for the debounced mark_read to fire and persist.
         page.wait_for_timeout(2000)
 
     # === Second instance: verify read status persists after restart ===
     with sculptor_instance_factory_.spawn_instance() as instance:
         page = instance.page
 
-        # Step 4: Wait for the workspace tab to appear (server has restarted)
+        # Step 4: Wait for the workspace tab to appear (server has restarted).
         layout_page = PlaywrightTaskPage(page=page)
         workspace_tabs = layout_page.get_workspace_tabs()
         expect(workspace_tabs.first).to_be_visible()
 
         # Step 5: Check workspace tab shows read WITHOUT clicking on it.
-        # Clicking would navigate into the workspace, mount the chat panel,
+        # Clicking would navigate into the workspace, mount the agent panel,
         # and trigger useMarkRead — which would re-mark the agent as read,
         # masking the persistence bug.
         expect(workspace_tabs.first).to_have_attribute("data-has-unread", "false")

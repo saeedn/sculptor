@@ -6,19 +6,14 @@ from sculptor.config.settings import SculptorSettings
 from sculptor.database.models import Notification
 from sculptor.database.models import NotificationID
 from sculptor.database.models import Project
-from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
-from sculptor.database.models import WorkspaceInitializationStrategy
 from sculptor.primitives.ids import OrganizationReference
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import UserReference
-from sculptor.primitives.ids import UserSettingsID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.web.data_types import OpenFileUiAction
 from sculptor.web.data_types import StreamingUpdateSourceTypes
-from sculptor.web.data_types import UserUpdateSourceTypes
-from sculptor.web.streams import LEGACY_SETUP_PLACEHOLDER_BYTES
 from sculptor.web.streams import _convert_to_streaming_update
 from sculptor.web.streams import _convert_to_user_update
 from sculptor.web.streams import _snapshot_setup_state
@@ -32,31 +27,21 @@ def test_convert_to_user_update_collects_models_and_overwrites_duplicates() -> N
     initial_project = Project(object_id=project_id, organization_reference=organization, name="Initial")
     updated_project = initial_project.model_copy(update={"name": "Updated"})
 
-    user_settings = UserSettings(
-        object_id=UserSettingsID(),
-        user_reference=user_reference,
-    )
-
-    server_settings = SculptorSettings()
-
     notification = Notification(
         object_id=NotificationID(),
         user_reference=user_reference,
         message="Streaming notification",
     )
 
-    transactions: list[UserUpdateSourceTypes | None] = [
+    transactions: list[CompletedTransaction | None] = [
         None,
         CompletedTransaction(request_id=None, updated_models=(initial_project,)),
-        server_settings,
-        CompletedTransaction(request_id=None, updated_models=(updated_project, user_settings, notification)),
+        CompletedTransaction(request_id=None, updated_models=(updated_project, notification)),
     ]
 
     update = _convert_to_user_update(transactions)
 
-    assert update.user_settings == user_settings
     assert update.projects == (updated_project,)
-    assert update.settings == server_settings
     assert update.notifications == (notification,)
 
 
@@ -73,7 +58,6 @@ def _make_terminal_workspace(*, setup_run_id: str | None, setup_log_path: str | 
         project_id=ProjectID(),
         organization_reference=OrganizationReference("org-1"),
         description="ws",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
         environment_id="env-1",
         setup_status="succeeded",
         setup_run_id=setup_run_id,
@@ -92,26 +76,6 @@ def _empty_runner() -> MagicMock:
     runner = MagicMock()
     runner.iter_states.return_value = []
     return runner
-
-
-def test_snapshot_emits_synthetic_placeholder_for_migrated_workspaces() -> None:
-    """Workspaces backfilled from the legacy PTY-based setup have terminal
-    status but no captured log. The snapshot should still emit a chunk with
-    a synthetic placeholder so the user can see the run happened.
-    """
-    workspace = _make_terminal_workspace(setup_run_id=None, setup_log_path=None)
-
-    out = _snapshot_setup_state(services=_services_with_workspaces([workspace]), runner=_empty_runner())
-
-    assert len(out) == 1
-    status, chunk = out[0]
-    assert status.status == "succeeded"
-    assert status.run_id is None
-    assert chunk is not None
-    assert chunk.data == LEGACY_SETUP_PLACEHOLDER_BYTES
-    # The chunk must carry a deterministic synthetic run_id so the frontend
-    # can dedupe re-emissions across reconnects.
-    assert chunk.run_id == f"persisted-{workspace.object_id}"
 
 
 def test_snapshot_skips_terminal_workspace_with_known_run_but_lost_log() -> None:
@@ -138,8 +102,6 @@ def test_convert_includes_ui_open_file() -> None:
     update = _convert_to_streaming_update(
         all_data=all_data,
         task_views_by_task_id={},
-        task_update_state_by_task_id={},
-        processed_message_by_task_id={},
         settings=_empty_settings(),
     )
 
@@ -155,8 +117,6 @@ def test_convert_ui_open_file_last_write_wins_for_same_workspace() -> None:
     update = _convert_to_streaming_update(
         all_data=all_data,
         task_views_by_task_id={},
-        task_update_state_by_task_id={},
-        processed_message_by_task_id={},
         settings=_empty_settings(),
     )
 
@@ -173,8 +133,6 @@ def test_convert_ui_open_file_keeps_distinct_workspaces() -> None:
     update = _convert_to_streaming_update(
         all_data=all_data,
         task_views_by_task_id={},
-        task_update_state_by_task_id={},
-        processed_message_by_task_id={},
         settings=_empty_settings(),
     )
 

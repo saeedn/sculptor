@@ -1,19 +1,16 @@
-import { Button, Flex, Select, Spinner, Text, Tooltip } from "@radix-ui/themes";
+import { Button, Flex, Select, Spinner, Text } from "@radix-ui/themes";
 import { useAtomValue, useSetAtom } from "jotai";
-import { BlocksIcon, BotIcon } from "lucide-react";
-import { posthog } from "posthog-js";
+import { BotIcon } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
-import type { LlmModel } from "../../api";
 import {
   createWorkspaceAgent,
   createWorkspaceV2,
   ElementIds,
   getActiveProjects,
   getMostRecentlyUsedProject,
-  WorkspaceInitializationStrategy,
 } from "../../api";
 import { HTTPException } from "../../common/Errors.ts";
 import { useImbueNavigate } from "../../common/NavigateUtils.ts";
@@ -25,13 +22,7 @@ import {
   type StoredAgentType,
 } from "../../common/state/atoms/agentTabs.ts";
 import { projectsArrayAtom, updateProjectsAtom } from "../../common/state/atoms/projects.ts";
-import {
-  defaultModelAtom,
-  isCloneWorkspacesEnabledAtom,
-  isInPlaceWorkspacesEnabledAtom,
-  isPiAgentEnabledAtom,
-  userConfigAtom,
-} from "../../common/state/atoms/userConfig.ts";
+import { userConfigAtom } from "../../common/state/atoms/userConfig.ts";
 import {
   clearDraftCreatingAtom,
   convertNewWorkspaceToTabAtom,
@@ -59,14 +50,6 @@ export const AddWorkspacePage = (): ReactElement => {
     throw new Error("AddWorkspacePage requires a draftId route parameter");
   }
   const { navigateToAgent } = useImbueNavigate();
-  const isInPlaceWorkspacesEnabled = useAtomValue(isInPlaceWorkspacesEnabledAtom);
-  const isCloneWorkspacesEnabled = useAtomValue(isCloneWorkspacesEnabledAtom);
-  const isPiAgentEnabled = useAtomValue(isPiAgentEnabledAtom);
-  // Worktree mode is always the default; the selector only appears when an
-  // opt-in mode (clone or in-place) has been enabled and the user has more
-  // than one option to choose from.
-  const isModeSelectorVisible = isInPlaceWorkspacesEnabled || isCloneWorkspacesEnabled;
-  const defaultModelPreference = useAtomValue(defaultModelAtom);
   const convertNewWorkspaceToTab = useSetAtom(convertNewWorkspaceToTabAtom);
   const markDraftCreating = useSetAtom(markDraftCreatingAtom);
   const clearDraftCreating = useSetAtom(clearDraftCreatingAtom);
@@ -85,14 +68,12 @@ export const AddWorkspacePage = (): ReactElement => {
   selectedProjectIdRef.current = selectedProjectId;
   const [isLoadingProjects, setIsLoadingProjects] = useState(true);
 
-  // Form state. Worktree is the default mode; clone and in-place are opt-in.
-  const [mode, setMode] = useState<WorkspaceInitializationStrategy>(WorkspaceInitializationStrategy.WORKTREE);
   // The type of the workspace's first agent (agent type is per-agent, not
   // per-workspace). Registered terminal agents select as `registered:<id>`.
   // The form opens preset to the shared last-used type (the same MRU the tab
   // bar's + button reads) — a deliberate mount-time snapshot the user can
   // change freely; the MRU is written back only when a workspace is actually
-  // created. A stored "pi" is unusable when pi-agent is off.
+  // created.
   const lastUsedAgentType = useAtomValue(lastUsedAgentTypeAtom);
   const setUserConfig = useSetAtom(userConfigAtom);
   // Optimistically reflect the chosen harness in the shared config (the same
@@ -104,9 +85,7 @@ export const AddWorkspacePage = (): ReactElement => {
     },
     [setUserConfig],
   );
-  const [agentTypeValue, setAgentTypeValue] = useState<string>(
-    lastUsedAgentType === "pi" && !isPiAgentEnabled ? "claude" : lastUsedAgentType,
-  );
+  const [agentTypeValue, setAgentTypeValue] = useState<string>(lastUsedAgentType);
   const { registrations, refetch: refreshRegistrations } = useTerminalAgentRegistrations();
   const { agentType, registrationId } = parseStoredAgentType(agentTypeValue as StoredAgentType);
   const [workspaceNameDraft, setWorkspaceNameDraft] = useDraftTabName(draftId);
@@ -123,14 +102,6 @@ export const AddWorkspacePage = (): ReactElement => {
   // collapse into one piece of state so they can never disagree.
   const [branchNameOverride, setBranchNameOverride] = useDraftBranchNameOverride(draftId);
   const isBranchNameManuallyEdited = branchNameOverride !== null;
-
-  const handleModeChange = useCallback(
-    (nextMode: WorkspaceInitializationStrategy): void => {
-      setMode(nextMode);
-      setBranchNameOverride(null);
-    },
-    [setBranchNameOverride],
-  );
 
   const handleProjectChange = useCallback(
     (nextProjectId: string | null): void => {
@@ -152,7 +123,6 @@ export const AddWorkspacePage = (): ReactElement => {
   } = useBranchNamePreview({
     projectId: selectedProjectId,
     workspaceName,
-    mode,
     override: branchNameOverride,
   });
 
@@ -244,20 +214,13 @@ export const AddWorkspacePage = (): ReactElement => {
     if (isPending || !selectedProjectId) return;
 
     const trimmedBranch = effectiveBranchName.trim();
-    if (mode === WorkspaceInitializationStrategy.WORKTREE && !trimmedBranch) {
+    if (!trimmedBranch) {
       setToast({
-        title: "Branch name is required for worktree workspaces",
+        title: "Branch name is required",
         type: ToastType.ERROR,
       });
       return;
     }
-
-    const requestedBranchName =
-      mode === WorkspaceInitializationStrategy.IN_PLACE
-        ? undefined
-        : mode === WorkspaceInitializationStrategy.WORKTREE
-          ? trimmedBranch
-          : trimmedBranch || undefined;
 
     setIsPending(true);
     try {
@@ -269,10 +232,9 @@ export const AddWorkspacePage = (): ReactElement => {
       const wsResponse = await createWorkspaceV2({
         body: {
           projectId: selectedProjectId,
-          initializationStrategy: mode,
-          sourceBranch: mode === WorkspaceInitializationStrategy.IN_PLACE ? undefined : sourceBranch,
+          sourceBranch,
           description: workspaceName.trim() || "Untitled workspace",
-          requestedBranchName,
+          requestedBranchName: trimmedBranch,
         },
       });
 
@@ -295,25 +257,23 @@ export const AddWorkspacePage = (): ReactElement => {
       setBranchNameOverride(null);
 
       // If the remembered registered agent's registration is no longer present
-      // (deleted since it was picked), fall back to Claude rather than leaving
-      // the just-created workspace with a failed, agentless first-agent create.
+      // (deleted since it was picked), fall back to a plain terminal rather
+      // than leaving the just-created workspace with a failed, agentless
+      // first-agent create.
       const isMissingRegistration =
         agentType === "registered" && !registrations.some((r) => r.registrationId === registrationId);
-      const effectiveAgentType = isMissingRegistration ? "claude" : agentType;
+      const effectiveAgentType = isMissingRegistration ? "terminal" : agentType;
       const effectiveRegistrationId = isMissingRegistration ? undefined : registrationId;
       const effectiveAgentTypeValue: StoredAgentType = isMissingRegistration
-        ? "claude"
+        ? "terminal"
         : (agentTypeValue as StoredAgentType);
 
-      // Create first agent (no prompt in the simplified form). Only Claude
-      // consumes a creation-time model: terminal/registered agents have no
-      // model concept, and pi selects from its own catalog in-task, so it
-      // starts on pi's default rather than a Claude model it would ignore.
-      const shouldSendCreationModel = effectiveAgentType === "claude";
+      // Create first agent (no prompt in the simplified form). The built-in
+      // terminal/registered agents have no creation-time model concept, so no
+      // model is sent.
       const agentResponse = await createWorkspaceAgent({
         path: { workspace_id: workspaceId },
         body: {
-          model: shouldSendCreationModel ? (defaultModelPreference as LlmModel) : undefined,
           agentType: effectiveAgentType,
           registrationId: effectiveRegistrationId,
         },
@@ -326,17 +286,6 @@ export const AddWorkspacePage = (): ReactElement => {
       // The agent was actually created with this type — record it as the
       // shared MRU so the tab bar's plain + click creates the same type.
       setLastUsedAgentType(effectiveAgentTypeValue);
-
-      posthog.capture("workspace.created", {
-        workspace_id: workspaceId,
-        agent_id: agentResponse.data.id,
-        mode,
-        agent_type: effectiveAgentType,
-        has_workspace_name: workspaceName.trim().length > 0,
-        // Branch names are user-entered text (they can encode feature/ticket/
-        // customer names), so record only whether one was chosen.
-        has_source_branch: sourceBranch != null,
-      });
 
       navigateToAgent(workspaceId, agentResponse.data.id);
     } catch (error) {
@@ -368,7 +317,6 @@ export const AddWorkspacePage = (): ReactElement => {
     isPending,
     selectedProjectId,
     draftId,
-    mode,
     agentType,
     registrationId,
     registrations,
@@ -377,7 +325,6 @@ export const AddWorkspacePage = (): ReactElement => {
     sourceBranch,
     workspaceName,
     effectiveBranchName,
-    defaultModelPreference,
     navigateToAgent,
     setWorkspaceNameDraft,
     setSelectedProjectId,
@@ -427,15 +374,11 @@ export const AddWorkspacePage = (): ReactElement => {
             nameInputRef={nameInputRef}
             repoInfo={repoInfo}
             isPending={isPending}
-            isSubmitDisabled={
-              mode === WorkspaceInitializationStrategy.WORKTREE &&
-              (effectiveBranchName.trim() === "" || isBranchNamePreviewLoading)
-            }
+            isSubmitDisabled={effectiveBranchName.trim() === "" || isBranchNamePreviewLoading}
             onSubmit={handleSubmit}
             autoFocus
             branchField={
               <BranchNameField
-                mode={mode}
                 value={effectiveBranchName}
                 isManuallyEdited={isBranchNameManuallyEdited}
                 isLoading={isBranchNamePreviewLoading}
@@ -455,28 +398,12 @@ export const AddWorkspacePage = (): ReactElement => {
             />
 
             {repoInfo ? (
-              mode === WorkspaceInitializationStrategy.IN_PLACE ? (
-                <Tooltip content="In-place workspaces use the current branch in your repository">
-                  <span style={{ display: "flex" }}>
-                    <BranchSelector
-                      fetchRepoInfo={fetchRepoInfo}
-                      repoInfo={repoInfo}
-                      setUserSelectedBranch={setUserSelectedBranch}
-                      sourceBranch={sourceBranch}
-                      disabled={true}
-                      triggerVariant="ghost"
-                    />
-                  </span>
-                </Tooltip>
-              ) : (
-                <BranchSelector
-                  fetchRepoInfo={fetchRepoInfo}
-                  repoInfo={repoInfo}
-                  setUserSelectedBranch={setUserSelectedBranch}
-                  sourceBranch={sourceBranch}
-                  triggerVariant="ghost"
-                />
-              )
+              <BranchSelector
+                fetchRepoInfo={fetchRepoInfo}
+                repoInfo={repoInfo}
+                setUserSelectedBranch={setUserSelectedBranch}
+                sourceBranch={sourceBranch}
+              />
             ) : (
               <Button disabled={true} className={styles.loadingButton}>
                 <Flex align="center" gap="1">
@@ -487,9 +414,8 @@ export const AddWorkspacePage = (): ReactElement => {
             )}
 
             {/* First-agent type selector — the same per-agent choice as the
-                tab bar's + menu. Only the pi option is gated behind the
-                experimental pi-agent flag; Claude, Terminal, and any
-                registered terminal agents are available to everyone. */}
+                tab bar's + menu: a plain Terminal agent or any registered
+                terminal agent. */}
             <Select.Root
               size="1"
               value={agentTypeValue}
@@ -514,14 +440,6 @@ export const AddWorkspacePage = (): ReactElement => {
                 </Flex>
               </Select.Trigger>
               <Select.Content position="popper" side="bottom" sideOffset={5}>
-                <Select.Item value="claude" data-testid={ElementIds.AGENT_TYPE_OPTION_CLAUDE}>
-                  {AGENT_TYPE_LABELS.claude}
-                </Select.Item>
-                {isPiAgentEnabled && (
-                  <Select.Item value="pi" data-testid={ElementIds.AGENT_TYPE_OPTION_PI}>
-                    {AGENT_TYPE_LABELS.pi}
-                  </Select.Item>
-                )}
                 <Select.Item value="terminal" data-testid={ElementIds.AGENT_TYPE_OPTION_TERMINAL}>
                   {AGENT_TYPE_LABELS.terminal}
                 </Select.Item>
@@ -537,55 +455,6 @@ export const AddWorkspacePage = (): ReactElement => {
                 ))}
               </Select.Content>
             </Select.Root>
-
-            {/* Mode selector — shown when any experimental workspace mode is enabled */}
-            {isModeSelectorVisible && (
-              <Select.Root
-                size="1"
-                value={mode}
-                onValueChange={(value) => handleModeChange(value as WorkspaceInitializationStrategy)}
-              >
-                <Select.Trigger
-                  variant="ghost"
-                  className={styles.compactSelector}
-                  data-testid={ElementIds.MODE_SELECTOR}
-                >
-                  <Flex align="center" gap="1">
-                    <BlocksIcon size={12} />
-                    <Text className={styles.selectorLabel}>environment</Text>
-                    {mode === WorkspaceInitializationStrategy.IN_PLACE
-                      ? "In-place"
-                      : mode === WorkspaceInitializationStrategy.WORKTREE
-                        ? "Worktree"
-                        : "Clone"}
-                  </Flex>
-                </Select.Trigger>
-                <Select.Content position="popper" side="bottom" sideOffset={5}>
-                  <Select.Item
-                    value={WorkspaceInitializationStrategy.WORKTREE}
-                    data-testid={ElementIds.MODE_OPTION_WORKTREE}
-                  >
-                    Worktree
-                  </Select.Item>
-                  {isCloneWorkspacesEnabled && (
-                    <Select.Item
-                      value={WorkspaceInitializationStrategy.CLONE}
-                      data-testid={ElementIds.MODE_OPTION_CLONE}
-                    >
-                      Clone
-                    </Select.Item>
-                  )}
-                  {isInPlaceWorkspacesEnabled && (
-                    <Select.Item
-                      value={WorkspaceInitializationStrategy.IN_PLACE}
-                      data-testid={ElementIds.MODE_OPTION_IN_PLACE}
-                    >
-                      In-place
-                    </Select.Item>
-                  )}
-                </Select.Content>
-              </Select.Root>
-            )}
           </NewWorkspaceForm>
         </Flex>
       </Flex>

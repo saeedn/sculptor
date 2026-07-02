@@ -50,11 +50,6 @@ let config = {
     extraResource: [
       path.resolve(__dirname, "../dist/sculptor_backend"), // Our backend
       path.resolve(__dirname, "../dist/sculpt"), // Sculpt CLI for agents
-      // electron-updater reads app-update.yml from process.resourcesPath
-      // during downloadUpdate() to resolve the updater cache directory name.
-      // Without this file, downloads fail with ENOENT even when setFeedURL()
-      // was called (setFeedURL only overrides the provider, not configOnDisk).
-      path.resolve(__dirname, "app-update.yml"),
     ],
     // Path to application icon (platform-specific extensions will be auto-selected)
     icon: path.resolve(__dirname, "assets/icons/icon"),
@@ -67,19 +62,10 @@ let config = {
   // Array of "makers" that create platform-specific installers and packages
   makers: [
     {
-      // Windows installer maker using Squirrel.Windows
-      name: "@electron-forge/maker-squirrel",
-      config: {
-        // Name of the Windows setup executable file
-        setupExe: "sculptor-setup.exe",
-      },
-      platforms: ["win32"],
-    },
-    {
       // ZIP archive maker for simple distribution
       name: "@electron-forge/maker-zip",
-      // Create ZIP files for all platforms (fallback distribution method)
-      platforms: ["darwin", "linux", "win32"],
+      // Create ZIP files for macOS and Linux (fallback distribution method)
+      platforms: ["darwin", "linux"],
     },
     {
       // macOS DMG disk image maker for native macOS distribution

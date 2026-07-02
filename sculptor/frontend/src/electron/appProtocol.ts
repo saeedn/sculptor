@@ -5,15 +5,7 @@
  * (`sculptor://app/index.html`) served by the Electron main process out of the
  * built frontend bundle, instead of from `file://`. A stable origin is what
  * makes absolute-path resolution, `fetch`, dynamic `import()`, and CSP behave
- * like a normal web page — the prerequisite for runtime-loaded frontend
- * plugins, which will later be served under this same origin (e.g.
- * `sculptor://app/plugins/<id>/...` and `sculptor://app/plugin-runtime/...`).
- *
- * This module currently owns only host-bundle serving; the `app` host prefix
- * is deliberately reserved so the plugin work can hang `/plugins/` and
- * `/plugin-runtime/` paths off the same origin (no cross-origin CORS plumbing
- * between host and plugins, and the plugin import map's absolute paths resolve
- * against this origin).
+ * like a normal web page.
  *
  * The helpers here are intentionally free of any Electron imports — they carry
  * the URL→file mapping and the path-traversal guard so they can be unit-tested
@@ -22,14 +14,10 @@
  */
 import * as path from "node:path";
 
-/** The custom scheme the packaged renderer (and, later, plugins) are served from. */
+/** The custom scheme the packaged renderer is served from. */
 export const APP_SCHEME = "sculptor";
 
-/**
- * The single host under the scheme. Everything is served from one origin so
- * the (future) plugin import map and same-origin plugin loading need no CORS
- * plumbing; the host bundle and plugins differ only by path prefix.
- */
+/** The single host under the scheme; everything is served from one origin. */
 export const APP_HOST = "app";
 
 /** The renderer's origin — also what the backend CORS allowlist must accept. */

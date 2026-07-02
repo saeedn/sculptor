@@ -1,4 +1,4 @@
-import { BugIcon, KeyboardIcon } from "lucide-react";
+import { KeyboardIcon } from "lucide-react";
 
 import type { CommandRuntime } from "../runtime.ts";
 import type { Command } from "../types.ts";
@@ -13,14 +13,5 @@ export const buildHelpCommands = (runtime: CommandRuntime): Array<Command> => [
     icon: KeyboardIcon,
     shortcut: "help",
     perform: () => runtime.ui.toggleHelpDialog(),
-  },
-  {
-    id: "help.report_problem",
-    title: "Report a problem",
-    subtitle: "File a bug or send feedback",
-    keywords: ["bug", "feedback", "issue", "file", "diagnostics"],
-    group: "help",
-    icon: BugIcon,
-    perform: () => runtime.ui.openReportProblem(),
   },
 ];

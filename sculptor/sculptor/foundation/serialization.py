@@ -1,7 +1,6 @@
 import builtins
 from functools import cached_property
 from importlib import import_module
-from traceback import format_tb
 from types import TracebackType
 from typing import cast
 
@@ -86,15 +85,6 @@ class SerializedException(SerializableModel):
             pass
 
         return exception
-
-    def as_formatted_traceback(self) -> str:
-        if self.traceback is None:
-            traceback_str = ""
-        else:
-            # FixedTraceback deliberately duck-types stdlib TracebackType, which format_tb's stubs can't know
-            # pyrefly: ignore [bad-argument-type]
-            traceback_str = "".join(format_tb(self.traceback))
-        return f"Traceback (most recent call last):\n{traceback_str}\n{self.exception}: {self.args}"
 
 
 def _convert_serialized_exception_args(error: Serializable, traceback: TracebackType | None = None) -> JsonTypeAlias:

@@ -20,20 +20,3 @@
   background-color: var(--gray-4);
   color: var(--gray-12);
 }
-
-.reviewAllButton {
-  color: var(--gray-11);
-  margin: 0;
-  transition: background-color var(--duration-fast), color var(--duration-fast);
-
-  &:hover {
-    color: var(--gray-12);
-  }
-}
-
-.reviewAllLabel {
-  // stylelint-disable-next-line sculptor/no-hardcoded-values -- hide label when panel is narrow
-  @container (max-width: 260px) {
-    display: none;
-  }
-}

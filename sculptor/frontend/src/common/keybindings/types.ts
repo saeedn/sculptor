@@ -1,6 +1,4 @@
 export type StaticKeybindingId =
-  | "focus_input"
-  | "chat_search"
   | "command_palette"
   | "help"
   | "home"
@@ -11,27 +9,19 @@ export type StaticKeybindingId =
   | "delete_workspace"
   | "next_tab"
   | "previous_tab"
-  | "send_message"
-  | "interrupt_agent"
   | "toggle_theme"
-  | "focus_mode"
-  | "zen_mode"
-  | "toggle_left_panel"
-  | "toggle_bottom_panel"
-  | "toggle_right_panel"
   | "next_agent"
   | "previous_agent"
   | "new_agent"
   | "open_in_app"
   | "find_in_file"
-  | "toggle_tool_density"
   | "clear_terminal";
 
 export type PanelKeybindingId = `panel_${string}`;
 
 export type KeybindingId = StaticKeybindingId | PanelKeybindingId;
 
-export type KeybindingCategory = "general" | "workspaces" | "chat" | "navigation" | "panels" | "terminal";
+export type KeybindingCategory = "general" | "workspaces" | "navigation" | "panels" | "terminal";
 
 export type KeybindingDefinition = {
   id: KeybindingId;
@@ -46,12 +36,11 @@ export type ResolvedKeybinding = KeybindingDefinition & {
   isDefault: boolean;
 };
 
-export const CATEGORY_ORDER = ["chat", "workspaces", "navigation", "general", "panels", "terminal"] as const;
+export const CATEGORY_ORDER = ["workspaces", "navigation", "general", "panels", "terminal"] as const;
 
 export const CATEGORY_DISPLAY_NAMES: Readonly<Record<KeybindingCategory, string>> = {
   general: "General",
   workspaces: "Workspaces",
-  chat: "Chat",
   navigation: "Navigation",
   panels: "Panels",
   terminal: "Terminal",

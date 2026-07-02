@@ -5,7 +5,7 @@ import { Fragment } from "react";
 
 import { ElementIds, type ExternalApp, type Workspace } from "../../../api";
 import { getOpenWithItems } from "../../../common/openInApp/items.tsx";
-import type { AccentColor } from "../../../common/state/atoms/themeBuilder";
+import type { AccentColor } from "../../../common/state/atoms/theme";
 import { useWorkspaceBranch } from "../../../common/state/hooks/useWorkspaceBranch.ts";
 import type { Agent, AgentAction, ContextActionShared, WorkspaceAction } from "./types.ts";
 
@@ -117,8 +117,8 @@ export const WorkspaceContextMenuContent = ({
   const isOpenInVisible =
     openInRuntime != null && openInRuntime.canOpenInOS() && openInRuntime.isMacUi() && getOpenWithItems().length > 0;
   // Render the Open-in submenu inline, immediately after the `open_pr`
-  // action — it shares the git/repo group with Commit / Create MR /
-  // Open MR. Falls back when the menu has no `open_pr` row
+  // action — it shares the git/repo group with Commit / Create PR /
+  // Open PR. Falls back when the menu has no `open_pr` row
   // (it just won't appear).
   const openInSub = isOpenInVisible ? (
     <ContextMenu.Sub>

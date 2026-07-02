@@ -21,10 +21,8 @@ dependencies = [
     # Pyrefly understands @attr.s classes only with the PEP 681 dataclass_transform
     # stubs introduced in attrs 26; older stubs leave it unable to see generated __init__s.
     "attrs>=26.1.0",
-    "boto3>=1.35.0",
     "cachetools",
     "coolname>=2.2.0",
-    "email-validator",
     "fastapi",
     "filelock>=3.8.0",
     "httpx",
@@ -33,10 +31,7 @@ dependencies = [
     "pydantic>=2.11.4",
     "pydantic-settings",
     "pygit2>=1.18.0",
-    "pyjwt[crypto]",
-    "python-multipart",
     "python-slugify>=8.0.0",
-    "pyyaml>=6.0",
     "requests>=2.28.0",
     "sqlalchemy",
     "tblib>=3.1",
@@ -70,23 +65,6 @@ exclude = [
     "sculptor.testing.*",
 ]
 
-# The next two stanzas ensure that these non-python files are included inside the sculptor wheel.
-[tool.setuptools]
-include-package-data = true
-
-[tool.setuptools.package-data]
-sculptor = [
-    "services/environment_service/providers/docker/imbue_addons/*",
-    "services/environment_service/providers/docker/default_devcontainer/*",
-    "cli/ssh_config/*",
-    # Sculptor-pinned pi extensions, loaded into pi via `-e` at launch. They are
-    # `.ts` source (pi runs them through jiti, no build step) and must ship in
-    # the wheel so PiAgent.start can resolve them in an installed build, not just
-    # a repo checkout.
-    "agents/pi_agent/extensions/*",
-]
-# Sadly, the build system will not complain if the above are misspelled.
-
 [dependency-groups]
 dev = [
     # The source-built `sculpt` CLI. sculptor does not import it (agents shell out
@@ -96,15 +74,11 @@ dev = [
     # extraneous package, which is what let agents silently fall back to the stale
     # packaged CLI (SCU-1360). Excluded from production via `uv sync --no-dev`.
     "sculpt",
-    "boto3-stubs>=1.40.49",
-    "filelock>=3.18.0",
     # inline-snapshot, pytest-asyncio and pytest-mock were absorbed from the former
     # imbue_core library (now sculptor.foundation) — its tests need them.
     "inline-snapshot",
-    "pillow>=11.0.0",
     # playwright's bundled Chromium must match Electron's (1.53 <-> Electron 37,
     # 1.60 <-> Electron 42) for connect_over_cdp; bump together with Electron.
-    # Keep the frontend package.json "playwright" devDependency on the same pin.
     "playwright==1.60.0",
     "pyrefly>=1.0.0",
     "pytest-asyncio",
@@ -114,9 +88,10 @@ dev = [
     "pytest-timeout",
     "pytest-xdist>=3.8.0",
     "pytest>=9",
+    # Only consumer is the justfile `check-yaml` recipe's inline `import yaml`.
+    "pyyaml>=6.0",
     "syrupy",
     "tabulate>=0.9.0",
-    "ty>=0.0.4",
     "websocket-client>=1.5.1",
 ]
 
@@ -128,17 +103,5 @@ packaging = [
 ]
 
 [project.scripts]
-sculptor_npm_run = "sculptor.scripts.npm_run:app"
 sculptor = "sculptor.cli.main:main"
-sculptor_eslint_preprocess = "sculptor.scripts.eslint_preprocess:main"
 builder = "builder.cli:app"  # Utilities for building and releasing Sculptor
-
-
-[tool.ty.rules]
-possibly-missing-attribute = "ignore"
-
-[tool.ty.src]
-exclude = [
-        "tests/"  # NOTE: We've disabled typechecking for tests for now they descend to base mockery, which is harder to
-                  # typecheck effectively.
-]

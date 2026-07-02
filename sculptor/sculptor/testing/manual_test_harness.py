@@ -7,7 +7,6 @@ by the auto-qa-changes skill's BrowserController HTTP server.
 
 from __future__ import annotations
 
-import hashlib
 import os
 import shutil
 import signal
@@ -24,7 +23,6 @@ from playwright.sync_api import Page
 from playwright.sync_api import Playwright
 from playwright.sync_api import sync_playwright
 
-import sculptor.primitives.ids
 from sculptor.config.user_config import UserConfig
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.services.user_config.user_config import save_config
@@ -50,18 +48,7 @@ _VITE_SHUTDOWN_TIMEOUT_SECONDS = 5
 
 def _make_test_user_config() -> UserConfig:
     """Create a UserConfig with test defaults (mirrors resources.py)."""
-    test_email = "test@imbue.com"
-    return UserConfig(
-        user_email=test_email,
-        user_id=sculptor.primitives.ids.create_user_id(test_email),
-        organization_id=sculptor.primitives.ids.create_organization_id(test_email),
-        instance_id=hashlib.md5(os.urandom(64)).hexdigest(),
-        is_error_reporting_enabled=True,
-        is_product_analytics_enabled=True,
-        is_session_recording_enabled=True,
-        is_privacy_policy_consented=True,
-        is_telemetry_level_set=True,
-    )
+    return UserConfig()
 
 
 def _populate_sculptor_folder(folder_path: Path) -> None:
@@ -240,8 +227,8 @@ class ManualTestHarness:
             tmp_path=self._tmp_path,
             hide_keys=False,
         )
-        # Opt-out used by /update-help-docs so screenshots don't include the
-        # "Fake Claude" and "Fake Claude 2" test-only models in the model picker.
+        # Opt-out so manual sessions / screenshots don't include the "Fake
+        # Claude" and "Fake Claude 2" test-only models in the model picker.
         # The frontend gates those models on TESTING__INTEGRATION_ENABLED.
         if os.environ.get("SCULPTOR_MANUAL_TEST_HIDE_FAKE_MODELS", "").lower() in ("1", "true", "yes"):
             environment["TESTING__INTEGRATION_ENABLED"] = "false"

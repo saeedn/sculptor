@@ -5,6 +5,5 @@ import { ErrorPage } from "./ErrorPage.tsx";
 
 export const RouteErrorPage = (): ReactElement => {
   const error = useRouteError();
-  // TODO (PROD-2166): Verify we need to capture errors here
-  return <ErrorPage error={error} isCapturingErrorWithSentry={true} />;
+  return <ErrorPage error={error} />;
 };

@@ -16,8 +16,6 @@ from fastapi import HTTPException
 from loguru import logger
 from pydantic import alias_generators
 from starlette.requests import Request
-from starlette.routing import Mount
-from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket
 
 from sculptor.config.settings import SculptorSettings
@@ -30,8 +28,6 @@ from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.service_collections.service_collection import get_services
 from sculptor.services.project_service.default_implementation import update_most_recently_used_project
-from sculptor.services.workspace_service.legacy_cleanup import cleanup_obsolete_mru_files
-from sculptor.utils.build import get_sculptor_folder
 from sculptor.utils.migration import ensure_sculptor_folder_ready
 from sculptor.utils.shutdown import GLOBAL_SHUTDOWN_EVENT
 from sculptor.utils.tracing import get_trace_to_path
@@ -39,46 +35,7 @@ from sculptor.utils.tracing import is_tracing_enabled
 from sculptor.utils.tracing import stop_and_write_trace
 from sculptor.web.auth import UserSession
 from sculptor.web.auth import authenticate_anonymous
-from sculptor.web.streams import Scope
 from sculptor.web.streams import ServerStopped
-from sculptor.web.streams import resolve_scope
-
-
-def mount_static_files(app: FastAPI, static_directory: str) -> None:
-    app.mount("/", StaticFiles(directory=static_directory, html=True), name="frontend-dist")
-
-
-def mount_plugin_files(app: FastAPI) -> None:
-    """Serve ``~/.sculptor/plugins/`` as static files at ``/plugins/local``.
-
-    The renderer fetches each plugin's ``manifest.json`` and dynamic-imports its
-    ESM bundle from here. The renderer needs these files both in the
-    backend-served web build (same origin) and in the packaged Electron build
-    (where the frontend is served from the ``sculptor://app`` protocol but
-    plugins still load over http from the backend). No session-token gating —
-    the mount lives outside the ``/api/`` prefix the auth middleware guards,
-    which is intentional: these are the user's own local files, cross-origin
-    browser reads are already blocked by the CORS allowlist, and a session-token
-    gate is not a meaningful boundary for a port-reachable non-browser client, so
-    CORS is the real boundary here (consistent with the existing read-file
-    endpoint).
-
-    The mount is inserted at the FRONT of the route table, not appended: the SPA
-    catch-all (``/{filename:path}``, registered at construction) would otherwise
-    match ``/plugins/local/...`` first and serve ``index.html``, so the manifest
-    fetch would get HTML and fail to parse. A specific prefix in front of the
-    catch-all is safe — it only claims ``/plugins/local/...``.
-
-    The directory is created if missing so a fresh install can have plugins
-    dropped in later without a restart-ordering issue; ``check_dir=False`` keeps
-    StaticFiles from erroring if it somehow does not exist.
-    """
-    plugins_dir = get_sculptor_folder() / "plugins"
-    plugins_dir.mkdir(parents=True, exist_ok=True)
-    app.router.routes.insert(
-        0,
-        Mount("/plugins/local", app=StaticFiles(directory=str(plugins_dir), check_dir=False), name="plugins-local"),
-    )
 
 
 # Note that this is overridden in tests to use the test settings
@@ -122,24 +79,6 @@ def get_user_session_for_websocket(
 ) -> UserSession:
     services = get_services_from_request_or_websocket(websocket)
     return _get_user_session(request=websocket, services=services)
-
-
-def resolve_stream_scope(websocket: WebSocket) -> Scope:
-    """FastAPI Depends-able wrapper around `streams.resolve_scope`.
-
-    Lives here (not in `streams.py`) because `streams` cannot import the
-    middleware functions it needs — `middleware` already imports
-    `ServerStopped` from `streams`, and a top-level import the other way
-    would be a cycle. Keeping the WS-extraction shim alongside the other
-    request-bound helpers avoids that cycle without function-local imports.
-    """
-    user_session = get_user_session_for_websocket(websocket)
-    services = get_services_from_request_or_websocket(websocket)
-    return resolve_scope(
-        scope_values=websocket.query_params.getlist("scope"),
-        user_session=user_session,
-        services=services,
-    )
 
 
 def _get_user_session(
@@ -299,7 +238,6 @@ async def lifespan(app: App):
     Initializes the application. (It has to be async.)
     """
     ensure_sculptor_folder_ready()
-    cleanup_obsolete_mru_files()
 
     if get_settings in app.dependency_overrides:
         settings = app.dependency_overrides[get_settings]()
@@ -349,12 +287,6 @@ async def lifespan(app: App):
                         services.project_service.activate_project(project)
                         update_most_recently_used_project(project_id=project.object_id)
 
-                # Serve ~/.sculptor/plugins/ at /plugins/local. (Inserts itself at
-                # the front of the route table so it beats the SPA catch-all.)
-                mount_plugin_files(app)
-                if settings.SERVE_STATIC_FILES_DIR is not None:
-                    mount_static_files(app, settings.SERVE_STATIC_FILES_DIR)
-
                 logger.info("Using DB: {}", services.settings.DATABASE_URL)
 
                 logger.info("Server is ready to accept requests!")
@@ -373,7 +305,7 @@ async def lifespan(app: App):
                 #
                 # Setting the concurrency group's shutdown_event globally is
                 # too broad — it makes the v1 agent loop short-circuit via
-                # ``AgentPaused`` before the wrapper can emit
+                # ``UserPausedTaskError`` before the wrapper can emit
                 # ``RequestStoppedAgentMessage``, which the replay-on-restart
                 # regression tests rely on to advance the dedup cursor.
                 terminate_isolated_process_groups(signal.SIGTERM)

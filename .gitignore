@@ -317,9 +317,6 @@ vet-prompt.md
 vet-raw-output.json
 vet-output.json
 
-# Offload (parallel test runner on Modal)
-.offload/
-.offload-*
 .claude/scheduled_tasks.lock
 
 # Playwright traces from local browser-panel test runs

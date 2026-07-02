@@ -1,5 +1,3 @@
-from typing import Literal
-
 from playwright.sync_api import Locator
 from playwright.sync_api import Page
 from playwright.sync_api import expect
@@ -40,23 +38,11 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
         expect(close_btn).to_be_visible()
         close_btn.click()
 
-    def get_file_view_marker(self) -> Locator:
-        """Hidden marker element rendered inside file-view tab labels.
-
-        File-view, single-diff, combined-review, and commit-diff tabs all
-        share the ``DIFF_TAB`` test id; the marker is what distinguishes a
-        file-view tab from the others.
-        """
-        return self._page.get_by_test_id(ElementIDs.FILE_VIEW_TAB_MARKER)
-
     def get_file_header(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_FILE_HEADER)
 
     def get_read_only_preview(self) -> Locator:
         return self.get_by_test_id(ElementIDs.READ_ONLY_PREVIEW)
-
-    def get_file_sections(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.COMBINED_DIFF_FILE_SECTION)
 
     def get_scope_picker(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_SCOPE_PICKER)
@@ -94,9 +80,6 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
     def get_close_panel_button(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_CLOSE_PANEL_BUTTON)
 
-    def get_render_toggle(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.DIFF_RENDER_TOGGLE)
-
     def get_find_in_file_button(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_FIND_IN_FILE_BTN)
 
@@ -109,25 +92,8 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
     def get_split_column_handle(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_SPLIT_COLUMN_HANDLE)
 
-    def get_read_only_preview_markdown(self) -> Locator:
-        return self.get_read_only_preview().get_by_test_id(ElementIDs.READ_ONLY_PREVIEW_MARKDOWN)
-
-    def ensure_render_mode(self, mode: Literal["rendered", "source"]) -> None:
-        """Ensure the render-mode toggle is in ``mode`` (``"rendered"`` or ``"source"``)."""
-        toggle = self.get_render_toggle()
-        expect(toggle).to_be_visible()
-        if toggle.get_attribute("data-state") != mode:
-            toggle.click()
-        expect(toggle).to_have_attribute("data-state", mode)
-
     def get_rename_banner(self) -> Locator:
         return self.get_by_test_id(ElementIDs.DIFF_RENAME_BANNER)
-
-    def get_file_header_menu_trigger(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.DIFF_FILE_HEADER_MENU_TRIGGER)
-
-    def get_copy_file_path_menu_item(self) -> Locator:
-        return self._page.get_by_test_id("copy-path")
 
     def ensure_unified_mode(self) -> None:
         split_toggle = self.get_split_view_toggle()
@@ -142,16 +108,6 @@ class PlaywrightDiffPanelElement(PlaywrightIntegrationTestElement):
         if split_toggle.get_attribute("data-state") != "split":
             split_toggle.click()
         expect(split_toggle).to_have_attribute("data-state", "split")
-
-    def expect_shows_file_view(self, tab_text: str) -> None:
-        """Assert a file-view tab with ``tab_text`` is open and rendering content."""
-        expect(self).to_be_visible()
-        tab = self.get_tab_by_name(tab_text)
-        expect(tab.first).to_be_visible()
-        file_view_tab = tab.filter(has=self.get_file_view_marker())
-        expect(file_view_tab.first).to_be_visible()
-        expect(self.get_read_only_preview()).to_be_visible()
-        expect(self).not_to_contain_text("Could not load file content")
 
 
 def get_diff_panel_from_page(page: Page) -> PlaywrightDiffPanelElement:

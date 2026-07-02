@@ -9,7 +9,6 @@ import { ElementIds } from "~/api";
 import { formatRelativeTime } from "~/common/formatRelativeTime.ts";
 import { tasksArrayAtom } from "~/common/state/atoms/tasks.ts";
 import { prDefaultTargetBranchAtom } from "~/common/state/atoms/userConfig.ts";
-import { useGitProvider } from "~/common/state/hooks/useGitProvider.ts";
 import { useWorkspaceBranch } from "~/common/state/hooks/useWorkspaceBranch.ts";
 import { computeWorkspaceDotStatus, EMPTY_WORKSPACE_DOT_STATUS, WorkspaceStatusDots } from "~/components/statusDot";
 import { PrButton } from "~/pages/workspace/components/PrButton.tsx";
@@ -48,7 +47,6 @@ export const WorkspaceRow = ({
   const prDefaultTargetBranch = useAtomValue(prDefaultTargetBranchAtom);
   const branchInfo = useWorkspaceBranch(workspace.objectId);
   const displayBranch = branchInfo?.currentBranch ?? workspace.sourceBranch;
-  const gitProvider = useGitProvider(workspace.projectId);
 
   const rowContent = (
     <div
@@ -75,12 +73,7 @@ export const WorkspaceRow = ({
       <div className={styles.rightGroup}>
         {displayBranch && (
           <div className={styles.prButton} onClick={(e) => e.stopPropagation()}>
-            <PrButton
-              workspaceId={workspace.objectId}
-              targetBranch={prDefaultTargetBranch}
-              hideCreateAction
-              gitProvider={gitProvider}
-            />
+            <PrButton workspaceId={workspace.objectId} targetBranch={prDefaultTargetBranch} hideCreateAction />
           </div>
         )}
         <span className={styles.repo}>{workspace.projectName}</span>

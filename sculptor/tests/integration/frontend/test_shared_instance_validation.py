@@ -26,7 +26,6 @@ def test_cleanup_between_tests_first(sculptor_instance_: SculptorInstance) -> No
     """Create a workspace and verify it exists as a tab."""
     start_task_and_wait_for_ready(
         sculptor_page=sculptor_instance_.page,
-        prompt="Cleanup test task",
     )
 
     # Verify the workspace tab was created

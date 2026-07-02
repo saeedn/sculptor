@@ -3,8 +3,7 @@
 Cold start should reproduce the user's last-active tab synchronously
 from the sculptor-tabs localStorage entry: workspace + agent URL,
 draft URL, or /ws/new when no MRU was ever recorded or the saved
-workspace was deleted between sessions. Also covers the legacy
-sculptor-tab-order → sculptor-tabs migration.
+workspace was deleted between sessions.
 """
 
 import json
@@ -47,7 +46,7 @@ def test_restart_restores_active_workspace_and_agent(
 ) -> None:
     """The sync rootLoader should redirect to the saved /ws/<ws>/agent/<id> on cold start."""
     with sculptor_instance_factory_.spawn_instance() as instance:
-        start_task_and_wait_for_ready(instance.page, prompt="Hi", workspace_name="MRU Test WS")
+        start_task_and_wait_for_ready(instance.page, workspace_name="MRU Test WS")
         first_url_hash = _hash_of(instance.page)
         assert re.match(r"^#/ws/[^/]+/agent/[^/]+$", first_url_hash), first_url_hash
 
@@ -57,7 +56,7 @@ def test_restart_restores_active_workspace_and_agent(
             re.compile(re.escape(first_url_hash) + "$"),
         )
         task_page = PlaywrightTaskPage(page)
-        expect(task_page.get_chat_panel()).to_be_visible()
+        expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
 @user_story("to come back to the same /ws/new draft I was on when I quit")
@@ -86,7 +85,7 @@ def test_restart_clears_pointer_when_workspace_deleted(
     bogus_ws_id = "ws_01" + "0" * 24
     with sculptor_instance_factory_.spawn_instance() as instance:
         page = instance.page
-        start_task_and_wait_for_ready(page, prompt="X", workspace_name="To Delete")
+        start_task_and_wait_for_ready(page, workspace_name="To Delete")
         # Overwrite sculptor-tabs to point at a non-existent workspace, simulating
         # the workspace being deleted in another window between sessions.
         _set_sculptor_tabs(
@@ -114,40 +113,3 @@ def test_restart_with_no_mru_lands_on_new(
     """Cold start with empty localStorage should land on /ws/new/<uuid>."""
     with sculptor_instance_factory_.spawn_instance() as instance:
         expect(instance.page).to_have_url(re.compile(r"#/ws/new/"))
-
-
-@user_story("to keep my tab list when upgrading from the prior build")
-def test_legacy_tab_order_migrates_to_sculptor_tabs(
-    sculptor_instance_factory_: SculptorInstanceFactory,
-) -> None:
-    """Pre-seeded sculptor-tab-order should migrate into sculptor-tabs on first read."""
-    with sculptor_instance_factory_.spawn_instance() as instance:
-        page = instance.page
-        page.evaluate(
-            """
-            () => {
-              window.localStorage.removeItem('sculptor-tabs');
-              window.localStorage.setItem('sculptor-tab-order', JSON.stringify(['__home__']));
-            }
-            """
-        )
-        page.reload()
-        # Wait for the migration to complete (sculptor-tabs present, legacy gone).
-        page.wait_for_function(
-            """
-            () => window.localStorage.getItem('sculptor-tabs') !== null
-              && window.localStorage.getItem('sculptor-tab-order') === null
-            """,
-        )
-        snapshot = page.evaluate(
-            """
-            () => ({
-              tabs: window.localStorage.getItem('sculptor-tabs'),
-              legacy: window.localStorage.getItem('sculptor-tab-order'),
-            })
-            """
-        )
-        assert snapshot["legacy"] is None, snapshot
-        parsed = json.loads(snapshot["tabs"])
-        order = parsed["order"]
-        assert any(entry["tabId"] == "__home__" and entry["agentId"] is None for entry in order), parsed

@@ -22,13 +22,9 @@ class GitCommandFailure(ExpectedError):
 
     @property
     def is_transient(self) -> bool:
-        return _is_transient_git_error(self.returncode, self.stderr)
+        # It is safe to retry even if the error is not transient since we only retry idempotent commands.
+        return True
 
 
 class RetriableGitCommandFailure(GitCommandFailure):
     pass
-
-
-def _is_transient_git_error(returncode: int | None, stderr: str) -> bool:
-    # it should be safe to retry even if the error is not transient since we only retry idempotent commands
-    return True

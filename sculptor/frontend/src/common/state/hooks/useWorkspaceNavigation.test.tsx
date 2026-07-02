@@ -33,7 +33,6 @@ vi.mock("~/common/NavigateUtils.ts", () => ({
     navigateToAddWorkspace: vi.fn(),
     navigateToHome: vi.fn(),
     navigateToGlobalSettings: vi.fn(),
-    navigateToComponentGallery: vi.fn(),
     navigateToRoot: vi.fn(),
   }),
   useImbueLocation: (): Record<string, unknown> => ({
@@ -42,7 +41,6 @@ vi.mock("~/common/NavigateUtils.ts", () => ({
     addWorkspaceDraftId: null,
     isHomeRoute: false,
     isSettingsRoute: false,
-    isComponentGalleryRoute: false,
   }),
 }));
 
@@ -80,7 +78,6 @@ const createMockTask = (overrides: Partial<CodingAgentTaskView> = {}): CodingAge
     artifactNames: [],
     initialPrompt: "Test prompt",
     titleOrSomethingLikeIt: "Test task",
-    interface: "API",
     systemPrompt: null,
     model: "CLAUDE_4_SONNET",
     isSmoothStreamingSupported: true,
@@ -101,7 +98,6 @@ describe("useWorkspaceNavigation", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.removeItem("sculptor-tabs");
-    localStorage.removeItem("sculptor-tab-order");
   });
 
   it("navigates to the saved agent when tabsAtom has an entry for the workspace", () => {

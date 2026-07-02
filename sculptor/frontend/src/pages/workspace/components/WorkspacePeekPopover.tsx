@@ -11,8 +11,7 @@ import { prStatusAtomFamily } from "~/common/state/atoms/prStatus";
 import { tasksArrayAtom } from "~/common/state/atoms/tasks";
 import { workspaceBranchAtomFamily } from "~/common/state/atoms/workspaceBranch";
 import { workspaceAtomFamily } from "~/common/state/atoms/workspaces";
-import { useGitProvider } from "~/common/state/hooks/useGitProvider";
-import { useThemeDangerColor, useThemeSuccessColor, useThemeWarningColor } from "~/common/state/hooks/useThemeBuilder";
+import { useThemeDangerColor, useThemeSuccessColor, useThemeWarningColor } from "~/common/state/hooks/useTheme.ts";
 import { useWorkspaceDiff } from "~/common/state/hooks/useWorkspaceDiff";
 import { activePanelPerZoneAtom, zoneAssignmentsAtom, zoneVisibilityAtom } from "~/components/panels/atoms";
 import { activeFileBrowserTabAtomFamily } from "~/components/panels/atoms";
@@ -20,7 +19,6 @@ import { activeFileBrowserTabAtomFamily } from "~/components/panels/atoms";
 import { changesScopeAtomFamily } from "../panels/fileBrowser/atoms";
 import { parseDiffStats } from "../utils/parseDiffStats";
 import { AgentStatusDot } from "./AgentStatusDot";
-import type { GitProvider } from "./PrButton";
 import styles from "./WorkspacePeekPopover.module.scss";
 
 type WorkspacePeekPopoverProps = {
@@ -75,21 +73,15 @@ function formatTimeAgo(dateStr: string): string {
 }
 
 function getSummary(status: WorkspacePeekAgentStatus, agents: ReadonlyArray<CodingAgentTaskView>): string {
-  const totalCompleted = agents.reduce((sum, a) => sum + a.taskCompleted, 0);
-  const totalTodos = agents.reduce((sum, a) => sum + a.taskTotal, 0);
-  const firstWorking = agents.find((a) => a.workspacePeekStatus === WorkspacePeekAgentStatus.WORKING);
-  const activity = firstWorking?.currentActivity;
-
   switch (status) {
     case WorkspacePeekAgentStatus.WORKING:
-      if (totalTodos === 0) return activity ? `Just started — ${activity}` : "Just started";
-      return `${totalCompleted} of ${totalTodos} tasks done${activity ? ` — ${activity}` : ""}`;
+      return "Working...";
     case WorkspacePeekAgentStatus.WAITING:
-      return totalTodos > 0 ? `${totalCompleted} of ${totalTodos} tasks done — waiting for input` : "Waiting for input";
+      return "Waiting for input";
     case WorkspacePeekAgentStatus.ERROR:
-      return totalTodos > 0 ? `${totalCompleted} of ${totalTodos} tasks done — error encountered` : "Error encountered";
+      return "Error encountered";
     case WorkspacePeekAgentStatus.COMPLETED:
-      return `All ${totalTodos} tasks completed successfully. Ready for review.`;
+      return "All tasks completed successfully. Ready for review.";
     case WorkspacePeekAgentStatus.IDLE: {
       if (agents.length === 0) return "No activity yet";
       const mostRecent = agents.reduce((latest, a) => (a.updatedAt > latest.updatedAt ? a : latest));
@@ -133,32 +125,21 @@ const AgentRow = ({
 
   switch (status) {
     case WorkspacePeekAgentStatus.WAITING:
-      description = agent.waitingDetail ?? "Waiting for input";
+      description = "Waiting for input";
       break;
     case WorkspacePeekAgentStatus.ERROR:
       description = agent.errorDetail ?? "Error encountered";
       break;
     case WorkspacePeekAgentStatus.COMPLETED:
-      description = agent.taskTotal > 0 ? `${agent.taskCompleted}/${agent.taskTotal} done` : "Done";
+      description = "Done";
       break;
     case WorkspacePeekAgentStatus.WORKING:
-      description = agent.currentActivity ?? "Working...";
+      description = "Working...";
       break;
-    case WorkspacePeekAgentStatus.IDLE: {
-      if (agent.taskTotal > 0) {
-        description = `Completed ${agent.taskCompleted} of ${agent.taskTotal} tasks · ${formatTimeAgo(agent.updatedAt)}`;
-      } else {
-        const activity = agent.lastActivity ?? agent.currentActivity;
-        description = activity ? `${activity} · ${formatTimeAgo(agent.updatedAt)}` : formatTimeAgo(agent.updatedAt);
-      }
+    case WorkspacePeekAgentStatus.IDLE:
+      description = formatTimeAgo(agent.updatedAt);
       break;
-    }
   }
-
-  const hasTaskLink =
-    status !== WorkspacePeekAgentStatus.WAITING &&
-    status !== WorkspacePeekAgentStatus.ERROR &&
-    agent.currentTaskSubject != null;
 
   return (
     <div
@@ -175,9 +156,8 @@ const AgentRow = ({
         <span className={styles.agentName}>{agent.title ?? "Agent"}</span>
       </div>
       <div className={styles.agentDescription} data-status={status}>
-        {hasTaskLink ? agent.currentTaskSubject : description}
+        {description}
       </div>
-      {hasTaskLink && <div className={styles.agentTask}>↳ {description}</div>}
     </div>
   );
 };
@@ -208,14 +188,12 @@ const PeekBanner = ({
 const PeekHeader = ({
   workspaceName,
   prStatus,
-  gitProvider,
   summary,
   workspaceStatus,
   onNavigate,
 }: {
   workspaceName: string;
   prStatus: PrStatusInfo | null;
-  gitProvider: GitProvider;
   summary: string;
   workspaceStatus: WorkspacePeekAgentStatus;
   onNavigate: () => void;
@@ -232,7 +210,7 @@ const PeekHeader = ({
       <span className={styles.wsName}>{workspaceName}</span>
     </div>
     {prStatus != null && prStatus.prState !== "none" && (
-      <div className={styles.mrRow}>
+      <div className={styles.prRow}>
         <a
           className={styles.mrPill}
           href={prStatus.prWebUrl ?? "#"}
@@ -240,8 +218,7 @@ const PeekHeader = ({
           rel="noopener noreferrer"
           onClick={(e) => e.stopPropagation()}
         >
-          {gitProvider === "github" ? "PR" : "MR"} {gitProvider === "github" ? "#" : "!"}
-          {prStatus.prIid}
+          PR #{prStatus.prIid}
           {prStatus.prState === "open" && (
             <>
               <span className={`${styles.statusDot} ${getPeekPipelineDotClass(prStatus.pipelineStatus)}`} />
@@ -338,7 +315,6 @@ export const WorkspacePeekPopover = ({
   const allTasks = useAtomValue(tasksArrayAtom);
   const branchInfo = useAtomValue(workspaceBranchAtomFamily(workspaceId));
   const prStatus = useAtomValue(prStatusAtomFamily(workspaceId));
-  const gitProvider = useGitProvider(workspace?.projectId ?? "");
   const { data: diff, isFetching } = useWorkspaceDiff(workspaceId);
   const isShimmering = useTimedLatch(isFetching, SHIMMER_MIN_HOLD_MS);
   const diffStats = useMemo(() => parseDiffStats(diff?.targetBranchDiff), [diff?.targetBranchDiff]);
@@ -410,13 +386,8 @@ export const WorkspacePeekPopover = ({
 
     if (waitingAgents.length > 0) {
       const names = waitingAgents.map((a) => a.title ?? "Agent").join(", ");
-      const hasApproval = waitingAgents.some((a) => {
-        const detail = a.waitingDetail?.toLowerCase() ?? "";
-        return detail.includes("plan") || detail.includes("approval");
-      });
-      const suffix = hasApproval ? "approval" : "input";
       const verb = waitingAgents.length === 1 ? "needs" : "need";
-      return { message: `${names} ${verb} your ${suffix}`, status: WorkspacePeekAgentStatus.WAITING };
+      return { message: `${names} ${verb} your input`, status: WorkspacePeekAgentStatus.WAITING };
     }
 
     const isAllCompleted =
@@ -491,7 +462,6 @@ export const WorkspacePeekPopover = ({
       <PeekHeader
         workspaceName={workspaceName}
         prStatus={prStatus}
-        gitProvider={gitProvider}
         summary={summary}
         workspaceStatus={workspaceStatus}
         onNavigate={() => onNavigate(workspaceId)}

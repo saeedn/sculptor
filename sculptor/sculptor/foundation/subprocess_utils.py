@@ -723,16 +723,11 @@ def run_local_command_modern_version(
             # so we should shutdown the process.
             #
             # Order matters for isolated process groups: send SIGTERM *before*
-            # closing stdin. The agent CLI (the only opt-in caller of
-            # ``isolate_process_group``) installs a SIGTERM handler that exits
-            # with 143 — message_conversion treats that as a clean Stop and
-            # suppresses the ErrorBlock (SCU-925). Closing stdin first races
-            # with the signal: a CLI blocked reading stdin (e.g. fake_claude
-            # waiting on an MCP control_response) sees EOF, raises
-            # RuntimeError, and exits with 1 before the SIGTERM handler runs.
-            # The wrapper then emits a ``RequestFailureAgentMessage`` and the
-            # red "Agent died with exit code 1" block appears on the next
-            # restart — the exact regression SCU-925 fixed.
+            # closing stdin. Closing stdin first races with the signal: a
+            # child blocked reading stdin sees EOF and exits with a generic
+            # error code before its SIGTERM handler runs. Signalling first
+            # lets a child that handles SIGTERM shut down cleanly (and report
+            # the conventional 143 exit code).
             #
             # For the default (single-PID) path we keep the original order:
             # close stdin first to wake any process blocked on input that

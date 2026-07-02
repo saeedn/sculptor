@@ -12,7 +12,6 @@ from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.errors import ExpectedError
 from sculptor.foundation.itertools import generate_flattened
-from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.primitives.threads import StopGapBackgroundPollingStreamSource
@@ -72,25 +71,17 @@ _WORKSPACE_TARGET_BRANCHES_POLL_SECONDS = 3.0
 
 
 class _WorkspaceBranchPollingManager:
-    """Polls the current branch and remote-tracking branches for each active workspace.
-
-    Filter precedence: workspace_filter > project_filter > none. When
-    workspace_filter is set, project_filter is ignored.
-    """
+    """Polls the current branch and remote-tracking branches for each active workspace."""
 
     def __init__(
         self,
         services: CompleteServiceCollection,
         queue: Queue[StreamingUpdateSourceTypes],
         concurrency_group: ConcurrencyGroup,
-        workspace_filter: WorkspaceID | None = None,
-        project_filter: ProjectID | None = None,
     ):
         self._services = services
         self._queue = queue
         self._concurrency_group = concurrency_group
-        self._workspace_filter = workspace_filter
-        self._project_filter = None if workspace_filter is not None else project_filter
         self._sources_by_workspace_id: dict[WorkspaceID, StopGapBackgroundPollingStreamSource] = {}
         self._target_branches_sources_by_workspace_id: dict[WorkspaceID, StopGapBackgroundPollingStreamSource] = {}
         # Tracks the working dir each poller was started against, so we can
@@ -100,20 +91,11 @@ class _WorkspaceBranchPollingManager:
         # branch-change detection from ever seeing two different values.
         self._working_dirs_by_workspace_id: dict[WorkspaceID, Path] = {}
 
-    def _is_workspace_in_scope(self, workspace: Workspace) -> bool:
-        if self._workspace_filter is not None:
-            return workspace.object_id == self._workspace_filter
-        if self._project_filter is not None:
-            return workspace.project_id == self._project_filter
-        return True
-
     def initialize(self) -> None:
         with self._services.data_model_service.open_transaction(RequestID()) as transaction:
             workspaces = transaction.get_workspaces()
         for workspace in workspaces:
             if workspace.is_deleted:
-                continue
-            if not self._is_workspace_in_scope(workspace):
                 continue
             self._try_start_polling_for_workspace(workspace)
 
@@ -121,8 +103,6 @@ class _WorkspaceBranchPollingManager:
         updated_models = (m.updated_models for m in models if isinstance(m, CompletedTransaction))
         for updated_model in generate_flattened(updated_models):
             if isinstance(updated_model, Workspace):
-                if not self._is_workspace_in_scope(updated_model):
-                    continue
                 if updated_model.is_deleted:
                     self._stop_polling_for_workspace(updated_model.object_id)
                     continue
@@ -193,15 +173,11 @@ def manage_workspace_branch_polling(
     services: CompleteServiceCollection,
     queue: Queue[StreamingUpdateSourceTypes],
     concurrency_group: ConcurrencyGroup,
-    workspace_filter: WorkspaceID | None = None,
-    project_filter: ProjectID | None = None,
 ) -> Generator[_WorkspaceBranchPollingManager, None, None]:
     manager = _WorkspaceBranchPollingManager(
         services=services,
         queue=queue,
         concurrency_group=concurrency_group,
-        workspace_filter=workspace_filter,
-        project_filter=project_filter,
     )
     try:
         yield manager
@@ -341,7 +317,7 @@ def _resolve_workspace_working_dir(services: CompleteServiceCollection, workspac
     """Resolve the git working directory for a workspace.
 
     Delegates to WorkspaceService.get_workspace_working_directory so that the
-    IN_PLACE vs CLONE path resolution lives in the Environment abstraction.
+    worktree checkout path resolution lives in the Environment abstraction.
 
     Returns None if the workspace environment hasn't been initialized yet.
     """

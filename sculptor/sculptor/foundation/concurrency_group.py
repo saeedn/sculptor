@@ -38,11 +38,8 @@ from pydantic import PrivateAttr
 
 from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.event_utils import ShutdownEvent
-from sculptor.foundation.function_utils import sequence_callbacks
 from sculptor.foundation.processes.local_process import RunningProcess
 from sculptor.foundation.processes.local_process import run_background
-from sculptor.foundation.progress_tracking.progress_tracking import ProgressHandle
-from sculptor.foundation.progress_tracking.progress_tracking import start_finish_context
 from sculptor.foundation.pydantic_serialization import MutableModel
 from sculptor.foundation.subprocess_utils import FinishedProcess
 from sculptor.foundation.subprocess_utils import ProcessError
@@ -508,7 +505,6 @@ class ConcurrencyGroup(MutableModel, AbstractContextManager):
         trace_log_context: Mapping[str, object] | None = None,
         env: Mapping[str, str] | None = None,
         shutdown_event: ReadOnlyEvent | None = None,
-        progress_handle: ProgressHandle | None = None,
         log_command: bool = True,
     ) -> FinishedProcess:
         """
@@ -517,46 +513,31 @@ class ConcurrencyGroup(MutableModel, AbstractContextManager):
         When `is_checked_after` is True (the default), raise a ProcessError if the process exits with a non-zero exit code.
 
         """
-        if progress_handle is None:
-            progress_handle = ProgressHandle()
+        process = self.run_process_in_background(
+            command,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            shutdown_event=shutdown_event,
+            trace_log_context=trace_log_context,
+            on_output=on_output,
+            # For processes that run to completion, we never mark them as "checked".
+            # Reason: the concurrency group would raise an exception later on even if the failure of the process was properly handled by the caller.
+            is_checked_by_group=False,
+            log_command=log_command,
+        )
+        process.wait()
+        if is_checked_after:
+            process.check()
 
-        with start_finish_context(progress_handle.track_subprocess()) as subprocess_handle:
-            subprocess_handle.report_command(command)
-            if on_output is not None:
-                # annotate so the ParamSpec solves to a positional-only signature, matching on_output
-                report_output_line: Callable[[str, bool], None] = subprocess_handle.report_output_line
-                on_output_with_progress_tracking = sequence_callbacks(report_output_line, on_output)
-            else:
-                on_output_with_progress_tracking = subprocess_handle.report_output_line
-            process = self.run_process_in_background(
-                command,
-                timeout=timeout,
-                cwd=cwd,
-                env=env,
-                shutdown_event=shutdown_event,
-                trace_log_context=trace_log_context,
-                on_output=on_output_with_progress_tracking,
-                # For processes that run to completion, we never mark them as "checked".
-                # Reason: the concurrency group would raise an exception later on even if the failure of the process was properly handled by the caller.
-                is_checked_by_group=False,
-                log_command=log_command,
-            )
-            process.wait()
-            if is_checked_after:
-                process.check()
-
-            # returncode is always set once wait() has returned
-            # pyrefly: ignore [bad-argument-type]
-            subprocess_handle.report_return_code(process.returncode)
-
-            return FinishedProcess(
-                command=tuple(process.command),
-                returncode=process.returncode,
-                stdout=process.read_stdout(),
-                stderr=process.read_stderr(),
-                is_timed_out=process.get_timed_out(),
-                is_output_already_logged=False,
-            )
+        return FinishedProcess(
+            command=tuple(process.command),
+            returncode=process.returncode,
+            stdout=process.read_stdout(),
+            stderr=process.read_stderr(),
+            is_timed_out=process.get_timed_out(),
+            is_output_already_logged=False,
+        )
 
     def _cleanup(self) -> None:
         """

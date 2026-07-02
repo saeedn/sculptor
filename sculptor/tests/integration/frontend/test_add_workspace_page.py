@@ -16,11 +16,7 @@ import pytest
 from playwright.sync_api import expect
 
 from sculptor.constants import ElementIDs
-from sculptor.testing.elements.chat_panel import select_model_by_name
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.elements.panels import ensure_terminal_visible
-from sculptor.testing.elements.task_starter import FAKE_CLAUDE_MODEL_NAME
+from sculptor.testing.elements.terminal import get_agent_terminal_textarea
 from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.playwright_utils import blur_page
@@ -55,7 +51,6 @@ def test_workspace_form_draft_persists_after_navigation(
     # Step 1: Create a workspace so we have somewhere to navigate to.
     task_page = start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Setup task",
         workspace_name="Initial Workspace",
     )
 
@@ -79,8 +74,8 @@ def test_workspace_form_draft_persists_after_navigation(
     workspace_tab.click()
 
     # Confirm we navigated away — the chat panel of the existing workspace should appear.
-    chat_panel = PlaywrightTaskPage(page=page).get_chat_panel()
-    expect(chat_panel).to_be_visible()
+    task_page = PlaywrightTaskPage(page=page)
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
     # Step 5: Navigate back to the Add Workspace page via the "Open Workspace" tab.
     # Use .last because a stale "new workspace" tab may persist from previous test
@@ -125,7 +120,6 @@ def test_workspace_form_branch_state_persists_after_navigation(
     # Step 1: Create a workspace so we have somewhere to navigate to.
     task_page = start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Setup task",
         workspace_name="Initial Workspace",
     )
 
@@ -160,8 +154,8 @@ def test_workspace_form_branch_state_persists_after_navigation(
     workspace_tab.click()
 
     # Confirm we navigated away — the chat panel of the existing workspace should appear.
-    chat_panel = PlaywrightTaskPage(page=page).get_chat_panel()
-    expect(chat_panel).to_be_visible()
+    task_page = PlaywrightTaskPage(page=page)
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
     # Step 5: Navigate back to the Add Workspace page via the "Open Workspace" tab.
     # Use .last because a stale "new workspace" tab may persist from previous test
@@ -295,13 +289,14 @@ def test_no_extra_tab_flash_when_creating_workspace_from_new_tab(
         window.__tabFlashTestObserver = observer;
     }""")
 
-    # Wait for submit to be enabled, then click.
+    # Pick a plain terminal agent so the terminal panel renders in CI, then submit.
+    add_ws_page.select_terminal_agent_type()
     expect(submit_button).to_be_enabled()
     submit_button.click()
 
-    # Wait for the workspace page to load (chat panel visible).
-    chat_panel = PlaywrightTaskPage(page=page).get_chat_panel()
-    expect(chat_panel).to_be_visible()
+    # Wait for the workspace page to load (terminal panel visible).
+    task_page = PlaywrightTaskPage(page=page)
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
     # Disconnect observer and read results.
     result = page.evaluate("""() => {
@@ -318,127 +313,57 @@ def test_no_extra_tab_flash_when_creating_workspace_from_new_tab(
     )
 
 
-@user_story("to create a workspace and fill in the prompt later")
+@user_story("to create a workspace with only a name")
 def test_create_workspace_without_prompt(
     sculptor_instance_: SculptorInstance,
 ) -> None:
-    """Creating a workspace without a prompt should produce a waiting agent that responds to messages.
+    """Creating a workspace with only a name should produce a ready terminal agent.
 
     Steps:
-    1. Create a workspace with only a name (no prompt)
-    2. Verify the chat panel appears (agent in waiting state)
-    3. Select the Fake Claude model in the chat panel
-    4. Send a message to the waiting agent
-    5. Verify the agent responds
+    1. Create a workspace with only a name (the Add Workspace form has no prompt)
+    2. Verify the terminal panel appears (the agent is ready)
     """
     page = sculptor_instance_.page
 
-    # Step 1: Create a workspace without a prompt.
+    # Step 1: Create a workspace with only a name.
     task_page = start_task_and_wait_for_ready(
         sculptor_page=page,
         workspace_name="Prompt-less Workspace",
     )
 
-    # Step 2: Verify the chat panel appears.
-    chat_panel = task_page.get_chat_panel()
-    expect(chat_panel).to_be_visible()
-
-    # Step 3: Select the Fake Claude model so the agent can respond deterministically.
-    select_model_by_name(chat_panel=chat_panel, model_name=FAKE_CLAUDE_MODEL_NAME)
-
-    # Step 4: Send a message to the waiting agent.
-    send_chat_message(chat_panel, "Hello, are you there?")
-
-    # Step 5: Verify the agent responds (1 user message + 1 assistant response).
-    wait_for_completed_message_count(chat_panel, expected_message_count=2)
+    # Step 2: Verify the terminal panel appears (the agent is ready).
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
-@user_story("to start typing immediately after creating a workspace")
-def test_chat_input_focused_after_workspace_creation(
+@user_story("to type into the agent terminal right after creating a workspace")
+def test_agent_terminal_ready_after_workspace_creation(
     sculptor_instance_: SculptorInstance,
 ) -> None:
-    """After creating a workspace, the chat input should have focus so the user can type immediately.
+    """After creating a workspace, the agent terminal input should be ready to type into.
 
-    This test covers three scenarios:
+    The agent terminal deliberately does not steal focus on initial mount, so we
+    assert the input textarea is attached (the user can click and type) rather
+    than asserting it is focused.
+
+    Covers two scenarios:
     1. Creating the very first workspace (initial page load)
     2. Creating a second workspace via the "+" button (switching from an existing workspace)
-    3. Creating a workspace while the terminal panel is open (terminal must not steal focus)
-
-    All should end with focus in the chat input.
     """
     page = sculptor_instance_.page
 
     # Scenario 1: Create the first workspace.
-    task_page = start_task_and_wait_for_ready(
+    start_task_and_wait_for_ready(
         sculptor_page=page,
         workspace_name="First Workspace",
     )
-
-    chat_input = task_page.get_chat_panel().get_chat_input()
-    expect(chat_input).to_be_focused()
+    expect(get_agent_terminal_textarea(page)).to_be_attached()
 
     # Scenario 2: Create a second workspace via the "+" button.
-    task_page = start_task_and_wait_for_ready(
+    start_task_and_wait_for_ready(
         sculptor_page=page,
         workspace_name="Second Workspace",
     )
-
-    chat_input = task_page.get_chat_panel().get_chat_input()
-    expect(chat_input).to_be_focused()
-
-    # Scenario 3: Ensure the terminal panel is open, then create another workspace.
-    # The terminal must not steal focus from the chat input.
-    ensure_terminal_visible(page)
-
-    # Verify the terminal panel is visible.
-    add_terminal_button = page.get_by_test_id(ElementIDs.ADD_TERMINAL_BUTTON)
-    expect(add_terminal_button).to_be_visible()
-
-    # Create a third workspace with the terminal panel open.
-    task_page = start_task_and_wait_for_ready(
-        sculptor_page=page,
-        workspace_name="Third Workspace (Terminal Open)",
-    )
-
-    chat_input = task_page.get_chat_panel().get_chat_input()
-    expect(chat_input).to_be_focused()
-
-
-@user_story("to press Cmd+I and have the primary prompt input focused on any page")
-def test_cmd_i_focuses_prompt_input(sculptor_instance_: SculptorInstance) -> None:
-    """Cmd+I should focus the workspace name on the Add Workspace page and the chat input on workspace pages.
-
-    Steps:
-    1. On the Add Workspace page, click elsewhere to blur, then press Cmd+I — verify workspace name is focused.
-    2. Create a workspace to navigate to a workspace page.
-    3. Press Cmd+I — verify the chat input is focused.
-    """
-    page = sculptor_instance_.page
-    mod_key = get_playwright_modifier_key()
-    add_ws_page = PlaywrightAddWorkspacePage(page=page)
-
-    # Step 1: On the Add Workspace page (initial state), blur all inputs then press Cmd+I.
-    name_input = add_ws_page.get_workspace_name_input()
-    expect(name_input).to_be_visible()
-    blur_page(page)
-    expect(name_input).not_to_be_focused()
-    page.keyboard.press(f"{mod_key}+i")
-    expect(name_input).to_be_focused()
-
-    # Step 2: Create a workspace to navigate to a workspace page.
-    task_page = start_task_and_wait_for_ready(
-        sculptor_page=page,
-        prompt="Cmd+I test workspace",
-        workspace_name="Cmd+I Test",
-    )
-
-    # Step 3: Blur the chat input, then press Cmd+I — the chat input should be focused.
-    chat_input = task_page.get_chat_panel().get_chat_input()
-    expect(chat_input).to_be_visible()
-    blur_page(page)
-    expect(chat_input).not_to_be_focused()
-    page.keyboard.press(f"{mod_key}+i")
-    expect(chat_input).to_be_focused()
+    expect(get_agent_terminal_textarea(page)).to_be_attached()
 
 
 @user_story("to regain keyboard control by pressing arrow keys when nothing is focused")
@@ -493,13 +418,16 @@ def test_cmd_enter_in_workspace_name_creates_workspace(
     expect(submit_button).to_be_enabled()
 
     name_input.fill("Cmd Enter Test")
+    # Pick a plain terminal agent so the terminal panel renders in CI. The menu
+    # interaction moves focus, so we re-focus the name input before Cmd+Enter.
+    add_ws_page.select_terminal_agent_type()
     name_input.click()
     expect(name_input).to_be_focused()
 
     page.keyboard.press(f"{mod_key}+Enter")
 
-    chat_panel = PlaywrightTaskPage(page=page).get_chat_panel()
-    expect(chat_panel).to_be_visible()
+    task_page = PlaywrightTaskPage(page=page)
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
 @user_story("to submit a repo path with Cmd+Enter without the New Workspace being created")
@@ -541,23 +469,23 @@ def test_cmd_enter_in_repo_autocomplete_does_not_create_workspace(
     path_input.press(f"{mod_key}+Enter")
 
     # Desired behaviour: the workspace is NOT created. Wait long enough for the
-    # (buggy) workspace-creation path to navigate to the chat panel — when the
-    # bug is present it does so within a few seconds — then conclude it did not.
-    # The 10s is a deliberate bounded wait for a negative assertion (the panel
-    # is expected to never appear), not a tightened positive timeout.
-    chat_panel = add_ws_page.get_chat_panel()
+    # (buggy) workspace-creation path to navigate to the terminal panel — when
+    # the bug is present it does so within a few seconds — then conclude it did
+    # not. The 10s is a deliberate bounded wait for a negative assertion (the
+    # panel is expected to never appear), not a tightened positive timeout.
+    terminal_panel = page.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
     try:
-        expect(chat_panel).to_be_visible(timeout=10_000)
+        expect(terminal_panel).to_be_visible(timeout=10_000)
     except AssertionError:
-        pass  # expected: no workspace created, so the chat panel never appears
+        pass  # expected: no workspace created, so the terminal panel never appears
     else:
         pytest.fail(
             "Cmd+Enter in the repo autocomplete created the workspace and "
-            + "navigated to the chat panel (SCU-1450 regression)"
+            + "navigated to the workspace (SCU-1450 regression)"
         )
 
     # Confirm we are still on the New Workspace page (no navigation happened).
-    expect(chat_panel).not_to_be_visible()
+    expect(terminal_panel).not_to_be_visible()
 
 
 def _extract_workspace_id(url: str) -> str:
@@ -578,14 +506,16 @@ def test_deleting_project_also_deletes_its_workspaces(
 
         start_task_and_wait_for_ready(
             sculptor_page=page,
-            prompt="Setup task",
             workspace_name="Workspace To Delete",
         )
 
         workspace_id = _extract_workspace_id(page.url)
         base_url = sculptor_instance.backend_api_url.rstrip("/")
 
-        get_response = page.request.get(f"{base_url}/api/v1/workspaces/{workspace_id}")
+        # The workspace's agents endpoint routes through `_get_workspace_or_404`,
+        # so it serves a real 200/404 (a deleted workspace 404s) rather than the
+        # SPA catch-all — making it a reliable existence/deletion probe.
+        get_response = page.request.get(f"{base_url}/api/v1/workspaces/{workspace_id}/agents")
         assert get_response.ok, f"Expected workspace {workspace_id} to exist, got status {get_response.status}"
 
         settings_page = navigate_to_settings_page(page=page)
@@ -594,7 +524,7 @@ def test_deleting_project_also_deletes_its_workspaces(
         # Delete the first repo row (the original project).
         repos_section.remove_first_repo()
 
-        get_response = page.request.get(f"{base_url}/api/v1/workspaces/{workspace_id}")
+        get_response = page.request.get(f"{base_url}/api/v1/workspaces/{workspace_id}/agents")
         assert get_response.status == 404, (
             f"Expected workspace {workspace_id} to be deleted (404) after project deletion, but got status {get_response.status}"
         )

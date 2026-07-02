@@ -3,7 +3,7 @@
 Tests cover:
 - Setup command input visibility in Settings > Repositories
 - Saving setup command on blur
-- Setup command running when a CLONE workspace is created (asserted via the
+- Setup command running when a workspace is created (asserted via the
   pinned SetupStatusCard, not the legacy PTY terminal tab)
 - The CTA card is shown when no setup command is configured
 """
@@ -54,7 +54,7 @@ def test_setup_command_saves_on_blur(sculptor_instance_: SculptorInstance) -> No
 
 @user_story("to have my workspace automatically set up when created")
 def test_setup_command_runs_in_new_workspace(sculptor_instance_: SculptorInstance) -> None:
-    """Creating a CLONE workspace with a setup command should produce a SetupStatusCard
+    """Creating a workspace with a setup command should produce a SetupStatusCard
     that streams the command's output and ends in succeeded."""
     page = sculptor_instance_.page
 
@@ -67,8 +67,10 @@ def test_setup_command_runs_in_new_workspace(sculptor_instance_: SculptorInstanc
 
     setup = PlaywrightSetupStatusElement(page=page)
     expect(setup.get_card()).to_be_visible()
-    # The queued card mirrors its readiness via `aria-disabled`, so this click
-    # auto-waits for the run to start and the popover trigger to mount (SCU-1215).
+    # Wait for the run to reach its terminal state (rerun button appears) so the
+    # card is the interactive popover-opening row before we click it — clicking
+    # while it is still the inert queued row would be dropped.
+    expect(setup.get_rerun_button()).to_be_visible()
     setup.get_card().click()
     expect(setup.get_output()).to_contain_text("SCULPTOR_SETUP_MARKER_12345")
 

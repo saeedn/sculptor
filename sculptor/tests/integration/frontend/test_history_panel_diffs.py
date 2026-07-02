@@ -8,157 +8,110 @@ regular diff tabs in the tab bar.
 from playwright.sync_api import Locator
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
 from sculptor.testing.elements.history_panel import PlaywrightHistoryPanelElement
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
 # Creates a branch with a single commit that touches TWO files.
-_MULTI_FILE_COMMIT_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "alpha.py",
-        "content": "a = 1\\n"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "beta.py",
-        "content": "b = 2\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add alpha and beta'"
-      }
-    }
-  ]
-}`"""
+# We ``git add`` only the intended files (rather than ``-A``) so the commit's
+# file count is deterministic — a freshly-launched workspace can carry incidental
+# uncommitted files that ``git add -A`` would otherwise sweep into the commit.
+_MULTI_FILE_COMMIT_COMMAND = multi_step(
+    [
+        bash("git checkout -b feature"),
+        write_file("alpha.py", "a = 1\n"),
+        write_file("beta.py", "b = 2\n"),
+        bash("git add alpha.py beta.py && git commit -m 'Add alpha and beta'"),
+    ]
+)
 
 # Creates a branch, commits a file, then leaves an uncommitted edit to the same file.
-_COMMIT_THEN_EDIT_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "shared.py",
-        "content": "x = 1\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add shared.py'"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "shared.py",
-        "content": "x = 2\\n"
-      }
-    }
-  ]
-}`"""
+_COMMIT_THEN_EDIT_COMMAND = multi_step(
+    [
+        bash("git checkout -b feature"),
+        write_file("shared.py", "x = 1\n"),
+        bash("git add shared.py && git commit -m 'Add shared.py'"),
+        write_file("shared.py", "x = 2\n"),
+    ]
+)
 
 # Creates two commits that both modify the SAME file (shared.py).
 # Commit 1 adds the file, commit 2 modifies it.
-_SAME_FILE_TWO_COMMITS_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "shared.py",
-        "content": "version_one = 1\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add shared.py v1'"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "shared.py",
-        "content": "version_two = 2\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Update shared.py v2'"
-      }
-    }
-  ]
-}`"""
+_SAME_FILE_TWO_COMMITS_COMMAND = multi_step(
+    [
+        bash("git checkout -b feature"),
+        write_file("shared.py", "version_one = 1\n"),
+        bash("git add shared.py && git commit -m 'Add shared.py v1'"),
+        write_file("shared.py", "version_two = 2\n"),
+        bash("git add shared.py && git commit -m 'Update shared.py v2'"),
+    ]
+)
 
 # Creates two separate commits, each touching a different file.
-_TWO_SINGLE_FILE_COMMITS_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "first.py",
-        "content": "x = 1\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add first.py'"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "second.py",
-        "content": "y = 2\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add second.py'"
-      }
-    }
-  ]
-}`"""
+_TWO_SINGLE_FILE_COMMITS_COMMAND = multi_step(
+    [
+        bash("git checkout -b feature"),
+        write_file("first.py", "x = 1\n"),
+        bash("git add first.py && git commit -m 'Add first.py'"),
+        write_file("second.py", "y = 2\n"),
+        bash("git add second.py && git commit -m 'Add second.py'"),
+    ]
+)
+
+
+def _expand_commit(history_panel: PlaywrightHistoryPanelElement, commit: Locator) -> None:
+    """Expand a commit entry and confirm its file rows render.
+
+    On a freshly-created workspace the history list can re-render once the new
+    commit's data arrives; a click that lands during that re-render can be
+    dropped (the commit stays collapsed). Wait for the commit message first,
+    then click, and re-click if the file rows did not appear.
+    """
+    commit_message = history_panel.get_commit_message(commit)
+    expect(commit_message).to_be_visible()
+    file_rows = history_panel.get_tree_rows(commit)
+    last_error: AssertionError | None = None
+    for _attempt in range(8):
+        if file_rows.count() == 0:
+            commit_message.click()
+        try:
+            expect(file_rows.first).to_be_visible(timeout=5_000)
+            return
+        except AssertionError as error:
+            last_error = error
+    if last_error is not None:
+        raise last_error
+
+
+def _click_commit_file(history_panel: PlaywrightHistoryPanelElement, commit: Locator, file_name: str) -> None:
+    """Re-expand ``commit`` if needed and click its ``file_name`` row.
+
+    The workspace's repo polling refetches the commit list every few seconds and
+    each refetch collapses the expanded commit, so a file row that was visible a
+    moment ago can vanish. Retry the expand-and-click until the click lands; the
+    click itself auto-waits for actionability within each short attempt window.
+    """
+    commit_message = history_panel.get_commit_message(commit)
+    expect(commit_message).to_be_visible()
+    file_rows = history_panel.get_tree_rows(commit)
+    file_row = file_rows.filter(has_text=file_name)
+    last_error: Exception | None = None
+    for _attempt in range(15):
+        if file_rows.count() == 0:
+            commit_message.click()
+        try:
+            file_row.click(timeout=2_000)
+            return
+        except Exception as error:  # noqa: BLE001 — retry on any expansion-collapse flicker
+            last_error = error
+    if last_error is not None:
+        raise last_error
 
 
 def _open_history_and_expand_first_commit(
@@ -173,7 +126,7 @@ def _open_history_and_expand_first_commit(
     expect(history_panel).to_be_visible()
 
     first_commit = history_panel.get_commit_entries().first
-    history_panel.get_commit_message(first_commit).click()
+    _expand_commit(history_panel, first_commit)
 
     return history_panel, first_commit
 
@@ -188,20 +141,15 @@ def test_click_file_in_multi_file_commit(
     """Clicking a file inside a commit that has 2+ changed files should open
     that file's commit-scoped diff without crashing."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_MULTI_FILE_COMMIT_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, _MULTI_FILE_COMMIT_COMMAND)
 
     history_panel, first_commit = _open_history_and_expand_first_commit(task_page)
 
     # The commit has two files: alpha.py and beta.py.  Click alpha.py.
-    file_rows = history_panel.get_tree_rows(first_commit)
-    expect(file_rows).to_have_count(2)
-
-    alpha_row = history_panel.get_tree_rows(first_commit).filter(has_text="alpha.py")
-    expect(alpha_row).to_be_visible()
-    alpha_row.click()
+    _click_commit_file(history_panel, first_commit, "alpha.py")
 
     # A diff tab should appear with the commit-scoped label.
     diff_panel = task_page.get_diff_panel()
@@ -224,17 +172,15 @@ def test_commit_diff_tab_selectable_alongside_regular_tab(
     opening the same file from the Changes panel (regular tab), both tabs
     should remain independently selectable."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_COMMIT_THEN_EDIT_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, _COMMIT_THEN_EDIT_COMMAND)
 
     # Step 1: Open the history panel and click shared.py in the commit.
     history_panel, first_commit = _open_history_and_expand_first_commit(task_page)
 
-    file_row = history_panel.get_tree_rows(first_commit).filter(has_text="shared.py")
-    expect(file_row).to_be_visible()
-    file_row.click()
+    _click_commit_file(history_panel, first_commit, "shared.py")
 
     # Verify the commit-diff tab appeared with the hash suffix.
     diff_panel = task_page.get_diff_panel()
@@ -244,6 +190,7 @@ def test_commit_diff_tab_selectable_alongside_regular_tab(
 
     # Step 2: Switch to the Changes tab and click shared.py (uncommitted edit).
     task_page.activate_changes_panel()
+    task_page.get_file_browser().get_refresh_button().click()
     changes_panel = task_page.get_changes_panel()
     expect(changes_panel).to_be_visible()
 
@@ -274,12 +221,10 @@ def test_open_files_from_different_commits(
     """Opening files from two different commits should create two separate
     commit-diff tabs that are independently viewable."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(
-        page, prompt=_TWO_SINGLE_FILE_COMMITS_PROMPT, wait_for_agent_to_finish=False
-    )
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, _TWO_SINGLE_FILE_COMMITS_COMMAND)
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
@@ -292,10 +237,7 @@ def test_open_files_from_different_commits(
 
     # Expand and click the file in the first (most recent) commit: "Add second.py"
     first_commit = commits.nth(0)
-    history_panel.get_commit_message(first_commit).click()
-    second_py_row = history_panel.get_tree_rows(first_commit).filter(has_text="second.py")
-    expect(second_py_row).to_be_visible()
-    second_py_row.click()
+    _click_commit_file(history_panel, first_commit, "second.py")
 
     diff_panel = task_page.get_diff_panel()
     diff_tabs = diff_panel.get_tabs()
@@ -304,10 +246,7 @@ def test_open_files_from_different_commits(
 
     # Expand and click the file in the second commit: "Add first.py"
     second_commit = commits.nth(1)
-    history_panel.get_commit_message(second_commit).click()
-    first_py_row = history_panel.get_tree_rows(second_commit).filter(has_text="first.py")
-    expect(first_py_row).to_be_visible()
-    first_py_row.click()
+    _click_commit_file(history_panel, second_commit, "first.py")
 
     first_tab = diff_tabs.filter(has_text="first.py (")
     expect(first_tab).to_be_visible()
@@ -335,13 +274,14 @@ def test_close_commit_diff_tab_keeps_regular_tab(
     """Closing a commit-diff tab should leave the regular diff tab for the
     same file untouched."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_COMMIT_THEN_EDIT_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, _COMMIT_THEN_EDIT_COMMAND)
 
     # Open uncommitted diff first via Changes tab.
     task_page.activate_changes_panel()
+    task_page.get_file_browser().get_refresh_button().click()
     changes_panel = task_page.get_changes_panel()
     expect(changes_panel).to_be_visible()
 
@@ -361,11 +301,7 @@ def test_close_commit_diff_tab_keeps_regular_tab(
     expect(history_panel).to_be_visible()
 
     first_commit = history_panel.get_commit_entries().first
-    history_panel.get_commit_message(first_commit).click()
-
-    file_row = history_panel.get_tree_rows(first_commit).filter(has_text="shared.py")
-    expect(file_row).to_be_visible()
-    file_row.click()
+    _click_commit_file(history_panel, first_commit, "shared.py")
 
     commit_tab = diff_tabs.filter(has_text="shared.py (")
     expect(commit_tab).to_be_visible()
@@ -391,12 +327,10 @@ def test_same_file_two_commits_shows_correct_content(
     """When the same file is changed in two commits, each commit-diff tab
     should show that commit's diff — not the other commit's diff."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(
-        page, prompt=_SAME_FILE_TWO_COMMITS_PROMPT, wait_for_agent_to_finish=False
-    )
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, _SAME_FILE_TWO_COMMITS_COMMAND)
 
     task_page.activate_history_panel()
     history_panel = task_page.get_history_panel()
@@ -413,10 +347,7 @@ def test_same_file_two_commits_shows_correct_content(
     v1_commit = commits.nth(1)
 
     # Open shared.py from the v2 commit (modification diff).
-    history_panel.get_commit_message(v2_commit).click()
-    v2_file_row = history_panel.get_tree_rows(v2_commit).filter(has_text="shared.py")
-    expect(v2_file_row).to_be_visible()
-    v2_file_row.click()
+    _click_commit_file(history_panel, v2_commit, "shared.py")
 
     diff_panel = task_page.get_diff_panel()
     diff_tabs = diff_panel.get_tabs()
@@ -427,10 +358,7 @@ def test_same_file_two_commits_shows_correct_content(
     expect(diff_panel).to_contain_text("version_two")
 
     # Open shared.py from the v1 commit (addition diff).
-    history_panel.get_commit_message(v1_commit).click()
-    v1_file_row = history_panel.get_tree_rows(v1_commit).filter(has_text="shared.py")
-    expect(v1_file_row).to_be_visible()
-    v1_file_row.click()
+    _click_commit_file(history_panel, v1_commit, "shared.py")
 
     # Now there should be two commit-diff tabs for shared.py (different hashes).
     commit_tabs = diff_tabs.filter(has_text="shared.py (")
@@ -458,17 +386,15 @@ def test_switch_files_within_same_commit(
     """Opening two files from the same commit should create two tabs, and
     switching between them should show each file's individual diff."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_MULTI_FILE_COMMIT_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, _MULTI_FILE_COMMIT_COMMAND)
 
     history_panel, first_commit = _open_history_and_expand_first_commit(task_page)
 
     # Open alpha.py
-    alpha_row = history_panel.get_tree_rows(first_commit).filter(has_text="alpha.py")
-    expect(alpha_row).to_be_visible()
-    alpha_row.click()
+    _click_commit_file(history_panel, first_commit, "alpha.py")
 
     diff_panel = task_page.get_diff_panel()
     diff_tabs = diff_panel.get_tabs()
@@ -478,9 +404,7 @@ def test_switch_files_within_same_commit(
     expect(diff_panel).to_contain_text("a = 1")
 
     # Open beta.py from the same commit
-    beta_row = history_panel.get_tree_rows(first_commit).filter(has_text="beta.py")
-    expect(beta_row).to_be_visible()
-    beta_row.click()
+    _click_commit_file(history_panel, first_commit, "beta.py")
 
     beta_tab = diff_tabs.filter(has_text="beta.py (")
     expect(beta_tab).to_be_visible()
@@ -502,17 +426,15 @@ def test_commit_diff_file_header_shows_line_counts(
     """The file header above a commit-scoped diff should display the actual
     added/removed line counts from the commit, not +0 -0."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_MULTI_FILE_COMMIT_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, _MULTI_FILE_COMMIT_COMMAND)
 
     history_panel, first_commit = _open_history_and_expand_first_commit(task_page)
 
     # Click alpha.py — a file with 1 added line ("a = 1\n").
-    alpha_row = history_panel.get_tree_rows(first_commit).filter(has_text="alpha.py")
-    expect(alpha_row).to_be_visible()
-    alpha_row.click()
+    _click_commit_file(history_panel, first_commit, "alpha.py")
 
     # Wait for the diff to load.
     diff_panel = task_page.get_diff_panel()
@@ -535,16 +457,14 @@ def test_commit_diff_shows_committed_content_not_uncommitted(
     same file, the commit-diff tab must show only the committed version's
     diff, not any uncommitted changes."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_COMMIT_THEN_EDIT_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, _COMMIT_THEN_EDIT_COMMAND)
 
     # Open the commit-diff tab via History panel.
     history_panel, first_commit = _open_history_and_expand_first_commit(task_page)
-    file_row = history_panel.get_tree_rows(first_commit).filter(has_text="shared.py")
-    expect(file_row).to_be_visible()
-    file_row.click()
+    _click_commit_file(history_panel, first_commit, "shared.py")
 
     diff_panel = task_page.get_diff_panel()
     diff_tabs = diff_panel.get_tabs()
@@ -560,6 +480,7 @@ def test_commit_diff_shows_committed_content_not_uncommitted(
 
     # Now open the regular (uncommitted) diff tab via Changes tab.
     task_page.activate_changes_panel()
+    task_page.get_file_browser().get_refresh_button().click()
     changes_panel = task_page.get_changes_panel()
     changes_tree = changes_panel.get_changes_tree()
     changes_file = changes_tree.get_tree_rows().filter(has_text="shared.py")
@@ -596,17 +517,15 @@ def test_commit_diff_split_handle_hidden_for_added_file(
     the handle render on an add.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_MULTI_FILE_COMMIT_PROMPT, wait_for_agent_to_finish=False)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2, timeout=60_000)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(agents_dir, _MULTI_FILE_COMMIT_COMMAND)
 
     history_panel, first_commit = _open_history_and_expand_first_commit(task_page)
 
     # alpha.py is newly added in this commit (status "A").
-    alpha_row = history_panel.get_tree_rows(first_commit).filter(has_text="alpha.py")
-    expect(alpha_row).to_be_visible()
-    alpha_row.click()
+    _click_commit_file(history_panel, first_commit, "alpha.py")
 
     diff_panel = task_page.get_diff_panel()
     expect(diff_panel).to_contain_text("a = 1")

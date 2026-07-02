@@ -23,17 +23,15 @@ from sculptor.database.models import Notification
 from sculptor.database.models import NotificationID
 from sculptor.database.models import Project
 from sculptor.foundation.async_monkey_patches import log_exception
-from sculptor.foundation.common import generate_id
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.itertools import only
+from sculptor.foundation.serialization import SerializedException
 from sculptor.foundation.thread_utils import ObservableThread
+from sculptor.interfaces.agents.agent import UnexpectedErrorRunnerMessage
 from sculptor.primitives.ids import AgentMessageID
-from sculptor.primitives.ids import AssistantMessageID
 from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
-from sculptor.state.chat_state import TextBlock
-from sculptor.state.messages import ResponseBlockAgentMessage
 from sculptor.web.app import APP
 from sculptor.web.app_basic_test import _create_task_with_message_in_workspace
 from sculptor.web.app_basic_test import _create_workspace
@@ -157,15 +155,21 @@ def _poll_for_update(
     )
 
 
-def _get_task_update(update: dict[str, Any], task_id) -> dict[str, Any] | None:
+def _get_task_view(update: dict[str, Any], task_id) -> dict[str, Any] | None:
     key = str(task_id)
-    task_updates = update.get("taskUpdateByTaskId", {})
-    return task_updates.get(key, None)
+    task_views = update.get("taskViewsByTaskId", {})
+    return task_views.get(key, None)
 
 
-def test_unified_stream_emits_task_updates(
+def test_unified_stream_emits_task_views(
     server_url: str, test_services: CompleteServiceCollection, test_project: Project
 ) -> None:
+    """The unified stream emits a per-task view for every workspace task.
+
+    Rich-chat streaming (taskUpdateByTaskId / inProgressChatMessage) was removed
+    with the chat backend; the surviving surface is taskViewsByTaskId, which the
+    frontend consumes for both terminal and (legacy) message rendering.
+    """
     user_session = authenticate_anonymous(test_services, RequestID())
     with user_session.open_transaction(test_services) as transaction:
         workspace = _create_workspace(transaction, test_services, test_project)
@@ -176,36 +180,25 @@ def test_unified_stream_emits_task_updates(
     stream_url = server_url + "/api/v1/stream/ws"
     with stream_response(stream_url) as queue:
         initial_update = _next_streaming_update(queue)
-        task_update = _get_task_update(initial_update, task.object_id)
-        assert task_update is not None, f"Task {task.object_id} not found in initial update"
-        assert isinstance(task_update, dict)
-        assert task_update.get("chatMessages") is not None
+        task_view = _get_task_view(initial_update, task.object_id)
+        assert task_view is not None, f"Task {task.object_id} not found in initial update"
+        assert isinstance(task_view, dict)
 
         with user_session.open_transaction(test_services) as transaction:
             message_id = AgentMessageID()
             test_services.task_service.create_message(
-                ResponseBlockAgentMessage(
+                UnexpectedErrorRunnerMessage(
                     message_id=message_id,
-                    role="assistant",
-                    assistant_message_id=AssistantMessageID(generate_id()),
-                    content=(TextBlock(text="streaming smoke test message"),),
+                    error=SerializedException(exception="builtins.Exception", args=("test",), traceback_dict=None),
                 ),
                 task.object_id,
                 transaction,
             )
 
-        # Keep reading updates until we get the task update with the new message
-        updated = _poll_for_update(queue, predicate=lambda u: _get_task_update(u, task.object_id) is not None)
-        task_update = _get_task_update(updated, task.object_id)
-        assert task_update is not None, "Did not receive task update after creating message"
-        in_progress = task_update.get("inProgressChatMessage")
-        assert in_progress is not None
-        content_blocks = in_progress.get("content", [])
-        assert any(
-            block.get("text") == "streaming smoke test message"
-            for block in content_blocks
-            if block.get("type") == "text"
-        )
+        # A new message produces a refreshed task view for the task.
+        updated = _poll_for_update(queue, predicate=lambda u: _get_task_view(u, task.object_id) is not None)
+        task_view = _get_task_view(updated, task.object_id)
+        assert task_view is not None, "Did not receive task view after creating message"
 
 
 def test_unified_stream_emits_notifications_and_finished_requests(

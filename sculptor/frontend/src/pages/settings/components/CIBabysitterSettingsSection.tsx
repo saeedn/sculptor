@@ -10,7 +10,6 @@ import {
   ciBabysitterPipelineFailedPromptAtom,
   ciBabysitterRetryCapAtom,
   isCiBabysitterEnabledAtom,
-  isPiAgentEnabledAtom,
 } from "../../../common/state/atoms/userConfig.ts";
 import { useTerminalAgentRegistrations } from "../../../common/state/hooks/useTerminalAgentRegistrations.ts";
 import { SettingRow } from "./SettingRow.tsx";
@@ -29,9 +28,6 @@ const agentChoiceToSelectValue = (agent: BabysitterAgentChoice | null): string =
     return `${REGISTERED_VALUE_PREFIX}${agent.registrationId}`;
   }
 
-  if (objectType === "claude" || objectType === "pi") {
-    return objectType;
-  }
   return "mru";
 };
 
@@ -43,9 +39,9 @@ const selectValueToAgentChoice = (value: string): BabysitterAgentChoice => {
 };
 
 const DEFAULT_PIPELINE_FAILED_PROMPT =
-  "Investigate the failing pipeline for this MR, identify the root cause, fix the code, commit, and push.";
+  "Investigate the failing pipeline for this PR, identify the root cause, fix the code, commit, and push.";
 const DEFAULT_MERGE_CONFLICT_PROMPT =
-  "This MR has a merge conflict with its base branch. Fetch the latest, then rebase against the base branch, resolve all conflicts, and force-push the result.";
+  "This PR has a merge conflict with its base branch. Fetch the latest, then rebase against the base branch, resolve all conflicts, and force-push the result.";
 
 type CIBabysitterSettingsSectionProps = {
   onSettingChange: (field: UserConfigField, value: unknown) => Promise<void>;
@@ -57,7 +53,6 @@ export const CIBabysitterSettingsSection = ({ onSettingChange }: CIBabysitterSet
   const pipelineFailedPrompt = useAtomValue(ciBabysitterPipelineFailedPromptAtom);
   const mergeConflictPrompt = useAtomValue(ciBabysitterMergeConflictPromptAtom);
   const agent = useAtomValue(ciBabysitterAgentAtom);
-  const isPiEnabled = useAtomValue(isPiAgentEnabledAtom);
   const { registrations, refetch } = useTerminalAgentRegistrations();
 
   const [retryCapValue, setRetryCapValue] = useState(String(retryCap));
@@ -96,10 +91,10 @@ export const CIBabysitterSettingsSection = ({ onSettingChange }: CIBabysitterSet
   };
 
   return (
-    <SettingsSectionLayout description="When enabled, Sculptor watches open MRs and PRs and asks an AI agent to fix CI failures and merge conflicts automatically.">
+    <SettingsSectionLayout description="When enabled, Sculptor watches open PRs and asks an AI agent to fix CI failures and merge conflicts automatically.">
       <SettingRow
         title="Enable CI Babysitter"
-        description="Spawn a per-workspace babysitter agent when an MR's pipeline fails or develops a merge conflict."
+        description="Spawn a per-workspace babysitter agent when a PR's pipeline fails or develops a merge conflict."
       >
         <Switch
           checked={isEnabled}
@@ -125,8 +120,6 @@ export const CIBabysitterSettingsSection = ({ onSettingChange }: CIBabysitterSet
           <Select.Trigger variant="soft" data-testid={ElementIds.SETTINGS_CI_BABYSITTER_AGENT_SELECT} />
           <Select.Content>
             <Select.Item value="mru">Most recently used</Select.Item>
-            <Select.Item value="claude">Claude</Select.Item>
-            {isPiEnabled && <Select.Item value="pi">Pi</Select.Item>}
             {driveableRegistrations.map((registration) => (
               <Select.Item
                 key={registration.registrationId}
@@ -141,7 +134,7 @@ export const CIBabysitterSettingsSection = ({ onSettingChange }: CIBabysitterSet
 
       <SettingRow
         title="Retry Cap"
-        description="After this many babysitter prompts for an MR without a passing pipeline, no further prompts are sent until the pipeline next passes."
+        description="After this many babysitter prompts for a PR without a passing pipeline, no further prompts are sent until the pipeline next passes."
       >
         <TextField.Root
           type="number"
@@ -164,7 +157,7 @@ export const CIBabysitterSettingsSection = ({ onSettingChange }: CIBabysitterSet
 
       <TextAreaSettingRow
         title="Pipeline Failed Prompt"
-        description="Sent to the CI Babysitter when an MR's pipeline transitions to failed."
+        description="Sent to the CI Babysitter when a PR's pipeline transitions to failed."
         value={pipelineFailedPrompt}
         defaultValue={DEFAULT_PIPELINE_FAILED_PROMPT}
         onSave={(value) => void commit({ pipelineFailedPrompt: value })}
@@ -174,7 +167,7 @@ export const CIBabysitterSettingsSection = ({ onSettingChange }: CIBabysitterSet
 
       <TextAreaSettingRow
         title="Merge Conflict Prompt"
-        description="Sent to the CI Babysitter when an MR develops a merge conflict with its base branch."
+        description="Sent to the CI Babysitter when a PR develops a merge conflict with its base branch."
         value={mergeConflictPrompt}
         defaultValue={DEFAULT_MERGE_CONFLICT_PROMPT}
         onSave={(value) => void commit({ mergeConflictPrompt: value })}

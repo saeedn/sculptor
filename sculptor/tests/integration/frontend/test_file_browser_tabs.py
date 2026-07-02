@@ -6,45 +6,13 @@ the correct content in each tab.
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
-
-# Create a feature branch, write a file, and commit it so we have content in
-# all three tabs: the file tree (All), uncommitted changes (Changes), and
-# commit history (History).
-_SETUP_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "committed.py",
-        "content": "x = 1\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add committed.py'"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "uncommitted.py",
-        "content": "y = 2\\n"
-      }
-    }
-  ]
-}`"""
 
 
 @user_story("to switch between All, Changes, and History tabs and see correct content")
@@ -56,10 +24,24 @@ def test_tab_switching_shows_correct_content(sculptor_instance_: SculptorInstanc
     - History tab: shows commit history with "Add committed.py"
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_SETUP_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+
+    # Create a feature branch, write a file, and commit it so we have content in
+    # all three tabs: the file tree (All), uncommitted changes (Changes), and
+    # commit history (History).
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("committed.py", "x = 1\n"),
+                bash("git add -A && git commit -m 'Add committed.py'"),
+                write_file("uncommitted.py", "y = 2\n"),
+            ]
+        ),
+    )
 
     task_page.activate_file_browser()
     file_browser = task_page.get_file_browser()

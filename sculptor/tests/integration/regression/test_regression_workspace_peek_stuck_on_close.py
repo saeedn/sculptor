@@ -27,7 +27,7 @@ def test_workspace_peek_dismissed_on_middle_click_close(
     # Create a workspace so we have a tab to close
     start_task_and_wait_for_ready(
         page,
-        prompt='fake_claude:text `{"text": "Done"}`',
+        agent_type="terminal",
         workspace_name="Peek WS",
     )
 

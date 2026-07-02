@@ -14,7 +14,6 @@ type HotkeyChipProps = {
   onSet: (keys: string) => void;
   onClear: () => void;
   onRecordComplete?: (keys: string) => boolean | void;
-  disabled?: boolean;
 };
 
 const formatHotkey = (keys: Array<string>): string =>
@@ -35,13 +34,7 @@ const formatHotkey = (keys: Array<string>): string =>
     })
     .join("+");
 
-export const HotkeyChip = ({
-  value,
-  onSet,
-  onClear,
-  onRecordComplete,
-  disabled = false,
-}: HotkeyChipProps): ReactElement => {
+export const HotkeyChip = ({ value, onSet, onClear, onRecordComplete }: HotkeyChipProps): ReactElement => {
   // `recording` is the only genuinely local state; idle/set are derived from `value`.
   const [isRecording, setIsRecording] = useState(false);
   const [recordedKeys, setRecordedKeys] = useState<Array<string>>([]);
@@ -119,7 +112,7 @@ export const HotkeyChip = ({
   }, [isRecording]);
 
   const handleClick = (): void => {
-    if (disabled || isRecording) return;
+    if (isRecording) return;
     setIsRecording(true);
     setRecordedKeys([]);
   };
@@ -130,17 +123,9 @@ export const HotkeyChip = ({
     onClear();
   };
 
-  const opacityStyle = disabled ? { opacity: 0.5 } : undefined;
-
   if (state === "idle") {
     return (
-      <Button
-        variant="soft"
-        onClick={handleClick}
-        disabled={disabled}
-        style={opacityStyle}
-        data-testid={ElementIds.SETTINGS_HOTKEY_SET_BUTTON}
-      >
+      <Button variant="soft" onClick={handleClick} data-testid={ElementIds.SETTINGS_HOTKEY_SET_BUTTON}>
         Click to set
       </Button>
     );
@@ -170,7 +155,7 @@ export const HotkeyChip = ({
       py="2"
       px="4"
       onClick={handleClick}
-      style={{ cursor: disabled ? "default" : "pointer", ...opacityStyle }}
+      style={{ cursor: "pointer" }}
       data-testid={ElementIds.SETTINGS_HOTKEY_SET_BUTTON}
     >
       <Text size="2">{formatShortcutForDisplay(value || formatHotkey(recordedKeys))}</Text>
@@ -181,7 +166,6 @@ export const HotkeyChip = ({
           e.stopPropagation();
           handleClear();
         }}
-        disabled={disabled}
         className={styles.hotkeyClear}
         data-testid={ElementIds.SETTINGS_HOTKEY_CLEAR_BUTTON}
       >

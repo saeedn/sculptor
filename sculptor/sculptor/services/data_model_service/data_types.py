@@ -14,10 +14,8 @@ from sculptor.database.models import Project
 from sculptor.database.models import SavedAgentMessage
 from sculptor.database.models import Task
 from sculptor.database.models import TaskID
-from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
 from sculptor.database.workspace_enums import DiffStatus
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.foundation.pydantic_serialization import MutableModel
 from sculptor.interfaces.agents.tasks import TaskState
@@ -40,7 +38,6 @@ class WorkspaceListingRow(FrozenModel):
     object_id: WorkspaceID
     project_id: ProjectID
     description: str
-    initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None
     is_deleted: bool
     is_open: bool
@@ -74,7 +71,6 @@ class ProjectFieldUpdate(TypedDict, total=False):
     name: str
     user_git_repo_url: str | None
     is_path_accessible: bool
-    default_system_prompt: str | None
     workspace_setup_command: str | None
     naming_pattern: str | None
 
@@ -87,7 +83,6 @@ WORKSPACE_CREATION_ONLY_FIELDS: frozenset[str] = frozenset(
     {
         "project_id",
         "organization_reference",
-        "initialization_strategy",
         "source_branch",
         "source_git_hash",
         "requested_branch_name",
@@ -106,7 +101,6 @@ class WorkspaceFieldUpdate(TypedDict, total=False):
     target_branch: str | None
     environment_id: str | None
     is_open: bool
-    setup_command_triggered: bool
     setup_status: str
     setup_run_id: str | None
     setup_command: str | None
@@ -164,12 +158,6 @@ class DataModelTransaction(MutableModel, ABC):
     def get_projects(self, organization_reference: OrganizationReference | None = None) -> tuple[Project, ...]: ...
 
     @abstractmethod
-    def get_user_settings(self, user_reference: UserReference) -> UserSettings | None: ...
-
-    @abstractmethod
-    def get_or_create_user_settings(self, user_reference: UserReference) -> UserSettings: ...
-
-    @abstractmethod
     def get_project(self, project_id: ProjectID) -> Project | None: ...
 
     @abstractmethod
@@ -187,10 +175,6 @@ class DataModelTransaction(MutableModel, ABC):
         project_id: ProjectID | None = None,
         organization_reference: OrganizationReference | None = None,
     ) -> tuple[Workspace, ...]: ...
-
-    @abstractmethod
-    def get_workspace_include_deleted(self, workspace_id: WorkspaceID) -> Workspace | None:
-        """Get workspace by ID including soft-deleted ones. Used for deletion state checks."""
 
     @abstractmethod
     def upsert_workspace(self, workspace: Workspace) -> Workspace: ...
@@ -249,13 +233,7 @@ class TaskAndDataModelTransaction(DataModelTransaction, ABC):
     def get_active_tasks(self, input_data_classes: tuple[type, ...] = ()) -> tuple[Task, ...]: ...
 
     @abstractmethod
-    def get_all_tasks(self) -> tuple[Task, ...]: ...
-
-    @abstractmethod
     def get_stuck_deleting_tasks(self) -> tuple[Task, ...]: ...
-
-    @abstractmethod
-    def get_messages_for_task(self, task_id: TaskID) -> tuple[SavedAgentMessage, ...]: ...
 
     @abstractmethod
     def get_messages_for_tasks(self, task_ids: Collection[TaskID]) -> dict[TaskID, tuple[SavedAgentMessage, ...]]: ...

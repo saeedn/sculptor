@@ -1,7 +1,7 @@
 import { Flex } from "@radix-ui/themes";
 import { useAtomValue, useSetAtom } from "jotai";
 import type { ReactElement } from "react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useState } from "react";
 import { Outlet } from "react-router-dom";
 
 import { useSyncActiveTabFromRoute } from "../common/hooks/useSyncActiveTabFromRoute.ts";
@@ -9,44 +9,27 @@ import { useActiveProjectID } from "../common/NavigateUtils.ts";
 import { backendStatusAtom } from "../common/state/atoms/backend.ts";
 import {
   deleteErrorToastAtom,
-  mentionChipUnreachableToastAtom,
   terminalPromptRejectedToastAtom,
   workspaceDeleteErrorToastAtom,
   workspaceOpenCloseErrorToastAtom,
 } from "../common/state/atoms/toasts.ts";
 import { useProject } from "../common/state/hooks/useProjects.ts";
 import { useUnifiedStream } from "../common/state/hooks/useUnifiedStream";
-import { AutoUpdateToasts } from "../components/AutoUpdateToasts.tsx";
 import { CommandPalette } from "../components/CommandPalette";
 import { CommandRegistrations } from "../components/CommandPalette/CommandRegistrations.tsx";
 import { DevModeIndicator } from "../components/DevModeIndicator.tsx";
-import { ExitZenModeButton } from "../components/ExitZenModeButton.tsx";
 import { KeyboardShortcutsDialog } from "../components/KeyboardShortcutsDialog.tsx";
 import { NotificationToasts } from "../components/NotificationToasts.tsx";
-import { zenModeActiveAtom } from "../components/panels/atoms.ts";
 import { PanelRegistryProvider } from "../components/panels/PanelRegistryProvider.tsx";
 import { RepoPathDialog } from "../components/RepoPathDialog.tsx";
-import { TitleBar } from "../components/TitleBar.tsx";
 import { Toast } from "../components/Toast.tsx";
 import { TopBar } from "../components/TopBar.tsx";
-import { VersionDisplay } from "../components/VersionDisplay.tsx";
+import { VersionPopover } from "../components/VersionPopover.tsx";
 import { WarningStatusBanner } from "../components/WarningStatusBanner.tsx";
-import { useAutoUpdateListener } from "../hooks/useAutoUpdateListener.ts";
 import { workspaceDefaultLayout, workspacePanels } from "../pages/workspace/panels/workspacePanels.ts";
-import { PluginLoader } from "../plugins/PluginLoader.tsx";
-import { PluginOverlays } from "../plugins/PluginOverlays.tsx";
-import { pluginPanelsAtom } from "../plugins/pluginRegistry.ts";
 import { usePageLayoutKeyboardShortcuts } from "./hooks/usePageLayoutKeyboardShortcuts.ts";
-import styles from "./PageLayout.module.scss";
 
-type PageLayoutProps = {
-  showVersionIndicator?: boolean;
-};
-
-export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): ReactElement => {
-  const isZenModeActive = useAtomValue(zenModeActiveAtom);
-  const pluginPanels = useAtomValue(pluginPanelsAtom);
-  const combinedPanels = useMemo(() => [...workspacePanels, ...pluginPanels], [pluginPanels]);
+export const PageLayout = (): ReactElement => {
   const backendStatus = useAtomValue(backendStatusAtom);
   const deleteErrorToast = useAtomValue(deleteErrorToastAtom);
   const setDeleteErrorToast = useSetAtom(deleteErrorToastAtom);
@@ -54,8 +37,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
   const setWorkspaceDeleteErrorToast = useSetAtom(workspaceDeleteErrorToastAtom);
   const workspaceOpenCloseErrorToast = useAtomValue(workspaceOpenCloseErrorToastAtom);
   const setWorkspaceOpenCloseErrorToast = useSetAtom(workspaceOpenCloseErrorToastAtom);
-  const mentionChipUnreachableToast = useAtomValue(mentionChipUnreachableToastAtom);
-  const setMentionChipUnreachableToast = useSetAtom(mentionChipUnreachableToastAtom);
   const terminalPromptRejectedToast = useAtomValue(terminalPromptRejectedToastAtom);
   const setTerminalPromptRejectedToast = useSetAtom(terminalPromptRejectedToastAtom);
   const projectID = useActiveProjectID();
@@ -82,12 +63,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
     },
     [setWorkspaceOpenCloseErrorToast],
   );
-  const handleMentionChipUnreachableOpenChange = useCallback(
-    (open: boolean) => {
-      if (!open) setMentionChipUnreachableToast(null);
-    },
-    [setMentionChipUnreachableToast],
-  );
   const handleTerminalPromptRejectedOpenChange = useCallback(
     (open: boolean) => {
       if (!open) setTerminalPromptRejectedToast(null);
@@ -97,7 +72,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
 
   useUnifiedStream();
   usePageLayoutKeyboardShortcuts();
-  useAutoUpdateListener();
   useSyncActiveTabFromRoute();
 
   const hasBackendStopped = backendStatus.status === "unresponsive";
@@ -115,30 +89,25 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
         overflow="hidden"
         style={{ background: "var(--gray-2)" }}
       >
-        {/* TopBar stays mounted (display:none) in zen mode so that workspace
-            tab-cycling keyboard shortcuts (Cmd+[, Cmd+]) remain active. */}
-        <div style={isZenModeActive ? { display: "none" } : undefined}>
-          <TopBar />
-        </div>
-        {/* In zen mode, render a draggable region so the top window edge
-            remains draggable. */}
-        {isZenModeActive && <TitleBar className={styles.zenTitleBar} />}
-        <PluginLoader />
-        <PluginOverlays />
-        <PanelRegistryProvider panels={combinedPanels} defaultLayout={workspaceDefaultLayout}>
+        <TopBar />
+        <PanelRegistryProvider panels={workspacePanels} defaultLayout={workspaceDefaultLayout}>
           <Outlet />
         </PanelRegistryProvider>
-        {showVersionIndicator && !isZenModeActive && (
-          <Flex align="center" mx="3" mb="2" flexShrink="0" style={{ background: "var(--gray-2)" }}>
-            <Flex flexBasis="0" flexGrow="1" />
-            <Flex flexBasis="0" flexGrow="1" justify="center">
-              <DevModeIndicator />
-            </Flex>
-            <Flex flexBasis="0" flexGrow="1" justify="end">
-              <VersionDisplay />
-            </Flex>
+        <Flex
+          align="center"
+          px="3"
+          py="2"
+          flexShrink="0"
+          style={{ background: "var(--gray-2)", borderTop: "1px solid var(--gray-a5)" }}
+        >
+          <Flex flexBasis="0" flexGrow="1" />
+          <Flex flexBasis="0" flexGrow="1" justify="center">
+            <DevModeIndicator />
           </Flex>
-        )}
+          <Flex flexBasis="0" flexGrow="1" justify="end">
+            <VersionPopover />
+          </Flex>
+        </Flex>
         {isProjectPathInaccessible && (
           <WarningStatusBanner
             message={`Project folder not found: ${currentProject.name}.`}
@@ -150,7 +119,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
           <WarningStatusBanner message={backendStatus.payload.message} />
         )}
       </Flex>
-      <ExitZenModeButton />
       <CommandRegistrations />
       <CommandPalette />
       <KeyboardShortcutsDialog />
@@ -160,7 +128,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
         onClose={() => setIsRepoPathDialogOpen(false)}
       />
       <NotificationToasts />
-      <AutoUpdateToasts />
       <Toast
         open={deleteErrorToast !== null}
         onOpenChange={handleDeleteErrorOpenChange}
@@ -187,12 +154,6 @@ export const PageLayout = ({ showVersionIndicator = true }: PageLayoutProps): Re
         type={workspaceOpenCloseErrorToast?.type}
         action={workspaceOpenCloseErrorToast?.action ?? undefined}
         duration={10000}
-      />
-      <Toast
-        open={mentionChipUnreachableToast !== null}
-        onOpenChange={handleMentionChipUnreachableOpenChange}
-        title={mentionChipUnreachableToast?.title}
-        description={mentionChipUnreachableToast?.description}
       />
       <Toast
         open={terminalPromptRejectedToast !== null}

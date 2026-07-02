@@ -1,6 +1,5 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import { createStore } from "jotai";
-import { posthog } from "posthog-js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ElementIds } from "~/api";
@@ -516,49 +515,6 @@ describe("CommandPalette", () => {
     }
   });
 
-  it("emits a command_palette.command_run telemetry event when a command runs", async () => {
-    const captureSpy = vi.spyOn(posthog, "capture").mockImplementation(() => undefined as never);
-    commandRegistry.register(reg({ id: "test.tracked", title: "Tracked", perform: vi.fn(), group: "navigation" }));
-    const store = setupOpenStore();
-    renderPalette(store);
-    fireEvent.click(document.querySelector('[data-command-id="test.tracked"]')!);
-    await waitFor(() => expect(captureSpy).toHaveBeenCalled());
-    const runEvents = captureSpy.mock.calls.filter((c) => c[0] === "command_palette.command_run");
-    expect(runEvents).toHaveLength(1);
-    const [, props] = runEvents[0]!;
-    expect(props).toMatchObject({
-      command_id: "test.tracked",
-      group: "navigation",
-      keep_open: false,
-      timed_out: false,
-      threw: false,
-    });
-    expect(typeof (props as Record<string, unknown>).elapsed_ms).toBe("number");
-    expect(props).not.toHaveProperty("is_page_opener");
-    captureSpy.mockRestore();
-  });
-
-  it("does NOT emit a command_palette.command_run event for page-opener commands", async () => {
-    const captureSpy = vi.spyOn(posthog, "capture").mockImplementation(() => undefined as never);
-    commandRegistry.register(
-      reg({
-        id: "test.opener_no_event",
-        title: "Open Sub",
-        perform: () => {},
-        pageId: "theme.appearance",
-      }),
-    );
-    const store = setupOpenStore();
-    renderPalette(store);
-    fireEvent.click(document.querySelector('[data-command-id="test.opener_no_event"]')!);
-    // Wait for the run to complete (page push happens synchronously).
-    await waitFor(() => expect(store.get(commandPalettePagesAtom)).toEqual(["theme.appearance"]));
-    await Promise.resolve();
-    const runEvents = captureSpy.mock.calls.filter((c) => c[0] === "command_palette.command_run");
-    expect(runEvents).toHaveLength(0);
-    captureSpy.mockRestore();
-  });
-
   it("Cmd+Enter on the auto-highlighted page-opener pushes the sub-page (with keepOpen)", async () => {
     commandRegistry.register(
       reg({
@@ -688,13 +644,6 @@ describe("CommandPalette", () => {
     await waitFor(() => {
       expect(document.querySelector('[data-command-id="ws.actions.open2"]')).not.toBeNull();
     });
-  });
-
-  it("renders no footer", () => {
-    commandRegistry.register(reg({ id: "test.no_footer", title: "No footer please", perform: () => {} }));
-    const store = setupOpenStore();
-    renderPalette(store);
-    expect(screen.queryByTestId(ElementIds.COMMAND_PALETTE_FOOTER)).toBeNull();
   });
 
   it("opens directly to a sub-page when seeded via commandPaletteInitialPageAtom (Cmd+P flow)", async () => {

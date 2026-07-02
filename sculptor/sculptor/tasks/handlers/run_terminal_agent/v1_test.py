@@ -67,8 +67,6 @@ def terminal_task(project: Project) -> Task:
         project_id=project.object_id,
         input_data=AgentTaskInputsV2(
             agent_config=TerminalAgentConfig(),
-            git_hash="initialhash",
-            system_prompt=None,
         ),
     )
 
@@ -100,6 +98,8 @@ def environment(
         project_id=project.object_id,
         concurrency_group=test_root_concurrency_group,
         repo_host_path=code_dir,
+        source_branch="main",
+        requested_branch_name=f"ws/{uuid4().hex[:8]}",
     )
     try:
         yield environment
@@ -196,7 +196,6 @@ def test_outer_handler_emits_acquired_and_released_messages(
     agent_env = LocalAgentExecutionEnvironment(
         environment=environment,
         task_id=terminal_task.object_id,
-        dependency_management_service=services.dependency_management_service,
     )
 
     @contextmanager
@@ -241,10 +240,7 @@ def test_run_task_dispatches_terminal_config_to_terminal_handler(
     test_root_concurrency_group: ConcurrencyGroup,
 ) -> None:
     shutdown_event = threading.Event()
-    with (
-        patch("sculptor.tasks.api.run_terminal_agent_task_v1", return_value=None) as terminal_handler,
-        patch("sculptor.tasks.api.run_agent_task_v1", return_value=None) as chat_handler,
-    ):
+    with patch("sculptor.tasks.api.run_terminal_agent_task_v1", return_value=None) as terminal_handler:
         run_task(
             terminal_task,
             services,
@@ -255,13 +251,12 @@ def test_run_task_dispatches_terminal_config_to_terminal_handler(
             None,
         )
     terminal_handler.assert_called_once()
-    chat_handler.assert_not_called()
 
 
 def test_launch_command_for_start_selects_per_config() -> None:
     state = AgentTaskStateV2(workspace_id=WorkspaceID())
     state_with_session = AgentTaskStateV2(workspace_id=WorkspaceID(), terminal_session_id="sess-42")
-    plain = AgentTaskInputsV2(agent_config=TerminalAgentConfig(), git_hash="x")
+    plain = AgentTaskInputsV2(agent_config=TerminalAgentConfig())
     # Plain terminals always get a bare shell — also after restart.
     assert launch_command_for_start(plain, state) is None
     assert launch_command_for_start(plain, state_with_session) is None
@@ -273,7 +268,6 @@ def test_launch_command_for_start_selects_per_config() -> None:
             launch_command="claude",
             resume_command_template="claude --resume {session_id}",
         ),
-        git_hash="x",
     )
     # No session reported yet → plain launch.
     assert launch_command_for_start(registered, state) == "claude"
@@ -286,7 +280,6 @@ def test_launch_command_for_start_selects_per_config() -> None:
             display_name="Claude Code",
             launch_command="claude",
         ),
-        git_hash="x",
     )
     # Session but no template → plain launch.
     assert launch_command_for_start(registered_no_template, state_with_session) == "claude"
@@ -312,7 +305,6 @@ def test_registered_config_launch_command_is_written_on_spawn(
                 display_name="Claude Code",
                 launch_command="echo registered-launch-marker",
             ),
-            git_hash="initialhash",
         ),
     )
     with services.data_model_service.open_transaction(RequestID()) as transaction:

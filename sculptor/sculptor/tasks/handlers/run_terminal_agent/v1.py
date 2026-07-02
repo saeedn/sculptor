@@ -16,9 +16,9 @@ next connection.
 from __future__ import annotations
 
 import datetime
+import shutil
 from typing import Any
 from typing import Callable
-from typing import cast
 
 from loguru import logger
 
@@ -32,21 +32,19 @@ from sculptor.database.models import TaskID
 from sculptor.foundation.concurrency_group import ConcurrencyExceptionGroup
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import ReadOnlyEvent
-from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
 from sculptor.interfaces.agents.agent import EnvironmentReleasedRunnerMessage
-from sculptor.interfaces.agents.agent import EnvironmentTypes
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.services.data_model_service.data_types import DataModelTransaction
-from sculptor.services.dependency_management_service import Dependency
 from sculptor.services.task_service.data_types import ServiceCollectionForTask
 from sculptor.services.task_service.errors import UserPausedTaskError
 from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
     LocalAgentExecutionEnvironment,
 )
-from sculptor.tasks.handlers.run_agent.setup import load_initial_task_state
-from sculptor.tasks.handlers.run_agent.v1 import on_exception
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.tasks.handlers.run_terminal_agent.diff_refresh import PeriodicDiffRefresher
+from sculptor.tasks.handlers.run_terminal_agent.runner_support import load_initial_task_state
+from sculptor.tasks.handlers.run_terminal_agent.runner_support import on_exception
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import AgentTerminalConfig
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import create_agent_terminal
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import reap_stale_shell
@@ -114,8 +112,6 @@ def run_terminal_agent_task_v1(
     user_reference = task.user_reference
     task_id = task.object_id
 
-    root_progress_handle = RootProgressHandle()
-
     try:
         with logger.contextualize(task_id=task_id):
             logger.debug("running terminal agent task {} for user {}", task_id, user_reference)
@@ -130,14 +126,13 @@ def run_terminal_agent_task_v1(
                     workspace_id=task_state.workspace_id,
                     task_id=task.object_id,
                     concurrency_group=environment_concurrency_group,
-                    root_progress_handle=root_progress_handle,
                     shutdown_event=shutdown_event,
                 ) as environment,
             ):
                 # Emit EnvironmentAcquiredRunnerMessage — the run-start anchor
                 # the terminal status driver keys on for run-scoping.
                 assert isinstance(environment, LocalAgentExecutionEnvironment)
-                underlying_env = cast(EnvironmentTypes, environment.underlying_environment)
+                underlying_env = environment.underlying_environment
                 with services.data_model_service.open_task_transaction() as transaction:
                     services.task_service.create_message(
                         EnvironmentAcquiredRunnerMessage(environment=underlying_env),
@@ -160,7 +155,9 @@ def run_terminal_agent_task_v1(
                         settings=settings,
                         shutdown_event=shutdown_event,
                         on_started=on_started,
-                        claude_binary_path=environment.get_tool_binary_path(Dependency.CLAUDE),
+                        # PATH-only resolution; the bundled registration falls
+                        # back to bare `claude` (see SCULPT_CLAUDE_BIN below).
+                        claude_binary_path=shutil.which("claude"),
                     )
                 finally:
                     with services.data_model_service.open_task_transaction() as transaction:
@@ -182,7 +179,7 @@ def _run_terminal_agent_in_environment(
     task: Task,
     task_state: AgentTaskStateV2,
     project: Project,
-    underlying_env: EnvironmentTypes,
+    underlying_env: LocalEnvironment,
     environment_concurrency_group: ConcurrencyGroup,
     services: ServiceCollectionForTask,
     settings: SculptorSettings,

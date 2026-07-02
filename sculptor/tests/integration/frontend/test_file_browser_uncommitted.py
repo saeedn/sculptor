@@ -8,49 +8,19 @@ behind, making committed vs uncommitted changes distinct.
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import navigate_to_settings_page
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import edit_file
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
-# Prompts that test committed-vs-uncommitted behavior start with
+# Tests that exercise committed-vs-uncommitted behavior start with
 # `git checkout -b feature` so that commits land on the feature branch while
 # `main` (the source_branch / diff base) stays at the initial commit.
-
-_EDIT_AFTER_COMMIT_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "app.py",
-        "content": "def main():\\n    print('hello')\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add app.py'"
-      }
-    },
-    {
-      "command": "edit_file",
-      "args": {
-        "file_path": "app.py",
-        "old_string": "print('hello')",
-        "new_string": "print('goodbye')"
-      }
-    }
-  ]
-}`"""
 
 
 @user_story("to see only uncommitted changes when clicking a file in the Changes panel")
@@ -62,10 +32,20 @@ def test_individual_file_diff_shows_only_uncommitted_changes(sculptor_instance_:
     entire file as newly added from the base branch.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_EDIT_AFTER_COMMIT_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("app.py", "def main():\n    print('hello')\n"),
+                bash("git add -A && git commit -m 'Add app.py'"),
+                edit_file("app.py", "print('hello')", "print('goodbye')"),
+            ]
+        ),
+    )
 
     task_page.activate_changes_panel(scope="uncommitted")
 
@@ -104,70 +84,31 @@ def test_individual_file_diff_shows_only_uncommitted_changes(sculptor_instance_:
     expect(diff_view).to_contain_text("goodbye")
 
 
-_COMMIT_THEN_EDIT_ONE_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "alpha.py",
-        "content": "a = 1\\n"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "beta.py",
-        "content": "b = 2\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add alpha and beta'"
-      }
-    },
-    {
-      "command": "edit_file",
-      "args": {
-        "file_path": "alpha.py",
-        "old_string": "a = 1",
-        "new_string": "a = 999"
-      }
-    }
-  ]
-}`"""
-
-
-def _enable_review_all_via_settings(page) -> None:  # noqa: ANN001
-    """Enable the Review All setting via the Settings UI (idempotent)."""
-    settings_page = navigate_to_settings_page(page=page)
-    experimental = settings_page.click_on_experimental()
-    experimental.enable_review_all()
-
-
-@user_story("to see all branch files in Review All and uncommitted changes in individual file view")
-def test_individual_diff_matches_review_all(sculptor_instance_: SculptorInstance) -> None:
-    """Review All defaults to All scope (showing all branch changes), while
-    individual file clicks from the Changes panel show uncommitted changes.
+@user_story("to see all branch files in the All scope and uncommitted changes in individual file view")
+def test_individual_diff_matches_all_scope(sculptor_instance_: SculptorInstance) -> None:
+    """The All scope shows all branch changes, while individual file clicks from
+    the Uncommitted scope show only the uncommitted change.
 
     After creating a feature branch, committing alpha.py and beta.py, then
-    editing alpha.py: Review All (All scope) should show both alpha.py and
-    beta.py, while clicking alpha.py individually shows the uncommitted edit.
+    editing alpha.py: the All scope should list both alpha.py and beta.py,
+    while clicking alpha.py in the Uncommitted scope shows the uncommitted edit.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    _enable_review_all_via_settings(page)
-
-    task_page = start_task_and_wait_for_ready(page, prompt=_COMMIT_THEN_EDIT_ONE_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("alpha.py", "a = 1\n"),
+                write_file("beta.py", "b = 2\n"),
+                bash("git add -A && git commit -m 'Add alpha and beta'"),
+                edit_file("alpha.py", "a = 1", "a = 999"),
+            ]
+        ),
+    )
 
     task_page.activate_changes_panel(scope="uncommitted")
 
@@ -183,29 +124,22 @@ def test_individual_diff_matches_review_all(sculptor_instance_: SculptorInstance
     expect(tree_rows).to_have_count(1)
     expect(tree_rows.first).to_contain_text("alpha.py")
 
-    # Open Review All — defaults to All scope, showing all branch changes
-    file_browser = task_page.get_file_browser()
-    review_all_btn = file_browser.get_review_all_button()
-    expect(review_all_btn).to_be_visible()
-    review_all_btn.click()
+    # The All scope should list both alpha.py and beta.py (all branch changes).
+    changes_panel.get_scope_all().click()
+    all_rows = changes_tree.get_tree_rows()
+    expect(all_rows.filter(has_text="alpha.py")).to_be_visible()
+    expect(all_rows.filter(has_text="beta.py")).to_be_visible()
+
+    # Back to Uncommitted scope, click alpha.py directly in the changes tree.
+    changes_panel.get_scope_uncommitted().click()
+    tree_rows = changes_tree.get_tree_rows()
+    tree_rows.first.click()
 
     diff_panel = task_page.get_diff_panel()
     expect(diff_panel).to_be_visible()
-
-    # Review All (All scope) should show both alpha.py and beta.py
-    expect(diff_panel).to_contain_text("alpha.py")
-    expect(diff_panel).to_contain_text("beta.py")
-
-    # Now click alpha.py directly in the changes tree (Uncommitted scope)
-    tree_rows.first.click()
-
     diff_header = diff_panel.get_file_header()
     expect(diff_header).to_contain_text("alpha.py")
 
-    # Ensure unified mode.  We check here (after clicking the individual file)
-    # rather than during Review All because Review All forces unified for
-    # added ("A") files regardless of the stored preference, whereas the
-    # individual file has status "M" and respects the stored preference.
     diff_panel.ensure_unified_mode()
 
     # The individual file diff should show the uncommitted change: a=1 -> a=999
@@ -215,73 +149,28 @@ def test_individual_diff_matches_review_all(sculptor_instance_: SculptorInstance
     expect(diff_view).to_contain_text("a = 999")
 
 
-_COMMIT_ALL_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "done.py",
-        "content": "x = 42\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add done.py'"
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see the changes panel clear after committing all changes")
 def test_changes_panel_empty_after_commit(sculptor_instance_: SculptorInstance) -> None:
     """After committing all changes, the Changes panel should show no files."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_COMMIT_ALL_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                write_file("done.py", "x = 42\n"),
+                bash("git add -A && git commit -m 'Add done.py'"),
+            ]
+        ),
+    )
 
     task_page.activate_changes_panel(scope="uncommitted")
 
     changes_panel = task_page.get_changes_panel()
     expect(changes_panel).to_be_visible()
     expect(changes_panel).to_contain_text("No changes")
-
-
-_WRITE_AND_COMMIT_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "counter.py",
-        "content": "count = 0\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add counter'"
-      }
-    },
-    {
-      "command": "edit_file",
-      "args": {
-        "file_path": "counter.py",
-        "old_string": "count = 0",
-        "new_string": "count = 1"
-      }
-    }
-  ]
-}`"""
-
-_COMMIT_AGAIN_PROMPT = """\
-fake_claude:bash `{
-  "command": "git add -A && git commit -m 'Increment counter'"
-}`"""
 
 
 @user_story("to see the changes panel update correctly after a second commit")
@@ -292,10 +181,19 @@ def test_changes_panel_updates_after_second_commit(sculptor_instance_: SculptorI
     After the second commit, the Changes panel should be empty.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_AND_COMMIT_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                write_file("counter.py", "count = 0\n"),
+                bash("git add -A && git commit -m 'Add counter'"),
+                edit_file("counter.py", "count = 0", "count = 1"),
+            ]
+        ),
+    )
 
     task_page.activate_changes_panel(scope="uncommitted")
 
@@ -309,9 +207,8 @@ def test_changes_panel_updates_after_second_commit(sculptor_instance_: SculptorI
     expect(tree_rows).to_have_count(1)
     expect(tree_rows.first).to_contain_text("counter.py")
 
-    # Now commit the remaining changes via a follow-up message
-    send_chat_message(chat_panel=chat_panel, message=_COMMIT_AGAIN_PROMPT)
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=4)
+    # Now commit the remaining changes via a follow-up command
+    send_fake_agent_command(agents_dir, bash("git add -A && git commit -m 'Increment counter'"))
 
     # After the second commit, Changes panel should be empty
     expect(tree_rows).to_have_count(0)
@@ -326,42 +223,20 @@ def test_diff_header_line_stats_reflect_uncommitted_only(sculptor_instance_: Scu
     (the entire file as new from the base branch).
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    prompt = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "lines.py",
-        "content": "line1 = 1\\nline2 = 2\\nline3 = 3\\nline4 = 4\\nline5 = 5\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add lines.py'"
-      }
-    },
-    {
-      "command": "edit_file",
-      "args": {
-        "file_path": "lines.py",
-        "old_string": "line3 = 3",
-        "new_string": "line3 = 333"
-      }
-    }
-  ]
-}`"""
-    task_page = start_task_and_wait_for_ready(page, prompt=prompt)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature"),
+                write_file("lines.py", "line1 = 1\nline2 = 2\nline3 = 3\nline4 = 4\nline5 = 5\n"),
+                bash("git add -A && git commit -m 'Add lines.py'"),
+                edit_file("lines.py", "line3 = 3", "line3 = 333"),
+            ]
+        ),
+    )
 
     task_page.activate_changes_panel(scope="uncommitted")
 
@@ -384,40 +259,6 @@ fake_claude:multi_step `{
     expect(diff_header).not_to_contain_text("+5")
 
 
-_NEW_FILE_WITH_DELETED_FILE_MODE_CONTENT_PROMPT = """\
-fake_claude:write_file `{
-  "file_path": "tricky.txt",
-  "content": "This file talks about deleted file mode in git diffs.\\n"
-}`"""
-
-_EDIT_FILE_TO_ADD_DELETED_FILE_MODE_CONTENT_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "notes.txt",
-        "content": "Some initial content.\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add notes.txt'"
-      }
-    },
-    {
-      "command": "edit_file",
-      "args": {
-        "file_path": "notes.txt",
-        "old_string": "Some initial content.",
-        "new_string": "This line mentions deleted file mode for documentation."
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see correct status for files whose content contains 'deleted file mode'")
 def test_file_containing_deleted_file_mode_text_not_shown_as_deleted(
     sculptor_instance_: SculptorInstance,
@@ -430,35 +271,49 @@ def test_file_containing_deleted_file_mode_text_not_shown_as_deleted(
     should show status 'M' (modified).
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
     # --- Scenario 1: new file whose content contains "deleted file mode" ---
-    task_page = start_task_and_wait_for_ready(page, prompt=_NEW_FILE_WITH_DELETED_FILE_MODE_CONTENT_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command_and_wait(
+        agents_dir,
+        write_file("tricky.txt", "This file talks about deleted file mode in git diffs.\n"),
+    )
 
     task_page.activate_changes_panel(scope="uncommitted")
+    # Force a fresh diff fetch (cold-start: the initial files-changed signal can
+    # land before the frontend's diff subscription is ready).
+    task_page.get_file_browser().get_refresh_button().click()
 
     changes_panel = task_page.get_changes_panel()
     changes_tree = changes_panel.get_changes_tree()
     expect(changes_tree).to_be_visible()
 
-    tree_rows = changes_tree.get_tree_rows()
-    expect(tree_rows).to_have_count(1)
-    expect(tree_rows.first).to_contain_text("tricky.txt")
+    tricky_row = changes_tree.get_tree_rows().filter(has_text="tricky.txt")
+    expect(tricky_row).to_be_visible()
 
     # The file is newly added — status must be "A", not "D"
-    status = changes_tree.get_row_status(tree_rows.first)
+    status = changes_tree.get_row_status(tricky_row)
     expect(status).to_have_text("A")
 
     # --- Scenario 2: edited file whose new content contains "deleted file mode" ---
-    send_chat_message(
-        chat_panel=chat_panel,
-        message=_EDIT_FILE_TO_ADD_DELETED_FILE_MODE_CONTENT_PROMPT,
+    send_fake_agent_command_and_wait(
+        agents_dir,
+        multi_step(
+            [
+                write_file("notes.txt", "Some initial content.\n"),
+                bash("git add -A && git commit -m 'Add notes.txt'"),
+                edit_file(
+                    "notes.txt",
+                    "Some initial content.",
+                    "This line mentions deleted file mode for documentation.",
+                ),
+            ]
+        ),
     )
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=4)
 
-    # The `git add -A && git commit` in the second prompt commits everything
-    # (including tricky.txt from the first prompt). Only notes.txt remains
+    # The `git add -A && git commit` in the second turn commits everything
+    # (including tricky.txt from the first turn). Only notes.txt remains
     # uncommitted after being edited — it should show as "M", not "D".
     notes_row = changes_tree.get_tree_rows().filter(has_text="notes.txt")
     expect(notes_row).to_be_visible()

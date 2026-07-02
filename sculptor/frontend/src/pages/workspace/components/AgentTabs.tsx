@@ -1,7 +1,6 @@
 import { ContextMenu, DropdownMenu, Flex, IconButton } from "@radix-ui/themes";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import { ChevronDownIcon, PlusIcon, Stethoscope } from "lucide-react";
-import { posthog } from "posthog-js";
 import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -10,7 +9,6 @@ import {
   createWorkspaceAgent,
   ElementIds,
   getWorkspaceAgentDiagnostics,
-  type LlmModel,
   markWorkspaceAgentUnread,
   renameWorkspaceAgent,
 } from "~/api";
@@ -30,7 +28,7 @@ import {
 } from "~/common/state/atoms/agentTabs.ts";
 import { debugViewAtomFamily } from "~/common/state/atoms/alphaScroll.ts";
 import { pendingAgentTitlesAtom, tasksArrayAtom, updateTasksAtom } from "~/common/state/atoms/tasks.ts";
-import { isPiAgentEnabledAtom, userConfigAtom } from "~/common/state/atoms/userConfig.ts";
+import { userConfigAtom } from "~/common/state/atoms/userConfig.ts";
 import { useOptimisticTaskDelete } from "~/common/state/hooks/useOptimisticTaskDelete.ts";
 import { useTerminalAgentRegistrations } from "~/common/state/hooks/useTerminalAgentRegistrations.ts";
 import { useRegisterCommandAction } from "~/components/CommandPalette/commandActions.ts";
@@ -40,7 +38,6 @@ import { AgentContextMenuContent } from "~/components/CommandPalette/contextActi
 import type { AgentActionRuntime } from "~/components/CommandPalette/contextActions/types.ts";
 import { DeleteConfirmationDialog } from "~/components/DeleteConfirmationDialog.tsx";
 import { InlineRenameInput } from "~/components/InlineRenameInput.tsx";
-import { zenModeActiveAtom } from "~/components/panels/atoms.ts";
 import { AgentStatusDot, getAgentDotStatus } from "~/components/statusDot";
 import { TabBar } from "~/components/tabs/TabBar";
 import type { TabDefinition } from "~/components/tabs/types";
@@ -55,7 +52,6 @@ const NO_SESSION_TOOLTIP = "No active session — send a prompt first";
  */
 const DiagnosticsSubMenu = ({ workspaceID, agentId }: { workspaceID: string; agentId: string }): ReactElement => {
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [transcriptPath, setTranscriptPath] = useState<string | null>(null);
   const [sculptorTranscriptPath, setSculptorTranscriptPath] = useState<string | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const [isDebugView, setIsDebugView] = useAtom(debugViewAtomFamily(agentId));
@@ -67,7 +63,6 @@ const DiagnosticsSubMenu = ({ workspaceID, agentId }: { workspaceID: string; age
     }).then(({ data }) => {
       if (isCancelled) return;
       setSessionId(data.sessionId ?? null);
-      setTranscriptPath(data.transcriptFilePath ?? null);
       setSculptorTranscriptPath(data.sculptorTranscriptFilePath ?? null);
       setIsLoaded(true);
     });
@@ -107,18 +102,6 @@ const DiagnosticsSubMenu = ({ workspaceID, agentId }: { workspaceID: string; age
         Copy claude session id
       </ContextMenu.Item>
       <ContextMenu.Item
-        data-testid={ElementIds.TAB_CONTEXT_MENU_COPY_TRANSCRIPT_PATH}
-        disabled={!transcriptPath}
-        title={!isLoaded || !transcriptPath ? NO_SESSION_TOOLTIP : undefined}
-        onSelect={async () => {
-          if (transcriptPath) {
-            await navigator.clipboard.writeText(transcriptPath);
-          }
-        }}
-      >
-        Copy claude transcript file path
-      </ContextMenu.Item>
-      <ContextMenu.Item
         data-testid={ElementIds.TAB_CONTEXT_MENU_COPY_SCULPTOR_TRANSCRIPT_PATH}
         disabled={!sculptorTranscriptPath}
         title={!isLoaded || !sculptorTranscriptPath ? "No transcript file available" : undefined}
@@ -135,7 +118,6 @@ const DiagnosticsSubMenu = ({ workspaceID, agentId }: { workspaceID: string; age
 };
 
 export const AgentTabs = (): ReactElement | null => {
-  const isZenModeActive = useAtomValue(zenModeActiveAtom);
   const { workspaceID, agentID } = useWorkspacePageParams();
   const { navigateToAgent } = useImbueNavigate();
   const tasks = useAtomValue(tasksArrayAtom);
@@ -241,11 +223,8 @@ export const AgentTabs = (): ReactElement | null => {
     },
     [setUserConfig],
   );
-  const isPiAgentEnabled = useAtomValue(isPiAgentEnabledAtom);
   const { registrations, refetch: refreshRegistrations } = useTerminalAgentRegistrations();
-  // A stored "pi" is unusable once pi-agent is turned off — fall back to Claude.
-  const defaultAgentType: StoredAgentType =
-    lastUsedAgentType === "pi" && !isPiAgentEnabled ? "claude" : lastUsedAgentType;
+  const defaultAgentType: StoredAgentType = lastUsedAgentType;
 
   const handleCreateAgent = useCallback(
     async (requestedType?: AgentTypeName, requestedRegistrationId?: string): Promise<void> => {
@@ -268,27 +247,24 @@ export const AgentTabs = (): ReactElement | null => {
         } else {
           ({ agentType, registrationId } = parseStoredAgentType(defaultAgentType));
         }
-        // Inherit the model from the currently viewed agent so the new agent
-        // starts with the same model selection. Terminal agents never read it.
-        const currentAgent = agentID ? workspaceAgents.find((a) => a.id === agentID) : undefined;
-        const model = currentAgent?.model as LlmModel | undefined;
         let response;
         try {
           response = await createWorkspaceAgent({
             path: { workspace_id: workspaceID },
-            body: { model, agentType, registrationId },
+            body: { agentType, registrationId },
           });
         } catch (error) {
           // A remembered registered agent's registration can be deleted out
-          // from under the stored default — only that case retries as Claude.
-          // Other failures (e.g. a transient error creating a plain terminal
-          // or pi agent) propagate rather than silently substituting a
-          // different agent type than the user's default.
+          // from under the stored default — only that case retries as a plain
+          // terminal (always available). Other failures (e.g. a transient
+          // error creating a plain terminal agent) propagate rather than
+          // silently substituting a different agent type than the user's
+          // default.
           if (requestedType === undefined && agentType === "registered") {
-            setLastUsedAgentType("claude");
+            setLastUsedAgentType("terminal");
             response = await createWorkspaceAgent({
               path: { workspace_id: workspaceID },
-              body: { model, agentType: "claude" },
+              body: { agentType: "terminal" },
             });
           } else {
             throw error;
@@ -296,12 +272,6 @@ export const AgentTabs = (): ReactElement | null => {
         }
 
         if (response.data) {
-          posthog.capture("agent.added", {
-            workspace_id: workspaceID,
-            agent_id: response.data.id,
-            model: model ?? null,
-            agent_type: agentType,
-          });
           navigateToAgent(workspaceID, response.data.id);
         }
       } catch (error) {
@@ -310,7 +280,7 @@ export const AgentTabs = (): ReactElement | null => {
         setIsCreating(false);
       }
     },
-    [workspaceID, isCreating, navigateToAgent, agentID, workspaceAgents, defaultAgentType, setLastUsedAgentType],
+    [workspaceID, isCreating, navigateToAgent, defaultAgentType, setLastUsedAgentType],
   );
 
   useKeybindingHandler("new_agent", () => {
@@ -495,8 +465,6 @@ export const AgentTabs = (): ReactElement | null => {
     [workspaceAgents, workspaceID, agentActions],
   );
 
-  if (isZenModeActive) return null;
-
   return (
     <>
       <TabBar
@@ -555,22 +523,6 @@ export const AgentTabs = (): ReactElement | null => {
                 click creates. Selecting an item still creates an agent (the
                 check is an indicator, not a toggle). */}
             <DropdownMenu.Content data-testid={ElementIds.AGENT_TYPE_MENU}>
-              <DropdownMenu.CheckboxItem
-                checked={defaultAgentType === "claude"}
-                data-testid={ElementIds.AGENT_TYPE_MENU_ITEM_CLAUDE}
-                onSelect={() => void handleCreateAgent("claude")}
-              >
-                {AGENT_TYPE_LABELS.claude}
-              </DropdownMenu.CheckboxItem>
-              {isPiAgentEnabled && (
-                <DropdownMenu.CheckboxItem
-                  checked={defaultAgentType === "pi"}
-                  data-testid={ElementIds.AGENT_TYPE_MENU_ITEM_PI}
-                  onSelect={() => void handleCreateAgent("pi")}
-                >
-                  {AGENT_TYPE_LABELS.pi}
-                </DropdownMenu.CheckboxItem>
-              )}
               <DropdownMenu.CheckboxItem
                 checked={defaultAgentType === "terminal"}
                 data-testid={ElementIds.AGENT_TYPE_MENU_ITEM_TERMINAL}

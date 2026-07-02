@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 
-import type { WorkspaceInitializationStrategy } from "~/api";
-import { branchExists, previewBranchName, WorkspaceInitializationStrategy as Strategy } from "~/api";
+import { branchExists, previewBranchName } from "~/api";
 
 export type BranchNameCollisionState = "unknown" | "exists" | "available";
 
@@ -19,7 +18,6 @@ type BranchNamePreviewState = {
 type UseBranchNamePreviewArgs = {
   projectId: string | null;
   workspaceName: string;
-  mode: WorkspaceInitializationStrategy;
   /** The user's manual override; null means "use the auto-filled preview". */
   override: string | null;
 };
@@ -30,7 +28,6 @@ const COLLISION_DEBOUNCE_MS = 300;
 export function useBranchNamePreview({
   projectId,
   workspaceName,
-  mode,
   override,
 }: UseBranchNamePreviewArgs): BranchNamePreviewState {
   const [preview, setPreview] = useState<string>("");
@@ -44,7 +41,7 @@ export function useBranchNamePreview({
   const displayedValue = override ?? preview;
 
   useEffect(() => {
-    if (mode === Strategy.IN_PLACE || !projectId || isManuallyEdited) {
+    if (!projectId || isManuallyEdited) {
       setIsLoading(false);
       return;
     }
@@ -54,7 +51,7 @@ export function useBranchNamePreview({
       void (async (): Promise<void> => {
         try {
           const result = await previewBranchName({
-            query: { project_id: projectId, workspace_name: workspaceName, mode },
+            query: { project_id: projectId, workspace_name: workspaceName },
           });
           if (myId === previewRequestId.current && result.data) {
             setPreview(result.data.branchName);
@@ -71,10 +68,10 @@ export function useBranchNamePreview({
     return (): void => {
       window.clearTimeout(timer);
     };
-  }, [projectId, workspaceName, mode, isManuallyEdited]);
+  }, [projectId, workspaceName, isManuallyEdited]);
 
   useEffect(() => {
-    if (mode === Strategy.IN_PLACE || !projectId) {
+    if (!projectId) {
       setCollision("unknown");
       return;
     }
@@ -104,7 +101,7 @@ export function useBranchNamePreview({
     return (): void => {
       window.clearTimeout(timer);
     };
-  }, [projectId, displayedValue, mode]);
+  }, [projectId, displayedValue]);
 
   return { preview, displayedValue, isLoading, collision };
 }

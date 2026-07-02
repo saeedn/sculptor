@@ -1,8 +1,6 @@
 from pathlib import Path
 from typing import Final
 
-from pydantic import BaseModel
-from pydantic import ConfigDict
 from pydantic import Field
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings
@@ -20,12 +18,6 @@ TEST_LOG_PATH: Path = Path("/tmp") / "sculptor_test_logs"
 # (when looking for places where they're being set, e.g. via environment variables).
 
 
-class TestingConfig(BaseModel):
-    model_config = ConfigDict(frozen=True)
-
-    INTEGRATION_ENABLED: bool = False
-
-
 class SculptorSettings(BaseSettings):
     """
     This class is for *server* settings *that do not change during runtime*.
@@ -41,10 +33,7 @@ class SculptorSettings(BaseSettings):
     BACKEND_PORT: int = Field(default=DEFAULT_BACKEND_PORT, validation_alias="SCULPTOR_API_PORT")
     DATABASE_URL: str = "sqlite:///" + str(get_internal_folder() / "database.db")
     LOG_LEVEL: str = "DEBUG"
-    TASK_SYNC_DIR: str = str(get_internal_folder() / "artifacts" / "task_sync")
     WORKSPACE_SYNC_DIR: str = str(get_internal_folder() / "artifacts" / "workspace_sync")
-    SERVE_STATIC_FILES_DIR: str | None = None
-    TESTING: TestingConfig = TestingConfig()
     LOG_PATH: str = str(DEFAULT_LOG_PATH)
 
     # When provided, all requests are expected to have this exact key in the `x-session-token` header (or GET param or cookie).
@@ -54,16 +43,8 @@ class SculptorSettings(BaseSettings):
     SESSION_TOKEN: SecretStr | None = None
 
     @property
-    def task_sync_path(self) -> Path:
-        return Path(self.TASK_SYNC_DIR)
-
-    @property
     def workspace_sync_path(self) -> Path:
         return Path(self.WORKSPACE_SYNC_DIR)
-
-    @property
-    def upload_path(self) -> Path:
-        return get_internal_folder() / "uploads"
 
 
 # Think twice before using SculptorSettings directly. We want to be sure to properly inject different settings at test time.

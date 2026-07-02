@@ -6,7 +6,7 @@ import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type * as api from "~/api";
-import type { RecentWorkspaceResponse, Workspace, WorkspaceInitializationStrategy } from "~/api";
+import type { RecentWorkspaceResponse, Workspace } from "~/api";
 import { ElementIds, listRecentWorkspaces } from "~/api";
 import { updateWorkspacesAtom } from "~/common/state/atoms/workspaces";
 
@@ -31,7 +31,6 @@ vi.mock("~/common/NavigateUtils.ts", () => ({
     navigateToAddWorkspace: vi.fn(),
     navigateToHome: vi.fn(),
     navigateToGlobalSettings: vi.fn(),
-    navigateToComponentGallery: vi.fn(),
     navigateToRoot: vi.fn(),
   }),
 }));
@@ -65,7 +64,6 @@ const mockWorkspace = (overrides: Partial<Workspace> & Pick<Workspace, "objectId
     projectId: "proj-1",
     organizationReference: "org-1",
     description: overrides.objectId,
-    initializationStrategy: "CLONE" as WorkspaceInitializationStrategy,
     isOpen: false,
     isDeleted: false,
     ...overrides,
@@ -76,7 +74,6 @@ const mockRecent = (id: string): RecentWorkspaceResponse =>
     objectId: id,
     projectId: "proj-1",
     description: id,
-    initializationStrategy: "CLONE" as WorkspaceInitializationStrategy,
     sourceBranch: null,
     isDeleted: false,
     createdAt: "",

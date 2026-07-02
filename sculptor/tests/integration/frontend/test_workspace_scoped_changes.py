@@ -13,23 +13,40 @@ different file, and verify that both files appear in the Changes tab
 for BOTH agents.
 """
 
+from pathlib import Path
+
 from playwright.sync_api import Page
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
+from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
+from sculptor.testing.elements.terminal import get_agent_terminal_panel
+from sculptor.testing.elements.terminal import wait_for_xterm_substring
+from sculptor.testing.fake_terminal_agent import READY_BANNER
+from sculptor.testing.fake_terminal_agent import register_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
-from sculptor.testing.playwright_utils import navigate_to_settings_page
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
+_SECOND_REGISTRATION_ID = "fake-terminal-agent-2"
 
-def _enable_review_all_via_settings(page: Page) -> None:
-    """Enable the Review All experimental setting via the Settings UI."""
-    settings_page = navigate_to_settings_page(page=page)
-    experimental = settings_page.click_on_experimental()
-    experimental.enable_review_all()
+
+def _add_second_fake_terminal_agent(page: Page, agents_dir: Path) -> None:
+    """Register and launch a second fake terminal agent in the current workspace.
+
+    Uses a distinct registration id (and commands directory) so the two agents
+    never read each other's commands.
+    """
+    register_fake_terminal_agent(agents_dir, registration_id=_SECOND_REGISTRATION_ID, display_name="Fake Terminal Two")
+    agent_tab_bar = PlaywrightAgentTabBarElement(page)
+    agent_tab_bar.open_agent_type_menu()
+    registered_item = agent_tab_bar.get_agent_type_menu_item_registered(_SECOND_REGISTRATION_ID)
+    expect(registered_item).to_be_visible()
+    registered_item.click()
+    expect(get_agent_terminal_panel(page)).to_be_visible()
+    wait_for_xterm_substring(page, READY_BANNER)
 
 
 @user_story("to see all workspace changes regardless of which agent made them")
@@ -46,105 +63,94 @@ def test_uncommitted_tab_shows_changes_from_all_agents(
     4. Switch to agent 1's Uncommitted tab — should also show BOTH files
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(
-        page,
-        prompt="""\
-fake_claude:write_file `{
-  "file_path": "file_from_agent1.py",
-  "content": "def created_by_agent1():\\n    return 'agent1'\\n"
-}`""",
-        workspace_name="Shared Changes WS",
+    task_page, agent_tab_bar = start_fake_terminal_agent(page, agents_dir, workspace_name="Shared Changes WS")
+    send_fake_agent_command_and_wait(
+        agents_dir,
+        write_file("file_from_agent1.py", "def created_by_agent1():\n    return 'agent1'\n"),
     )
 
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
-
-    agent_tab_bar = task_page.get_agent_tab_bar()
-    agent_tab_bar.get_add_agent_button().click()
-
-    agent_tabs = agent_tab_bar.get_agent_tabs()
-    expect(agent_tabs).to_have_count(2)
+    _add_second_fake_terminal_agent(page, agents_dir)
+    expect(agent_tab_bar.get_agent_tabs()).to_have_count(2)
+    send_fake_agent_command_and_wait(
+        agents_dir,
+        write_file("file_from_agent2.py", "def created_by_agent2():\n    return 'agent2'\n"),
+        registration_id=_SECOND_REGISTRATION_ID,
+    )
 
     task_page_2 = PlaywrightTaskPage(page=page)
-    chat_panel_2 = task_page_2.get_chat_panel()
-    send_chat_message(
-        chat_panel=chat_panel_2,
-        message="""\
-fake_claude:write_file `{
-  "file_path": "file_from_agent2.py",
-  "content": "def created_by_agent2():\\n    return 'agent2'\\n"
-}`""",
-    )
-    wait_for_completed_message_count(chat_panel=chat_panel_2, expected_message_count=2)
-
     task_page_2.activate_changes_panel(scope="uncommitted")
+    # Force a fresh diff fetch (cold-start: the initial files-changed signal can
+    # land before the frontend's diff subscription is ready).
+    task_page_2.get_file_browser().get_refresh_button().click()
     changes_tree = task_page_2.get_changes_panel().get_changes_tree()
     expect(changes_tree).to_be_visible()
-    expect(changes_tree.get_tree_rows()).to_have_count(2)
+    expect(changes_tree.get_tree_rows().filter(has_text="file_from_agent1.py")).to_be_visible()
+    expect(changes_tree.get_tree_rows().filter(has_text="file_from_agent2.py")).to_be_visible()
 
-    agent_tabs.first.click()
+    agent_tab_bar.get_agent_tabs().first.click()
 
     task_page.activate_changes_panel(scope="uncommitted")
     changes_tree_1 = task_page.get_changes_panel().get_changes_tree()
     expect(changes_tree_1).to_be_visible()
-    expect(changes_tree_1.get_tree_rows()).to_have_count(2)
+    expect(changes_tree_1.get_tree_rows().filter(has_text="file_from_agent1.py")).to_be_visible()
+    expect(changes_tree_1.get_tree_rows().filter(has_text="file_from_agent2.py")).to_be_visible()
 
 
-@user_story("to review all workspace changes in the full-screen modal")
-def test_review_modal_shows_changes_from_all_agents(
+@user_story("to see diffs for files written by every agent in the workspace")
+def test_changes_tab_shows_diffs_from_all_agents(
     sculptor_instance_: SculptorInstance,
 ) -> None:
-    """Two agents in one workspace each write a file. The Review All combined
-    diff should show both files' diffs.
+    """Two agents in one workspace each write a file. The Changes tab should
+    surface both files' diffs.
+
+    (This previously opened the experimental Review All combined modal, which
+    was removed; the surviving behaviour — both files diffable from the Changes
+    tab — is asserted here instead.)
 
     Steps:
     1. Create workspace with agent 1, which writes review_file1.py
     2. Add agent 2, which writes review_file2.py
-    3. Open Review All — should contain diffs for BOTH files
+    3. Open each file's diff from the Changes tab — both show their content
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    _enable_review_all_via_settings(page)
-
-    task_page = start_task_and_wait_for_ready(
-        page,
-        prompt="""\
-fake_claude:write_file `{
-  "file_path": "review_file1.py",
-  "content": "def from_agent1():\\n    return 1\\n"
-}`""",
-        workspace_name="Review Modal WS",
+    task_page, agent_tab_bar = start_fake_terminal_agent(page, agents_dir, workspace_name="Review Modal WS")
+    send_fake_agent_command_and_wait(
+        agents_dir,
+        write_file("review_file1.py", "def from_agent1():\n    return 1\n"),
     )
 
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
-
-    agent_tab_bar = task_page.get_agent_tab_bar()
-    agent_tab_bar.get_add_agent_button().click()
-
-    agent_tabs = agent_tab_bar.get_agent_tabs()
-    expect(agent_tabs).to_have_count(2)
+    _add_second_fake_terminal_agent(page, agents_dir)
+    expect(agent_tab_bar.get_agent_tabs()).to_have_count(2)
+    send_fake_agent_command_and_wait(
+        agents_dir,
+        write_file("review_file2.py", "def from_agent2():\n    return 2\n"),
+        registration_id=_SECOND_REGISTRATION_ID,
+    )
 
     task_page_2 = PlaywrightTaskPage(page=page)
-    chat_panel_2 = task_page_2.get_chat_panel()
-    send_chat_message(
-        chat_panel=chat_panel_2,
-        message="""\
-fake_claude:write_file `{
-  "file_path": "review_file2.py",
-  "content": "def from_agent2():\\n    return 2\\n"
-}`""",
-    )
-    wait_for_completed_message_count(chat_panel=chat_panel_2, expected_message_count=2)
+    task_page_2.activate_changes_panel(scope="uncommitted")
+    # Force a fresh diff fetch (cold-start: the initial files-changed signal can
+    # land before the frontend's diff subscription is ready).
+    task_page_2.get_file_browser().get_refresh_button().click()
+    changes_panel = task_page_2.get_changes_panel()
+    changes_tree = changes_panel.get_changes_tree()
+    expect(changes_tree).to_be_visible()
+    expect(changes_tree.get_tree_rows().filter(has_text="review_file1.py")).to_be_visible()
+    expect(changes_tree.get_tree_rows().filter(has_text="review_file2.py")).to_be_visible()
 
-    task_page_2.activate_changes_panel()
-    task_page_2.click_review_all()
-
+    # Open each file's diff and verify the diff panel shows the right content.
     diff_panel = task_page_2.get_diff_panel()
+
+    changes_tree.get_tree_rows().filter(has_text="review_file1.py").click()
     expect(diff_panel).to_be_visible()
-    expect(diff_panel).to_contain_text("review_file1.py")
-    expect(diff_panel).to_contain_text("review_file2.py")
+    expect(diff_panel).to_contain_text("from_agent1")
+
+    changes_tree.get_tree_rows().filter(has_text="review_file2.py").click()
+    expect(diff_panel).to_contain_text("from_agent2")
 
 
 @user_story("to see all workspace changes regardless of which agent made them")
@@ -165,47 +171,33 @@ def test_uncommitted_tab_updates_when_other_agent_modifies_files(
     5. Agent 1's Uncommitted tab should now show 2 files
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(
-        page,
-        prompt="""\
-fake_claude:write_file `{
-  "file_path": "file_a.py",
-  "content": "a = 1\\n"
-}`""",
-        workspace_name="Update WS",
-    )
-
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, agent_tab_bar = start_fake_terminal_agent(page, agents_dir, workspace_name="Update WS")
+    send_fake_agent_command_and_wait(agents_dir, write_file("file_a.py", "a = 1\n"))
 
     task_page.activate_changes_panel(scope="uncommitted")
+    # Force a fresh diff fetch (cold-start: the initial files-changed signal can
+    # land before the frontend's diff subscription is ready).
+    task_page.get_file_browser().get_refresh_button().click()
     changes_tree = task_page.get_changes_panel().get_changes_tree()
     expect(changes_tree).to_be_visible()
-    expect(changes_tree.get_tree_rows()).to_have_count(1)
+    expect(changes_tree.get_tree_rows().filter(has_text="file_a.py")).to_be_visible()
+    expect(changes_tree.get_tree_rows().filter(has_text="file_b.py")).to_have_count(0)
 
-    agent_tab_bar = task_page.get_agent_tab_bar()
-    agent_tab_bar.get_add_agent_button().click()
-
-    agent_tabs = agent_tab_bar.get_agent_tabs()
-    expect(agent_tabs).to_have_count(2)
-
-    task_page_2 = PlaywrightTaskPage(page=page)
-    chat_panel_2 = task_page_2.get_chat_panel()
-    send_chat_message(
-        chat_panel=chat_panel_2,
-        message="""\
-fake_claude:write_file `{
-  "file_path": "file_b.py",
-  "content": "b = 2\\n"
-}`""",
+    _add_second_fake_terminal_agent(page, agents_dir)
+    expect(agent_tab_bar.get_agent_tabs()).to_have_count(2)
+    send_fake_agent_command_and_wait(
+        agents_dir,
+        write_file("file_b.py", "b = 2\n"),
+        registration_id=_SECOND_REGISTRATION_ID,
     )
-    wait_for_completed_message_count(chat_panel=chat_panel_2, expected_message_count=2)
 
-    agent_tabs.first.click()
+    agent_tab_bar.get_agent_tabs().first.click()
 
     task_page.activate_changes_panel(scope="uncommitted")
     changes_tree_1 = task_page.get_changes_panel().get_changes_tree()
     expect(changes_tree_1).to_be_visible()
     # This is the key assertion: agent 1 should see agent 2's file too
-    expect(changes_tree_1.get_tree_rows()).to_have_count(2)
+    expect(changes_tree_1.get_tree_rows().filter(has_text="file_a.py")).to_be_visible()
+    expect(changes_tree_1.get_tree_rows().filter(has_text="file_b.py")).to_be_visible()

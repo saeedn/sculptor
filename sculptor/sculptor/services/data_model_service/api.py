@@ -7,7 +7,6 @@ from typing import TypeVar
 
 from sculptor.database.models import Notification
 from sculptor.database.models import Project
-from sculptor.database.models import UserSettings
 from sculptor.database.models import Workspace
 from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.primitives.ids import OrganizationReference
@@ -21,7 +20,7 @@ from sculptor.services.data_model_service.data_types import TaskAndDataModelTran
 class CompletedTransaction(FrozenModel):
     # None for the initial queue filling and for requests that are not associated with a specific request ID
     request_id: RequestID | None
-    updated_models: tuple[Notification | Project | UserSettings | Workspace, ...] = ()
+    updated_models: tuple[Notification | Project | Workspace, ...] = ()
 
 
 class CompletedTransactionQueue(Protocol):
@@ -70,7 +69,7 @@ class DataModelService(Service, ABC):
         """
         Subscribe to changes in the data model for a specific user in the scope of a specific organization.
 
-        Only observes changes for Project, UserSettings, Notification, and Workspace model types.
+        Only observes changes for Project, Notification, and Workspace model types.
 
         """
 

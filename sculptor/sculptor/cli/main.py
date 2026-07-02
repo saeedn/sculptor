@@ -16,9 +16,8 @@ console-script entry point.  Two responsibilities:
 2. **Normal backend startup.**  When no helper flag is present, hand
    off to ``sculptor.cli.app:entrypoint`` which contains the full
    typer CLI and uvicorn startup.  The heavy imports (typer, uvicorn,
-   loguru, sentry, posthog, ``sculptor.web.app``) deliberately live
-   in that module, not here, so a helper invocation never pays for
-   them.
+   loguru, ``sculptor.web.app``) deliberately live in that module,
+   not here, so a helper invocation never pays for them.
 
 Imports above ``main()`` MUST stay stdlib-only.  The property test
 in ``main_test.py`` pins the discipline.

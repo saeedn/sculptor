@@ -5,7 +5,6 @@ import { memo, type ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { ElementIds } from "~/api";
-import { useWorkspacePageParams } from "~/common/NavigateUtils.ts";
 import { openFileViewTabAtom } from "~/pages/workspace/components/diffPanel/atoms.ts";
 
 import { expandFoldersAtom, fileBrowserStateAtomFamily, toggleFolderAtom } from "./atoms.ts";
@@ -14,10 +13,8 @@ import styles from "./FileTree.module.scss";
 import { useFileTree } from "./hooks.ts";
 import { TreeRow } from "./TreeRow.tsx";
 import type { FlatFileEntry, TreeNode, ViewMode } from "./types.ts";
-import { useActiveFileOperation } from "./useActiveFileOperation.ts";
-import { useFocusFolderHighlight } from "./useFocusFolderHighlight.ts";
 import { useKeyboardNavigation } from "./useKeyboardNavigation.ts";
-import { useAgentFileTracking, useCollapseChildren, useSearchAutoExpand, useTreeNodeMap } from "./useTreeView.ts";
+import { useCollapseChildren, useSearchAutoExpand, useTreeNodeMap } from "./useTreeView.ts";
 import {
   collectDescendantFolderPaths,
   compactSingleChildFolders,
@@ -77,9 +74,6 @@ export const FileTree = ({ workspaceId, viewMode, searchMatchingPaths }: FileTre
   const toggleFolder = useSetAtom(toggleFolderAtom);
   const expandFolders = useSetAtom(expandFoldersAtom);
   const openFileViewTab = useSetAtom(openFileViewTabAtom);
-
-  const { agentID } = useWorkspacePageParams();
-  const activeOperation = useActiveFileOperation(agentID);
 
   const { tree: rawTree, folderChangeCounts } = useFileTree(workspaceId, "vs-target-branch");
 
@@ -157,29 +151,6 @@ export const FileTree = ({ workspaceId, viewMode, searchMatchingPaths }: FileTre
       setFileBrowserState((prev) => ({ ...prev, scrollPosition: scrollTop }));
     }, SCROLL_SAVE_DEBOUNCE_MS);
   }, [setFileBrowserState]);
-
-  // Auto-expand ancestor folders when agent operates on a file
-  useAgentFileTracking({
-    activeFilePath: activeOperation?.filePath,
-    workspaceId,
-    expandFolders,
-  });
-
-  // Auto-scroll to the active file when it changes
-  useEffect(() => {
-    if (!activeOperation?.filePath) return;
-    const index = flatRows.findIndex((r) => r.node.path === activeOperation.filePath);
-    if (index >= 0) {
-      virtualizer.scrollToIndex(index, { align: "auto" });
-    }
-  }, [activeOperation?.filePath, flatRows, virtualizer]);
-
-  useFocusFolderHighlight({
-    workspaceId,
-    flatRows,
-    virtualizer,
-    scrollContainerRef,
-  });
 
   const handleToggleExpand = useCallback(
     (path: string): void => {
@@ -333,7 +304,6 @@ export const FileTree = ({ workspaceId, viewMode, searchMatchingPaths }: FileTre
                   depth={depth}
                   isExpanded={isExpanded}
                   isFocused={virtualItem.index === focusedIndex}
-                  isActiveFile={node.path === activeOperation?.filePath}
                   folderChangeCount={folderChangeCount}
                   onToggleExpand={handleToggleExpand}
                   onFileClick={handleFileClick}

@@ -118,7 +118,6 @@ def test_open_pr_mismatched_target() -> None:
     assert result.pr_state == "none"
     assert result.mismatched_pr_iid == 200
     assert result.mismatched_pr_target_branch == "develop"
-    assert result.mismatched_pr_web_url == "https://github.com/org/repo/pull/200"
 
 
 def test_no_prs_at_all() -> None:
@@ -262,11 +261,10 @@ def test_status_check_rollup_state_maps_to_pipeline_status(rollup_state: str | N
 
 
 # ---------------------------------------------------------------------------
-# Open PR merge conflict → has_conflicts flows through (parity with GitLab MRs).
+# Open PR merge conflict → has_conflicts flows through.
 # GitHub reports mergeability via the ``mergeable`` enum; CONFLICTING means the
 # PR cannot merge cleanly. Surfacing it as has_conflicts=True is what lets the
-# CI babysitter's MERGE_CONFLICT transition fire for PRs the same way it does
-# for MRs (mr_status sets has_conflicts from glab's ``has_conflicts``).
+# CI babysitter's MERGE_CONFLICT transition fire for PRs.
 # ---------------------------------------------------------------------------
 
 
@@ -350,7 +348,6 @@ def test_transient_cli_failure_surfaces_error() -> None:
 
     assert result.pr_state == "none"
     assert result.error_category == "transient"
-    assert result.error_provider == "github"
 
 
 # ---------------------------------------------------------------------------
@@ -381,7 +378,6 @@ def test_rate_limit_surfaces_error() -> None:
 
     assert result.pr_state == "none"
     assert result.error_category == "rate_limited"
-    assert result.error_provider == "github"
 
 
 def test_secondary_rate_limit_surfaces_error() -> None:
@@ -392,7 +388,6 @@ def test_secondary_rate_limit_surfaces_error() -> None:
         result = fetch_pr_status(WORKSPACE_ID, WORKING_DIR, "feat-1", "origin/main")
 
     assert result.error_category == "rate_limited"
-    assert result.error_provider == "github"
 
 
 # ---------------------------------------------------------------------------

@@ -34,9 +34,6 @@ class PlaywrightAddWorkspacePage(PlaywrightProjectLayoutPage):
         expect(dialog.get_path_input()).to_be_visible()
         return dialog
 
-    def get_task_input(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.TASK_INPUT)
-
     def get_workspace_name_input(self) -> Locator:
         return self.get_by_test_id(ElementIDs.WORKSPACE_NAME_INPUT)
 
@@ -60,32 +57,32 @@ class PlaywrightAddWorkspacePage(PlaywrightProjectLayoutPage):
         expect(branch_option).to_have_count(1)
         branch_option.click()
 
-    def get_mode_selector(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.MODE_SELECTOR)
+    def get_terminal_panel(self) -> Locator:
+        """The agent terminal panel — the main pane of a (terminal-only) workspace."""
+        return self.get_by_test_id(ElementIDs.AGENT_TERMINAL_PANEL)
 
-    def get_mode_option_worktree(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.MODE_OPTION_WORKTREE)
+    def select_terminal_agent_type(self) -> None:
+        """Pick the plain Terminal agent type for the first agent.
 
-    def get_mode_option_in_place(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.MODE_OPTION_IN_PLACE)
+        The default first agent is the bundled ``claude-code`` registered agent,
+        which launches the real Claude TUI — unavailable in CI, so its terminal
+        never renders. A plain terminal agent is a bare shell that always
+        launches, so tests that need the workspace's terminal panel to appear
+        select it explicitly.
+        """
+        self.get_by_test_id(ElementIDs.ADD_WORKSPACE_AGENT_TYPE_SELECT).click()
+        self.get_by_test_id(ElementIDs.AGENT_TYPE_OPTION_TERMINAL).click()
 
-    def get_mode_option_clone(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.MODE_OPTION_CLONE)
+    def submit_and_wait_for_workspace(self, timeout: int = 60_000) -> None:
+        """Select a plain terminal agent, submit, and wait for the workspace to load.
 
-    def select_mode(self, mode_option_id: str) -> None:
-        """Click the mode selector and choose a mode option."""
-        self.get_mode_selector().click()
-        mode_option = self._page.get_by_test_id(mode_option_id)
-        expect(mode_option).to_be_visible()
-        mode_option.click()
-        expect(mode_option).not_to_be_visible()
-
-    def get_chat_panel(self) -> Locator:
-        return self.get_by_test_id(ElementIDs.CHAT_PANEL)
-
-    def submit_and_wait_for_chat_panel(self, timeout: int = 60_000) -> None:
-        """Click the submit button and wait for the chat panel to appear."""
+        The workspace/agent page has loaded once the terminal panel appears —
+        the surviving signal in the terminal-only world. A plain terminal agent
+        is selected so the panel reliably renders in CI (the default bundled
+        ``claude-code`` agent would try to launch the real Claude TUI).
+        """
+        self.select_terminal_agent_type()
         submit_button = self.get_submit_button()
         expect(submit_button).to_be_enabled()
         submit_button.click()
-        expect(self.get_chat_panel()).to_be_visible(timeout=timeout)
+        expect(self.get_terminal_panel()).to_be_visible(timeout=timeout)

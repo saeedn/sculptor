@@ -8,8 +8,11 @@ import re
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
@@ -22,13 +25,6 @@ def _extract_workspace_id(url: str) -> str:
     return match.group(1)
 
 
-_WRITE_FILE_PROMPT = """\
-fake_claude:write_file `{
-  "file_path": "hello.py",
-  "content": "print('hello')\\n"
-}`"""
-
-
 @user_story("to switch diff scope and see the toggle update")
 def test_scope_switch_toggles_active_scope(sculptor_instance_: SculptorInstance) -> None:
     """Switching scope should update the active scope button and diff content.
@@ -37,10 +33,10 @@ def test_scope_switch_toggles_active_scope(sculptor_instance_: SculptorInstance)
     then switch back to All and verify content is restored.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_FILE_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(agents_dir, write_file("hello.py", "print('hello')\n"))
 
     # Open Changes tab
     task_page.activate_changes_panel()
@@ -71,51 +67,6 @@ def test_scope_switch_toggles_active_scope(sculptor_instance_: SculptorInstance)
     expect(changes_tree.get_tree_rows().filter(has_text="hello.py")).to_be_visible()
 
 
-_TWO_COMMITS_PLUS_PUSH_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "bash",
-      "args": {
-        "command": "git checkout -b feature-refresh-test"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "first.py",
-        "content": "x = 1\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add first.py'"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "second.py",
-        "content": "y = 2\\n"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git add -A && git commit -m 'Add second.py'"
-      }
-    },
-    {
-      "command": "bash",
-      "args": {
-        "command": "git push origin feature-refresh-test"
-      }
-    }
-  ]
-}`"""
-
-
 @user_story("to see the Changes tab update when the target branch is changed")
 def test_changes_tab_updates_on_target_branch_change(sculptor_instance_: SculptorInstance) -> None:
     """Changing the target branch should trigger a diff refresh so the Changes
@@ -126,10 +77,22 @@ def test_changes_tab_updates_on_target_branch_change(sculptor_instance_: Sculpto
     since there is no divergence.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_TWO_COMMITS_PLUS_PUSH_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                bash("git checkout -b feature-refresh-test"),
+                write_file("first.py", "x = 1\n"),
+                bash("git add -A && git commit -m 'Add first.py'"),
+                write_file("second.py", "y = 2\n"),
+                bash("git add -A && git commit -m 'Add second.py'"),
+                bash("git push origin feature-refresh-test"),
+            ]
+        ),
+    )
 
     # Open Changes tab and switch to All scope
     task_page.activate_changes_panel()

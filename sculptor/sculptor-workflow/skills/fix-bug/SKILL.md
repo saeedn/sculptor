@@ -150,7 +150,7 @@ Write out your understanding as a summary:
 `<img>` tags. Walk the user through each screenshot, explaining what you did
 and what you observed.
 
-**You MUST ask with your question tool here** — `mcp__sculptor__ask_user_question` if it's available, otherwise the built-in `AskUserQuestion` — do NOT use a plain text
+**You MUST ask with your question tool here** — the built-in `AskUserQuestion` — do NOT use a plain text
 message. The tool triggers a UI notification that grabs the user's attention.
 Ask:
 > "Does this match your understanding? Is the test location correct? Please

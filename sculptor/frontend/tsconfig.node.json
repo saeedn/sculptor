@@ -15,7 +15,6 @@
     "vite.main.config.ts",
     "vite.preload.config.ts",
     "vite.electron.config.ts",
-    "vite-plugins/plugin-runtime-stubs.ts",
     "src/electron/main.ts"
   ]
 }

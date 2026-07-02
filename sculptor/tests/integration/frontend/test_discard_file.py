@@ -4,32 +4,29 @@ Tests verify that clicking the discard button on a file in the Changes panel
 opens a confirmation dialog, and confirming removes the file from the list.
 """
 
+from pathlib import Path
+
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.fake_terminal_agent import multi_step
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
+from sculptor.testing.fake_terminal_agent import write_file
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
-_WRITE_TWO_FILES_PROMPT = """\
-fake_claude:multi_step `{
-  "steps": [
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "keep.py",
-        "content": "keep = True\\n"
-      }
-    },
-    {
-      "command": "write_file",
-      "args": {
-        "file_path": "discard_me.py",
-        "content": "remove = True\\n"
-      }
-    }
-  ]
-}`"""
+
+def _write_two_files(agents_dir: Path) -> None:
+    """Write two files (keep.py + discard_me.py) as one fake-agent turn."""
+    send_fake_agent_command(
+        agents_dir,
+        multi_step(
+            [
+                write_file("keep.py", "keep = True\n"),
+                write_file("discard_me.py", "remove = True\n"),
+            ]
+        ),
+    )
 
 
 @user_story("to discard changes to a single file via the Changes panel")
@@ -41,10 +38,10 @@ def test_discard_file_removes_from_changes(sculptor_instance_: SculptorInstance)
     remains.
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_TWO_FILES_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    _write_two_files(agents_dir)
 
     task_page.activate_changes_panel(scope="uncommitted")
 
@@ -82,10 +79,10 @@ def test_discard_file_removes_from_changes(sculptor_instance_: SculptorInstance)
 def test_discard_cancel_preserves_file(sculptor_instance_: SculptorInstance) -> None:
     """Cancelling the discard dialog should leave the file in the Changes panel."""
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_TWO_FILES_PROMPT)
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    task_page, _ = start_fake_terminal_agent(page, agents_dir)
+    _write_two_files(agents_dir)
 
     task_page.activate_changes_panel(scope="uncommitted")
 

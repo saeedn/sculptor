@@ -44,7 +44,7 @@ def _create_worktree_workspace(page: Page, workspace_name: str) -> tuple[str, st
     expect(branch_input).to_have_value(re.compile(rf".*{re.escape(slug_pattern)}.*"))
     branch_name = branch_input.input_value()
 
-    add_ws_page.submit_and_wait_for_chat_panel()
+    add_ws_page.submit_and_wait_for_workspace()
 
     expect(page).to_have_url(re.compile(r".*/ws/(ws_[a-z0-9]+)/"))
     match = re.search(r"/ws/(ws_[a-z0-9]+)/", page.url)
@@ -108,7 +108,7 @@ def _commit_on_worktree(worktree_path: Path, message: str) -> None:
     reraise=True,
 )
 def _delete_workspace_via_api(page: Page, workspace_id: str) -> None:
-    # Retry on transient ECONNRESET under heavy offload-sandbox load (SCU-773).
+    # Retry on transient ECONNRESET under heavy CI-sandbox load (SCU-773).
     base_url = page.url.split("#")[0].rstrip("/")
     response = page.request.delete(f"{base_url}/api/v1/workspaces/{workspace_id}")
     assert response.ok, f"DELETE workspace failed: {response.status} {response.text()}"

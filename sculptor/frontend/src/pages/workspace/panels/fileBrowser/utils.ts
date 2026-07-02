@@ -191,15 +191,6 @@ export const sortTreeNodes = (nodes: Array<TreeNode>): Array<TreeNode> => {
   });
 };
 
-export const getAncestorPaths = (filePath: string): Array<string> => {
-  const segments = filePath.split("/");
-  const ancestors: Array<string> = [];
-  for (let i = 1; i < segments.length; i++) {
-    ancestors.push(segments.slice(0, i).join("/"));
-  }
-  return ancestors;
-};
-
 export const computeFolderChangeCounts = (roots: Array<TreeNode>): Map<string, number> => {
   const counts = new Map<string, number>();
 

@@ -44,7 +44,7 @@ export const TopBar = (): ReactElement => {
       align="center"
       gap="3"
       pr="3"
-      pl={getTitleBarLeftPadding(false)}
+      pl={getTitleBarLeftPadding()}
       justify="between"
       className={styles.container}
       flexShrink="0"

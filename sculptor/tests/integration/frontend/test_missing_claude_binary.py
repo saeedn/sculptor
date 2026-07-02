@@ -1,116 +1,95 @@
-"""Integration test for ClaudeBinaryNotFoundError.
+"""Integration test for the onboarding PATH-check when ``claude`` is missing.
 
-Scenario: Claude was installed when the app first loaded (onboarding passed),
-but the binary was deleted while the app was running.  Sending a message
-should surface "Claude Not Available" + "Go to Settings" instead of a raw
-traceback.
+Onboarding's PATH-check screen resolves ``claude`` and ``git`` with
+``shutil.which`` (read-only — it never installs). When ``claude`` is not on
+the backend's PATH, the screen must report it as missing with a friendly,
+plain-language message and an install link, while still letting the user
+continue (report-and-link, never hard-block).
 
 Setup strategy
 --------------
-1. Use create_claude_stub_dir() to create a stub "claude" that reports a
-   valid version so that the dependency check at startup passes and the
-   onboarding wizard lets the app through.
-2. Write the stub's absolute path into the config as
-   ``dependency_paths.claude`` so the server resolves the binary directly
-   (avoids PATH manipulation that can be fragile in CI).
-3. Start the Sculptor instance (stub present → installed=True at mount time).
-4. Create a workspace using the real Claude Opus model but WITHOUT a prompt
-   yet, while the stub is still alive (the workspace creation flow may
-   perform a full page reload which would re-trigger RequireOnboarding).
-5. Delete the stub binary.  We are now on the task page — no more full
-   page reloads expected.
-6. Send a chat message.  The model is Claude Opus (not FAKE_CLAUDE), so
-   _is_fake_claude=False and _resolve_claude_binary_path() is called.
-   shutil.which(absolute_path) returns None → ClaudeBinaryNotFoundError.
+Rather than stubbing the dependency service (removed in the slim-down), this
+test drives the failure purely through PATH: it gives the backend a PATH built
+from the host PATH with every directory that contains a ``claude`` executable
+dropped (leaving the venv ``python``, the shell, and ``git`` in their real
+directories so the backend still boots), so ``shutil.which("claude")`` returns
+``None`` while ``git`` still resolves.
 """
 
+import os
+import shutil
 from pathlib import Path
 
+from loguru import logger
 from playwright.sync_api import expect
 
-from sculptor.config.user_config import DependencyPaths
-from sculptor.services.user_config.user_config import load_config
-from sculptor.services.user_config.user_config import save_config
-from sculptor.testing.dependency_stubs import create_claude_stub_dir
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
+from sculptor.testing.pages.onboarding_page import PlaywrightOnboardingPage
+from sculptor.testing.resources import custom_sculptor_folder_populator
 from sculptor.testing.sculptor_instance import SculptorInstanceFactory
 from sculptor.testing.user_stories import user_story
 
-# Long name shown in the model selector for the real Claude Opus model.
-_CLAUDE_OPUS_MODEL_NAME = "Claude 4.7 Opus"
+
+def _dont_populate_sculptor_folder(path: Path) -> None:
+    logger.info("Skipping population of Sculptor folder for missing-claude test.")
 
 
-def _setup_removable_claude_stub(factory: SculptorInstanceFactory, tmp_path: Path) -> Path:
-    """Prepare the factory and return a path to the stub binary.
+def _make_path_without_claude() -> str:
+    """Return a PATH built from the host PATH minus any directory containing a
+    ``claude`` executable.
 
-    Creates a stub that passes the version check, then writes the stub's
-    absolute path into the config as ``dependency_paths.claude``.  This
-    makes the dependency service use CUSTOM mode with that exact path,
-    and deleting the stub file makes ``shutil.which(absolute_path)``
-    return ``None``.
+    Keeping the surviving directories intact (rather than mirroring them into a
+    single dir) preserves venv ``python`` resolution — the venv is detected from
+    ``pyvenv.cfg`` next to the real interpreter, which a symlink elsewhere would
+    hide. Drops only claude-bearing directories so the backend still boots with
+    python/shell/git while ``shutil.which("claude")`` returns ``None``.
     """
-    stub_dir = create_claude_stub_dir(tmp_path)
-    stub_path = stub_dir / "claude"
+    surviving_dirs: list[str] = []
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        if not directory:
+            continue
+        if os.path.exists(os.path.join(directory, "claude")):
+            continue
+        surviving_dirs.append(directory)
+    new_path = os.pathsep.join(surviving_dirs)
+    assert shutil.which("git", path=new_path) is not None, "git must be on PATH (in a non-claude dir) for this test"
+    assert shutil.which("claude", path=new_path) is None, "claude must not resolve on the filtered PATH"
+    return new_path
 
-    # Write the absolute stub path into the config so the server resolves
-    # it directly.  We update the config file that the factory already
-    # created (via the default sculptor folder populator).
-    config_path = factory._delegate.sculptor_folder / "internal" / "config.toml"
-    config = load_config(config_path)
-    updated_config = config.model_copy(update={"dependency_paths": DependencyPaths(claude=str(stub_path))})
-    save_config(updated_config, config_path)
 
-    return stub_path
-
-
-@user_story("to see a helpful error when the Claude binary disappears after initial setup")
+@user_story("to see a friendly message and install link when Claude is not on my PATH")
+@custom_sculptor_folder_populator.with_args(_dont_populate_sculptor_folder)
 def test_missing_claude_binary_shows_friendly_error(
-    sculptor_instance_factory_: SculptorInstanceFactory, tmp_path: Path
+    sculptor_instance_factory_: SculptorInstanceFactory,
 ) -> None:
-    """When Claude is present at startup (dependency check passes) but then
-    goes missing before a message is sent, the error block should show
-    'Claude Not Available' with a 'Go to Settings' link instead of a raw
-    exception traceback."""
-    claude_stub = _setup_removable_claude_stub(sculptor_instance_factory_, tmp_path)
+    """When ``claude`` is not on PATH, the onboarding PATH-check screen should
+    report it as missing with a plain-language message + install link, and
+    still allow the user to continue.
 
-    with sculptor_instance_factory_.spawn_instance() as instance:
-        # Stub exists: RequireOnboarding.tsx runs its one-time mount check,
-        # sees installed=True, and lets the app through.
+    Verifies:
+    1. The PATH-check screen reports claude as not found
+    2. The friendly missing-claude message is shown (no install is attempted)
+    3. git is still reported as found
+    4. The Continue button is enabled (report-and-link, never hard-block)
+    """
+    # Override the backend's PATH so claude is absent but everything else
+    # (python, shell, git) still resolves and the backend can boot.
+    sculptor_instance_factory_.update_environment(PATH=_make_path_without_claude())
 
-        # Create the workspace with the real Opus model but WITHOUT a prompt.
-        # We must NOT delete the stub yet: navigate_to_add_workspace_page may
-        # trigger a full page reload which would re-trigger RequireOnboarding.
-        task_page = start_task_and_wait_for_ready(
-            sculptor_page=instance.page,
-            prompt="",  # no message yet
-            model_name=_CLAUDE_OPUS_MODEL_NAME,
-        )
+    with sculptor_instance_factory_.spawn_instance(auto_project=False) as sculptor_instance:
+        onboarding_page = PlaywrightOnboardingPage(sculptor_instance.page)
 
-        # We are now on the task page. No more full page reloads expected.
-        # Delete the stub to simulate Claude being removed after setup.
-        claude_stub.unlink()
+        path_check_step = onboarding_page.get_path_check_step()
+        expect(path_check_step).to_be_visible()
 
-        # Send a chat message. The workspace model is Claude Opus (not
-        # FAKE_CLAUDE), so _is_fake_claude=False and
-        # _resolve_claude_binary_path() is called. shutil.which returns None
-        # → ClaudeBinaryNotFoundError is raised and caught by the agent wrapper.
-        chat_panel = task_page.get_chat_panel()
-        send_chat_message(chat_panel, "Hello")
+        # Claude is reported missing, with the friendly message (no install).
+        expect(path_check_step.get_claude_status()).to_contain_text("not found")
+        missing_message = path_check_step.get_missing_claude_message()
+        expect(missing_message).to_be_visible()
+        expect(missing_message).to_contain_text("Claude")
 
-        error_block = chat_panel.get_error_block()
-        expect(error_block).to_be_visible()
+        # git still resolves through the overridden PATH.
+        expect(path_check_step.get_git_status()).to_contain_text("found")
 
-        # It should show our friendly label, not a raw exception class name.
-        expect(error_block).to_contain_text("Claude Not Available")
-
-        # It should include the error message from ClaudeBinaryNotFoundError.
-        expect(error_block).to_contain_text("Claude binary not found")
-
-        # It should have a settings link — not a retry button.
-        expect(error_block).to_contain_text("Go to Settings")
-        retry_button = chat_panel.get_error_block_retry_button()
-        expect(retry_button).to_have_count(0)
-
-        # The thinking indicator should be gone (agent finished with error).
-        expect(chat_panel.get_thinking_indicator()).not_to_be_visible()
+        # The user can still continue despite the missing tool.
+        continue_button = path_check_step.get_continue_button()
+        expect(continue_button).to_be_enabled()

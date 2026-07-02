@@ -28,8 +28,6 @@ export const SHIKI_THEME_PAIRS = {
 
 export type ShikiThemePairName = keyof typeof SHIKI_THEME_PAIRS;
 
-export const SHIKI_THEME_PAIR_NAMES = Object.keys(SHIKI_THEME_PAIRS) as ReadonlyArray<ShikiThemePairName>;
-
 export const DEFAULT_SHIKI_THEME: ShikiThemePairName = "GitHub";
 
 /** Resolve the current theme pair from a pair name. */

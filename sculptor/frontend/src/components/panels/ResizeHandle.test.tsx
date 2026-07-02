@@ -13,15 +13,11 @@ beforeAll(() => {
 
 afterEach(() => {
   cleanup();
-  document.body.classList.remove("sculptor-resizing");
 });
 
-// While a resize drag is active, the cursor can pass over an Electron
-// <webview>, whose separate render process steals pointer events from the
-// host window — freezing the resize. ResizeHandle marks the document body
-// with `sculptor-resizing` during the drag so global CSS can disable
-// pointer events on webviews for the duration of the drag.
-describe("ResizeHandle — disables webview pointer events during drag", () => {
+// ResizeHandle reflects the active drag via the `data-resize-handle-active`
+// attribute (set while a pointer drag is in progress, cleared on pointerup).
+describe("ResizeHandle — drag lifecycle", () => {
   const renderHandle = (): HTMLElement => {
     const { getByRole } = render(
       <ResizeHandle axis="x" getSize={() => 200} onResize={vi.fn()} ariaLabel="test handle" />,
@@ -29,53 +25,34 @@ describe("ResizeHandle — disables webview pointer events during drag", () => {
     return getByRole("separator");
   };
 
-  it("adds `sculptor-resizing` to <body> on pointerdown and removes it on pointerup", () => {
+  it("marks the handle active on pointerdown and clears it on pointerup", () => {
     const handle = renderHandle();
-    expect(document.body.classList.contains("sculptor-resizing")).toBe(false);
+    expect(handle.hasAttribute("data-resize-handle-active")).toBe(false);
 
     fireEvent.pointerDown(handle, { button: 0, clientX: 100, clientY: 0 });
-    expect(document.body.classList.contains("sculptor-resizing")).toBe(true);
+    expect(handle.hasAttribute("data-resize-handle-active")).toBe(true);
 
     fireEvent.pointerUp(window, { clientX: 150, clientY: 0 });
-    expect(document.body.classList.contains("sculptor-resizing")).toBe(false);
+    expect(handle.hasAttribute("data-resize-handle-active")).toBe(false);
   });
 
-  it("keeps the class while one of two concurrent drags is still active", () => {
-    const { getAllByRole } = render(
-      <>
-        <ResizeHandle axis="x" getSize={() => 200} onResize={vi.fn()} ariaLabel="a" />
-        <ResizeHandle axis="x" getSize={() => 200} onResize={vi.fn()} ariaLabel="b" />
-      </>,
-    );
-    const [a, b] = getAllByRole("separator");
-
-    fireEvent.pointerDown(a, { button: 0, clientX: 0, clientY: 0 });
-    fireEvent.pointerDown(b, { button: 0, clientX: 0, clientY: 0 });
-    expect(document.body.classList.contains("sculptor-resizing")).toBe(true);
-
-    fireEvent.pointerUp(window);
-    // Both drags listen for the same window pointerup, so a single event
-    // ends both — but the class must stay until the *last* drag has cleared.
-    // Asserting the final state is enough; nesting/ordering is an
-    // implementation detail.
-    expect(document.body.classList.contains("sculptor-resizing")).toBe(false);
-  });
-
-  it("non-primary buttons do not toggle the class", () => {
+  it("non-primary buttons do not start a drag", () => {
     const handle = renderHandle();
     fireEvent.pointerDown(handle, { button: 2, clientX: 0, clientY: 0 });
-    expect(document.body.classList.contains("sculptor-resizing")).toBe(false);
+    expect(handle.hasAttribute("data-resize-handle-active")).toBe(false);
   });
 
-  it("clears the class if the handle unmounts mid-drag", () => {
-    const { getByRole, unmount } = render(
-      <ResizeHandle axis="x" getSize={() => 200} onResize={vi.fn()} ariaLabel="test handle" />,
+  it("reports resize deltas while dragging", () => {
+    const onResize = vi.fn();
+    const { getByRole } = render(
+      <ResizeHandle axis="x" getSize={() => 200} onResize={onResize} ariaLabel="test handle" />,
     );
     const handle = getByRole("separator");
-    fireEvent.pointerDown(handle, { button: 0, clientX: 0, clientY: 0 });
-    expect(document.body.classList.contains("sculptor-resizing")).toBe(true);
 
-    unmount();
-    expect(document.body.classList.contains("sculptor-resizing")).toBe(false);
+    fireEvent.pointerDown(handle, { button: 0, clientX: 100, clientY: 0 });
+    fireEvent.pointerMove(window, { clientX: 150, clientY: 0 });
+    expect(onResize).toHaveBeenCalledWith(250);
+
+    fireEvent.pointerUp(window, { clientX: 150, clientY: 0 });
   });
 });

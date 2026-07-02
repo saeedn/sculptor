@@ -10,14 +10,12 @@ from typing import Mapping
 from typing import Sequence
 from typing import TYPE_CHECKING
 from typing import Union
+from typing import final
 
 from loguru import logger
+from pydantic import BaseModel
 from pydantic import PrivateAttr
 
-from sculptor.agents.default.constants import CLONE_MODE_PROMPT
-from sculptor.agents.default.constants import IN_PLACE_MODE_PROMPT
-from sculptor.agents.default.constants import WORKTREE_MODE_PROMPT
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import CompoundEvent
 from sculptor.foundation.event_utils import MutableEvent
@@ -25,13 +23,12 @@ from sculptor.foundation.event_utils import ReadOnlyEvent
 from sculptor.foundation.processes.local_process import RunningProcess
 from sculptor.foundation.processes.local_process import run_background
 from sculptor.foundation.secrets_utils import Secret
-from sculptor.interfaces.environments.base import Environment
+from sculptor.foundation.subprocess_utils import FinishedProcess
 from sculptor.interfaces.environments.errors import FileOrDirectoryCouldNotBeDeletedError
 from sculptor.primitives.ids import LocalEnvironmentID
 from sculptor.primitives.ids import ProjectID
 from sculptor.services.workspace_service.environment_manager.env_file_parser import atomic_copy_env_file
 from sculptor.services.workspace_service.environment_manager.env_file_parser import load_project_env_vars
-from sculptor.services.workspace_service.environment_manager.environments.clone_strategy import clone_repository
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     TerminalEnvironmentConfig,
 )
@@ -41,11 +38,15 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     stop_terminals_for_environment,
 )
-from sculptor.services.workspace_service.environment_manager.environments.worktree_strategy import create_worktree
+from sculptor.services.workspace_service.environment_manager.environments.worktree import create_worktree
 from sculptor.utils.build import get_workspaces_folder
 
 # Workspace directory for local environments
 LOCAL_WORKSPACE_DIR = get_workspaces_folder()
+
+STATE_DIRECTORY = "state"
+ARTIFACTS_DIRECTORY = "artifacts"
+TASKS_SUBDIRECTORY = "tasks"
 
 # Budget for polling getpgid() until the child's setsid lands. Under Modal's
 # slow PID namespace the parent can observe the child before setsid runs (see
@@ -69,15 +70,14 @@ if TYPE_CHECKING:
     from _typeshed import OpenTextModeWriting
 
 
-class LocalEnvironment(Environment):
+class LocalEnvironment(BaseModel):
     object_type: str = "LocalEnvironment"
-    # pyrefly: ignore [bad-override-mutable-attribute]
     environment_id: LocalEnvironmentID
+    project_id: ProjectID
     concurrency_group: ConcurrencyGroup
     # The repo host path - points directly to the user's repository.
     # This is always set when creating or resuming an environment.
     repo_host_path: Path | None = None
-    initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.IN_PLACE
     _processes: list[RunningProcess] = PrivateAttr(default_factory=list)
     _is_closed: bool = PrivateAttr(default=False)
     _closing_lock: threading.Lock = PrivateAttr(default_factory=threading.Lock)
@@ -91,9 +91,6 @@ class LocalEnvironment(Environment):
     # The terminal pty strips all inherited SCULPTOR_* vars to avoid leaking backend
     # internals; SCULPT_* vars are injected via extra_env so the sculpt CLI works.
     _sculpt_terminal_env_vars: dict[str, str] = PrivateAttr(default_factory=dict)
-
-    def get_project_env_var_names(self) -> list[str]:
-        return list(self._project_env_vars.keys())
 
     def set_sculpt_terminal_env_vars(self, env_vars: dict[str, str]) -> None:
         """Set SCULPT_* env vars that should be available in terminal sessions.
@@ -126,35 +123,9 @@ class LocalEnvironment(Environment):
     def get_working_directory(self) -> Path:
         """Get the directory where the agent should perform all work.
 
-        - In-place mode: Returns the user's original repository path.
-        - Clone mode / Worktree mode: Returns the checkout at workspace/code/.
+        Returns the worktree checkout at workspace/code/.
         """
-        if self.initialization_strategy in (
-            WorkspaceInitializationStrategy.CLONE,
-            WorkspaceInitializationStrategy.WORKTREE,
-        ):
-            return self.get_workspace_path() / "code"
-        if self.repo_host_path is None:
-            raise ValueError("repo_host_path must be set for LocalEnvironment")
-        return self.repo_host_path
-
-    def get_system_prompt(self) -> str | None:
-        """Get the environment-specific system prompt content.
-
-        Returns mode-specific instructions based on initialization_strategy,
-        plus the workspace attachments path for image display.
-        """
-        if self.initialization_strategy == WorkspaceInitializationStrategy.IN_PLACE:
-            mode_prompt = IN_PLACE_MODE_PROMPT
-        elif self.initialization_strategy == WorkspaceInitializationStrategy.WORKTREE:
-            mode_prompt = WORKTREE_MODE_PROMPT
-        else:
-            mode_prompt = CLONE_MODE_PROMPT
-
-        attachments_path = self.get_attachments_path()
-        attachments_prompt = f"\nThe workspace attachments directory is: {attachments_path}\nSave any media you want to display (e.g. screenshots, video recordings) to this directory.\n"
-
-        return mode_prompt + attachments_prompt
+        return self.get_workspace_path() / "code"
 
     @classmethod
     def create(
@@ -163,7 +134,6 @@ class LocalEnvironment(Environment):
         project_id: ProjectID,
         concurrency_group: ConcurrencyGroup,
         repo_host_path: Path,
-        initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.IN_PLACE,
         source_branch: str | None = None,
         requested_branch_name: str | None = None,
         env_var_override: bool = False,
@@ -172,9 +142,7 @@ class LocalEnvironment(Environment):
         """Factory method to create a new LocalEnvironment with directories initialized.
 
         Creates the environment and ensures the state and artifacts directories exist.
-        For clone mode, clones the repository to workspace/code/.
-        For worktree mode, runs `git worktree add` off the user's repository into workspace/code/.
-        For in-place mode, the agent works directly in the user's repository.
+        Runs `git worktree add` off the user's repository into workspace/code/.
         Use the constructor directly when resuming an existing environment.
 
         Args:
@@ -182,11 +150,8 @@ class LocalEnvironment(Environment):
             project_id: The project this environment belongs to.
             concurrency_group: Concurrency group for process management.
             repo_host_path: Path to the user's repository.
-            initialization_strategy: Strategy for workspace initialization.
-            source_branch: Branch to checkout after cloning (for CLONE mode) or base
-                ref off which to create the worktree branch (for WORKTREE mode).
-            requested_branch_name: For WORKTREE mode, the new branch name created by
-                `git worktree add -b`; required for WORKTREE, unused otherwise.
+            source_branch: Base ref off which to create the worktree branch.
+            requested_branch_name: The new branch name created by `git worktree add -b`.
             sculptor_folder: Override for the sculptor folder path (uses get_workspaces_folder() if None).
         """
         environment = cls(
@@ -194,53 +159,29 @@ class LocalEnvironment(Environment):
             project_id=project_id,
             concurrency_group=concurrency_group,
             repo_host_path=repo_host_path,
-            initialization_strategy=initialization_strategy,
         )
         # Create state and artifacts directories
         environment.to_host_path(environment.get_state_path()).mkdir(parents=True, exist_ok=True)
         environment.to_host_path(environment.get_artifacts_path()).mkdir(parents=True, exist_ok=True)
 
-        # For clone mode, clone the repository to workspace/code/
-        if initialization_strategy == WorkspaceInitializationStrategy.CLONE:
-            assert repo_host_path is not None
-            clone_repository(
-                source_repo_path=repo_host_path,
-                destination=environment.get_working_directory(),
-                concurrency_group=concurrency_group,
-                target_branch=source_branch,
-            )
-            # If the user asked for a named branch inside the clone, create and
-            # check it out off the base branch. The collision re-check happens at
-            # the API layer so we don't need to handle "already exists" here.
-            if requested_branch_name is not None and requested_branch_name.strip():
-                concurrency_group.run_process_to_completion(
-                    command=["git", "checkout", "-b", requested_branch_name],
-                    cwd=environment.get_working_directory(),
-                    is_checked_after=True,
-                )
-            # Copy .sculptor/.env from the source repo into the clone.
-            # Git does not copy gitignored files, so this must be done explicitly.
-            source_env_file = repo_host_path / ".sculptor" / ".env"
-            if source_env_file.exists():
-                dest_env_file = environment.get_working_directory() / ".sculptor" / ".env"
-                atomic_copy_env_file(source_env_file, dest_env_file)
-        elif initialization_strategy == WorkspaceInitializationStrategy.WORKTREE:
-            if requested_branch_name is None:
-                raise ValueError("requested_branch_name is required for WORKTREE initialization")
-            if source_branch is None:
-                raise ValueError("source_branch (base ref) is required for WORKTREE initialization")
-            create_worktree(
-                user_repo_path=repo_host_path,
-                destination=environment.get_working_directory(),
-                concurrency_group=concurrency_group,
-                base_ref=source_branch,
-                new_branch=requested_branch_name,
-            )
-            # Gitignored files don't follow the worktree either; mirror the CLONE behavior.
-            source_env_file = repo_host_path / ".sculptor" / ".env"
-            if source_env_file.exists():
-                dest_env_file = environment.get_working_directory() / ".sculptor" / ".env"
-                atomic_copy_env_file(source_env_file, dest_env_file)
+        # Run `git worktree add` off the user's repository into workspace/code/.
+        if requested_branch_name is None:
+            raise ValueError("requested_branch_name is required for WORKTREE initialization")
+        if source_branch is None:
+            raise ValueError("source_branch (base ref) is required for WORKTREE initialization")
+        create_worktree(
+            user_repo_path=repo_host_path,
+            destination=environment.get_working_directory(),
+            concurrency_group=concurrency_group,
+            base_ref=source_branch,
+            new_branch=requested_branch_name,
+        )
+        # Gitignored files don't follow the worktree, so copy .sculptor/.env
+        # from the source repo into the checkout explicitly.
+        source_env_file = repo_host_path / ".sculptor" / ".env"
+        if source_env_file.exists():
+            dest_env_file = environment.get_working_directory() / ".sculptor" / ".env"
+            atomic_copy_env_file(source_env_file, dest_env_file)
 
         environment._sculptor_folder = sculptor_folder
         environment._project_env_vars = load_project_env_vars(
@@ -256,6 +197,12 @@ class LocalEnvironment(Environment):
         Returns the workspace path where environment files are stored.
         """
         return self.get_workspace_path()
+
+    def get_state_path(self) -> Path:
+        return self.get_root_path() / STATE_DIRECTORY
+
+    def get_artifacts_path(self) -> Path:
+        return self.get_root_path() / ARTIFACTS_DIRECTORY
 
     def get_user_home_directory(self) -> Path:
         """Return the current user's home directory."""
@@ -283,40 +230,95 @@ class LocalEnvironment(Environment):
         # Other paths map to workspace_path
         return workspace_path / str(path).lstrip("/")
 
-    def to_environment_path(self, path: Path) -> Path:
-        """Convert a host filesystem path to an environment path.
-
-        For LocalEnvironment:
-        - Paths under the working directory are returned as-is
-        - Paths under workspace_path are converted to /... relative paths
-
-        Uses ``Path.resolve()`` so that macOS ``/var`` ↔ ``/private/var``
-        symlinks don't cause spurious mismatches.  The returned path is
-        reconstructed with the original (non-resolved) base so that
-        downstream ``startswith`` checks against ``workspace_path`` remain
-        consistent.
-        """
-        assert path.is_absolute()
-        resolved_path = path.resolve()
-
-        # Check if path is under or equal to the working directory
-        working_dir = self.get_working_directory()
-        resolved_working_dir = working_dir.resolve()
-        if resolved_path.is_relative_to(resolved_working_dir):
-            # Reconstruct using the original working_dir base for consistency
-            return working_dir / resolved_path.relative_to(resolved_working_dir)
-
-        # Paths under workspace_path are converted to /... relative paths
-        workspace_path = self.get_workspace_path()
-        resolved_workspace_path = workspace_path.resolve()
-        assert resolved_path.is_relative_to(resolved_workspace_path), (
-            f"Path {path} is not under working directory or workspace"
-        )
-        relative_path = resolved_path.relative_to(resolved_workspace_path)
-        return Path("/") / relative_path
-
     def get_extra_logger_context(self) -> Mapping[str, str | float | int | bool | None]:
         return {"workspace_path": self.workspace_path}
+
+    def run_process_in_background(
+        self,
+        command: Sequence[str],
+        secrets: Mapping[str, str | Secret],
+        cwd: str | None = None,
+        is_interactive: bool = False,
+        run_with_sudo_privileges: bool = False,
+        run_as_root: bool = False,
+        shutdown_event: MutableEvent | None = None,
+        timeout: float | None = None,
+        is_checked_by_group: bool = False,
+        on_output: Callable[[str, bool], None] | None = None,
+        isolate_process_group: bool = False,
+    ) -> RunningProcess:
+        """
+        Run a process in the background, returning immediately.
+
+        When `is_checked_by_group` is True, the process will be checked for failure when
+        the environment's concurrency group exits or whenever the group's methods are called.
+        (And also when waited on directly, the default is False)
+
+        When ``isolate_process_group`` is True, the child is spawned with
+        ``start_new_session=True`` and its shutdown signal is broadcast to the
+        whole process group, so descendants are killed too. Used for the
+        agent CLI so Stop cascades to the agent's foreground subprocesses
+        (SCU-211).
+        """
+        return self.concurrency_group.start_background_process_from_factory(
+            lambda: self._run_process_in_background(
+                command=command,
+                secrets=secrets,
+                cwd=cwd,
+                is_interactive=is_interactive,
+                run_with_sudo_privileges=run_with_sudo_privileges,
+                run_as_root=run_as_root,
+                shutdown_event=shutdown_event,
+                timeout=timeout,
+                is_checked=is_checked_by_group,
+                on_output=on_output,
+                isolate_process_group=isolate_process_group,
+            )
+        )
+
+    @final
+    def run_process_to_completion(
+        self,
+        command: Sequence[str],
+        secrets: Mapping[str, str | Secret],
+        cwd: str | None = None,
+        is_interactive: bool = False,
+        run_with_sudo_privileges: bool = False,
+        run_as_root: bool = False,
+        timeout: float | None = None,
+        is_checked_after: bool = True,
+        on_output: Callable[[str, bool], None] | None = None,
+    ) -> FinishedProcess:
+        """
+        Run a process to completion, blocking until it finishes.
+
+        When `is_checked_after` is True (the default), raise a ProcessError if the process exits with a non-zero exit code.
+
+        """
+        process = self.run_process_in_background(
+            command,
+            secrets,
+            cwd,
+            is_interactive,
+            run_with_sudo_privileges,
+            run_as_root,
+            # Never mark the original background process as "checked".
+            # Reason: the concurrency group would raise an exception even if the failure of the process was properly handled by the caller.
+            is_checked_by_group=False,
+            timeout=timeout,
+            on_output=on_output,
+        )
+        process.wait()
+        if is_checked_after:
+            process.check()
+        return FinishedProcess(
+            command=tuple(process.command),
+            returncode=process.returncode,
+            stdout=process.read_stdout(),
+            stderr=process.read_stderr(),
+            is_timed_out=process.get_timed_out(),
+            is_output_already_logged=False,
+        )
 
     def _run_process_in_background(
         self,
@@ -330,7 +332,6 @@ class LocalEnvironment(Environment):
         timeout: float | None = None,
         is_checked: bool = False,
         on_output: Callable[[str, bool], None] | None = None,
-        open_stdin: bool = False,
         isolate_process_group: bool = False,
     ) -> RunningProcess:
         if run_with_sudo_privileges or run_as_root:
@@ -359,7 +360,6 @@ class LocalEnvironment(Environment):
             is_checked=is_checked,
             timeout=timeout,
             shutdown_event=shutdown_event,
-            open_stdin=open_stdin,
             isolate_process_group=isolate_process_group,
         )
         self._processes.append(process)
@@ -372,10 +372,10 @@ class LocalEnvironment(Environment):
         on_pid: Callable[[int], None],
         shutdown_event: ReadOnlyEvent,
     ) -> int:
-        # Run setup in the agent's working directory: for CLONE workspaces
-        # this is the freshly-cloned copy under workspace/code/, not the
-        # user's original repo. That's where build artifacts should land
-        # (node_modules, .venv, etc.) so the agent sees them when it runs.
+        # Run setup in the agent's working directory: the worktree checkout
+        # under workspace/code/, not the user's original repo. That's where
+        # build artifacts should land (node_modules, .venv, etc.) so the agent
+        # sees them when it runs.
         working_directory = self.get_working_directory()
         if self._env_var_override:
             merged = {**os.environ, **self._project_env_vars}
@@ -544,7 +544,7 @@ class LocalEnvironment(Environment):
 
             self._is_closed = True
 
-    def destroy(self, is_killing: bool = False) -> None:
+    def destroy(self) -> None:
         # Stop all terminals (all indices) before closing — terminals only die when workspace is destroyed.
         stop_terminals_for_environment(str(self.environment_id))
         self.close()

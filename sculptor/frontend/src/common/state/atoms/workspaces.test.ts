@@ -8,7 +8,6 @@ import { workspaceOpenCloseErrorToastAtom } from "./toasts";
 import {
   closedWorkspaceIdsAtom,
   closeWorkspaceTabAtom,
-  createMigratingTabsStorage,
   effectiveOpenTabIdsAtom,
   INVALID_ACTIVE_INDEX,
   openWorkspaceTabAtom,
@@ -34,7 +33,6 @@ const mockWorkspace = (overrides: Partial<Workspace> & Pick<Workspace, "objectId
     projectId: "proj-1",
     organizationReference: "org-1",
     description: "",
-    initializationStrategy: "CLONE",
     isOpen: true,
     isDeleted: false,
     ...overrides,
@@ -376,80 +374,5 @@ describe("activeIndex clamping on workspace deletion", () => {
       { tabId: "ws-c", agentId: null },
     ]);
     expect(store.get(tabsAtom).activeIndex).toBe(1);
-  });
-});
-
-describe("createMigratingTabsStorage", () => {
-  const DEFAULT_STATE = { order: [], activeIndex: INVALID_ACTIVE_INDEX };
-
-  beforeEach(() => {
-    localStorage.removeItem("sculptor-tabs");
-    localStorage.removeItem("sculptor-tab-order");
-  });
-
-  it("migrates a legacy sculptor-tab-order array on first read and clears the legacy key", () => {
-    localStorage.setItem("sculptor-tab-order", JSON.stringify(["__home__", "ws_x"]));
-
-    const storage = createMigratingTabsStorage();
-    const state = storage.getItem("sculptor-tabs", DEFAULT_STATE);
-
-    expect(state).toEqual({
-      order: [
-        { tabId: "__home__", agentId: null },
-        { tabId: "ws_x", agentId: null },
-      ],
-      activeIndex: INVALID_ACTIVE_INDEX,
-    });
-    expect(localStorage.getItem("sculptor-tab-order")).toBeNull();
-    expect(JSON.parse(localStorage.getItem("sculptor-tabs") ?? "null")).toEqual(state);
-  });
-
-  it("uses an existing sculptor-tabs value verbatim and ignores any stale legacy key", () => {
-    const persisted = {
-      order: [{ tabId: "ws_y", agentId: "agent-1" }],
-      activeIndex: 0,
-    };
-    localStorage.setItem("sculptor-tabs", JSON.stringify(persisted));
-    localStorage.setItem("sculptor-tab-order", JSON.stringify(["should-be-ignored"]));
-
-    const storage = createMigratingTabsStorage();
-    expect(storage.getItem("sculptor-tabs", DEFAULT_STATE)).toEqual(persisted);
-  });
-
-  it("falls back to the default state when no keys are present", () => {
-    const storage = createMigratingTabsStorage();
-    expect(storage.getItem("sculptor-tabs", DEFAULT_STATE)).toEqual(DEFAULT_STATE);
-  });
-
-  it("falls back to the default state when sculptor-tabs is malformed and no legacy key exists", () => {
-    localStorage.setItem("sculptor-tabs", "{not json");
-
-    const storage = createMigratingTabsStorage();
-    expect(storage.getItem("sculptor-tabs", DEFAULT_STATE)).toEqual(DEFAULT_STATE);
-  });
-
-  it("migrates from the legacy key when sculptor-tabs is malformed", () => {
-    localStorage.setItem("sculptor-tabs", "{not json");
-    localStorage.setItem("sculptor-tab-order", JSON.stringify(["__home__"]));
-
-    const storage = createMigratingTabsStorage();
-    expect(storage.getItem("sculptor-tabs", DEFAULT_STATE)).toEqual({
-      order: [{ tabId: "__home__", agentId: null }],
-      activeIndex: INVALID_ACTIVE_INDEX,
-    });
-    expect(localStorage.getItem("sculptor-tab-order")).toBeNull();
-  });
-
-  it("skips non-string entries in the legacy array without crashing", () => {
-    localStorage.setItem("sculptor-tab-order", JSON.stringify(["__home__", 42, null, "ws_a"]));
-
-    const storage = createMigratingTabsStorage();
-    expect(storage.getItem("sculptor-tabs", DEFAULT_STATE)).toEqual({
-      order: [
-        { tabId: "__home__", agentId: null },
-        { tabId: "ws_a", agentId: null },
-      ],
-      activeIndex: INVALID_ACTIVE_INDEX,
-    });
   });
 });

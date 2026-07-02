@@ -1,6 +1,6 @@
 import { ContextMenu, IconButton } from "@radix-ui/themes";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
-import { HomeIcon, LayoutGrid, Minus, PlusIcon, Settings as SettingsGearIcon, X, XCircle } from "lucide-react";
+import { HomeIcon, Minus, PlusIcon, Settings as SettingsGearIcon, X, XCircle } from "lucide-react";
 import type { ReactElement, ReactNode } from "react";
 import { useCallback, useEffect, useMemo } from "react";
 import { useParams } from "react-router-dom";
@@ -23,7 +23,7 @@ import {
   workspacesArrayAtom,
 } from "~/common/state/atoms/workspaces.ts";
 import { useOptimisticWorkspaceDelete } from "~/common/state/hooks/useOptimisticWorkspaceDelete.ts";
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 import { useRegisterCommandAction } from "~/components/CommandPalette/commandActions.ts";
 import {
   renamingWorkspaceIdAtom,
@@ -39,7 +39,7 @@ import { computeWorkspaceDotStatus, EMPTY_WORKSPACE_DOT_STATUS, WorkspaceStatusD
 import { TabBar } from "~/components/tabs/TabBar";
 import type { TabDefinition } from "~/components/tabs/types";
 import { useWorkspaceTabActions } from "~/components/useWorkspaceTabActions.ts";
-import { COMPONENT_GALLERY_TAB_ID, HOME_TAB_ID, SETTINGS_TAB_ID } from "~/components/workspaceTabIds.ts";
+import { HOME_TAB_ID, SETTINGS_TAB_ID } from "~/components/workspaceTabIds.ts";
 import {
   closeDiffTabAtom,
   diffPanelOpenAtom,
@@ -56,20 +56,13 @@ export const WorkspaceTabs = (): ReactElement => {
   const effectiveOpenTabIds = useAtomValue(effectiveOpenTabIdsAtom);
   const ensurePseudoTab = useSetAtom(ensurePseudoTabAtom);
   const reorderTabs = useSetAtom(reorderTabsAtom);
-  const {
-    navigateToWorkspace,
-    navigateToAddWorkspace,
-    navigateToAgent,
-    navigateToHome,
-    navigateToGlobalSettings,
-    navigateToComponentGallery,
-  } = useImbueNavigate();
+  const { navigateToWorkspace, navigateToAddWorkspace, navigateToAgent, navigateToHome, navigateToGlobalSettings } =
+    useImbueNavigate();
   const agentIdsByWorkspace = useAtomValue(agentIdsByWorkspaceAtom);
   const keybindingsMap = useAtomValue(keybindingsMapAtom);
   const openNewWorkspaceTabIds = useAtomValue(openNewWorkspaceTabIdsAtom);
   const openNewWorkspaceTab = useSetAtom(openNewWorkspaceTabAtom);
-  const { isAddWorkspaceRoute, addWorkspaceDraftId, isHomeRoute, isSettingsRoute, isComponentGalleryRoute } =
-    useImbueLocation();
+  const { isAddWorkspaceRoute, addWorkspaceDraftId, isHomeRoute, isSettingsRoute } = useImbueLocation();
 
   const { handleClose, handleCloseOthers, handleCloseAll, navigateToNextTab } = useWorkspaceTabActions();
 
@@ -181,11 +174,9 @@ export const WorkspaceTabs = (): ReactElement => {
           ? effectiveOpenTabIds.indexOf(HOME_TAB_ID)
           : isSettingsRoute
             ? effectiveOpenTabIds.indexOf(SETTINGS_TAB_ID)
-            : isComponentGalleryRoute
-              ? effectiveOpenTabIds.indexOf(COMPONENT_GALLERY_TAB_ID)
-              : addWorkspaceDraftId
-                ? effectiveOpenTabIds.indexOf(newWorkspaceTabId(addWorkspaceDraftId))
-                : -1;
+            : addWorkspaceDraftId
+              ? effectiveOpenTabIds.indexOf(newWorkspaceTabId(addWorkspaceDraftId))
+              : -1;
 
       const nextIndex = (currentIndex + direction + effectiveOpenTabIds.length) % effectiveOpenTabIds.length;
       const nextTabId = effectiveOpenTabIds[nextIndex];
@@ -194,8 +185,6 @@ export const WorkspaceTabs = (): ReactElement => {
         navigateToHome();
       } else if (nextTabId === SETTINGS_TAB_ID) {
         navigateToGlobalSettings();
-      } else if (nextTabId === COMPONENT_GALLERY_TAB_ID) {
-        navigateToComponentGallery();
       } else {
         const draftId = parseDraftIdFromTabId(nextTabId);
         if (draftId !== null) {
@@ -211,12 +200,10 @@ export const WorkspaceTabs = (): ReactElement => {
       effectiveOpenTabIds,
       isHomeRoute,
       isSettingsRoute,
-      isComponentGalleryRoute,
       handleWorkspaceClick,
       navigateToAddWorkspace,
       navigateToHome,
       navigateToGlobalSettings,
-      navigateToComponentGallery,
     ],
   );
 
@@ -247,8 +234,6 @@ export const WorkspaceTabs = (): ReactElement => {
       currentTabId = HOME_TAB_ID;
     } else if (isSettingsRoute) {
       currentTabId = SETTINGS_TAB_ID;
-    } else if (isComponentGalleryRoute) {
-      currentTabId = COMPONENT_GALLERY_TAB_ID;
     } else if (activeWorkspaceID) {
       currentTabId = activeWorkspaceID;
     }
@@ -262,7 +247,6 @@ export const WorkspaceTabs = (): ReactElement => {
     addWorkspaceDraftId,
     isHomeRoute,
     isSettingsRoute,
-    isComponentGalleryRoute,
     handleClose,
     diffPanelState,
     isDiffPanelOpen,
@@ -382,15 +366,6 @@ export const WorkspaceTabs = (): ReactElement => {
       });
     }
 
-    if (effectiveOpenTabIds.includes(COMPONENT_GALLERY_TAB_ID) || isComponentGalleryRoute) {
-      workspaceTabs.push({
-        id: COMPONENT_GALLERY_TAB_ID,
-        label: "Component Gallery",
-        icon: <LayoutGrid size={14} />,
-        dataTestId: ElementIds.COMPONENT_GALLERY_TAB,
-      });
-    }
-
     for (const draftId of openNewWorkspaceTabIds) {
       workspaceTabs.push({
         id: newWorkspaceTabId(draftId),
@@ -409,7 +384,6 @@ export const WorkspaceTabs = (): ReactElement => {
     effectiveOpenTabIds,
     isHomeRoute,
     isSettingsRoute,
-    isComponentGalleryRoute,
     openNewWorkspaceTabIds,
     handleRenameCommit,
   ]);
@@ -422,11 +396,9 @@ export const WorkspaceTabs = (): ReactElement => {
     ? HOME_TAB_ID
     : isSettingsRoute
       ? SETTINGS_TAB_ID
-      : isComponentGalleryRoute
-        ? COMPONENT_GALLERY_TAB_ID
-        : addWorkspaceDraftId
-          ? newWorkspaceTabId(addWorkspaceDraftId)
-          : (activeWorkspaceID ?? "");
+      : addWorkspaceDraftId
+        ? newWorkspaceTabId(addWorkspaceDraftId)
+        : (activeWorkspaceID ?? "");
 
   const handleActivate = useCallback(
     (tabId: string): void => {
@@ -446,30 +418,14 @@ export const WorkspaceTabs = (): ReactElement => {
         return;
       }
 
-      if (tabId === COMPONENT_GALLERY_TAB_ID) {
-        navigateToComponentGallery();
-        return;
-      }
       handleWorkspaceClick(tabId);
     },
-    [
-      handleWorkspaceClick,
-      navigateToAddWorkspace,
-      navigateToHome,
-      navigateToGlobalSettings,
-      navigateToComponentGallery,
-    ],
+    [handleWorkspaceClick, navigateToAddWorkspace, navigateToHome, navigateToGlobalSettings],
   );
 
   const handleDoubleClick = useCallback(
     (tabId: string): void => {
-      if (
-        parseDraftIdFromTabId(tabId) !== null ||
-        tabId === HOME_TAB_ID ||
-        tabId === SETTINGS_TAB_ID ||
-        tabId === COMPONENT_GALLERY_TAB_ID
-      )
-        return;
+      if (parseDraftIdFromTabId(tabId) !== null || tabId === HOME_TAB_ID || tabId === SETTINGS_TAB_ID) return;
       setRenamingWorkspaceId(tabId);
     },
     [setRenamingWorkspaceId],
@@ -520,10 +476,10 @@ export const WorkspaceTabs = (): ReactElement => {
     (tabId: string): ReactNode => {
       if (parseDraftIdFromTabId(tabId) !== null) return undefined;
 
-      // System tabs (Home / Settings / Component Gallery) only support
-      // close operations, never rename or delete. We hand-render this
-      // small variant rather than wiring three separate registries.
-      if (tabId === HOME_TAB_ID || tabId === SETTINGS_TAB_ID || tabId === COMPONENT_GALLERY_TAB_ID) {
+      // System tabs (Home / Settings) only support close operations, never
+      // rename or delete. We hand-render this small variant rather than
+      // wiring separate registries.
+      if (tabId === HOME_TAB_ID || tabId === SETTINGS_TAB_ID) {
         return (
           <ContextMenu.Content size="1">
             <ContextMenu.Item data-testid={ElementIds.TAB_CONTEXT_MENU_CLOSE} onSelect={() => handleClose(tabId)}>

@@ -146,11 +146,6 @@ build_frontend_app() (
   export npm_config_target_arch="$ELECTRON_ARCH"
   export ELECTRON_ARCH="$ELECTRON_ARCH"
 
-  # Inject telemetry/build env vars (eval so npm sees them in this subshell).
-  # Defaults to production; CI sets SCULPTOR_BUILD_ENV=dev for non-release builds.
-  eval "$(uv run --project sculptor builder setup-build-vars "${SCULPTOR_BUILD_ENV:-production}")"
-
-
   # <REPLACEMENT> begins here. We want to run:
   # `nvm exec "$NODE_VERSION" npm run electron:make -- -- --platform=darwin --arch=x64`
   # But there is a bug which prevents the right electron from being run in the right arch mode!

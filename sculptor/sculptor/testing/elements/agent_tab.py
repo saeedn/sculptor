@@ -26,12 +26,6 @@ class PlaywrightAgentTabBarElement:
     def get_agent_type_menu(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.AGENT_TYPE_MENU)
 
-    def get_agent_type_menu_item_claude(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.AGENT_TYPE_MENU_ITEM_CLAUDE)
-
-    def get_agent_type_menu_item_pi(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.AGENT_TYPE_MENU_ITEM_PI)
-
     def get_agent_type_menu_item_terminal(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.AGENT_TYPE_MENU_ITEM_TERMINAL)
 
@@ -58,6 +52,17 @@ class PlaywrightAgentTabBarElement:
         expect(menu).to_be_visible()
         return menu
 
+    def add_terminal_agent(self) -> None:
+        """Add a built-in terminal agent to the current workspace via the agent-type menu.
+
+        The bare ``+`` button adds the default (chat) agent; tab-lifecycle tests
+        that want a chat-free second agent open the type menu and pick Terminal.
+        """
+        self.open_agent_type_menu()
+        terminal_item = self.get_agent_type_menu_item_terminal()
+        expect(terminal_item).to_be_visible()
+        terminal_item.click()
+
     def open_diagnostics_submenu(self, tab: Locator) -> None:
         """Right-click a tab and hover on Diagnostics to open the submenu."""
         tab.click(button="right")
@@ -67,9 +72,6 @@ class PlaywrightAgentTabBarElement:
 
     def get_copy_session_id_item(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_COPY_SESSION_ID)
-
-    def get_copy_transcript_path_item(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_COPY_TRANSCRIPT_PATH)
 
     def get_copy_sculptor_transcript_item(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_COPY_SCULPTOR_TRANSCRIPT_PATH)
@@ -85,9 +87,6 @@ class PlaywrightAgentTabBarElement:
     def open_context_menu(self, tab: Locator) -> None:
         """Right-click a tab to open the context menu."""
         tab.click(button="right")
-
-    def get_context_menu_close_item(self) -> Locator:
-        return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_CLOSE)
 
     def get_context_menu_rename_item(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_RENAME)
@@ -106,17 +105,6 @@ class PlaywrightAgentTabBarElement:
 
     def get_inline_rename_input(self) -> Locator:
         return self._page.get_by_test_id(ElementIDs.INLINE_RENAME_INPUT)
-
-    def rename_tab(self, tab: Locator, new_name: str) -> None:
-        self.open_context_menu(tab)
-        rename_item = self.get_context_menu_rename_item()
-        expect(rename_item).to_be_visible()
-        rename_item.click()
-        rename_input = self.get_inline_rename_input()
-        expect(rename_input).to_be_visible()
-        rename_input.fill(new_name)
-        rename_input.press("Enter")
-        expect(rename_input).not_to_be_visible()
 
     def get_tab_close_button(self, tab: Locator) -> Locator:
         return tab.get_by_test_id(ElementIDs.TAB_CLOSE_BUTTON)

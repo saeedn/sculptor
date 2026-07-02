@@ -1,7 +1,5 @@
 import { Box, Button, Flex, Text } from "@radix-ui/themes";
-import * as Sentry from "@sentry/react";
 import type { ReactElement } from "react";
-import { useEffect } from "react";
 
 import { ElementIds } from "../../api";
 import SculptorLogo from "../../assets/logos/envy.svg";
@@ -12,21 +10,10 @@ type ErrorPageProps = {
   error?: unknown;
   headerText?: string | ReactElement;
   errorMessage?: string;
-  isCapturingErrorWithSentry?: boolean;
-  onClearCustomBackend?: () => void;
-  isCustomBackendCleared?: boolean;
 };
 
 export const ErrorPage = (props: ErrorPageProps): ReactElement => {
   let errorText: string | undefined;
-
-  // running in an effect to prevent multiple captures
-  useEffect(() => {
-    if (props.isCapturingErrorWithSentry) {
-      // TODO (PROD-2166): Verify that this works
-      Sentry.captureException(props.error);
-    }
-  }, [props.error, props.isCapturingErrorWithSentry]);
 
   if (props.error instanceof Error) {
     errorText = props.error.stack;
@@ -73,18 +60,6 @@ export const ErrorPage = (props: ErrorPageProps): ReactElement => {
               <Button variant="soft" onClick={handleCopyError}>
                 Copy Error to Clipboard
               </Button>
-              {props.onClearCustomBackend && (
-                <Button
-                  variant="soft"
-                  color="red"
-                  onClick={props.onClearCustomBackend}
-                  disabled={props.isCustomBackendCleared}
-                >
-                  {props.isCustomBackendCleared
-                    ? "Custom backend command cleared — restart the app to use the built-in backend"
-                    : "Clear Custom Backend Command"}
-                </Button>
-              )}
             </Flex>
             <Box minHeight="0" mt="2" mb="5" className={styles.errorBox}>
               <div className={styles.errorScroll}>

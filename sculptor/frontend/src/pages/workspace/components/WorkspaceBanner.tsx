@@ -4,7 +4,7 @@ import { GitBranchIcon } from "lucide-react";
 import type { ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { ElementIds, updateWorkspace, WorkspaceInitializationStrategy } from "~/api";
+import { ElementIds, updateWorkspace } from "~/api";
 import { useActiveProjectID, useWorkspacePageParams } from "~/common/NavigateUtils";
 import { prStatusAtomFamily } from "~/common/state/atoms/prStatus";
 import { prDefaultTargetBranchAtom } from "~/common/state/atoms/userConfig";
@@ -12,7 +12,6 @@ import { useProject } from "~/common/state/hooks/useProjects";
 import { useRepoInfo } from "~/common/state/hooks/useRepoInfo";
 import { useWorkspace } from "~/common/state/hooks/useWorkspace";
 import { useWorkspaceBranch } from "~/common/state/hooks/useWorkspaceBranch";
-import { zenModeActiveAtom } from "~/components/panels/atoms.ts";
 import { getBranchName } from "~/pages/home/Utils";
 
 import { useProgressiveCollapse } from "../hooks/useProgressiveCollapse";
@@ -24,7 +23,6 @@ import { TargetBranchSelector } from "./TargetBranchSelector";
 import styles from "./WorkspaceBanner.module.scss";
 
 export const WorkspaceBanner = (): ReactElement | null => {
-  const isZenModeActive = useAtomValue(zenModeActiveAtom);
   const { workspaceID } = useWorkspacePageParams();
   const projectID = useActiveProjectID();
 
@@ -79,7 +77,7 @@ export const WorkspaceBanner = (): ReactElement | null => {
 
   const handleSwitchTarget = useCallback(
     async (newTarget: string) => {
-      // MRs live on the origin remote, so prefer "origin/{bare}".
+      // PRs live on the origin remote, so prefer "origin/{bare}".
       const fullBranch =
         targetBranches.find((b) => b === `origin/${newTarget}`) ??
         targetBranches.find((b) => b.endsWith(`/${newTarget}`)) ??
@@ -96,15 +94,10 @@ export const WorkspaceBanner = (): ReactElement | null => {
     [workspaceID, targetBranches],
   );
 
-  const gitProvider: "gitlab" | "github" | null = repoInfo?.isGitlabOrigin
-    ? "gitlab"
-    : repoInfo?.isGithubOrigin
-      ? "github"
-      : null;
-  const isGitLab = gitProvider === "gitlab";
+  const gitProvider: "github" | null = repoInfo?.isGithubOrigin ? "github" : null;
   const currentTargetBranch = workspace?.targetBranch ?? prDefaultTargetBranch;
 
-  // Only show mismatch when the MR's target branch differs from the current
+  // Only show mismatch when the PR's target branch differs from the current
   // workspace target. Compare bare names (strip remote prefix like "origin/")
   // to handle repos that use non-origin remotes.
   const currentTargetBare = currentTargetBranch.replace(/^[^/]+\//, "");
@@ -121,28 +114,23 @@ export const WorkspaceBanner = (): ReactElement | null => {
         ? {
             targetBranch: prStatus.mismatchedPrTargetBranch!,
             badge: {
-              text: `${isGitLab ? "MR" : "PR"} ${isGitLab ? "!" : "#"}${prStatus.mismatchedPrIid}`,
-              tooltip: `Open ${isGitLab ? "MR" : "PR"} targets this branch`,
+              text: `PR #${prStatus.mismatchedPrIid}`,
+              tooltip: `Open PR targets this branch`,
             },
           }
         : null,
-    [hasMismatch, prStatus?.mismatchedPrTargetBranch, prStatus?.mismatchedPrIid, isGitLab],
+    [hasMismatch, prStatus?.mismatchedPrTargetBranch, prStatus?.mismatchedPrIid],
   );
 
-  if (isZenModeActive || !workspace) {
+  if (!workspace) {
     return null;
   }
 
   const repoPath = repoInfo?.repoPath || null;
-  const strategy = workspace.initializationStrategy;
-  // Worktree is the default mode, so it gets no badge — only clone and
-  // in-place workspaces are visually marked so users can spot the non-default
-  // ones in a mixed list.
-  const shouldShowModeBadge = strategy !== WorkspaceInitializationStrategy.WORKTREE;
   // The target-branch selector is host-agnostic — it just edits the
   // workspace's merge target — so it is shown for every repo regardless of
-  // remote host (SCU-1526). PR/MR creation, on the other hand, requires the
-  // GitHub or GitLab CLI, so the PR button stays gated on the git provider.
+  // remote host (SCU-1526). PR creation, on the other hand, requires the
+  // GitHub CLI, so the PR button stays gated on the git provider.
   const canCreatePr = gitProvider !== null;
 
   // Resolve the full remote branch name for the mismatch target (e.g. "upstream/main")
@@ -167,8 +155,6 @@ export const WorkspaceBanner = (): ReactElement | null => {
             <RepoSegment
               sourcePath={repoPath}
               environmentPath={workspace.environmentId ?? null}
-              strategy={strategy}
-              shouldShowModeBadge={shouldShowModeBadge}
               projectName={project?.name ?? repoPath.split("/").pop() ?? repoPath}
             />
           </div>
@@ -198,7 +184,7 @@ export const WorkspaceBanner = (): ReactElement | null => {
       <Tooltip
         content={
           isMismatched
-            ? `${isGitLab ? "MR" : "PR"} ${isGitLab ? "!" : "#"}${mismatchInfo.mismatchedPrIid} targets ${mismatchInfo.fullBranch} — retarget?`
+            ? `PR #${mismatchInfo.mismatchedPrIid} targets ${mismatchInfo.fullBranch} — retarget?`
             : "Target branch"
         }
         side="bottom"
@@ -227,12 +213,7 @@ export const WorkspaceBanner = (): ReactElement | null => {
       {/* PR button */}
       {!hiddenPriorities.has(4) && canCreatePr && (
         <div data-collapse-priority="4">
-          <PrButton
-            workspaceId={workspaceID}
-            targetBranch={currentTargetBranch}
-            gitProvider={gitProvider}
-            onSwitchTarget={handleSwitchTarget}
-          />
+          <PrButton workspaceId={workspaceID} targetBranch={currentTargetBranch} onSwitchTarget={handleSwitchTarget} />
         </div>
       )}
     </div>

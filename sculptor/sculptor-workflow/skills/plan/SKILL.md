@@ -575,7 +575,7 @@ verified them in the codebase.
 - Do NOT reference other task files for context — repeat the context
   instead.
 - Do NOT omit end-to-end tests for user-facing features.
-- **Ask every question with your question tool** — `mcp__sculptor__ask_user_question` if it's available, otherwise the built-in `AskUserQuestion`. Never ask in plain text: only the tool call puts the workspace into the "waiting for input" state that alerts the user.
+- **Ask every question with your question tool** — the built-in `AskUserQuestion`. Never ask in plain text: only the tool call puts the workspace into the "waiting for input" state that alerts the user.
 - The finalize question is its own turn.
 - When spawning the Build agent, end the spawning turn with **text
   instructions** rather than a question.

@@ -24,7 +24,6 @@ from sculptor.foundation.concurrency_group import ConcurrentShutdownError
 from sculptor.foundation.constants import ExceptionPriority
 from sculptor.foundation.log_utils import log_and_exit_program
 from sculptor.foundation.pydantic_serialization import MutableModel
-from sculptor.foundation.time_utils import get_current_time
 from sculptor.interfaces.agents.agent import TaskStatusRunnerMessage
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import AgentMessageID
@@ -44,9 +43,6 @@ class Runner(MutableModel):
         pass
 
     def is_alive(self) -> bool:
-        raise NotImplementedError()
-
-    def stop(self) -> None:
         raise NotImplementedError()
 
     def join(self) -> None:
@@ -135,11 +131,6 @@ class ConcurrentTaskService(BaseTaskService, ABC):
             self._has_outstanding_work = True
             self._new_or_restored_task_condition.notify_all()
 
-    def on_restore_task(self, task: Task) -> None:
-        with self._new_or_restored_task_condition:
-            self._has_outstanding_work = True
-            self._new_or_restored_task_condition.notify_all()
-
     def _spawn_run_tasks(self, shutdown_flag: Event) -> None:
         logger.info("Started task spawning thread")
         # continue scheduling tasks until the shutdown flag is set
@@ -190,7 +181,6 @@ class ConcurrentTaskService(BaseTaskService, ABC):
             logger.info("Joined runner {} in {}s", runner.get_name(), end_time - start)
 
     def _update(self, project: Project) -> None:
-        self._stop_expired_runners()
         self._clean_stopped_tasks()
 
         acknowledged_tasks = self._prepare_queued_tasks(project_id=project.object_id)
@@ -212,7 +202,7 @@ class ConcurrentTaskService(BaseTaskService, ABC):
             for task in running_tasks:
                 # mark them as QUEUED so that they can be picked up again
                 transaction.upsert_task(task.evolve(task.ref().outcome, TaskState.QUEUED))
-                message = TaskStatusRunnerMessage(outcome=TaskState.QUEUED, message_id=AgentMessageID())
+                message = TaskStatusRunnerMessage(message_id=AgentMessageID())
                 self.create_message(message=message, task_id=task.object_id, transaction=transaction)
 
     def _prepare_queued_tasks(self, project_id: ProjectID) -> tuple[Task, ...]:
@@ -224,18 +214,9 @@ class ConcurrentTaskService(BaseTaskService, ABC):
             acknowledged_tasks = tuple(task.evolve(task.ref().outcome, TaskState.RUNNING) for task in existing_tasks)
             for task in acknowledged_tasks:
                 transaction.upsert_task(task)
-                message = TaskStatusRunnerMessage(outcome=TaskState.RUNNING, message_id=AgentMessageID())
+                message = TaskStatusRunnerMessage(message_id=AgentMessageID())
                 self.create_message(message=message, task_id=task.object_id, transaction=transaction)
             return acknowledged_tasks
-
-    def _stop_expired_runners(self) -> None:
-        # then warn about any tasks that are running for too long
-        for task_id, deadline in list(self._completion_deadline.items()):
-            runner = self._runner_by_id[task_id]
-            if runner.is_alive() and get_current_time() > deadline:
-                logger.warning("Task {} is running for too long, shutting it down", task_id)
-                runner.stop()
-                runner.join()
 
     def _clean_stopped_tasks(self) -> None:
         # first clean up any tasks that are no longer running
@@ -250,8 +231,6 @@ class ConcurrentTaskService(BaseTaskService, ABC):
                         runner.get_name(),
                     )
                 del self._runner_by_id[task_id]
-                if task_id in self._completion_deadline:
-                    del self._completion_deadline[task_id]
                 exception = runner.exception()
                 if exception is not None and is_irrecoverable_exception(exception):
                     raise exception

@@ -11,7 +11,6 @@ import {
   zoneVisibilityAtom,
 } from "~/components/panels/atoms.ts";
 import type { DefaultPanelLayout, PanelDefinition, PanelId, ZoneId } from "~/components/panels/types.ts";
-import { ZONE_IDS } from "~/components/panels/types.ts";
 
 type PanelRegistryProviderProps = {
   panels: ReadonlyArray<PanelDefinition>;
@@ -40,7 +39,7 @@ export const PanelRegistryProvider = ({
   const hasInitialized = useRef(false);
 
   // useHydrateAtoms only fires on the first render. Keep the registry in sync
-  // when the panels prop changes (e.g. an experimental panel is toggled on/off).
+  // when the panels prop changes.
   useEffect(() => {
     setPanelRegistry(panels);
   }, [panels, setPanelRegistry]);
@@ -61,8 +60,8 @@ export const PanelRegistryProvider = ({
   }, [defaultLayout, zoneAssignments, setZoneAssignments, setActivePanelPerZone, setZoneVisibility, setZoneOrder]);
 
   // Reconcile the persisted layout against the currently-registered panels.
-  // Runs whenever the panels prop changes (e.g. an experimental panel toggle),
-  // so newly-added panels get a zone and removed panels are cleaned up.
+  // Runs whenever the panels prop changes, so newly-added panels get a zone
+  // and removed panels are cleaned up.
   useEffect(() => {
     if (Object.keys(zoneAssignments).length === 0) return;
 
@@ -70,10 +69,14 @@ export const PanelRegistryProvider = ({
     const missingPanels = panels.filter((p) => !(p.id in zoneAssignments));
     const stalePanelIds = Object.keys(zoneAssignments).filter((id) => !registeredIds.has(id as PanelId));
 
-    // Reset panels whose stored zone is structurally invalid (not in ZONE_IDS).
-    const validZones = new Set<string>(ZONE_IDS);
+    // Panels are fixed-position: a persisted zone that differs from the
+    // panel's fixed zone (a drag-to-dock-era layout, or an unknown zone id)
+    // would strand the panel in a slot the UI no longer manages, so snap it
+    // back.
+    const fixedZoneFor = (panel: PanelDefinition): ZoneId =>
+      defaultLayout?.zoneAssignments[panel.id] ?? panel.defaultZone;
     const panelsWithInvalidZone = panels.filter(
-      (p) => p.id in zoneAssignments && !validZones.has(zoneAssignments[p.id]),
+      (p) => p.id in zoneAssignments && zoneAssignments[p.id] !== fixedZoneFor(p),
     );
 
     if (missingPanels.length === 0 && stalePanelIds.length === 0 && panelsWithInvalidZone.length === 0) return;
@@ -81,9 +84,8 @@ export const PanelRegistryProvider = ({
     const newAssignments = { ...zoneAssignments };
     const newOrder = { ...zoneOrder };
 
-    // Remove panels that are no longer registered (e.g. deleted features or
-    // an experimental panel toggled off). Clean them from active-panel and
-    // zone-order so zones don't render empty.
+    // Remove panels that are no longer registered (e.g. deleted features).
+    // Clean them from active-panel and zone-order so zones don't render empty.
     if (stalePanelIds.length > 0) {
       const staleSet = new Set(stalePanelIds);
       for (const id of stalePanelIds) {
@@ -107,22 +109,42 @@ export const PanelRegistryProvider = ({
       });
     }
 
-    // Reset panels with structurally invalid zones to their defaultZone.
+    // Snap panels back to their fixed zone, moving them out of the stored one.
     for (const panel of panelsWithInvalidZone) {
-      newAssignments[panel.id] = panel.defaultZone;
-      const order = newOrder[panel.defaultZone] ?? [];
+      const zone = fixedZoneFor(panel);
+      newAssignments[panel.id] = zone;
+      for (const [zoneId, order] of Object.entries(newOrder)) {
+        if (zoneId !== zone && order) {
+          newOrder[zoneId as ZoneId] = order.filter((id) => id !== panel.id);
+        }
+      }
+      const order = newOrder[zone] ?? [];
       if (!order.includes(panel.id)) {
-        newOrder[panel.defaultZone] = [...order, panel.id];
+        newOrder[zone] = [...order, panel.id];
       }
     }
 
-    // Add panels that were registered after the user last saved (either a new
-    // panel shipped in a release, or an experimental panel toggled on).
+    // Add panels that were registered after the user last saved (e.g. a new
+    // panel shipped in a release).
     for (const panel of missingPanels) {
       const zone = defaultLayout?.zoneAssignments[panel.id] ?? panel.defaultZone;
       newAssignments[panel.id] = zone;
       const order = newOrder[zone] ?? [];
       newOrder[zone] = [...order, panel.id];
+    }
+
+    // A snapped-back panel may still be the stored active panel of the zone
+    // it was moved out of; repoint such zones at a panel they actually hold.
+    if (panelsWithInvalidZone.length > 0) {
+      setActivePanelPerZone((prev) => {
+        const cleaned = { ...prev };
+        for (const [zone, panelId] of Object.entries(cleaned)) {
+          if (panelId && newAssignments[panelId] !== zone) {
+            cleaned[zone as ZoneId] = newOrder[zone as ZoneId]?.[0];
+          }
+        }
+        return cleaned;
+      });
     }
 
     setZoneAssignments(newAssignments);

@@ -4,7 +4,7 @@ import type { KeybindingId } from "~/common/keybindings/types.ts";
 
 export type CommandId = string;
 
-export type CommandGroupId = "navigation" | "workspaces" | "view" | "chat" | "terminal" | "help";
+export type CommandGroupId = "navigation" | "workspaces" | "view" | "terminal" | "help";
 
 export type PageId =
   | "theme.appearance"
@@ -12,14 +12,12 @@ export type PageId =
   | "workspaces.switch"
   /** Agents in the current workspace. */
   | "agents.switch"
-  /** Action list for the current workspace (set via `workspaceActionsTargetAtom`). */
+  /** Action list for the current workspace. */
   | "workspace.actions"
   /** External-app picker for the current workspace (Finder, VS Code, ...). */
   | "workspace.open_in"
-  /** Action list for the current agent (set via `agentActionsTargetAtom`). */
+  /** Action list for the current agent. */
   | "agent.actions"
-  /** Layout toggles: Left/Right/Bottom panel zones + Focus/Zen modes. */
-  | "view.layout"
   /** Individual panel toggles (Files, Actions, Terminal, Notes, …). */
   | "view.panels";
 
@@ -43,9 +41,7 @@ export type PaletteContext = {
   route: PaletteRoute;
   activeWorkspaceId: string | null;
   activeAgentId: string | null;
-  hasChatPanel: boolean;
   hasTerminalPanel: boolean;
-  isZenMode: boolean;
   /** The current sub-page id, or null for the root page. */
   page: PageId | null;
 };
@@ -120,7 +116,7 @@ export type Command = {
   perform: (args: CommandRunArgs) => void | Promise<void>;
   /**
    * If true, the palette stays open after running this command. Useful for toggles
-   * (e.g. flipping an experimental flag).
+   * (e.g. flipping a settings switch).
    */
   keepOpen?: boolean;
   /**

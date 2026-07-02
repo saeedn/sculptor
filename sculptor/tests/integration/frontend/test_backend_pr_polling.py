@@ -98,7 +98,7 @@ def test_home_page_shows_pr_badge(sculptor_instance_: SculptorInstance) -> None:
     _install_fake_gh(sculptor_instance_.fake_bin_dir, _FAKE_GH_OPEN_PR_SCRIPT)
     _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
 
-    task_page = start_task_and_wait_for_ready(sculptor_instance_.page, "say hello")
+    task_page = start_task_and_wait_for_ready(sculptor_instance_.page)
     _wait_for_open_pr_button(task_page)
 
     navigate_to_home_page(sculptor_instance_.page)
@@ -116,7 +116,7 @@ def test_cached_pr_status_no_loading_on_navigation(sculptor_instance_: SculptorI
     _install_fake_gh(sculptor_instance_.fake_bin_dir, _FAKE_GH_OPEN_PR_SCRIPT)
     _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
 
-    task_page = start_task_and_wait_for_ready(sculptor_instance_.page, "say hello")
+    task_page = start_task_and_wait_for_ready(sculptor_instance_.page)
     _wait_for_open_pr_button(task_page)
 
     navigate_to_home_page(sculptor_instance_.page)
@@ -147,12 +147,12 @@ def test_multiple_workspaces_independent_pr_status(sculptor_instance_: SculptorI
     _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
 
     # Workspace 1: open PR
-    task_page = start_task_and_wait_for_ready(sculptor_instance_.page, "say hello")
+    task_page = start_task_and_wait_for_ready(sculptor_instance_.page)
     _wait_for_open_pr_button(task_page)
 
     # Switch to no_pr and create workspace 2
     mode_file.write_text("no_pr")
-    task_page_2 = start_task_and_wait_for_ready(sculptor_instance_.page, "say goodbye")
+    task_page_2 = start_task_and_wait_for_ready(sculptor_instance_.page)
 
     # Workspace 2 should show "Create PR" (no PR exists)
     create_button = task_page_2.get_pr_button_create()
@@ -175,15 +175,14 @@ def test_closed_not_merged_pr_shows_closed_state(sculptor_instance_: SculptorIns
     """When the only PR on this branch was closed without being merged, the PR
     button reflects the closed state instead of falling back to "Create PR".
 
-    Mirrors the GitLab ``closed-not-merged`` MR handling. The fake ``gh`` CLI
-    returns a single PR node tagged ``state: CLOSED``, so a backend that ignores
-    closed PRs (the bug) would render "Create PR" and the assertion below would
-    fail.
+    The fake ``gh`` CLI returns a single PR node tagged ``state: CLOSED``, so a
+    backend that ignores closed PRs (the bug) would render "Create PR" and the
+    assertion below would fail.
     """
     _install_fake_gh(sculptor_instance_.fake_bin_dir, _FAKE_GH_CLOSED_PR_SCRIPT)
     _set_remote(sculptor_instance_, _FAKE_GITHUB_REMOTE)
 
-    start_task_and_wait_for_ready(sculptor_instance_.page, "say hello")
+    start_task_and_wait_for_ready(sculptor_instance_.page)
 
     merged_or_closed_button = sculptor_instance_.page.get_by_test_id(ElementIDs.PR_BUTTON_MERGED)
     expect(merged_or_closed_button).to_be_visible(timeout=60_000)

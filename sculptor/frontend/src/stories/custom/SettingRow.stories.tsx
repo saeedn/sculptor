@@ -62,9 +62,9 @@ export const WithSelect: Story = {
 
 export const WithTextField: Story = {
   args: {
-    title: "Custom Backend Command",
-    description: "Shell command to launch the backend. Leave empty for default local mode.",
-    children: <TextField.Root placeholder="e.g., docker run ..." style={{ minWidth: "300px" }} />,
+    title: "Default branch prefix",
+    description: "Prefix applied to branch names created for new workspaces.",
+    children: <TextField.Root placeholder="e.g., sculptor/" style={{ minWidth: "300px" }} />,
   },
 };
 

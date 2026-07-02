@@ -1,7 +1,7 @@
 """Integration tests for Sculptor data directory bootstrap.
 
 Tests verify:
-- Bootstrap creates correct directory structure when .format_version is missing
+- Bootstrap creates the correct directory structure on startup.
 """
 
 import hashlib
@@ -12,8 +12,6 @@ from pathlib import Path
 from playwright.sync_api import Page
 from playwright.sync_api import expect
 
-import sculptor.primitives.ids
-from sculptor.config.user_config import DependencyPaths
 from sculptor.config.user_config import UserConfig
 from sculptor.services.user_config.user_config import save_config
 from sculptor.testing.dependency_stubs import DependencyState
@@ -30,23 +28,16 @@ def _make_test_config() -> UserConfig:
     test_email = "test@imbue.com"
     return UserConfig(
         user_email=test_email,
-        user_id=sculptor.primitives.ids.create_user_id(test_email),
-        organization_id=sculptor.primitives.ids.create_organization_id(test_email),
+        user_id=hashlib.md5(test_email.encode()).hexdigest(),
+        organization_id=hashlib.md5(f"organization:{test_email}".encode()).hexdigest(),
         instance_id=hashlib.md5(os.urandom(64)).hexdigest(),
-        is_error_reporting_enabled=True,
-        is_product_analytics_enabled=True,
-        is_session_recording_enabled=True,
-        is_privacy_policy_consented=True,
-        is_telemetry_level_set=True,
-        dependency_paths=DependencyPaths(claude="claude"),
     )
 
 
 def _populate_bootstrap_folder(folder_path: Path) -> None:
-    """Set up a sculptor folder without .format_version to trigger in-place bootstrap.
+    """Set up a sculptor folder with internal/config.toml (where the backend expects it).
 
-    Creates the internal/ directory with config.toml (where the backend expects it)
-    but omits .format_version so ensure_sculptor_folder_ready() runs bootstrap logic.
+    ensure_sculptor_folder_ready() then creates any missing subdirectories on startup.
     """
     internal = folder_path / "internal"
     internal.mkdir(parents=True, exist_ok=True)
@@ -72,18 +63,17 @@ def _dump_diagnostics(page: Page, sculptor_folder: Path, label: str) -> None:
     print("=== END DIAGNOSTICS ===\n")
 
 
-@user_story("to have Sculptor bootstrap correctly when .format_version is missing")
+@user_story("to have Sculptor bootstrap its data directory correctly")
 @custom_sculptor_folder_populator.with_args(_populate_bootstrap_folder)
 @stub_dependency("claude", state=DependencyState.INSTALLED_STUB)
-def test_inplace_bootstrap_and_workspace_operations(
+def test_bootstrap_and_workspace_operations(
     sculptor_instance_factory_: SculptorInstanceFactory,
 ) -> None:
-    """Verify in-place bootstrap creates dirs and the frontend works afterward.
+    """Verify bootstrap creates the data dirs and the frontend works afterward.
 
-    The populator creates internal/config.toml but omits .format_version.
-    On startup, ensure_sculptor_folder_ready() detects the missing version file
-    and runs _bootstrap_fresh_install(), creating internal/, workspaces/, and
-    .format_version. The backend then proceeds normally.
+    The populator creates internal/config.toml; on startup
+    ensure_sculptor_folder_ready() creates internal/ and workspaces/, and the
+    backend then proceeds normally.
     """
     with sculptor_instance_factory_.spawn_instance() as instance:
         page = instance.page
@@ -98,7 +88,6 @@ def test_inplace_bootstrap_and_workspace_operations(
             raise
 
         # Verify bootstrap created the expected structure
-        assert (instance.sculptor_folder / ".format_version").is_file()
         assert (instance.sculptor_folder / "internal").is_dir()
         assert (instance.sculptor_folder / "workspaces").is_dir()
 

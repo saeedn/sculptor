@@ -2,12 +2,6 @@
 
 from playwright.sync_api import expect
 
-from sculptor.constants import ElementIDs
-from sculptor.testing.elements.chat_panel import select_model_by_name
-from sculptor.testing.elements.chat_panel import send_chat_message
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
-from sculptor.testing.elements.task_starter import FAKE_CLAUDE_MODEL_NAME
-from sculptor.testing.elements.user_config import enable_in_place_workspaces
 from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -18,7 +12,7 @@ from sculptor.testing.user_stories import user_story
 def test_branch_switching_with_untracked_file(sculptor_instance_: SculptorInstance) -> None:
     """Test that sets up a test repo with two branches A and B as well as a single untracked file,
     checks out branch A, starts sculptor, and uses the branch selector on the New Workspace page
-    to create a workspace cloned from branch B.
+    to create a workspace created from branch B.
     """
     page = sculptor_instance_.page
 
@@ -48,7 +42,7 @@ def test_branch_switching_with_untracked_file(sculptor_instance_: SculptorInstan
     assert branch_b in all_branches, f"Branch {branch_b} not found in repo. Available branches: {all_branches}"
 
     # We should already be on the Add Workspace page (cleanup deletes all workspaces).
-    # The default mode is Clone, so the branch selector should be editable.
+    # Worktree is the only mode, so the branch selector is editable.
     add_workspace_page = PlaywrightAddWorkspacePage(page=page)
     submit_button = add_workspace_page.get_submit_button()
     expect(submit_button).to_be_visible()
@@ -59,59 +53,12 @@ def test_branch_switching_with_untracked_file(sculptor_instance_: SculptorInstan
     # Select branch B via the branch selector on the New Workspace page
     add_workspace_page.select_branch(branch_b)
 
-    # Submit to create the workspace (no prompt on the Add Workspace page)
+    # Submit to create the workspace (no prompt on the Add Workspace page).
+    # Pick a plain terminal agent so the terminal panel renders in CI.
+    add_workspace_page.select_terminal_agent_type()
     expect(submit_button).to_be_enabled()
     submit_button.click()
 
-    # Wait for the chat panel to appear (we navigated to the workspace/agent page)
+    # Wait for the terminal panel to appear (we navigated to the workspace/agent page).
     task_page = PlaywrightTaskPage(page=page)
-    chat_panel = task_page.get_chat_panel()
-    expect(chat_panel).to_be_visible()
-
-    # Switch to the Fake Claude model on the chat panel, then send the prompt.
-    select_model_by_name(chat_panel=chat_panel, model_name=FAKE_CLAUDE_MODEL_NAME)
-    send_chat_message(chat_panel=chat_panel, message="Hello!")
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
-
-    # Clone mode should not show a mode badge
-    mode_badge = task_page.get_mode_badge()
-    expect(mode_badge).not_to_be_visible()
-
-
-@user_story("to see task mode displayed correctly on the workspace page")
-def test_in_place_mode_displayed_correctly(sculptor_instance_: SculptorInstance) -> None:
-    """Test that in-place mode workspaces display 'In-place' badge on the workspace page."""
-    page = sculptor_instance_.page
-
-    # Enable the experimental in-place workspaces flag so the mode selector is visible.
-    enable_in_place_workspaces(page)
-
-    # We should already be on the Add Workspace page (cleanup deletes all workspaces).
-    add_workspace_page = PlaywrightAddWorkspacePage(page=page)
-    submit_button = add_workspace_page.get_submit_button()
-    expect(submit_button).to_be_visible()
-
-    # Fill in the workspace name (required field)
-    add_workspace_page.get_workspace_name_input().fill("In-place workspace")
-
-    # Switch to in-place mode via the mode selector dropdown.
-    add_workspace_page.select_mode(ElementIDs.MODE_OPTION_IN_PLACE)
-
-    # Submit to create the workspace (no prompt on the Add Workspace page)
-    expect(submit_button).to_be_enabled()
-    submit_button.click()
-
-    # Wait for the chat panel to appear (we navigated to the workspace/agent page)
-    task_page = PlaywrightTaskPage(page=page)
-    chat_panel = task_page.get_chat_panel()
-    expect(chat_panel).to_be_visible()
-
-    # Switch to the Fake Claude model on the chat panel, then send the prompt.
-    select_model_by_name(chat_panel=chat_panel, model_name=FAKE_CLAUDE_MODEL_NAME)
-    send_chat_message(chat_panel=chat_panel, message="Hello in-place!")
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
-
-    # Verify the workspace mode badge shows "in-place"
-    mode_badge = task_page.get_mode_badge()
-    expect(mode_badge).to_be_visible()
-    expect(mode_badge).to_have_text("in-place")
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)

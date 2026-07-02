@@ -1,16 +1,14 @@
 """Integration tests for the split `+` button and its agent-type menu.
 
-The chevron menu lists the agent types (pi gated behind pi-agent),
-selecting Terminal creates a "Terminal N" agent, and a plain `+` click
-creates the last-used type. Terminal-panel behavior is covered by the
-terminal-agent tests; here we only assert tab titles.
+The chevron menu lists the agent types, selecting Terminal creates a
+"Terminal N" agent, and a plain `+` click creates the last-used type.
+Terminal-panel behavior is covered by the terminal-agent tests; here we
+only assert tab titles.
 """
 
 from playwright.sync_api import expect
 
-from sculptor.testing.elements.terminal import expect_terminal_panel_replaces_chat
-from sculptor.testing.elements.user_config import disable_pi_agent
-from sculptor.testing.elements.user_config import enable_pi_agent
+from sculptor.testing.elements.terminal import expect_agent_terminal_panel_visible
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
@@ -21,70 +19,30 @@ from sculptor.testing.user_stories import user_story
 def test_agent_type_menu_creates_terminal_agent_and_remembers_type(
     sculptor_instance_: SculptorInstance,
 ) -> None:
-    """Plain `+` keeps one-click Claude creation; the menu creates Terminal
-    agents and updates the last-used type for subsequent plain clicks."""
+    """The chevron menu creates plain Terminal agents and updates the last-used
+    type so a subsequent plain `+` click creates the same type."""
     page = sculptor_instance_.page
     task_page = PlaywrightTaskPage(page=page)
     agent_tab_bar = task_page.get_agent_tab_bar()
 
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Agent Type WS")
+    # The first agent is a plain terminal ("Terminal 1"), created by the helper.
+    start_task_and_wait_for_ready(page, workspace_name="Agent Type WS")
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(1)
+    expect(agent_tab_bar.get_agent_tab_by_name("Terminal 1")).to_have_count(1)
 
-    # Plain + click creates a Claude agent (initial last-used type): the new
-    # tab is "Claude 2" and the chat panel is present.
-    agent_tab_bar.get_add_agent_button().click()
-    expect(agent_tabs).to_have_count(2)
-    expect(agent_tab_bar.get_agent_tab_by_name("Claude 2")).to_have_count(1)
-    expect(task_page.get_chat_panel()).to_be_visible()
-
-    # Chevron menu → Terminal creates "Terminal 1" (numbered independently
-    # from "Claude N") whose main panel is a terminal, not a chat.
+    # Chevron menu → Terminal creates "Terminal 2" whose main panel is a terminal.
     agent_tab_bar.open_agent_type_menu()
     agent_tab_bar.get_agent_type_menu_item_terminal().click()
-    expect(agent_tabs).to_have_count(3)
-    expect(agent_tab_bar.get_agent_tab_by_name("Terminal 1")).to_have_count(1)
-    expect_terminal_panel_replaces_chat(page)
+    expect(agent_tabs).to_have_count(2)
+    expect(agent_tab_bar.get_agent_tab_by_name("Terminal 2")).to_have_count(1)
+    expect_agent_terminal_panel_visible(page)
 
     # Last-used type persisted: a plain + click now creates another Terminal.
     agent_tab_bar.get_add_agent_button().click()
-    expect(agent_tabs).to_have_count(4)
-    expect(agent_tab_bar.get_agent_tab_by_name("Terminal 2")).to_have_count(1)
-
-    # Choosing Claude from the menu restores it as the last-used type (and
-    # keeps the shared instance's default for subsequent tests).
-    agent_tab_bar.open_agent_type_menu()
-    agent_tab_bar.get_agent_type_menu_item_claude().click()
-    expect(agent_tabs).to_have_count(5)
-    expect(agent_tab_bar.get_agent_tab_by_name("Claude 3")).to_have_count(1)
-
-
-@user_story("to only see the pi agent type when pi-agent is enabled")
-def test_agent_type_menu_gates_pi_behind_pi_agent_flag(
-    sculptor_instance_: SculptorInstance,
-) -> None:
-    page = sculptor_instance_.page
-    task_page = PlaywrightTaskPage(page=page)
-    agent_tab_bar = task_page.get_agent_tab_bar()
-
-    # The flag is sticky on the shared instance — reset it defensively.
-    disable_pi_agent(page)
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Pi Gating WS")
-
-    menu = agent_tab_bar.open_agent_type_menu()
-    expect(agent_tab_bar.get_agent_type_menu_item_claude()).to_be_visible()
-    expect(agent_tab_bar.get_agent_type_menu_item_terminal()).to_be_visible()
-    expect(agent_tab_bar.get_agent_type_menu_item_pi()).to_have_count(0)
-    page.keyboard.press("Escape")
-    expect(menu).not_to_be_visible()
-
-    try:
-        enable_pi_agent(page)
-        agent_tab_bar.open_agent_type_menu()
-        expect(agent_tab_bar.get_agent_type_menu_item_pi()).to_be_visible()
-        page.keyboard.press("Escape")
-    finally:
-        disable_pi_agent(page)
+    expect(agent_tabs).to_have_count(3)
+    expect(agent_tab_bar.get_agent_tab_by_name("Terminal 3")).to_have_count(1)
+    expect_agent_terminal_panel_visible(page)
 
 
 @user_story("to see registered terminal agents in the type menu without restarting")
@@ -98,7 +56,7 @@ def test_registered_terminal_agent_appears_in_menu_and_creates(
     task_page = PlaywrightTaskPage(page=page)
     agent_tab_bar = task_page.get_agent_tab_bar()
 
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Registered Agent WS")
+    start_task_and_wait_for_ready(page, workspace_name="Registered Agent WS")
 
     # The registration does not exist yet — the menu shows no registered entry.
     agent_tab_bar.open_agent_type_menu()
@@ -121,7 +79,7 @@ def test_registered_terminal_agent_appears_in_menu_and_creates(
 
         # Created agent is named from display_name and shows a terminal panel.
         expect(agent_tab_bar.get_agent_tab_by_name("Fake Reg 1")).to_have_count(1)
-        expect_terminal_panel_replaces_chat(page)
+        expect_agent_terminal_panel_visible(page)
     finally:
         (registrations_dir / "fake-reg.toml").unlink(missing_ok=True)
 
@@ -137,7 +95,7 @@ def test_bundled_claude_code_registration_installed_by_default(
     task_page = PlaywrightTaskPage(page=page)
     agent_tab_bar = task_page.get_agent_tab_bar()
 
-    start_task_and_wait_for_ready(page, prompt="Say hello", workspace_name="Bundled Claude WS")
+    start_task_and_wait_for_ready(page, workspace_name="Bundled Claude WS")
 
     registrations_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
     assert (registrations_dir / "claude-code.toml").is_file()

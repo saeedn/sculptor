@@ -35,7 +35,7 @@ export const GlobalDefaultsSection = ({ onSettingChange }: GlobalDefaultsSection
     <Fragment>
       <SettingRow
         title="Default branch-naming pattern"
-        description="Used by clone and worktree workspace creation. Supports <user> and <slug> placeholders. Per-repo overrides on Repositories."
+        description="Used by workspace creation. Supports <user> and <slug> placeholders. Per-repo overrides on Repositories."
       >
         {/* Uncontrolled: `key` re-mounts the input when the saved pattern changes,
             so we never copy the prop into local state. */}

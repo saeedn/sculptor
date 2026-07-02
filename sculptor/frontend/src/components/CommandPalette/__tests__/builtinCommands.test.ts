@@ -1,9 +1,7 @@
 import { getDefaultStore } from "jotai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { DEFAULT_THEME_BUILDER_SETTINGS, themeBuilderSettingsAtom } from "../../../common/state/atoms/themeBuilder.ts";
-import { chatToolDensityAtom } from "../../../pages/workspace/components/chat-alpha/atoms.ts";
-import { buildChatCommands } from "../builtinCommands/chat.ts";
+import { DEFAULT_THEME_SETTINGS, themeSettingsAtom } from "../../../common/state/atoms/theme.ts";
 import { buildHelpCommands } from "../builtinCommands/help.ts";
 import { buildNavigationCommands } from "../builtinCommands/navigation.ts";
 import { buildPanelCommands } from "../builtinCommands/panels.ts";
@@ -18,9 +16,7 @@ const ROOT_CTX: PaletteContext = {
   route: { isHome: true, isWorkspace: false, isSettings: false, isAddWorkspace: false, isAgent: false },
   activeWorkspaceId: null,
   activeAgentId: null,
-  hasChatPanel: false,
   hasTerminalPanel: false,
-  isZenMode: false,
   page: null,
 };
 
@@ -39,18 +35,12 @@ const ADD_WORKSPACE_CTX: PaletteContext = {
   route: { isHome: false, isWorkspace: false, isSettings: false, isAddWorkspace: true, isAgent: false },
 };
 
-const WORKSPACE_WITH_CHAT_CTX: PaletteContext = {
-  ...WORKSPACE_CTX,
-  hasChatPanel: true,
-};
-
 const WORKSPACE_WITH_TERMINAL_CTX: PaletteContext = {
   ...WORKSPACE_CTX,
   hasTerminalPanel: true,
 };
 
 const makeRuntime = (overrides: Partial<CommandRuntime> = {}): CommandRuntime => {
-  const noop = (): void => {};
   const base: CommandRuntime = {
     store: getDefaultStore(),
     navigate: {
@@ -62,27 +52,16 @@ const makeRuntime = (overrides: Partial<CommandRuntime> = {}): CommandRuntime =>
     },
     ui: {
       toggleHelpDialog: vi.fn(),
-      toggleDevPanel: vi.fn(),
-      toggleZenMode: vi.fn(),
-      toggleFocusMode: vi.fn(),
-      toggleLeftPanel: vi.fn(),
-      toggleBottomPanel: vi.fn(),
-      toggleRightPanel: vi.fn(),
       togglePanel: vi.fn(),
       setTheme: vi.fn(),
-      focusChatInput: vi.fn(),
-      showChatSearch: vi.fn(),
-      jumpChatToBottom: vi.fn(),
       nextWorkspaceTab: vi.fn(),
       previousWorkspaceTab: vi.fn(),
       nextAgent: vi.fn(),
       previousAgent: vi.fn(),
       createAgent: vi.fn(),
-      openReportProblem: vi.fn(),
       clearActiveTerminal: vi.fn(),
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },
-    electron: { isAvailable: false, reloadWindow: noop },
   };
   return { ...base, ...overrides } as CommandRuntime;
 };
@@ -93,7 +72,7 @@ const runPerform = (cmd: Command, ctx: PaletteContext = ROOT_CTX): void => {
 
 beforeEach(() => {
   // Reset the theme atom to a known state so tests don't bleed into each other.
-  getDefaultStore().set(themeBuilderSettingsAtom, { ...DEFAULT_THEME_BUILDER_SETTINGS });
+  getDefaultStore().set(themeSettingsAtom, { ...DEFAULT_THEME_SETTINGS });
 });
 
 afterEach(() => {
@@ -315,41 +294,27 @@ describe("buildSettingsCommands", () => {
 
 describe("buildPanelCommands", () => {
   it("emits exactly the expected command ids", () => {
-    const cmds = buildPanelCommands(makeRuntime());
-    expect(cmds.map((c) => c.id).sort()).toEqual(
-      [
-        "view.toggle_layout",
-        "view.toggle_panels",
-        "view.toggle_left_panel",
-        "view.toggle_right_panel",
-        "view.toggle_bottom_panel",
-        "view.focus_mode",
-        "view.zen_mode",
-      ].sort(),
-    );
+    const cmds = buildPanelCommands();
+    expect(cmds.map((c) => c.id).sort()).toEqual(["view.toggle_panels"].sort());
   });
 
-  it("the two root entry-points push the layout / panels sub-pages", () => {
-    const cmds = buildPanelCommands(makeRuntime());
-    const layoutOpener = cmds.find((c) => c.id === "view.toggle_layout")!;
+  it("the panels entry-point pushes the panels sub-page", () => {
+    const cmds = buildPanelCommands();
     const panelsOpener = cmds.find((c) => c.id === "view.toggle_panels")!;
-    expect(layoutOpener.pageId).toBe("view.layout");
-    expect(layoutOpener.onPage).toBeUndefined();
-    expect(layoutOpener.primary).toBe(true);
     expect(panelsOpener.pageId).toBe("view.panels");
     expect(panelsOpener.onPage).toBeUndefined();
     expect(panelsOpener.primary).toBe(true);
   });
 
   it("the panels page-opener title matches what users search for", () => {
-    const cmds = buildPanelCommands(makeRuntime());
+    const cmds = buildPanelCommands();
     const panelsOpener = cmds.find((c) => c.id === "view.toggle_panels")!;
     expect(panelsOpener.title).toBe("Toggle panel visibility...");
   });
 
   it('does NOT use the word "plugin" in any user-visible string', () => {
     // Coworker feedback: "plugin" is jargon coworkers don't recognise.
-    const cmds = buildPanelCommands(makeRuntime());
+    const cmds = buildPanelCommands();
     for (const cmd of cmds) {
       expect(cmd.title.toLowerCase()).not.toContain("plugin");
       expect((cmd.subtitle ?? "").toLowerCase()).not.toContain("plugin");
@@ -359,22 +324,8 @@ describe("buildPanelCommands", () => {
     }
   });
 
-  it("zone toggles + Focus/Zen modes are scoped to the view.layout sub-page", () => {
-    const cmds = buildPanelCommands(makeRuntime());
-    for (const id of [
-      "view.toggle_left_panel",
-      "view.toggle_right_panel",
-      "view.toggle_bottom_panel",
-      "view.focus_mode",
-      "view.zen_mode",
-    ]) {
-      const cmd = cmds.find((c) => c.id === id)!;
-      expect(cmd.onPage).toBe("view.layout");
-    }
-  });
-
   it("all when predicates require route.isWorkspace", () => {
-    const cmds = buildPanelCommands(makeRuntime());
+    const cmds = buildPanelCommands();
     for (const cmd of cmds) {
       expect(cmd.when).toBeDefined();
       expect(cmd.when!(WORKSPACE_CTX)).toBe(true);
@@ -382,31 +333,6 @@ describe("buildPanelCommands", () => {
       expect(cmd.when!(SETTINGS_CTX)).toBe(false);
       expect(cmd.when!(ADD_WORKSPACE_CTX)).toBe(false);
     }
-  });
-
-  it("the three zone-toggle commands have keepOpen: true; focus_mode and zen_mode do not", () => {
-    const cmds = buildPanelCommands(makeRuntime());
-    const byId = (id: string): Command => cmds.find((c) => c.id === id)!;
-    expect(byId("view.toggle_left_panel").keepOpen).toBe(true);
-    expect(byId("view.toggle_right_panel").keepOpen).toBe(true);
-    expect(byId("view.toggle_bottom_panel").keepOpen).toBe(true);
-    expect(byId("view.focus_mode").keepOpen).not.toBe(true);
-    expect(byId("view.zen_mode").keepOpen).not.toBe(true);
-  });
-
-  it("perform delegates to the matching runtime.ui method", () => {
-    const runtime = makeRuntime();
-    const cmds = buildPanelCommands(runtime);
-    runPerform(cmds.find((c) => c.id === "view.toggle_left_panel")!);
-    runPerform(cmds.find((c) => c.id === "view.toggle_right_panel")!);
-    runPerform(cmds.find((c) => c.id === "view.toggle_bottom_panel")!);
-    runPerform(cmds.find((c) => c.id === "view.focus_mode")!);
-    runPerform(cmds.find((c) => c.id === "view.zen_mode")!);
-    expect(runtime.ui.toggleLeftPanel).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.toggleRightPanel).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.toggleBottomPanel).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.toggleFocusMode).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.toggleZenMode).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -446,7 +372,7 @@ describe("buildThemeCommands", () => {
   });
 
   it("theme.toggle flips light -> dark when the current appearance is light", () => {
-    getDefaultStore().set(themeBuilderSettingsAtom, (prev) => ({ ...prev, appearance: "light" }));
+    getDefaultStore().set(themeSettingsAtom, (prev) => ({ ...prev, appearance: "light" }));
     const runtime = makeRuntime();
     const cmd = buildThemeCommands(runtime).find((c) => c.id === "theme.toggle")!;
     runPerform(cmd);
@@ -454,7 +380,7 @@ describe("buildThemeCommands", () => {
   });
 
   it("theme.toggle flips dark -> light when the current appearance is dark", () => {
-    getDefaultStore().set(themeBuilderSettingsAtom, (prev) => ({ ...prev, appearance: "dark" }));
+    getDefaultStore().set(themeSettingsAtom, (prev) => ({ ...prev, appearance: "dark" }));
     const runtime = makeRuntime();
     const cmd = buildThemeCommands(runtime).find((c) => c.id === "theme.toggle")!;
     runPerform(cmd);
@@ -470,97 +396,6 @@ describe("buildThemeCommands", () => {
     expect(runtime.ui.setTheme).toHaveBeenLastCalledWith("dark");
     runPerform(cmds.find((c) => c.id === "theme.appearance.system")!);
     expect(runtime.ui.setTheme).toHaveBeenLastCalledWith("system");
-  });
-});
-
-describe("buildChatCommands", () => {
-  it("emits exactly the expected command ids", () => {
-    const cmds = buildChatCommands(makeRuntime());
-    expect(cmds.map((c) => c.id).sort()).toEqual(
-      ["chat.focus_input", "chat.search", "chat.jump_bottom", "chat.toggle_tool_density"].sort(),
-    );
-  });
-
-  it("chat.focus_input.when requires hasChatPanel (not surfaced on AddWorkspace, see review M10)", () => {
-    // Title says "Focus chat input" — must not surface anywhere a chat
-    // input doesn't exist. The `focus_input` keybinding handler in
-    // usePageLayoutKeyboardShortcuts handles AddWorkspace's name input
-    // separately (and as a keyboard-only fallback).
-    const cmd = buildChatCommands(makeRuntime()).find((c) => c.id === "chat.focus_input")!;
-    expect(cmd.when!(ROOT_CTX)).toBe(false);
-    expect(cmd.when!(WORKSPACE_CTX)).toBe(false);
-    expect(cmd.when!(WORKSPACE_WITH_CHAT_CTX)).toBe(true);
-    expect(cmd.when!(ADD_WORKSPACE_CTX)).toBe(false);
-  });
-
-  it("chat.search and chat.jump_bottom both require hasChatPanel", () => {
-    const cmds = buildChatCommands(makeRuntime());
-    for (const id of ["chat.search", "chat.jump_bottom"]) {
-      const cmd = cmds.find((c) => c.id === id)!;
-      expect(cmd.when).toBeDefined();
-      expect(cmd.when!(WORKSPACE_WITH_CHAT_CTX)).toBe(true);
-      expect(cmd.when!(WORKSPACE_CTX)).toBe(false);
-      expect(cmd.when!(ADD_WORKSPACE_CTX)).toBe(false);
-      expect(cmd.when!(ROOT_CTX)).toBe(false);
-    }
-  });
-
-  it("perform delegates to the matching runtime.ui method", () => {
-    const runtime = makeRuntime();
-    const cmds = buildChatCommands(runtime);
-    runPerform(cmds.find((c) => c.id === "chat.focus_input")!);
-    runPerform(cmds.find((c) => c.id === "chat.search")!);
-    runPerform(cmds.find((c) => c.id === "chat.jump_bottom")!);
-    expect(runtime.ui.focusChatInput).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.showChatSearch).toHaveBeenCalledTimes(1);
-    expect(runtime.ui.jumpChatToBottom).toHaveBeenCalledTimes(1);
-  });
-
-  describe("chat.toggle_tool_density", () => {
-    afterEach(() => {
-      // Reset to default so a flipped value doesn't leak into other tests.
-      getDefaultStore().set(chatToolDensityAtom, "default");
-    });
-
-    it("requires hasChatPanel", () => {
-      const cmd = buildChatCommands(makeRuntime()).find((c) => c.id === "chat.toggle_tool_density")!;
-      expect(cmd.when!(WORKSPACE_WITH_CHAT_CTX)).toBe(true);
-      expect(cmd.when!(WORKSPACE_CTX)).toBe(false);
-      expect(cmd.when!(ROOT_CTX)).toBe(false);
-    });
-
-    it("declares the matching keybinding shortcut id", () => {
-      const cmd = buildChatCommands(makeRuntime()).find((c) => c.id === "chat.toggle_tool_density")!;
-      expect(cmd.shortcut).toBe("toggle_tool_density");
-    });
-
-    it("closes the palette after running (the user sees the new density immediately)", () => {
-      const cmd = buildChatCommands(makeRuntime()).find((c) => c.id === "chat.toggle_tool_density")!;
-      expect(cmd.keepOpen).not.toBe(true);
-    });
-
-    it("perform flips default -> expanded -> default", () => {
-      const runtime = makeRuntime();
-      const cmd = buildChatCommands(runtime).find((c) => c.id === "chat.toggle_tool_density")!;
-
-      runtime.store.set(chatToolDensityAtom, "default");
-      runPerform(cmd);
-      expect(runtime.store.get(chatToolDensityAtom)).toBe("expanded");
-
-      runPerform(cmd);
-      expect(runtime.store.get(chatToolDensityAtom)).toBe("default");
-    });
-
-    it("getTitle reflects the current density", () => {
-      const runtime = makeRuntime();
-      const cmd = buildChatCommands(runtime).find((c) => c.id === "chat.toggle_tool_density")!;
-
-      runtime.store.set(chatToolDensityAtom, "default");
-      expect(cmd.getTitle!(WORKSPACE_WITH_CHAT_CTX)).toBe("Expand tool calls");
-
-      runtime.store.set(chatToolDensityAtom, "expanded");
-      expect(cmd.getTitle!(WORKSPACE_WITH_CHAT_CTX)).toBe("Compact tool calls");
-    });
   });
 });
 
@@ -583,7 +418,7 @@ describe("buildTerminalCommands", () => {
   it("terminal.clear.when requires hasTerminalPanel (not surfaced where no terminal exists)", () => {
     // The palette path clears the active terminal regardless of focus, so
     // surfacing the row anywhere without a terminal mounted would be a
-    // no-op that confuses the user. Gate is parallel to chat.* + hasChatPanel.
+    // no-op that confuses the user.
     const cmd = buildTerminalCommands(makeRuntime()).find((c) => c.id === "terminal.clear")!;
     expect(cmd.when).toBeDefined();
     expect(cmd.when!(WORKSPACE_WITH_TERMINAL_CTX)).toBe(true);
@@ -604,21 +439,7 @@ describe("buildTerminalCommands", () => {
 describe("buildHelpCommands", () => {
   it("emits exactly the expected command ids", () => {
     const cmds = buildHelpCommands(makeRuntime());
-    expect(cmds.map((c) => c.id).sort()).toEqual(["help.shortcuts", "help.report_problem"].sort());
-  });
-
-  it("help.report_problem is in the help group with no onPage and no pageId", () => {
-    const cmd = buildHelpCommands(makeRuntime()).find((c) => c.id === "help.report_problem")!;
-    expect(cmd.group).toBe("help");
-    expect(cmd.onPage).toBeUndefined();
-    expect(cmd.pageId).toBeUndefined();
-  });
-
-  it("performing help.report_problem calls runtime.ui.openReportProblem exactly once", () => {
-    const runtime = makeRuntime();
-    const cmd = buildHelpCommands(runtime).find((c) => c.id === "help.report_problem")!;
-    runPerform(cmd);
-    expect(runtime.ui.openReportProblem).toHaveBeenCalledTimes(1);
+    expect(cmds.map((c) => c.id).sort()).toEqual(["help.shortcuts"].sort());
   });
 
   it("help.shortcuts calls runtime.ui.toggleHelpDialog", () => {
@@ -649,9 +470,8 @@ describe("invariants", () => {
       ...buildNavigationCommands(runtime),
       ...buildWorkspaceActionCommands(runtime),
       ...buildSettingsCommands(runtime),
-      ...buildPanelCommands(runtime),
+      ...buildPanelCommands(),
       ...buildThemeCommands(runtime),
-      ...buildChatCommands(runtime),
       ...buildTerminalCommands(runtime),
       ...buildHelpCommands(runtime),
     ];

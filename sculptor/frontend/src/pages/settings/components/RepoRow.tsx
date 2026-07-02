@@ -4,7 +4,7 @@ import type { ReactElement } from "react";
 import { useRef, useState } from "react";
 
 import { DEFAULT_WORKSPACE_SETUP_COMMAND } from "~/common/setupDefaults";
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 import { useOnMountIf } from "~/common/useOnMountIf";
 
 import { ElementIds } from "../../../api";

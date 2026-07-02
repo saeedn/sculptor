@@ -2,7 +2,6 @@ import { useStore } from "jotai/react";
 import { useMemo } from "react";
 
 import type { ExternalApp, Workspace } from "../../../api";
-import { WorkspaceInitializationStrategy } from "../../../api";
 import { openPathInExternalApp } from "../../../common/openInApp/items.tsx";
 import { getBackendCapabilities } from "../../../common/state/atoms/backendCapabilities.ts";
 import { chatActionsAtom } from "../../../common/state/atoms/chatActions.ts";
@@ -21,28 +20,25 @@ import { isMac } from "../../../electron/utils.ts";
  */
 export type GitAndOpenInRuntime = {
   commitChanges: (workspace: Workspace) => void;
-  createMergeRequest: (workspace: Workspace) => void;
-  openMergeRequest: (workspace: Workspace) => void;
+  createPullRequest: (workspace: Workspace) => void;
+  openPullRequest: (workspace: Workspace) => void;
   openInApp: (workspace: Workspace, app: ExternalApp) => void;
 
   hasUncommittedChanges: (workspace: Workspace) => boolean;
   hasOpenPr: (workspace: Workspace) => boolean;
   canCreatePr: (workspace: Workspace) => boolean;
-  prTerm: (workspace: Workspace) => "merge request" | "pull request";
   canOpenInOS: () => boolean;
   isMacUi: () => boolean;
 };
 
 /**
  * Resolves the local filesystem path the workspace's "Open in..." actions
- * should target. Mirrors RepoSegment's logic: in-place workspaces use the
- * source path; cloned workspaces use the environment's `code/` subdir
- * when an environment is set, falling back to source.
+ * should target. Mirrors RepoSegment's logic: worktree workspaces use the
+ * environment's `code/` subdir when an environment is set, falling back to
+ * the source path.
  */
 const resolveOpenInPath = (workspace: Workspace, repoPath: string | null): string | null => {
   if (repoPath == null) return null;
-  const isInPlace = workspace.initializationStrategy === WorkspaceInitializationStrategy.IN_PLACE;
-  if (isInPlace) return repoPath;
   const codePath = workspace.environmentId ? `${workspace.environmentId}/code` : null;
   return codePath ?? repoPath;
 };
@@ -60,18 +56,14 @@ export const useGitAndOpenInRuntime = (): GitAndOpenInRuntime => {
         // diff visible), so this path is unreachable from the UI.
         void chatActions.sendMessage?.(prompt);
       },
-      createMergeRequest: (ws): void => {
+      createPullRequest: (ws): void => {
         const chatActions = store.get(chatActionsAtom);
         const prompt = store.get(prCreationPromptAtom);
-        const term = ((): "merge request" | "pull request" => {
-          const repoInfo = store.get(repoInfoAtomFamily(ws.projectId));
-          return repoInfo?.isGitlabOrigin ? "merge request" : "pull request";
-        })();
         const targetBranch = ws.targetBranch;
-        const message = targetBranch ? `${prompt}\n\nTarget the ${term} against \`${targetBranch}\`.` : prompt;
+        const message = targetBranch ? `${prompt}\n\nTarget the pull request against \`${targetBranch}\`.` : prompt;
         void chatActions.sendMessage?.(message);
       },
-      openMergeRequest: (ws): void => {
+      openPullRequest: (ws): void => {
         const prStatus = store.get(prStatusAtomFamily(ws.objectId));
         const url = prStatus?.prWebUrl;
         if (url) window.open(url, "_blank");
@@ -107,12 +99,8 @@ export const useGitAndOpenInRuntime = (): GitAndOpenInRuntime => {
       canCreatePr: (ws): boolean => {
         const prStatus = store.get(prStatusAtomFamily(ws.objectId));
         // Allow Create when there's no open PR yet — covers "none" and
-        // "merged" (you can open a follow-up MR after a previous merge).
+        // "merged" (you can open a follow-up PR after a previous merge).
         return prStatus?.prState !== "open";
-      },
-      prTerm: (ws): "merge request" | "pull request" => {
-        const repoInfo = store.get(repoInfoAtomFamily(ws.projectId));
-        return repoInfo?.isGitlabOrigin ? "merge request" : "pull request";
       },
       canOpenInOS: (): boolean => getBackendCapabilities().canOpenInOS,
       isMacUi: (): boolean => isMac(),

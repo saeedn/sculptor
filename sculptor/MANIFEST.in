@@ -1,9 +1,6 @@
 # Include everything that the wheel (a.k.a bdist) will contain
 recursive-include frontend-dist *
 
-# Include special metadata files
-recursive-include sculptor/primitives/hashes *
-
 # Exclude self-generated directories
 global-exclude build/*
 global-exclude _vendor/*

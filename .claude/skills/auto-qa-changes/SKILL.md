@@ -76,40 +76,32 @@ done
 
 ### Step 3: Dismiss onboarding (if visible)
 
-A fresh Sculptor instance shows an onboarding modal that blocks the home
-page. Take a screenshot first — if you see the onboarding modal, dismiss it:
+A fresh Sculptor instance shows a one-screen onboarding PATH check (it
+verifies `claude` and `git` are on PATH), followed by an add-repo step when
+no repository is registered yet. Take a screenshot first — if you see the
+PATH-check screen, click through it:
 
 ```bash
-# Check if onboarding is visible
+# Check if the onboarding PATH-check step is visible
 RESULT=$(curl -s -X POST http://127.0.0.1:$PORT/execute \
-  -d '{"action": "locate", "selector": "[data-testid=ONBOARDING_WELCOME_STEP]"}')
+  -d '{"action": "locate", "selector": "[data-testid=ONBOARDING_PATH_CHECK_STEP]"}')
 ELEMENTS=$(echo "$RESULT" | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('elements',[])))")
 
 if [ "$ELEMENTS" -gt 0 ]; then
-  # Click through: email input -> submit -> complete
+  # Locate and click the Continue button
   curl -s -X POST http://127.0.0.1:$PORT/execute \
-    -d '{"action": "locate", "selector": "[data-testid=ONBOARDING_EMAIL_INPUT]"}'
-  # Click the email input and type a test email
-  curl -s -X POST http://127.0.0.1:$PORT/execute \
-    -d '{"action": "click", "x": <x>, "y": <y>}'
-  curl -s -X POST http://127.0.0.1:$PORT/execute \
-    -d '{"action": "type", "text": "test@test.com"}'
-  # Locate and click "Get Started"
-  curl -s -X POST http://127.0.0.1:$PORT/execute \
-    -d '{"action": "locate", "selector": "[data-testid=ONBOARDING_EMAIL_SUBMIT]"}'
-  curl -s -X POST http://127.0.0.1:$PORT/execute \
-    -d '{"action": "click", "x": <x>, "y": <y>}'
-  # Locate and click the final complete button
-  curl -s -X POST http://127.0.0.1:$PORT/execute \
-    -d '{"action": "locate", "selector": "[data-testid=ONBOARDING_COMPLETE_BUTTON]"}'
+    -d '{"action": "locate", "selector": "[data-testid=ONBOARDING_PATH_CHECK_CONTINUE]"}'
   curl -s -X POST http://127.0.0.1:$PORT/execute \
     -d '{"action": "click", "x": <x>, "y": <y>}'
   echo "Onboarding dismissed"
 fi
 ```
 
-Replace `<x>` and `<y>` with coordinates from each `locate` response.
-If no onboarding modal appears, skip this step.
+Replace `<x>` and `<y>` with coordinates from the `locate` response.
+The manual test server registers a test repository for you, so the add-repo
+step (`ONBOARDING_ADD_REPO_STEP`) normally does not appear; if it does,
+locate `ADD_REPO_PATH_INPUT`, click it, type the repo path, and press Enter.
+If no onboarding screen appears, skip this step.
 
 ### Step 4: Interact with the browser
 
@@ -268,7 +260,7 @@ By CSS selector:
 
 ```bash
 curl -s -X POST http://127.0.0.1:$PORT/execute \
-  -d '{"action": "locate", "selector": "[data-testid=SEND_BUTTON]"}'
+  -d '{"action": "locate", "selector": "[data-testid=START_TASK_BUTTON]"}'
 ```
 
 By visible text:
@@ -301,14 +293,14 @@ curl -s -X POST http://127.0.0.1:$PORT/execute \
 
 ```bash
 curl -s -X POST http://127.0.0.1:$PORT/execute \
-  -d '{"action": "wait", "id": "CHAT_PANEL", "timeout": 15000}'
+  -d '{"action": "wait", "id": "AGENT_TERMINAL_PANEL", "timeout": 15000}'
 ```
 
 ### Wait for an element to disappear
 
 ```bash
 curl -s -X POST http://127.0.0.1:$PORT/execute \
-  -d '{"action": "wait_for_hidden", "id": "THINKING_INDICATOR", "timeout": 30000}'
+  -d '{"action": "wait_for_hidden", "id": "TERMINAL_STARTING_TEXT", "timeout": 30000}'
 ```
 
 ### Get page status
@@ -319,38 +311,31 @@ curl -s http://127.0.0.1:$PORT/status
 
 ## Waiting for the agent to finish
 
-After submitting a prompt, the agent may take seconds to minutes to complete.
-**Do NOT guess when it's done.** Use `wait_for_hidden` with the
-`THINKING_INDICATOR` test ID:
-
-```bash
-# Wait up to 6 minutes for the agent to finish
-curl -s -X POST http://127.0.0.1:$PORT/execute \
-  -d '{"action": "wait_for_hidden", "id": "THINKING_INDICATOR", "timeout": 360000}'
-```
-
-If you need to poll with progress updates instead of a single blocking call:
+Agents are terminal agents — they render as a terminal, and their busy/idle
+state shows as the **status dot** on the agent tab, exposed as a
+`data-dot-status` attribute on the `AGENT_TAB` element (`running` while the
+agent is busy; `read`/`unread` when it has settled). After sending the agent
+work, **do NOT guess when it's done.** Poll `locate` for a tab whose dot is
+still `running` and wait until there are none:
 
 ```bash
 for i in $(seq 1 120); do
-  RESULT=$(curl -s -X POST http://127.0.0.1:$PORT/execute \
-    -d '{"action": "wait_for_hidden", "id": "THINKING_INDICATOR", "timeout": 3000}' \
-    | python3 -c "import json,sys; print(json.load(sys.stdin).get('success','false'))")
-  if [ "$RESULT" = "True" ] || [ "$RESULT" = "true" ]; then
+  COUNT=$(curl -s -X POST http://127.0.0.1:$PORT/execute \
+    -d '{"action": "locate", "selector": "[data-testid=AGENT_TAB][data-dot-status=running]"}' \
+    | python3 -c "import json,sys; print(len(json.load(sys.stdin).get('elements',[])))")
+  if [ "$COUNT" = "0" ]; then
     echo "Agent finished!"
     break
   fi
-  echo "Still thinking... ($i)"
+  echo "Still running... ($i)"
+  sleep 3
 done
 ```
 
-**Agent state test IDs** (useful for `wait` and `wait_for_hidden`):
-
-| Test ID | When visible |
-|---------|-------------|
-| `THINKING_INDICATOR` | Agent is running (thinking, streaming, or calling tools) |
-| `STOP_BUTTON` | Agent is running (click to interrupt) |
-| `STATUS_PILL_LABEL` | Shows current state text: "Thinking...", "Streaming...", "Calling tools...", or "" when idle |
+You can also read the terminal output directly from the screenshot — the
+agent's terminal panel (`AGENT_TERMINAL_PANEL`) shows exactly what the CLI
+printed, so a shell prompt at the bottom is visual confirmation the agent is
+idle.
 
 ## Testing Workflow
 
@@ -530,13 +515,13 @@ management"):
 <img src="/path/to/screenshots/0003_click_72_52.png" alt="Workspace creation form">
 
 **Step 2: Workspace creation form**
-The "Create new workspace" form is showing. I can see:
-- Workspace name input (placeholder: "Untitled workspace (optional)...")
-- Prompt input area (placeholder: "Enter a prompt (optional)...")
+The "Name your workspace" form is showing. I can see:
+- Workspace name input
 - Repo selector showing "manual_test_repo"
-- Branch selector showing "testing"
-- Model dropdown showing "Opus"
-- Blue submit arrow button at bottom right
+- Source-branch selector showing "testing"
+- Branch-name input with a live preview of the worktree branch
+- First-agent type selector (Claude CLI / Terminal)
+- Submit button at bottom right
 
 Form layout looks correct. All controls are visible and properly spaced.
 
@@ -587,31 +572,25 @@ Use `locate` to find coordinates, then `click` to interact:
 
 | Test ID | Element |
 |---------|---------|
-| `TASK_BUTTON` | Task item in the sidebar |
-| `TASK_INPUT` | New task prompt input on home page |
-| `START_TASK_BUTTON` | Create task button |
-| `WORKSPACE_NAME_INPUT` | Workspace name input field |
-| `CHAT_INPUT` | Message input in chat |
-| `SEND_BUTTON` | Send message button |
-| `CHAT_PANEL` | The chat message area |
+| `WORKSPACE_NAME_INPUT` | Workspace name input on the add-workspace form |
+| `ADD_WORKSPACE_AGENT_TYPE_SELECT` | First-agent type selector on the add-workspace form |
+| `START_TASK_BUTTON` | Create-workspace submit button |
 | `ADD_WORKSPACE_BUTTON` | "+" button to create new workspace |
 | `WORKSPACE_TAB` | Workspace tab in tab bar |
 | `WORKSPACE_ROW` | Workspace row in home list |
-| `MODEL_SELECTOR` | Model dropdown selector |
 | `HOME_BUTTON` | Home navigation button |
-| `SETTINGS_SIDEBAR` | Settings page sidebar |
-| `COMPACTION_BAR` | Context remaining bar at bottom |
-| `COMPACTION_PANEL` | The popover from the context bar |
-| `CLEAR_CONTEXT_BUTTON` | Clear Context button in popover |
-| `CONTEXT_SUMMARY` | Collapsed context summary message |
-| `CONTEXT_SUMMARY_HEADER` | Clickable header to expand summary |
-| `ONBOARDING_WELCOME_STEP` | Onboarding modal (if visible) |
-| `ONBOARDING_EMAIL_INPUT` | Email field in onboarding |
-| `ONBOARDING_EMAIL_SUBMIT` | "Get Started" button |
-| `ONBOARDING_COMPLETE_BUTTON` | Final onboarding button |
-| `THINKING_INDICATOR` | Pulsing dot + "Thinking..." (visible while agent runs) |
-| `STOP_BUTTON` | Stop button (visible while agent runs) |
-| `STATUS_PILL_LABEL` | Agent state label (alpha view): "Thinking...", "Streaming...", "" |
+| `AGENT_TAB` | Agent tab within a workspace (carries `data-dot-status`) |
+| `AGENT_TERMINAL_PANEL` | The agent's terminal panel |
+| `ADD_AGENT_BUTTON` | "+" button in the agent tab bar |
+| `TERMINAL_TAB` | Workspace terminal tab (your own shell) |
+| `ADD_TERMINAL_BUTTON` | "+" button in the workspace terminal tab bar |
+| `TERMINAL_STARTING_TEXT` | "Starting terminal..." placeholder while a terminal boots |
+| `SETTINGS_PAGE` | Settings page container |
+| `SETTINGS_NAV_GENERAL` | Settings sidebar: General section |
+| `WORKSPACE_BANNER` | Workspace header banner (repo, branch, diff summary) |
+| `ONBOARDING_PATH_CHECK_STEP` | Onboarding PATH-check screen (if visible) |
+| `ONBOARDING_PATH_CHECK_CONTINUE` | Onboarding Continue button |
+| `FILE_BROWSER_TREE_ROW` | Row in the file browser / changes tree |
 
 Full list of test IDs is in `sculptor/sculptor/constants.py` (the `ElementIDs` enum).
 
@@ -624,11 +603,11 @@ By default the server creates a small test git repository. Pass
 
 ## Gotchas
 
-- **Use real Claude, not Fake Claude**: The manual test server passes through
-  your local API keys, so real Claude models work out of the box. Use whatever
-  model is selected by default (typically Claude Opus). Do NOT switch to
-  "Fake Claude" — the whole point of manual testing is to exercise the real
-  end-to-end flow that integration tests cannot cover.
+- **Agents run the real `claude` CLI**: agents are terminal agents — the
+  default "Claude CLI" registration launches your locally installed `claude`
+  binary with your local credentials, so real Claude works out of the box.
+  The whole point of manual testing is to exercise the real end-to-end flow
+  that the integration tests' fake terminal agent cannot cover.
 
 - **Wait for server readiness**: The backend takes ~20-30 seconds to start.
   Always poll `/status` before sending commands.

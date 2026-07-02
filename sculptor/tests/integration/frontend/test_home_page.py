@@ -10,6 +10,9 @@ Tests verify:
 
 from playwright.sync_api import expect
 
+from sculptor.testing.fake_terminal_agent import bash
+from sculptor.testing.fake_terminal_agent import send_fake_agent_command_and_wait
+from sculptor.testing.fake_terminal_agent import start_fake_terminal_agent
 from sculptor.testing.pages.home_page import PlaywrightHomePage
 from sculptor.testing.pages.task_page import PlaywrightTaskPage
 from sculptor.testing.playwright_utils import navigate_to_home_page
@@ -28,7 +31,6 @@ def test_recent_workspaces_shown_on_home_page(
 
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Build the feature",
         workspace_name="My Feature Workspace",
     )
 
@@ -67,13 +69,11 @@ def test_workspace_search_filters_list(
     # Create two workspaces with distinct names
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Fix auth bug",
         workspace_name="Auth Bug Fix",
     )
 
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Add dark mode",
         workspace_name="Dark Mode Feature",
     )
 
@@ -103,7 +103,6 @@ def test_clicking_workspace_row_navigates_to_workspace(
 
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Build feature",
         workspace_name="Navigation Test",
     )
 
@@ -117,7 +116,7 @@ def test_clicking_workspace_row_navigates_to_workspace(
 
     # Should navigate to the workspace — verify by checking the chat panel appears
     task_page = PlaywrightTaskPage(page)
-    expect(task_page.get_chat_panel()).to_be_visible()
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
 @user_story("to navigate to a workspace by clicking it in the recent workspaces list")
@@ -140,14 +139,12 @@ def test_clicking_recent_workspace_after_reload_navigates_without_spinner(
     # Step 1: Create workspace A.
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Task for workspace A",
         workspace_name="Workspace Alpha",
     )
 
     # Step 2: Create workspace B (navigates away from A).
     start_task_and_wait_for_ready(
         sculptor_page=page,
-        prompt="Task for workspace B",
         workspace_name="Workspace Beta",
     )
 
@@ -157,7 +154,7 @@ def test_clicking_recent_workspace_after_reload_navigates_without_spinner(
     # Step 4: Wait for the app to finish loading after reload.
     # The root loader redirects to the MRU workspace, so the chat panel should appear.
     task_page = PlaywrightTaskPage(page)
-    expect(task_page.get_chat_panel()).to_be_visible(timeout=30000)
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
     # Step 5: Navigate to the Home page.
     navigate_to_home_page(page)
@@ -171,7 +168,7 @@ def test_clicking_recent_workspace_after_reload_navigates_without_spinner(
     # Step 7: Verify the chat panel appears — this means the workspace loaded
     # successfully. With the bug, this would time out because an infinite
     # spinner is shown instead.
-    expect(task_page.get_chat_panel()).to_be_visible()
+    expect(task_page.get_terminal_panel()).to_be_visible(timeout=60_000)
 
 
 @user_story("to see the current branch for each workspace on the home page")
@@ -186,13 +183,12 @@ def test_workspace_row_shows_current_branch_not_source_branch(
     3. Verify the workspace row shows the new (current) branch, not the source branch
     """
     page = sculptor_instance_.page
+    agents_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
 
-    # Step 1: Create a workspace. FakeClaude checks out a new branch in the clone.
-    start_task_and_wait_for_ready(
-        sculptor_page=page,
-        prompt='fake_claude:bash `{"command": "git checkout -b feature-xyz"}`',
-        workspace_name="Branch Display Test",
-    )
+    # Step 1: Create a terminal agent, then have it check out a new branch in the
+    # worktree (the surviving equivalent of the old FakeClaude bash prompt).
+    start_fake_terminal_agent(page, agents_dir, workspace_name="Branch Display Test")
+    send_fake_agent_command_and_wait(agents_dir, bash("git checkout -b feature-xyz"))
 
     # Step 2: Navigate to the Home page.
     navigate_to_home_page(page)

@@ -1,17 +1,12 @@
-import { useSetAtom, useStore } from "jotai";
+import { useSetAtom } from "jotai";
 import { useCallback } from "react";
 
 import { openFileFromUiEventAtom } from "~/pages/workspace/components/diffPanel/atoms.ts";
-import { agentWebviewStateAtomFamily } from "~/pages/workspace/panels/browser/atoms.ts";
 
 import type { StreamingUpdate } from "../../../api";
-import { handleBtwUpdateAtom } from "../atoms/btwPopup";
-import { dependenciesStatusAtom } from "../atoms/dependenciesStatus";
 import { notificationsAtom } from "../atoms/notifications";
 import { updateProjectsAtom } from "../atoms/projects";
 import { updatePrStatusAtom } from "../atoms/prStatus";
-import { sculptorSettingsAtom } from "../atoms/sculptorSettings";
-import { getEmptyTaskDetailState, updateTaskDetailAtom, updateTaskUpdatedArtifactsAtom } from "../atoms/taskDetails";
 import { updateTasksAtom } from "../atoms/tasks";
 import { updateWorkspaceBranchAtom } from "../atoms/workspaceBranch";
 import { updateWorkspacesAtom } from "../atoms/workspaces";
@@ -19,7 +14,6 @@ import { appendSetupOutputChunkAtom } from "../atoms/workspaceSetupOutput";
 import { updateWorkspaceSetupStatusAtom } from "../atoms/workspaceSetupStatus";
 import { updateWorkspaceTargetBranchesAtom } from "../atoms/workspaceTargetBranches";
 import { acknowledgeRequests, updateActiveWebsockets } from "../requestTracking";
-import { chatMessagesReducer } from "../taskDetailReducers.ts";
 import { useWebsocket } from "./useWebsocket";
 
 const API_BASE_URL = "/api/v1";
@@ -29,7 +23,7 @@ const API_BASE_URL = "/api/v1";
  * 1. Connects to the unified WebSocket stream
  * 2. Processes task view updates (for sidebar/task list)
  * 3. Processes task detail updates for ALL tasks (even background ones)
- * 4. Processes user updates (projects, settings, repo info)
+ * 4. Processes user updates (notifications, projects, workspaces)
  * 5. Handles request tracking acknowledgments
  *
  * Task details are accumulated in global atoms so switching between tasks
@@ -40,18 +34,12 @@ export const useUnifiedStream = (): void => {
   const updateProjects = useSetAtom(updateProjectsAtom);
   const updateWorkspaces = useSetAtom(updateWorkspacesAtom);
   const setNotifications = useSetAtom(notificationsAtom);
-  const setSculptorSettings = useSetAtom(sculptorSettingsAtom);
-  const updateTaskDetail = useSetAtom(updateTaskDetailAtom);
-  const updateTaskUpdatedArtifacts = useSetAtom(updateTaskUpdatedArtifactsAtom);
   const updatePrStatus = useSetAtom(updatePrStatusAtom);
   const updateWorkspaceBranch = useSetAtom(updateWorkspaceBranchAtom);
   const updateWorkspaceTargetBranches = useSetAtom(updateWorkspaceTargetBranchesAtom);
   const updateWorkspaceSetupStatus = useSetAtom(updateWorkspaceSetupStatusAtom);
   const appendSetupOutputChunk = useSetAtom(appendSetupOutputChunkAtom);
-  const setDependenciesStatus = useSetAtom(dependenciesStatusAtom);
-  const handleBtwUpdate = useSetAtom(handleBtwUpdateAtom);
   const openFileFromUiEvent = useSetAtom(openFileFromUiEventAtom);
-  const store = useStore();
 
   const onOpen = useCallback(() => {
     updateActiveWebsockets(true);
@@ -66,48 +54,6 @@ export const useUnifiedStream = (): void => {
       // Handle task views (for task list/sidebar)
       if (data.taskViewsByTaskId) {
         updateTasks(data.taskViewsByTaskId);
-      }
-
-      // Handle task details (for chat pages)
-      //    Process ALL tasks, even if not currently viewing them
-      // NOTE: This is O(activeTasks) because we only get a task update if something happens
-      if (data.taskUpdateByTaskId && Object.keys(data.taskUpdateByTaskId).length > 0) {
-        Object.entries(data.taskUpdateByTaskId).forEach(([taskId, taskUpdate]) => {
-          updateTaskDetail({
-            taskId,
-            updater: (currentState) => {
-              const state = currentState || getEmptyTaskDetailState();
-
-              // Process incremental updates using pure reducers
-              const newChatState = chatMessagesReducer(
-                {
-                  completedChatMessages: state.completedChatMessages,
-                  inProgressChatMessage: state.inProgressChatMessage,
-                  queuedChatMessages: state.queuedChatMessages,
-                  workingUserMessageId: state.workingUserMessageId,
-                  pendingUserQuestion: state.pendingUserQuestion,
-                  submittedQuestionAnswers: state.submittedQuestionAnswers,
-                  isInPlanMode: state.isInPlanMode,
-                  pendingBackgroundTaskIds: state.pendingBackgroundTaskIds,
-                },
-                taskUpdate,
-              );
-
-              return {
-                ...state,
-                ...newChatState,
-              };
-            },
-          });
-
-          // Track which artifacts need fetching
-          if (taskUpdate.updatedArtifacts && taskUpdate.updatedArtifacts.length > 0) {
-            updateTaskUpdatedArtifacts({
-              taskId,
-              artifactTypes: taskUpdate.updatedArtifacts,
-            });
-          }
-        });
       }
 
       // Handle user update
@@ -125,10 +71,6 @@ export const useUnifiedStream = (): void => {
 
         if (userUpdate.workspaces) {
           updateWorkspaces(userUpdate.workspaces);
-        }
-
-        if (userUpdate.settings) {
-          setSculptorSettings(userUpdate.settings);
         }
       }
 
@@ -165,11 +107,6 @@ export const useUnifiedStream = (): void => {
         });
       }
 
-      // Handle dependencies status updates
-      if (data.dependenciesStatus) {
-        setDependenciesStatus(data.dependenciesStatus);
-      }
-
       // Handle PR status updates
       if (data.prStatusByWorkspaceId && Object.keys(data.prStatusByWorkspaceId).length > 0) {
         Object.entries(data.prStatusByWorkspaceId).forEach(([workspaceId, prStatus]) => {
@@ -182,16 +119,6 @@ export const useUnifiedStream = (): void => {
         acknowledgeRequests(data.finishedRequestIds);
       }
 
-      // Handle /btw side-chat streaming updates
-      if (data.btwUpdate) {
-        handleBtwUpdate({
-          requestId: data.btwUpdate.requestId,
-          state: data.btwUpdate.state,
-          answer: data.btwUpdate.answer,
-          errorMessage: data.btwUpdate.errorMessage ?? null,
-        });
-      }
-
       // Handle ui open-file events (sculpt ui open-file)
       if (data.uiOpenFileByWorkspaceId && Object.keys(data.uiOpenFileByWorkspaceId).length > 0) {
         Object.entries(data.uiOpenFileByWorkspaceId).forEach(([workspaceId, action]) => {
@@ -202,31 +129,18 @@ export const useUnifiedStream = (): void => {
           });
         });
       }
-
-      // Handle agent webview commands (sculpt ui webview-navigate / webview-refresh)
-      if (data.uiWebviewCommandByWorkspaceId && Object.keys(data.uiWebviewCommandByWorkspaceId).length > 0) {
-        Object.entries(data.uiWebviewCommandByWorkspaceId).forEach(([workspaceId, action]) => {
-          store.set(agentWebviewStateAtomFamily(workspaceId), (prev) => ({ ...prev, command: action }));
-        });
-      }
     },
     [
       updateTasks,
       updateProjects,
       updateWorkspaces,
       setNotifications,
-      setSculptorSettings,
-      updateTaskDetail,
-      updateTaskUpdatedArtifacts,
       updatePrStatus,
       updateWorkspaceBranch,
       updateWorkspaceTargetBranches,
       updateWorkspaceSetupStatus,
       appendSetupOutputChunk,
-      setDependenciesStatus,
-      handleBtwUpdate,
       openFileFromUiEvent,
-      store,
     ],
   );
 

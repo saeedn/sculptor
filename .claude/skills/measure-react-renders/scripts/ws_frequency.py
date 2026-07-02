@@ -1,13 +1,17 @@
-"""Analyze WebSocket message frequency and payload patterns during agent streaming.
+"""Analyze WebSocket message frequency and payload patterns during agent activity.
 
-Starts a fresh Sculptor backend, creates a streaming agent task, then captures
-WebSocket frames via websocket-client to measure:
+Starts a fresh Sculptor backend, creates a workspace with a terminal agent,
+then captures WebSocket frames via websocket-client to measure:
 
   - How often taskViewsByTaskId updates arrive
-  - How often taskUpdateByTaskId updates arrive (chat detail)
   - Which fields in CodingAgentTaskView actually change between updates
   - Gaps between updates (min/max/mean/p95)
   - Total message count and bytes
+
+Terminal agents are driven through their PTY rather than a message stream, so
+the traffic captured here is agent/workspace lifecycle updates (status, branch,
+setup). Use --port/--workspace-id/--task-id to measure a live instance where
+the user is actively working for a busier stream.
 
 Run with the project venv:
     uv run --project sculptor python .claude/skills/measure-react-renders/scripts/ws_frequency.py \
@@ -78,21 +82,25 @@ def start_backend(repo_dir, port, data_dir):
 
 
 def setup_instance(port):
-    """Complete onboarding and create a streaming agent task."""
-    api(port, "POST", "/config/email", {
-        "userEmail": "test@example.com", "fullName": "Test", "didOptInToMarketing": False
-    })
-    api(port, "POST", "/config/complete")
+    """Create a worktree workspace with a terminal agent. Returns (workspace_id, agent_id).
+
+    Onboarding is implied by having a project, and the backend auto-registers
+    the repo passed on its CLI during startup — so no config calls are needed.
+    Note: workspace creation makes a real `perf-ws-*` branch in the repo;
+    delete it after the run.
+    """
     projects = api(port, "GET", "/projects")
     project_id = projects[0]["objectId"]
-    # Use a prompt that generates a longer response to get more streaming data
-    task = api(port, "POST", f"/projects/{project_id}/tasks", {
-        "prompt": "Write a Python function that computes the first 20 Fibonacci numbers and returns them as a list. Include docstring and type hints.",
-        "interface": "API",
-        "model": "CLAUDE-4-SONNET",
-        "mode": "IN_PLACE",
+    branch_info = api(port, "GET", f"/projects/{project_id}/current_branch")
+    workspace = api(port, "POST", "/workspaces", {
+        "projectId": project_id,
+        "sourceBranch": branch_info["currentBranch"],
+        "requestedBranchName": f"perf-ws-{port}-{int(time.time())}",
+        "description": "WebSocket frequency measurement",
     })
-    return task["workspaceId"], task["id"]
+    workspace_id = workspace["objectId"]
+    agent = api(port, "POST", f"/workspaces/{workspace_id}/agents", {"agentType": "terminal"})
+    return workspace_id, agent["id"]
 
 
 def analyze_ws_traffic(port, workspace_id, task_id, capture_seconds=60):
@@ -189,14 +197,11 @@ def print_report(messages):
 
     # Categorize by update type
     task_view_msgs = [(ts, d) for ts, d, _ in messages if d.get("taskViewsByTaskId")]
-    task_detail_msgs = [(ts, d) for ts, d, _ in messages if d.get("taskUpdateByTaskId")]
-    other_msgs = [(ts, d) for ts, d, _ in messages
-                  if not d.get("taskViewsByTaskId") and not d.get("taskUpdateByTaskId")]
+    other_msgs = [(ts, d) for ts, d, _ in messages if not d.get("taskViewsByTaskId")]
 
     print(f"\n--- Message Types ---")
     print(f"  taskViewsByTaskId updates: {len(task_view_msgs)}")
-    print(f"  taskUpdateByTaskId updates: {len(task_detail_msgs)}")
-    print(f"  Other (user, repo, branch): {len(other_msgs)}")
+    print(f"  Other (user, branch, setup): {len(other_msgs)}")
 
     # Timing analysis for task view updates
     if len(task_view_msgs) > 1:
@@ -207,21 +212,6 @@ def print_report(messages):
         print(f"\n--- taskViewsByTaskId Update Intervals ---")
         print(f"  Count: {len(task_view_msgs)}")
         print(f"  Rate: {len(task_view_msgs)/duration_s:.2f}/sec")
-        print(f"  Min gap: {min(gaps_ms):.0f}ms")
-        print(f"  Max gap: {max(gaps_ms):.0f}ms")
-        print(f"  Mean gap: {sum(gaps_ms)/len(gaps_ms):.0f}ms")
-        print(f"  P50 gap: {sorted_gaps[n//2]:.0f}ms")
-        print(f"  P95 gap: {sorted_gaps[int(n*0.95)]:.0f}ms")
-
-    # Timing analysis for task detail updates
-    if len(task_detail_msgs) > 1:
-        gaps_ms = [task_detail_msgs[i][0] - task_detail_msgs[i-1][0]
-                   for i in range(1, len(task_detail_msgs))]
-        sorted_gaps = sorted(gaps_ms)
-        n = len(sorted_gaps)
-        print(f"\n--- taskUpdateByTaskId Update Intervals ---")
-        print(f"  Count: {len(task_detail_msgs)}")
-        print(f"  Rate: {len(task_detail_msgs)/duration_s:.2f}/sec")
         print(f"  Min gap: {min(gaps_ms):.0f}ms")
         print(f"  Max gap: {max(gaps_ms):.0f}ms")
         print(f"  Mean gap: {sum(gaps_ms)/len(gaps_ms):.0f}ms")
@@ -273,7 +263,7 @@ def print_report(messages):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Analyze WebSocket message frequency during agent streaming")
+    parser = argparse.ArgumentParser(description="Analyze WebSocket message frequency during agent activity")
     parser.add_argument("--repo-dir", default=".", help="Path to sculptor repo root")
     parser.add_argument("--capture-seconds", type=int, default=60,
                         help="Seconds to capture WebSocket traffic (default: 60)")
@@ -305,8 +295,8 @@ def main():
             sys.exit(1)
 
         ws_id, task_id = setup_instance(port)
-        print(f"Created task {task_id} in workspace {ws_id}")
-        print(f"Waiting 5s for task to start streaming...")
+        print(f"Created agent {task_id} in workspace {ws_id}")
+        print(f"Waiting 5s for the agent to start...")
         time.sleep(5)
 
         messages = analyze_ws_traffic(port, ws_id, task_id, args.capture_seconds)

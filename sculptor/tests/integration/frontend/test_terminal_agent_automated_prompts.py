@@ -5,7 +5,7 @@ echoes stdin lines. With it at its prompt, the Commit button must send the
 commit prompt through the terminal-input endpoint (visible as typed input in
 the terminal buffer); once the program signals busy the button disables.
 Plain terminals and non-opt-in registrations stay disabled (phase-1
-behavior), and chat agents in the same workspace keep sending chat messages.
+behavior).
 """
 
 import re
@@ -14,19 +14,18 @@ from playwright.sync_api import expect
 
 from sculptor.testing.elements.action_dialog import get_action_dialog
 from sculptor.testing.elements.agent_tab import PlaywrightAgentTabBarElement
-from sculptor.testing.elements.chat_panel import wait_for_completed_message_count
 from sculptor.testing.elements.terminal import get_agent_terminal_panel
 from sculptor.testing.elements.terminal import wait_for_xterm_substring
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
 
-_WRITE_FILE_PROMPT = """\
-fake_claude:write_file `{
-  "file_path": "hello.py",
-  "content": "print('hello')\\n"
-}`"""
-
+# The opt-in fake program also seeds one uncommitted change at launch (so the
+# Commit button has a non-zero change count) before it settles to its prompt:
+# write a file in the agent's cwd, emit a ``files-changed`` signal so the diff
+# refreshes, THEN print the banner / signal idle / enter the echo loop. The
+# change-count vehicle is the terminal agent itself — there is no chat agent.
+#
 # Idle at start (at its prompt), echo each received line, go busy after the
 # first one — mirroring a real TUI's prompt-submit lifecycle. The IDLE-DONE
 # marker prints only after `sculpt signal idle` returns (the POST completed):
@@ -37,7 +36,8 @@ fake_claude:write_file `{
 # before the signal lands. No quotes or backslashes: the command is embedded
 # in a TOML basic string.
 _FAKE_PROMPTS_COMMAND = (
-    "echo FAKE-PROMPTS-BANNER; sculpt signal idle; printf %sDONE IDLE-; echo; "
+    "echo seed > uncommitted_change.txt; sculpt signal files-changed; "
+    + "echo FAKE-PROMPTS-BANNER; sculpt signal idle; printf %sDONE IDLE-; echo; "
     + "while read -r _line; do echo RECEIVED:$_line; sculpt signal busy; done"
 )
 _NO_OPT_IN_COMMAND = "echo NO-OPT-IN-BANNER; sculpt signal idle; printf %sDONE NOPROMPT-; echo; read -r _line"
@@ -49,11 +49,10 @@ _NEUTRAL_DOT = re.compile(r"^(read|unread)$")
 def test_prompt_features_route_to_capable_terminal_agent(sculptor_instance_: SculptorInstance) -> None:
     page = sculptor_instance_.page
 
-    # A chat agent writes a file so the workspace has one uncommitted change —
-    # the Commit button needs a non-zero change count regardless of agent type.
-    task_page = start_task_and_wait_for_ready(page, prompt=_WRITE_FILE_PROMPT, workspace_name="Automated Prompts WS")
-    chat_panel = task_page.get_chat_panel()
-    wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=2)
+    # The opt-in fake terminal agent seeds the one uncommitted change itself at
+    # launch — the Commit button needs a non-zero change count and the change
+    # vehicle is the terminal agent, not a chat agent.
+    task_page = start_task_and_wait_for_ready(page, workspace_name="Automated Prompts WS")
 
     registrations_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
     registrations_dir.mkdir(parents=True, exist_ok=True)
@@ -109,14 +108,6 @@ def test_prompt_features_route_to_capable_terminal_agent(sculptor_instance_: Scu
         expect(terminal_tab).to_be_visible()
         expect(get_agent_terminal_panel(page)).to_be_visible()
         expect(commit_button).to_be_disabled()
-
-        # Back on the chat agent the button sends a chat message as before.
-        chat_tab = agent_tab_bar.get_agent_tab_by_name("Claude 1").first
-        expect(chat_tab).to_be_visible()
-        chat_tab.click()
-        expect(commit_button).to_be_enabled()
-        commit_button.click()
-        wait_for_completed_message_count(chat_panel=chat_panel, expected_message_count=4)
     finally:
         (registrations_dir / "fake-prompts.toml").unlink(missing_ok=True)
         (registrations_dir / "fake-noprompt.toml").unlink(missing_ok=True)
@@ -142,9 +133,7 @@ def test_non_auto_send_action_drafts_into_terminal_without_submitting(sculptor_i
     """
     page = sculptor_instance_.page
 
-    task_page = start_task_and_wait_for_ready(
-        page, prompt="Draft action terminal test", workspace_name="Draft Action WS"
-    )
+    task_page = start_task_and_wait_for_ready(page, workspace_name="Draft Action WS")
 
     registrations_dir = sculptor_instance_.sculptor_folder / "terminal_agents"
     registrations_dir.mkdir(parents=True, exist_ok=True)

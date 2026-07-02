@@ -1,30 +1,37 @@
 """Tests for LocalAgentExecutionEnvironment wrapper."""
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
-from sculptor.interfaces.environments.base import TASKS_SUBDIRECTORY
 from sculptor.primitives.ids import LocalEnvironmentID
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import TaskID
-from sculptor.services.dependency_management_service import DependencyManagementService
 from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
     LocalAgentExecutionEnvironment,
 )
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import TASKS_SUBDIRECTORY
 
 
 def _create_local_environment_from_path(path: Path, concurrency_group: ConcurrencyGroup) -> LocalEnvironment:
-    """Create a LocalEnvironment for testing."""
-    return LocalEnvironment.create(
+    """Create a LocalEnvironment for testing.
+
+    Builds the environment directly (bypassing ``LocalEnvironment.create``,
+    which runs ``git worktree add``) and creates the state/artifacts/code
+    directories these wrapper tests rely on, without needing a real git repo.
+    """
+    environment = LocalEnvironment(
         environment_id=LocalEnvironmentID(str(path)),
         project_id=ProjectID(),
         concurrency_group=concurrency_group,
         repo_host_path=path,
     )
+    environment.to_host_path(environment.get_state_path()).mkdir(parents=True, exist_ok=True)
+    environment.to_host_path(environment.get_artifacts_path()).mkdir(parents=True, exist_ok=True)
+    environment.get_working_directory().mkdir(parents=True, exist_ok=True)
+    return environment
 
 
 @pytest.fixture
@@ -39,13 +46,6 @@ def task_id() -> TaskID:
     return TaskID()
 
 
-@pytest.fixture
-def mock_dependency_management_service() -> DependencyManagementService:
-    """Create a mock DependencyManagementService for testing."""
-    mock_cg = MagicMock(spec=ConcurrencyGroup)
-    return DependencyManagementService.model_construct(concurrency_group=mock_cg)
-
-
 class TestLocalAgentExecutionEnvironmentPathNamespacing:
     """Tests for per-task path namespacing."""
 
@@ -53,10 +53,9 @@ class TestLocalAgentExecutionEnvironmentPathNamespacing:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """State path should be namespaced by task ID."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         state_path = agent_env.get_state_path()
 
         # Should be {root}/state/tasks/{task_id}/
@@ -67,10 +66,9 @@ class TestLocalAgentExecutionEnvironmentPathNamespacing:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """Artifacts path should be namespaced by task ID."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         artifacts_path = agent_env.get_artifacts_path()
 
         # Should be {root}/artifacts/tasks/{task_id}/
@@ -81,10 +79,9 @@ class TestLocalAgentExecutionEnvironmentPathNamespacing:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """Working directory should be shared (not namespaced)."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         working_dir = agent_env.get_working_directory()
 
         # Should be the same as the underlying environment's working directory
@@ -93,14 +90,13 @@ class TestLocalAgentExecutionEnvironmentPathNamespacing:
     def test_different_tasks_get_different_paths(
         self,
         local_environment: LocalEnvironment,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """Different tasks should have isolated state and artifacts paths."""
         task_id_1 = TaskID()
         task_id_2 = TaskID()
 
-        agent_env_1 = LocalAgentExecutionEnvironment(local_environment, task_id_1, mock_dependency_management_service)
-        agent_env_2 = LocalAgentExecutionEnvironment(local_environment, task_id_2, mock_dependency_management_service)
+        agent_env_1 = LocalAgentExecutionEnvironment(local_environment, task_id_1)
+        agent_env_2 = LocalAgentExecutionEnvironment(local_environment, task_id_2)
 
         # State paths should be different
         assert agent_env_1.get_state_path() != agent_env_2.get_state_path()
@@ -123,10 +119,9 @@ class TestLocalAgentExecutionEnvironmentDirectoryCreation:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """Task state directory should be created on initialization."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
 
         host_state_path = agent_env.to_host_path(agent_env.get_state_path())
         assert host_state_path.exists()
@@ -136,10 +131,9 @@ class TestLocalAgentExecutionEnvironmentDirectoryCreation:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """Task artifacts directory should be created on initialization."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
 
         host_artifacts_path = agent_env.to_host_path(agent_env.get_artifacts_path())
         assert host_artifacts_path.exists()
@@ -153,95 +147,57 @@ class TestLocalAgentExecutionEnvironmentDelegation:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """supports_terminal should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         assert agent_env.supports_terminal == local_environment.supports_terminal
 
     def test_concurrency_group_delegates(
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """concurrency_group should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         assert agent_env.concurrency_group is local_environment.concurrency_group
 
     def test_get_root_path_delegates(
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """get_root_path should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         assert agent_env.get_root_path() == local_environment.get_root_path()
-
-    def test_get_attachments_path_delegates(
-        self,
-        local_environment: LocalEnvironment,
-        task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
-    ) -> None:
-        """get_attachments_path should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
-        assert agent_env.get_attachments_path() == local_environment.get_attachments_path()
 
     def test_get_user_home_directory_delegates(
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """get_user_home_directory should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         assert agent_env.get_user_home_directory() == local_environment.get_user_home_directory()
 
     def test_to_host_path_delegates(
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """to_host_path should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         test_path = Path("/some/path")
         assert agent_env.to_host_path(test_path) == local_environment.to_host_path(test_path)
-
-    def test_to_environment_path_delegates(
-        self,
-        local_environment: LocalEnvironment,
-        task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
-    ) -> None:
-        """to_environment_path should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
-        # Use a path under the workspace path, since to_environment_path validates the path is valid
-        test_path = local_environment.get_workspace_path() / "some" / "path"
-        assert agent_env.to_environment_path(test_path) == local_environment.to_environment_path(test_path)
 
     def test_exists_delegates(
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """exists should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
         # Test with a path that doesn't exist
         assert agent_env.exists("/nonexistent/path") == local_environment.exists("/nonexistent/path")
-
-    def test_get_system_prompt_delegates(
-        self,
-        local_environment: LocalEnvironment,
-        task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
-    ) -> None:
-        """get_system_prompt should delegate to underlying environment."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
-        assert agent_env.get_system_prompt() == local_environment.get_system_prompt()
 
 
 class TestLocalAgentExecutionEnvironmentFileOperations:
@@ -251,10 +207,9 @@ class TestLocalAgentExecutionEnvironmentFileOperations:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """Should be able to write and read files in the task state directory."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
 
         file_path = str(agent_env.get_state_path() / "test_file.txt")
         content = "test content"
@@ -269,10 +224,9 @@ class TestLocalAgentExecutionEnvironmentFileOperations:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """Should be able to write and read files in the task artifacts directory."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
 
         file_path = str(agent_env.get_artifacts_path() / "artifact.json")
         content = '{"key": "value"}'
@@ -287,7 +241,6 @@ class TestLocalAgentExecutionEnvironmentFileOperations:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """delete_file_or_directory must actually remove the file from disk.
 
@@ -296,7 +249,7 @@ class TestLocalAgentExecutionEnvironmentFileOperations:
         leaving the file in place.  This broke /clear, which relies on the
         session id file being deleted to start a fresh session.
         """
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
 
         file_path = str(agent_env.get_state_path() / "session_id")
         agent_env.write_file(file_path, "some-session-id")
@@ -308,14 +261,13 @@ class TestLocalAgentExecutionEnvironmentFileOperations:
     def test_different_tasks_have_isolated_state_files(
         self,
         local_environment: LocalEnvironment,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """Files written by one task should not be visible to another task's state path."""
         task_id_1 = TaskID()
         task_id_2 = TaskID()
 
-        agent_env_1 = LocalAgentExecutionEnvironment(local_environment, task_id_1, mock_dependency_management_service)
-        agent_env_2 = LocalAgentExecutionEnvironment(local_environment, task_id_2, mock_dependency_management_service)
+        agent_env_1 = LocalAgentExecutionEnvironment(local_environment, task_id_1)
+        agent_env_2 = LocalAgentExecutionEnvironment(local_environment, task_id_2)
 
         # Write a file in task 1's state directory
         file_name = "task_specific_file.txt"
@@ -337,10 +289,9 @@ class TestLocalAgentExecutionEnvironmentProcessExecution:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """run_process_in_background should not allow sudo privileges."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
 
         # Run a simple command
         process = agent_env.run_process_in_background(["echo", "hello"], secrets={})
@@ -352,10 +303,9 @@ class TestLocalAgentExecutionEnvironmentProcessExecution:
         self,
         local_environment: LocalEnvironment,
         task_id: TaskID,
-        mock_dependency_management_service: DependencyManagementService,
     ) -> None:
         """run_process_to_completion should work correctly."""
-        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id, mock_dependency_management_service)
+        agent_env = LocalAgentExecutionEnvironment(local_environment, task_id)
 
         result = agent_env.run_process_to_completion(
             ["echo", "test output"],

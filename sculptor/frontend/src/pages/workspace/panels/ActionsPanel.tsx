@@ -9,13 +9,6 @@ import { useRef, useState } from "react";
 
 import type { CustomAction, CustomActionGroup } from "~/api";
 import { ElementIds } from "~/api";
-import {
-  BUILTIN_SCULPTOR_ACTIONS,
-  BUILTIN_SCULPTOR_GROUP,
-  isBuiltInAction,
-  isBuiltInGroup,
-  SCULPTOR_BUILTIN_GROUP_ID,
-} from "~/common/builtinActions";
 import { chatActionsAtom } from "~/common/state/atoms/chatActions";
 import { collapsedGroupsAtom } from "~/common/state/atoms/customActions";
 import { useCustomActions } from "~/common/state/hooks/useCustomActions";
@@ -63,11 +56,9 @@ const DraggableActionChip = ({
   dropPosition,
   isDragSource,
 }: DraggableActionChipProps): ReactElement => {
-  const isBuiltIn = isBuiltInAction(action.id);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: action.id,
     data: { type: "action", groupId: action.groupId ?? null },
-    disabled: isBuiltIn,
   });
 
   const wrapperClassName = [
@@ -79,24 +70,16 @@ const DraggableActionChip = ({
     .filter(Boolean)
     .join(" ");
 
-  // Built-in chips are not draggable and don't expose an edit/delete/move context menu.
-  // Omit data-action-chip so they're not considered as drop targets.
   return (
-    <div
-      ref={setNodeRef}
-      className={wrapperClassName}
-      {...(isBuiltIn ? {} : { "data-action-chip": action.id })}
-      {...(isBuiltIn ? {} : attributes)}
-      {...(isBuiltIn ? {} : listeners)}
-    >
+    <div ref={setNodeRef} className={wrapperClassName} data-action-chip={action.id} {...attributes} {...listeners}>
       <ActionChip
         action={action}
         onClick={onClick}
         disabled={disabled}
         groups={groups}
-        onEdit={isBuiltIn ? undefined : onEdit}
-        onDelete={isBuiltIn ? undefined : onDelete}
-        onMoveToGroup={isBuiltIn ? undefined : onMoveToGroup}
+        onEdit={onEdit}
+        onDelete={onDelete}
+        onMoveToGroup={onMoveToGroup}
         isAgentRunning={isAgentRunning}
         onQueueMessage={onQueueMessage}
         isDragging={isDragging || isDragSource}
@@ -136,11 +119,9 @@ const DraggableGroupHeader = ({
   dropPosition,
   isDragSource,
 }: DraggableGroupHeaderProps): ReactElement => {
-  const isBuiltIn = isBuiltInGroup(group.id);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `group:${group.id}`,
     data: { type: "group" },
-    disabled: isBuiltIn,
   });
 
   const wrapperClassName = [
@@ -152,8 +133,6 @@ const DraggableGroupHeader = ({
     .filter(Boolean)
     .join(" ");
 
-  // Built-in groups are not draggable, omit data-group-header so they're skipped in reorder targeting,
-  // and don't wrap the header in GroupContextMenu (no rename / delete).
   const headerContent = (
     <Flex
       className={styles.groupHeader}
@@ -200,18 +179,14 @@ const DraggableGroupHeader = ({
     <div
       ref={setNodeRef}
       className={wrapperClassName}
-      {...(isBuiltIn ? {} : { "data-group-header": group.id })}
+      data-group-header={group.id}
       data-testid={ElementIds.ACTIONS_PANEL_GROUP_HEADER}
-      {...(isBuiltIn ? {} : attributes)}
-      {...(isBuiltIn ? {} : listeners)}
+      {...attributes}
+      {...listeners}
     >
-      {isBuiltIn ? (
-        headerContent
-      ) : (
-        <GroupContextMenu group={group} onRename={onRename} onDelete={onDelete}>
-          {headerContent}
-        </GroupContextMenu>
-      )}
+      <GroupContextMenu group={group} onRename={onRename} onDelete={onDelete}>
+        {headerContent}
+      </GroupContextMenu>
     </div>
   );
 };
@@ -266,13 +241,7 @@ export const ActionsPanel = (): ReactElement => {
   };
 
   const ungroupedActions = getUngroupedActions();
-  // The built-in Sculptor group is injected virtually at the display boundary and always
-  // renders first. User groups keep their own ordering.
-  const sortedGroups: ReadonlyArray<CustomActionGroup> = [BUILTIN_SCULPTOR_GROUP, ...getSortedGroups()];
-  const getDisplayActionsInGroup = (groupId: string): ReadonlyArray<CustomAction> => {
-    if (groupId === SCULPTOR_BUILTIN_GROUP_ID) return BUILTIN_SCULPTOR_ACTIONS;
-    return getActionsInGroup(groupId);
-  };
+  const sortedGroups: ReadonlyArray<CustomActionGroup> = getSortedGroups();
 
   const isAgentRunning = task?.status === "RUNNING" || task?.status === "BUILDING";
 
@@ -577,7 +546,7 @@ export const ActionsPanel = (): ReactElement => {
               <div className={styles.scrollArea}>
                 <Flex direction="column" p="4" gap="2" style={{ minHeight: "100%" }}>
                   {sortedGroups.map((group) => {
-                    const groupActions = getDisplayActionsInGroup(group.id);
+                    const groupActions = getActionsInGroup(group.id);
                     const isCollapsed = collapsedGroups[group.id] ?? false;
                     const isEmptyGroupTarget = dropTarget?.type === "empty-group" && dropTarget.id === group.id;
                     const groupDropPosition =

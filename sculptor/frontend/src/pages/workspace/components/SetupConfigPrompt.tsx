@@ -6,7 +6,7 @@ import { useCallback } from "react";
 import { useActiveProjectID } from "~/common/NavigateUtils";
 import { useOpenSettings } from "~/common/state/hooks/useOpenSettings";
 
-import styles from "./ChatIntro.module.scss";
+import styles from "./SetupConfigPrompt.module.scss";
 
 export const SetupConfigPrompt = (): ReactElement => {
   const projectId = useActiveProjectID();

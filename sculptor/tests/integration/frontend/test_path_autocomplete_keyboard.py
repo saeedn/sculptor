@@ -22,8 +22,8 @@ def _home_sentinel_dir() -> Generator[Path, None, None]:
 
     CI Docker images may have an empty home directory with only dotfiles.
 
-    The path is suffixed with the PID so concurrent workers (xdist or offload
-    sandboxes) don't race on shared mkdir/rmdir of the same path.
+    The path is suffixed with the PID so concurrent workers (xdist)
+    don't race on shared mkdir/rmdir of the same path.
     """
     sentinel_dir = Path.home() / f"test_autocomplete_dir_{os.getpid()}"
     sentinel_dir.mkdir(exist_ok=True)

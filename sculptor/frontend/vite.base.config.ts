@@ -4,7 +4,6 @@
 // handful of knobs that genuinely differ:
 //
 //   - vite.web.config.ts      (web / OpenHost):  API_URL_BASE "" (same-origin),
-//                                                 sentry release from the git sha,
 //                                                 a type-generation plugin
 //   - vite.electron.config.ts (Electron renderer): API_URL_BASE undefined
 //                                                 (preload injects the port),
@@ -18,9 +17,6 @@ import path from "node:path";
 
 import react from "@vitejs/plugin-react-swc";
 import { defineConfig, loadEnv, type Plugin, type UserConfig, type UserConfigExport } from "vite";
-
-import { bundledPlugins } from "./vite-plugins/bundled-plugins.ts";
-import { pluginRuntimeStubs } from "./vite-plugins/plugin-runtime-stubs.ts";
 
 /**
  * Exclude ``@xterm/xterm`` from the bundle and serve it as a standalone
@@ -77,12 +73,7 @@ export function externalizeXterm(root: string): Plugin {
 }
 
 /** Plugins shared by the web and Electron-renderer builds. */
-export const sharedPlugins = (root: string): Array<Plugin> => [
-  externalizeXterm(root),
-  pluginRuntimeStubs(),
-  bundledPlugins(),
-  react(),
-];
+export const sharedPlugins = (root: string): Array<Plugin> => [externalizeXterm(root), react()];
 
 /** Module-path alias (`~` -> src) shared by both builds. */
 export const sharedResolve = (root: string): { alias: Record<string, string> } => ({
@@ -110,28 +101,21 @@ export const sharedCss = (root: string): import("vite").CSSOptions => ({
  * was previously only type-imported or consumed transitively, add it here.
  */
 export const sharedOptimizeDeps: { include: Array<string> } = {
-  include: ["marked", "@radix-ui/react-popover", "@tiptap/suggestion"],
+  include: ["marked", "@radix-ui/react-popover"],
 };
 
 /**
- * Telemetry + API-base `define`s. `apiUrlBaseExpr` and `sentryRelease` differ
- * per target, so each entry config supplies them:
+ * The `API_URL_BASE` `define`. `apiUrlBaseExpr` differs per target, so each
+ * entry config supplies it:
  *   - web:      apiUrlBaseExpr = JSON.stringify(SCULPTOR_API_BASE_URL || "")
- *               (same-origin), sentryRelease falls back to the git sha.
+ *               (same-origin).
  *   - renderer: apiUrlBaseExpr = "undefined" (the preload injects
- *               window.sculptor.backendPort), sentryRelease falls back to "".
+ *               window.sculptor.backendPort).
  *
  * `apiUrlBaseExpr` is the raw substitution text (a Vite `define` value), not a
  * value to be JSON-encoded again.
  */
-export const sharedDefine = (
-  env: Record<string, string>,
-  opts: { apiUrlBaseExpr: string; sentryRelease: string },
-): Record<string, string> => ({
-  FRONTEND_SENTRY_DSN: JSON.stringify(env.SCULPTOR_FRONTEND_SENTRY_DSN || ""),
-  FRONTEND_SENTRY_RELEASE_ID: JSON.stringify(opts.sentryRelease),
-  FRONTEND_POSTHOG_TOKEN: JSON.stringify(env.SCULPTOR_FRONTEND_POSTHOG_TOKEN || ""),
-  FRONTEND_POSTHOG_HOST: JSON.stringify(env.SCULPTOR_FRONTEND_POSTHOG_HOST || "https://us.i.posthog.com"),
+export const sharedDefine = (opts: { apiUrlBaseExpr: string }): Record<string, string> => ({
   API_URL_BASE: opts.apiUrlBaseExpr,
 });
 
@@ -148,8 +132,6 @@ export interface FrontendConfigOptions {
   defaultFrontendPort: number;
   /** Raw `API_URL_BASE` define expression, derived from the loaded env. */
   apiUrlBase: (env: Record<string, string>) => string;
-  /** Sentry release id (with its per-target fallback), derived from the loaded env. */
-  sentryRelease: (env: Record<string, string>) => string;
   /**
    * Asset base. Defaults to "/" (absolute): both builds are served from an
    * origin root — the backend for web, the `sculptor://app` scheme (and the
@@ -169,7 +151,7 @@ export interface FrontendConfigOptions {
 function devServer(env: Record<string, string>, defaultFrontendPort: number): import("vite").ServerOptions {
   const apiPort = Number(env.SCULPTOR_API_PORT || 5050);
   const fePort = Number(env.SCULPTOR_FRONTEND_PORT || defaultFrontendPort);
-  const apiTarget = env.SCULPTOR_CUSTOM_BACKEND_URL || `http://127.0.0.1:${apiPort}`;
+  const apiTarget = env.SCULPTOR_DEV_BACKEND_URL || `http://127.0.0.1:${apiPort}`;
 
   console.log(`Proxying frontend: target=${apiTarget} SCULPTOR_FRONTEND_PORT=${fePort}`);
 
@@ -207,9 +189,8 @@ export function defineFrontendConfig(opts: FrontendConfigOptions): UserConfigExp
       root: opts.root,
       base: opts.base ?? "/",
       optimizeDeps: sharedOptimizeDeps,
-      define: sharedDefine(env, {
+      define: sharedDefine({
         apiUrlBaseExpr: opts.apiUrlBase(env),
-        sentryRelease: opts.sentryRelease(env),
       }),
       build: { sourcemap: true, ...opts.build },
       clearScreen: false,

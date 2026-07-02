@@ -16,6 +16,7 @@ import pytest
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
 from sqlalchemy import inspect
+from sqlalchemy import select
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.exc import OperationalError
@@ -27,14 +28,11 @@ from sculptor.database.alembic.migration_test_utils import MigrationTestFixture
 from sculptor.database.alembic.migration_test_utils import discover_test_fixtures
 from sculptor.database.alembic.utils import get_frozen_database_model_nested_json_schemas
 from sculptor.database.automanaged import AUTOMANAGED_MODEL_CLASSES
-from sculptor.database.automanaged import OBJECT_ID
-from sculptor.database.automanaged import SNAPSHOT_ID
 from sculptor.database.core import IN_MEMORY_SQLITE
 from sculptor.database.core import METADATA
 from sculptor.database.core import create_new_engine
 from sculptor.database.core import initialize_db_from_connection
 from sculptor.database.models import AgentTaskInputsV2
-from sculptor.database.models import MustBeShutDownTaskInputsV1
 from sculptor.database.models import Notification
 from sculptor.database.models import NotificationID
 from sculptor.database.models import Project
@@ -43,14 +41,14 @@ from sculptor.database.models import Task
 from sculptor.database.models import TaskID
 from sculptor.database.models import Workspace
 from sculptor.database.workspace_enums import DiffStatus
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches_test import expect_exact_logged_errors
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.interfaces.agents.agent import HelloAgentConfig
+from sculptor.foundation.serialization import SerializedException
+from sculptor.interfaces.agents.agent import TerminalAgentConfig
+from sculptor.interfaces.agents.agent import UnexpectedErrorRunnerMessage
 from sculptor.primitives.ids import AgentMessageID
 from sculptor.primitives.ids import ObjectID
-from sculptor.primitives.ids import ObjectSnapshotID
 from sculptor.primitives.ids import OrganizationReference
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
@@ -60,15 +58,11 @@ from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.services.data_model_service.data_types import ProjectFieldUpdate
 from sculptor.services.data_model_service.data_types import WORKSPACE_CREATION_ONLY_FIELDS
 from sculptor.services.data_model_service.data_types import WorkspaceFieldUpdate
-from sculptor.services.data_model_service.sql_implementation import PROJECT_LATEST_TABLE
 from sculptor.services.data_model_service.sql_implementation import PROJECT_TABLE
 from sculptor.services.data_model_service.sql_implementation import SQLDataModelService
 from sculptor.services.data_model_service.sql_implementation import SQLTransaction
-from sculptor.services.data_model_service.sql_implementation import WORKSPACE_LATEST_TABLE
 from sculptor.services.data_model_service.sql_implementation import WORKSPACE_TABLE
 from sculptor.services.data_model_service.sql_implementation import _UPDATE_FIELDS_PROTECTED_COLUMNS
-from sculptor.state.messages import ChatInputUserMessage
-from sculptor.state.messages import LLMModel
 from sculptor.utils.type_utils import extract_leaf_types
 
 
@@ -92,7 +86,6 @@ def test_db_service_with_user_organization_and_project(
     with test_db_service.open_transaction(RequestID()) as transaction:
         project = Project(object_id=ProjectID(), name="Example Project", organization_reference=organization_reference)
         transaction.upsert_project(project)
-        transaction.get_or_create_user_settings(user_reference)
     return (test_db_service, user_reference, organization_reference, project)
 
 
@@ -104,29 +97,9 @@ def get_simple_agent_task(
 ) -> Task:
     task = Task(
         object_id=TaskID(),
-        max_seconds=30,
         input_data=AgentTaskInputsV2(
-            agent_config=HelloAgentConfig(),
-            git_hash="HEAD",
-            system_prompt=None,
+            agent_config=TerminalAgentConfig(),
         ),
-        organization_reference=organization_reference,
-        user_reference=user_reference,
-        project_id=project.object_id,
-    )
-    return task
-
-
-def get_simple_non_agent_task(
-    code_directory: Path,
-    user_reference: UserReference,
-    organization_reference: OrganizationReference,
-    project: Project,
-) -> Task:
-    task = Task(
-        object_id=TaskID(),
-        max_seconds=30,
-        input_data=MustBeShutDownTaskInputsV1(),
         organization_reference=organization_reference,
         user_reference=user_reference,
         project_id=project.object_id,
@@ -162,20 +135,19 @@ def test_get_active_tasks(
     tmp_path: Path,
 ) -> None:
     service, user_reference, organization_reference, project = test_db_service_with_user_organization_and_project
-    agent_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
-    non_agent_task = get_simple_non_agent_task(tmp_path, user_reference, organization_reference, project)
+    first_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
+    second_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
     with service.open_task_transaction() as transaction:
-        transaction.upsert_task(agent_task)
-        transaction.upsert_task(non_agent_task)
+        transaction.upsert_task(first_task)
+        transaction.upsert_task(second_task)
     with service.open_task_transaction() as transaction:
         tasks = transaction.get_active_tasks()
         assert len(tasks) == 2
-        tasks = transaction.get_active_tasks(input_data_classes=(type(agent_task.input_data),))
-        assert len(tasks) == 1
-        assert tasks[0].object_id == agent_task.object_id
-        tasks = transaction.get_active_tasks(input_data_classes=(type(non_agent_task.input_data),))
-        assert len(tasks) == 1
-        assert tasks[0].object_id == non_agent_task.object_id
+        # Terminal agents are the only task type, so the input_data_classes filter
+        # matches every active task.
+        tasks = transaction.get_active_tasks(input_data_classes=(AgentTaskInputsV2,))
+        assert len(tasks) == 2
+        assert {task.object_id for task in tasks} == {first_task.object_id, second_task.object_id}
 
 
 def test_get_active_tasks_excludes_deleting_tasks(
@@ -205,23 +177,19 @@ def test_get_tasks_for_project(
     tmp_path: Path,
 ) -> None:
     service, user_reference, organization_reference, project = test_db_service_with_user_organization_and_project
-    agent_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
-    non_agent_task = get_simple_non_agent_task(tmp_path, user_reference, organization_reference, project)
+    first_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
+    second_task = get_simple_agent_task(tmp_path, user_reference, organization_reference, project)
     with service.open_task_transaction() as transaction:
-        transaction.upsert_task(agent_task)
-        transaction.upsert_task(non_agent_task)
+        transaction.upsert_task(first_task)
+        transaction.upsert_task(second_task)
     with service.open_task_transaction() as transaction:
         tasks = transaction.get_tasks_for_project(project_id=project.object_id)
         assert len(tasks) == 2
         tasks = transaction.get_tasks_for_project(project_id=ProjectID())
         assert len(tasks) == 0
-        tasks = transaction.get_active_tasks(input_data_classes=(type(agent_task.input_data),))
-        assert len(tasks) == 1
-        assert tasks[0].object_id == agent_task.object_id
-        tasks = transaction.get_active_tasks(
-            input_data_classes=(type(non_agent_task.input_data), type(agent_task.input_data))
-        )
+        tasks = transaction.get_active_tasks(input_data_classes=(AgentTaskInputsV2,))
         assert len(tasks) == 2
+        assert {task.object_id for task in tasks} == {first_task.object_id, second_task.object_id}
 
 
 def test_get_tasks_for_project_excludes_deleting_tasks(
@@ -247,7 +215,10 @@ def test_get_tasks_for_project_excludes_deleting_tasks(
 def test_foreign_constraints_are_being_enforced(test_db_service: SQLDataModelService, tmp_path: Path) -> None:
     message_id = AgentMessageID()
     saved_agent_message = SavedAgentMessage.build(
-        message=ChatInputUserMessage(message_id=message_id, text="Hello, world!", model_name=LLMModel.CLAUDE_4_SONNET),
+        message=UnexpectedErrorRunnerMessage(
+            message_id=message_id,
+            error=SerializedException(exception="builtins.Exception", args=("test",), traceback_dict=None),
+        ),
         task_id=TaskID(),
     )
     with pytest.raises(IntegrityError):
@@ -431,182 +402,6 @@ def _generate_synthetic_value(field_name: str, pydantic_type: type) -> Any:
     return f"test_{field_name}"
 
 
-def test_triggers_work_after_migration() -> None:
-    """Verify that after running all migrations and applying triggers, the dual-table pattern works.
-
-    For each model with a dual table, inserting into the snapshots table should cause the row
-    to appear in the _latest table via triggers.
-    """
-    from pydantic.alias_generators import to_snake
-
-    from sculptor.services.data_model_service.sql_implementation import register_all_tables
-
-    register_all_tables()
-
-    # Create engine without the FK enforcement listener — we're testing trigger behavior,
-    # not referential integrity. FK constraints on _latest tables would otherwise require
-    # inserting parent records in dependency order, which is unrelated to what we're testing.
-    from sqlalchemy import create_engine
-    from sqlalchemy.pool import StaticPool
-
-    engine = create_engine(IN_MEMORY_SQLITE, poolclass=StaticPool, connect_args={"check_same_thread": False})
-
-    with engine.begin() as connection:
-        initialize_db_from_connection(connection, IN_MEMORY_SQLITE)
-
-        triggers_info = METADATA.info.get("triggers", {})
-        tables_with_triggers = set(triggers_info.keys())
-        assert len(tables_with_triggers) > 0, "Expected at least one table with triggers"
-
-        for model_cls in AUTOMANAGED_MODEL_CLASSES:
-            table_name = to_snake(model_cls.__name__)
-
-            if table_name not in tables_with_triggers:
-                continue
-
-            latest_table_name = f"{table_name}_latest"
-
-            # Build column values from the model's field definitions
-            field_values: dict[str, Any] = {}
-            for field_name, field in model_cls.model_fields.items():
-                assert field.annotation is not None
-                field_values[field_name] = _generate_synthetic_value(field_name, field.annotation)
-
-            # Insert a row into the snapshots table
-            snapshot_id_1 = str(ObjectSnapshotID())
-            columns = [SNAPSHOT_ID] + list(field_values.keys())
-            placeholders = ", ".join([f":{c}" for c in columns])
-            column_names = ", ".join(columns)
-            insert_params = {SNAPSHOT_ID: snapshot_id_1, **field_values}
-
-            connection.execute(
-                text(f"INSERT INTO {table_name} ({column_names}) VALUES ({placeholders})"),
-                insert_params,
-            )
-
-            # Verify the row appeared in the _latest table
-            result = connection.execute(
-                text(f"SELECT * FROM {latest_table_name} WHERE {OBJECT_ID} = :oid"),
-                {"oid": field_values[OBJECT_ID]},
-            )
-            rows = result.fetchall()
-            assert len(rows) == 1, (
-                f"Expected 1 row in {latest_table_name} after insert into {table_name}, got {len(rows)}"
-            )
-
-            # Insert a second row with the same object_id but different snapshot_id
-            # to verify upsert behavior in _latest
-            insert_params[SNAPSHOT_ID] = str(ObjectSnapshotID())
-
-            connection.execute(
-                text(f"INSERT INTO {table_name} ({column_names}) VALUES ({placeholders})"),
-                insert_params,
-            )
-
-            # Verify still exactly one row in _latest for this object_id
-            result = connection.execute(
-                text(f"SELECT * FROM {latest_table_name} WHERE {OBJECT_ID} = :oid"),
-                {"oid": field_values[OBJECT_ID]},
-            )
-            rows = result.fetchall()
-            assert len(rows) == 1, (
-                f"Expected 1 row in {latest_table_name} after second insert into {table_name}, got {len(rows)}"
-            )
-
-
-def test_drop_all_automanaged_triggers_unblocks_drop_column() -> None:
-    """Encodes the exact failure mode: a trigger referencing a column blocks DROP COLUMN.
-
-    SQLite validates trigger bodies during ALTER TABLE, so dropping a column that an
-    existing trigger references fails. drop_all_automanaged_triggers removes that hazard,
-    which is what makes the whole class of migration failures impossible.
-    """
-    from sqlalchemy import create_engine
-    from sqlalchemy.pool import StaticPool
-
-    from sculptor.database.alembic.utils import drop_all_automanaged_triggers
-
-    engine = create_engine(IN_MEMORY_SQLITE, poolclass=StaticPool, connect_args={"check_same_thread": False})
-    with engine.begin() as connection:
-        connection.execute(text("CREATE TABLE widget (id TEXT, doomed TEXT)"))
-        connection.execute(text("CREATE TABLE widget_latest (id TEXT PRIMARY KEY, doomed TEXT)"))
-        connection.execute(
-            text("""
-                CREATE TRIGGER widget_before_insert BEFORE INSERT ON widget BEGIN
-                    INSERT INTO widget_latest (id, doomed) VALUES (NEW.id, NEW.doomed)
-                    ON CONFLICT (id) DO UPDATE SET doomed = excluded.doomed;
-                END;
-            """)
-        )
-
-    # With the trigger present, dropping the referenced column fails — the exact bug.
-    with pytest.raises(OperationalError):
-        with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE widget DROP COLUMN doomed"))
-
-    # After dropping triggers, the same statement succeeds and no triggers remain.
-    with engine.begin() as connection:
-        drop_all_automanaged_triggers(connection)
-        connection.execute(text("ALTER TABLE widget DROP COLUMN doomed"))
-        remaining = [row[0] for row in connection.execute(text("SELECT name FROM sqlite_master WHERE type='trigger'"))]
-    assert remaining == []
-
-
-def test_in_memory_migration_runner_drops_preexisting_triggers() -> None:
-    """The in-memory migration runner enforces the no-triggers-during-migration invariant.
-
-    Simulates a real upgrade: a database that already carries auto-managed triggers from a
-    prior startup. Running migrations through the production runner must drop them first
-    (they are recreated afterwards by initialize_db_from_connection, which the bare runner
-    does not do). Guards against the wiring being removed from override_run_env.
-    """
-    from sqlalchemy import create_engine
-    from sqlalchemy.pool import StaticPool
-
-    from sculptor.database.core import _run_migrations_on_connection
-    from sculptor.services.data_model_service.sql_implementation import register_all_tables
-
-    register_all_tables()
-
-    engine = create_engine(IN_MEMORY_SQLITE, poolclass=StaticPool, connect_args={"check_same_thread": False})
-    with engine.begin() as connection:
-        # Full init: migrate to head AND create all auto-managed triggers, as a prior startup would.
-        initialize_db_from_connection(connection, IN_MEMORY_SQLITE)
-        triggers_before = connection.execute(text("SELECT count(*) FROM sqlite_master WHERE type='trigger'")).scalar()
-        assert triggers_before is not None and triggers_before > 0, (
-            "expected auto-managed triggers to exist after initialization"
-        )
-
-        # Re-run migrations through the production runner (a no-op upgrade to head).
-        _run_migrations_on_connection(connection)
-        triggers_after = connection.execute(text("SELECT count(*) FROM sqlite_master WHERE type='trigger'")).scalar()
-    assert triggers_after == 0, "the migration runner must drop all triggers before running migrations"
-
-
-def test_file_migration_runner_drops_preexisting_triggers(tmp_path: Path) -> None:
-    """Same invariant for the file-database runner (the env.py path used in production)."""
-    from sculptor.database.alembic.utils import get_alembic_script_location
-    from sculptor.database.core import _run_migrations_on_database_url
-    from sculptor.database.core import initialize_db
-    from sculptor.services.data_model_service.sql_implementation import register_all_tables
-
-    register_all_tables()
-
-    url = f"sqlite:///{tmp_path / 'database.db'}"
-    engine = create_new_engine(url)
-    # Simulate a prior startup: migrate to head and create triggers.
-    initialize_db(engine)
-    with engine.connect() as connection:
-        before = connection.execute(text("SELECT count(*) FROM sqlite_master WHERE type='trigger'")).scalar()
-    assert before is not None and before > 0, "expected auto-managed triggers to exist after initialization"
-
-    # Run migrations through the file-database runner (env.py).
-    _run_migrations_on_database_url(url, get_alembic_script_location())
-    with engine.connect() as connection:
-        after = connection.execute(text("SELECT count(*) FROM sqlite_master WHERE type='trigger'")).scalar()
-    assert after == 0, "the migration runner must drop all triggers before running migrations"
-
-
 def _get_migration_fixtures() -> list[MigrationTestFixture]:
     """Discover all migration test fixtures for parametrized testing."""
     return discover_test_fixtures()
@@ -644,8 +439,6 @@ def test_observer_notification_project_upsert(test_db_service: SQLDataModelServi
     """Test that Project upsert operations trigger observer notifications."""
     organization_reference = OrganizationReference("test-org-id")
     user_reference = UserReference("test-user-id")
-    with test_db_service.open_transaction(RequestID()) as transaction:
-        transaction.get_or_create_user_settings(user_reference)
 
     project = Project(object_id=ProjectID(), name="Test Project", organization_reference=organization_reference)
 
@@ -680,9 +473,6 @@ def test_observer_notification_tolerates_observer_unregistering_during_notificat
     organization_reference = OrganizationReference("test-org-id")
     first_user_reference = UserReference("test-user-id-1")
     second_user_reference = UserReference("test-user-id-2")
-    with test_db_service.open_transaction(RequestID()) as transaction:
-        transaction.get_or_create_user_settings(first_user_reference)
-        transaction.get_or_create_user_settings(second_user_reference)
 
     second_observation = ExitStack()
     second_user_queue = MagicMock()
@@ -723,7 +513,6 @@ def test_observer_notification_project_update_upsert(test_db_service: SQLDataMod
     organization_reference = OrganizationReference("test-org-id")
     project = Project(object_id=ProjectID(), name="Test Project", organization_reference=organization_reference)
     with test_db_service.open_transaction(RequestID()) as transaction:
-        transaction.get_or_create_user_settings(user_reference)
         transaction.upsert_project(project)
 
     # Create a mock queue to act as an observer
@@ -827,8 +616,9 @@ def test_observer_notification_saved_agent_message_insert_NOT_observed(
 
             message_id = AgentMessageID()
             message = SavedAgentMessage.build(
-                message=ChatInputUserMessage(
-                    message_id=message_id, text="Test message", model_name=LLMModel.CLAUDE_4_SONNET
+                message=UnexpectedErrorRunnerMessage(
+                    message_id=message_id,
+                    error=SerializedException(exception="builtins.Exception", args=("test",), traceback_dict=None),
                 ),
                 task_id=task.object_id,
             )
@@ -886,9 +676,10 @@ def test_observer_notification_mixed_operations_behavior(
 
 
 def _slow_transaction_thread(service: SQLDataModelService, user_reference: UserReference) -> None:
+    del user_reference
     with service.open_transaction(RequestID()) as transaction:
         time.sleep(5)
-        _user_settings = transaction.get_user_settings(user_reference)
+        _projects = transaction.get_projects()
 
 
 def test_debugging_report_from_concurrent_transactions(
@@ -903,10 +694,10 @@ def test_debugging_report_from_concurrent_transactions(
     thread.start()
     time.sleep(1)  # give it a moment to start and hold the transaction open
     try:
-        with expect_exact_logged_errors(["Database is locked, inspect extra data to see why"]):
+        with expect_exact_logged_errors(["Database is locked, inspect the transaction summary to see why"]):
             # now open a transaction in the main thread, which should detect the concurrent transaction:
             with service.open_transaction(RequestID()) as transaction:
-                _user_settings = transaction.get_user_settings(user_reference)
+                _projects = transaction.get_projects()
                 raise OperationalError(
                     statement="TEST", params={}, orig=sqlite3.OperationalError("database is locked")
                 )
@@ -939,7 +730,7 @@ def test_lock_debug_logging_on_begin_immediate_failure(
 
     with patch.object(service, "_begin_immediate_connection", fail_with_database_locked):
         try:
-            with expect_exact_logged_errors(["Database is locked, inspect extra data to see why"]):
+            with expect_exact_logged_errors(["Database is locked, inspect the transaction summary to see why"]):
                 with service.open_transaction(RequestID(), immediate=True):
                     pass
         except OperationalError:
@@ -959,7 +750,6 @@ def test_observer_notification_workspace_upsert(
         project_id=project.object_id,
         organization_reference=organization_reference,
         description="Test Workspace",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
     )
 
     # Create a mock queue to act as an observer
@@ -993,7 +783,6 @@ def test_observer_notification_workspace_update(
         project_id=project.object_id,
         organization_reference=organization_reference,
         description="Test Workspace",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
     )
 
     # First, create the workspace
@@ -1033,7 +822,6 @@ def test_observe_user_changes_includes_workspaces_in_initial_state(
         project_id=project.object_id,
         organization_reference=organization_reference,
         description="Test Workspace",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
     )
     with service.open_transaction(RequestID()) as transaction:
         transaction.upsert_workspace(workspace)
@@ -1049,7 +837,7 @@ def test_observe_user_changes_includes_workspaces_in_initial_state(
         assert len(initial_calls) >= 1, "Expected at least one initial state call (request_id=None)"
         initial_transaction = initial_calls[0][0][0]
 
-        # Verify the workspace is in the initial state (along with user_settings and project)
+        # Verify the workspace is in the initial state (along with the project)
         workspace_models = [m for m in initial_transaction.updated_models if isinstance(m, Workspace)]
         assert len(workspace_models) == 1
         assert workspace_models[0] == workspace
@@ -1069,7 +857,6 @@ def test_workspaces_filtered_by_organization(
         project_id=project.object_id,
         organization_reference=organization_reference,
         description="Workspace in org",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
     )
 
     # Create a workspace in a different organization
@@ -1084,7 +871,6 @@ def test_workspaces_filtered_by_organization(
         project_id=other_project.object_id,
         organization_reference=other_org,
         description="Workspace in other org",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
     )
 
     with service.open_transaction(RequestID()) as transaction:
@@ -1145,7 +931,6 @@ def _seed_workspace(
         project_id=project_id,
         organization_reference=organization_reference,
         description="seed",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
     )
     with service.open_transaction(RequestID()) as transaction:
         transaction.upsert_workspace(workspace)
@@ -1356,7 +1141,6 @@ def _seed_workspace_with_open_state(
         project_id=project_id,
         organization_reference=organization_reference,
         description="seed",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
         is_open=is_open,
     )
     with service.open_transaction(RequestID()) as transaction:
@@ -1504,7 +1288,7 @@ def test_update_project_fields_writes_only_named_columns(
 
     # Seed non-default values on fields we don't intend to touch.
     with service.open_transaction(RequestID()) as transaction:
-        seeded = project.evolve(project.ref().default_system_prompt, "SEED_PROMPT")
+        seeded = project.evolve(project.ref().naming_pattern, "SEED_PROMPT")
         seeded = seeded.evolve(seeded.ref().workspace_setup_command, "SEED_SETUP")
         transaction.upsert_project(seeded)
 
@@ -1513,7 +1297,7 @@ def test_update_project_fields_writes_only_named_columns(
         updated = transaction.update_project_fields(project.object_id, name="RENAMED")
         assert updated is not None
         assert updated.name == "RENAMED"
-        assert updated.default_system_prompt == "SEED_PROMPT", "unnamed field clobbered"
+        assert updated.naming_pattern == "SEED_PROMPT", "unnamed field clobbered"
         assert updated.workspace_setup_command == "SEED_SETUP", "unnamed field clobbered"
 
     # Re-read from DB to confirm.
@@ -1521,7 +1305,7 @@ def test_update_project_fields_writes_only_named_columns(
         after = transaction.get_project(project.object_id)
         assert after is not None
         assert after.name == "RENAMED"
-        assert after.default_system_prompt == "SEED_PROMPT"
+        assert after.naming_pattern == "SEED_PROMPT"
         assert after.workspace_setup_command == "SEED_SETUP"
 
 
@@ -1558,8 +1342,7 @@ def test_update_project_fields_rejects_bad_inputs(
         def _exercise(bad_fields: dict[str, Any]) -> None:
             transaction._update_model_fields(
                 model_cls=Project,
-                snapshot_table=PROJECT_TABLE,
-                latest_table=PROJECT_LATEST_TABLE,
+                table=PROJECT_TABLE,
                 object_id=project.object_id,
                 fields=bad_fields,
             )
@@ -1600,39 +1383,6 @@ def test_update_project_fields_emits_single_observer_notification(
         assert observed_project.name == "OBSERVED"
 
 
-def test_update_project_fields_writes_exactly_one_snapshot_row(
-    test_db_service_with_user_organization_and_project: tuple[
-        SQLDataModelService, UserReference, OrganizationReference, Project
-    ],
-) -> None:
-    """Audit-log invariant: one targeted update = one new snapshot row.
-
-    Even though the ``<table>_before_insert`` trigger fires on our snapshot
-    INSERT and does a redundant ``ON CONFLICT DO UPDATE`` on ``_latest``,
-    it does NOT insert an extra snapshot row.
-    """
-    service, _, _, project = test_db_service_with_user_organization_and_project
-
-    with service.open_transaction(RequestID()) as transaction:
-        before_rows = transaction.connection.execute(
-            text("SELECT COUNT(*) FROM project WHERE object_id = :oid"), {"oid": str(project.object_id)}
-        ).scalar()
-
-    with service.open_transaction(RequestID()) as transaction:
-        transaction.update_project_fields(project.object_id, name="SNAPSHOTTED")
-
-    with service.open_transaction(RequestID()) as transaction:
-        after_rows = transaction.connection.execute(
-            text("SELECT COUNT(*) FROM project WHERE object_id = :oid"), {"oid": str(project.object_id)}
-        ).scalar()
-
-    # pyrefly: ignore [unsupported-operation]
-    assert after_rows == before_rows + 1, (
-        # pyrefly: ignore [unsupported-operation]
-        f"Expected exactly one new snapshot row; got delta={after_rows - before_rows}"
-    )
-
-
 def test_update_project_fields_disjoint_concurrent_writers_do_not_clobber(
     test_db_service_with_user_organization_and_project: tuple[
         SQLDataModelService, UserReference, OrganizationReference, Project
@@ -1659,7 +1409,7 @@ def test_update_project_fields_disjoint_concurrent_writers_do_not_clobber(
             _ = transaction.get_project(project.object_id)
             writer_a_read.set()
             writer_b_read.wait(timeout=5)
-            transaction.update_project_fields(project.object_id, default_system_prompt="A_PROMPT")
+            transaction.update_project_fields(project.object_id, naming_pattern="A_PROMPT")
 
     def writer_b() -> None:
         with service.open_transaction(RequestID()) as transaction:
@@ -1680,7 +1430,7 @@ def test_update_project_fields_disjoint_concurrent_writers_do_not_clobber(
     with service.open_transaction(RequestID()) as transaction:
         final = transaction.get_project(project.object_id)
         assert final is not None
-        assert final.default_system_prompt == "A_PROMPT", "A's update was lost"
+        assert final.naming_pattern == "A_PROMPT", "A's update was lost"
         assert final.workspace_setup_command == "B_SETUP", "B's update was lost"
 
 
@@ -1708,7 +1458,7 @@ def test_update_project_fields_stress_disjoint_concurrent_writers(
     iterations = 25
     field_names = (
         "name",
-        "default_system_prompt",
+        "naming_pattern",
         "workspace_setup_command",
         "user_git_repo_url",
     )
@@ -1754,7 +1504,7 @@ def test_update_project_fields_and_upsert_immediate_mix_concurrently(
 ) -> None:
     """Mixed-API stress: targeted updates + IMMEDIATE full-row upserts.
 
-    Thread A hammers ``update_project_fields(default_system_prompt=...)``.
+    Thread A hammers ``update_project_fields(naming_pattern=...)``.
     Thread B hammers ``upsert_project`` in ``immediate=True`` transactions
     with a fresh read-then-evolve of ``name`` — the MR 986 pattern for
     legacy sites that can't migrate to targeted updates yet.
@@ -1777,7 +1527,7 @@ def test_update_project_fields_and_upsert_immediate_mix_concurrently(
             barrier.wait(timeout=10)
             for i in range(iterations):
                 with service.open_transaction(RequestID()) as transaction:
-                    transaction.update_project_fields(project.object_id, default_system_prompt=f"A_iter_{i}")
+                    transaction.update_project_fields(project.object_id, naming_pattern=f"A_iter_{i}")
         except BaseException as e:
             with errors_lock:
                 errors.append(e)
@@ -1808,7 +1558,7 @@ def test_update_project_fields_and_upsert_immediate_mix_concurrently(
     with service.open_transaction(RequestID()) as transaction:
         final = transaction.get_project(project.object_id)
         assert final is not None
-        assert final.default_system_prompt == f"A_iter_{iterations - 1}", "targeted-update writer lost its final write"
+        assert final.naming_pattern == f"A_iter_{iterations - 1}", "targeted-update writer lost its final write"
         assert final.name == f"B_iter_{iterations - 1}", "IMMEDIATE upsert writer lost its final write"
 
 
@@ -1871,7 +1621,6 @@ def _seed_workspace(
         project_id=project_id,
         organization_reference=organization_reference,
         description="seed",
-        initialization_strategy=WorkspaceInitializationStrategy.IN_PLACE,
     )
     with service.open_transaction(RequestID()) as transaction:
         transaction.upsert_workspace(workspace)
@@ -1947,10 +1696,13 @@ def test_update_workspace_fields_returns_none_for_soft_deleted_row(
         assert result is None
 
     with service.open_transaction(RequestID()) as transaction:
-        after = transaction.get_workspace_include_deleted(workspace_id)
-        assert after is not None
-        assert after.is_deleted is True
-        assert after.diff_status == DiffStatus.NONE, "tombstone column was written through"
+        assert isinstance(transaction, SQLTransaction)
+        row = transaction.connection.execute(
+            select(WORKSPACE_TABLE).where(WORKSPACE_TABLE.c.object_id == str(workspace_id))
+        ).fetchone()
+        assert row is not None
+        assert bool(row.is_deleted) is True
+        assert row.diff_status == DiffStatus.NONE, "tombstone column was written through"
 
 
 def test_update_workspace_fields_rejects_bad_inputs(
@@ -1969,8 +1721,7 @@ def test_update_workspace_fields_rejects_bad_inputs(
         def _exercise(bad_fields: dict[str, Any]) -> None:
             transaction._update_model_fields(
                 model_cls=Workspace,
-                snapshot_table=WORKSPACE_TABLE,
-                latest_table=WORKSPACE_LATEST_TABLE,
+                table=WORKSPACE_TABLE,
                 object_id=workspace_id,
                 fields=bad_fields,
             )
@@ -2008,37 +1759,6 @@ def test_update_workspace_fields_emits_single_observer_notification(
         assert isinstance(observed_workspace, Workspace)
         assert observed_workspace.object_id == workspace_id
         assert observed_workspace.description == "OBSERVED"
-
-
-def test_update_workspace_fields_writes_exactly_one_snapshot_row(
-    test_db_service_with_user_organization_and_project: tuple[
-        SQLDataModelService, UserReference, OrganizationReference, Project
-    ],
-) -> None:
-    """One targeted update = one new snapshot row, even though the
-    BEFORE INSERT trigger re-fires on the snapshot.
-    """
-    service, _, organization_reference, project = test_db_service_with_user_organization_and_project
-    workspace_id = _seed_workspace(service, project.object_id, organization_reference)
-
-    with service.open_transaction(RequestID()) as transaction:
-        before_rows = transaction.connection.execute(
-            text("SELECT COUNT(*) FROM workspace WHERE object_id = :oid"), {"oid": str(workspace_id)}
-        ).scalar()
-
-    with service.open_transaction(RequestID()) as transaction:
-        transaction.update_workspace_fields(workspace_id, description="SNAPSHOTTED")
-
-    with service.open_transaction(RequestID()) as transaction:
-        after_rows = transaction.connection.execute(
-            text("SELECT COUNT(*) FROM workspace WHERE object_id = :oid"), {"oid": str(workspace_id)}
-        ).scalar()
-
-    # pyrefly: ignore [unsupported-operation]
-    assert after_rows == before_rows + 1, (
-        # pyrefly: ignore [unsupported-operation]
-        f"Expected exactly one new snapshot row; got delta={after_rows - before_rows}"
-    )
 
 
 def test_update_workspace_fields_disjoint_concurrent_writers_do_not_clobber(

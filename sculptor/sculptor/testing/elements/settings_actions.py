@@ -16,18 +16,6 @@ class PlaywrightActionsSettingsElement(PlaywrightIntegrationTestElement):
         """Get the 'Add Group' toolbar button."""
         return self.get_by_test_id(ElementIDs.SETTINGS_ACTIONS_ADD_GROUP_BUTTON)
 
-    def get_export_button(self) -> Locator:
-        """Get the 'Export' toolbar button."""
-        return self.get_by_test_id(ElementIDs.SETTINGS_ACTIONS_EXPORT_BUTTON)
-
-    def get_import_button(self) -> Locator:
-        """Get the 'Import' toolbar button."""
-        return self.get_by_test_id(ElementIDs.SETTINGS_ACTIONS_IMPORT_BUTTON)
-
-    def get_action_rows(self) -> Locator:
-        """Get all action setting rows."""
-        return self.get_by_test_id(ElementIDs.SETTINGS_ACTION_ROW)
-
     def get_action_row_by_name(self, name: str) -> Locator:
         """Find an action settings row by its text content."""
         return self.get_by_test_id(ElementIDs.SETTINGS_ACTION_ROW).filter(has_text=name)

@@ -17,23 +17,14 @@ from sculptor.config.settings import SculptorSettings
 from sculptor.database.models import Project
 from sculptor.database.models import Workspace
 from sculptor.database.workspace_enums import DiffStatus
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.event_utils import ReadOnlyEvent
-from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
-from sculptor.foundation.progress_tracking.progress_tracking import start_finish_context
 from sculptor.foundation.time_utils import get_current_time
-from sculptor.interfaces.agents.agent import EnvironmentTypes
 
 # These artifact types are general-purpose data structures that happen to live under
 # interfaces/agents/. They are used by agents, workspace service, and the web layer.
-from sculptor.interfaces.agents.artifacts import ArtifactType
+from sculptor.interfaces.agents.artifacts import DIFF_ARTIFACT_DIRNAME
 from sculptor.interfaces.agents.artifacts import DiffArtifact
-from sculptor.interfaces.environments.agent_execution_environment import AgentExecutionEnvironment
-from sculptor.interfaces.environments.base import ARTIFACTS_DIRECTORY
-from sculptor.interfaces.environments.base import Environment
-from sculptor.interfaces.environments.base import TASKS_SUBDIRECTORY
-from sculptor.interfaces.environments.errors import EnvironmentConfigurationChangedError
 from sculptor.interfaces.environments.errors import EnvironmentNotFoundError
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import RequestID
@@ -43,7 +34,6 @@ from sculptor.services.data_model_service.api import DataModelService
 from sculptor.services.data_model_service.api import TaskDataModelService
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.data_model_service.data_types import WorkspaceFieldUpdate
-from sculptor.services.dependency_management_service import DependencyManagementService
 from sculptor.services.git_repo_service.git_commands import run_git_command_local
 from sculptor.services.git_repo_service.git_errors import GitCommandFailure
 from sculptor.services.project_service.api import ProjectService
@@ -57,26 +47,23 @@ from sculptor.services.workspace_service.api import WorkspaceFilesUnavailableErr
 from sculptor.services.workspace_service.api import WorkspaceNotFoundError
 from sculptor.services.workspace_service.api import WorkspaceService
 from sculptor.services.workspace_service.api import resolve_workspace_setup_command
-from sculptor.services.workspace_service.environment_manager.api import EnvironmentManager
 from sculptor.services.workspace_service.environment_manager.default_implementation import DefaultEnvironmentManager
 from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
     LocalAgentExecutionEnvironment,
 )
+from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     stop_all_terminals,
 )
 from sculptor.services.workspace_service.environment_manager.environments.local_terminal_manager import (
     stop_terminals_for_environment,
 )
-from sculptor.services.workspace_service.environment_manager.environments.worktree_strategy import remove_worktree
-from sculptor.services.workspace_service.setup_command_runner import DefaultSetupStateProvider
+from sculptor.services.workspace_service.environment_manager.environments.worktree import remove_worktree
 from sculptor.services.workspace_service.setup_command_runner import SetupCommandRunner
 from sculptor.services.workspace_service.setup_command_runner import SetupStateChanged
-from sculptor.services.workspace_service.setup_command_runner import SetupStateProvider
 from sculptor.utils.build import build_sculpt_backend_env
 from sculptor.utils.build import get_sculpt_bin_dir
 from sculptor.utils.timeout import timeout_monitor
-from sculptor.utils.type_utils import extract_leaf_types
 
 _ENVIRONMENT_CREATION_TIMEOUT_SECONDS = 60
 _DIFF_METADATA_FILENAME = "DIFF.meta.json"
@@ -106,8 +93,7 @@ class DefaultWorkspaceService(WorkspaceService):
     """
 
     data_model_service: DataModelService
-    dependency_management_service: DependencyManagementService
-    environment_manager: EnvironmentManager
+    environment_manager: DefaultEnvironmentManager
     project_service: ProjectService
     workspace_sync_dir: Path
     backend_port: int
@@ -172,9 +158,6 @@ class DefaultWorkspaceService(WorkspaceService):
                         )
                     )
 
-    def make_setup_state_provider(self, workspace_id: str) -> SetupStateProvider:
-        return DefaultSetupStateProvider(self.setup_runner, workspace_id)
-
     def _persist_setup_state(self, change: SetupStateChanged) -> None:
         fields: WorkspaceFieldUpdate = {
             "setup_status": change.status,
@@ -200,7 +183,6 @@ class DefaultWorkspaceService(WorkspaceService):
         settings: SculptorSettings,
         data_model_service: DataModelService,
         project_service: ProjectService,
-        dependency_management_service: DependencyManagementService,
     ) -> Self:
         """Build a DefaultWorkspaceService with its internal EnvironmentManager."""
         environment_manager = DefaultEnvironmentManager(
@@ -209,7 +191,6 @@ class DefaultWorkspaceService(WorkspaceService):
         return cls(
             concurrency_group=concurrency_group.make_concurrency_group("workspace_service"),
             data_model_service=data_model_service,
-            dependency_management_service=dependency_management_service,
             environment_manager=environment_manager,
             project_service=project_service,
             workspace_sync_dir=settings.workspace_sync_path,
@@ -263,30 +244,19 @@ class DefaultWorkspaceService(WorkspaceService):
     def _resolve_default_target_branch(
         self,
         project_path: Path,
-        initialization_strategy: WorkspaceInitializationStrategy,
     ) -> str | None:
         """Detect the best default target branch for a new workspace.
 
         Checks the user's local repo for a suitable remote-tracking branch to
         use as the diff target.  When no remote-tracking branch is present
         (e.g. a local-only repo with no ``origin``), falls back to the local
-        ``main``/``master`` ref:
-
-        * For CLONE workspaces, returns ``origin/<branch>``: clone_strategy
-          creates a synthetic ``origin`` remote pointing at the source and
-          seeds ``refs/remotes/origin/<branch>`` from the source's local
-          branches, so the ref resolves inside the clone.
-        * For IN_PLACE and WORKTREE workspaces, returns the bare branch
-          name (``main``/``master``): these workspaces share ``.git`` with
-          the user's repo, so the local branch resolves directly.
+        ``main``/``master`` ref — a worktree shares ``.git`` with the user's
+        repo, so the local branch resolves directly.
         """
         # Try origin first (most common case)
         branch = self._detect_default_branch_for_remote(project_path, "origin")
         if branch is not None:
             return branch
-
-        if initialization_strategy == WorkspaceInitializationStrategy.CLONE:
-            return self._detect_fallback_branch_for_clone_target(project_path)
 
         return self._detect_local_main_or_master(project_path)
 
@@ -358,20 +328,9 @@ class DefaultWorkspaceService(WorkspaceService):
                 continue
         return None
 
-    def _detect_fallback_branch_for_clone_target(self, project_path: Path) -> str | None:
-        """Return ``origin/main`` or ``origin/master`` for CLONE targets.
-
-        clone_strategy creates a synthetic ``origin`` remote pointing at the
-        source path and seeds ``refs/remotes/origin/<branch>`` from the
-        source's local branches, so we want the ``origin/<branch>`` form.
-        """
-        local = self._detect_local_main_or_master(project_path)
-        return f"origin/{local}" if local is not None else None
-
     def create_workspace(
         self,
         project: Project,
-        initialization_strategy: WorkspaceInitializationStrategy,
         source_branch: str | None,
         requested_branch_name: str | None,
         description: str | None,
@@ -392,19 +351,15 @@ class DefaultWorkspaceService(WorkspaceService):
         # Use the caller-provided target branch if given, otherwise resolve a
         # sensible default from the user's repo.
         if target_branch is None:
-            target_branch = self._resolve_default_target_branch(project_path, initialization_strategy)
+            target_branch = self._resolve_default_target_branch(project_path)
 
         # Resolve through the project's tri-state default helper: `None` means
         # "use the current default", `""` means "user cleared", and any other
-        # value is the user's custom command. Setup runs on any fresh isolated
-        # checkout — both CLONE and WORKTREE.
+        # value is the user's custom command. Setup runs on the fresh worktree
+        # checkout when a command is configured.
         resolved_setup_command = resolve_workspace_setup_command(project.workspace_setup_command)
         has_command = resolved_setup_command is not None and resolved_setup_command != ""
-        is_clone_or_worktree = initialization_strategy in (
-            WorkspaceInitializationStrategy.CLONE,
-            WorkspaceInitializationStrategy.WORKTREE,
-        )
-        initial_setup_status = "pending" if (has_command and is_clone_or_worktree) else "not_configured"
+        initial_setup_status = "pending" if has_command else "not_configured"
 
         workspace_id = WorkspaceID()
         workspace = Workspace(
@@ -412,7 +367,6 @@ class DefaultWorkspaceService(WorkspaceService):
             project_id=project.object_id,
             organization_reference=project.organization_reference,
             description=description,
-            initialization_strategy=initialization_strategy,
             source_branch=source_branch,
             requested_branch_name=requested_branch_name,
             source_git_hash=source_git_hash,
@@ -484,7 +438,6 @@ class DefaultWorkspaceService(WorkspaceService):
         if workspace.environment_id is not None:
             environment_id = workspace.environment_id
             environment_manager = self.environment_manager
-            initialization_strategy = workspace.initialization_strategy
             requested_branch_name = workspace.requested_branch_name
             project = transaction.get_project(workspace.project_id)
             concurrency_group = self.concurrency_group
@@ -506,37 +459,34 @@ class DefaultWorkspaceService(WorkspaceService):
                 # Cancel any in-flight setup-command subprocess before the
                 # environment directory is removed.
                 setup_runner.cancel(str(workspace_id))
-                # For WORKTREE workspaces, run `git worktree remove` in the user's
-                # repo before rmtree so the gitfile entry is cleaned up and the
-                # tri-state branch deletion policy is applied.
-                if initialization_strategy == WorkspaceInitializationStrategy.WORKTREE:
-                    if project is not None and requested_branch_name is not None:
-                        user_config = get_user_config_instance()
-                        deletion_policy = (
-                            user_config.workspace_branch_deletion_policy
-                            if user_config is not None
-                            else "delete_if_safe"
+                # Run `git worktree remove` in the user's repo before rmtree so the
+                # gitfile entry is cleaned up and the tri-state branch deletion
+                # policy is applied.
+                if project is not None and requested_branch_name is not None:
+                    user_config = get_user_config_instance()
+                    deletion_policy = (
+                        user_config.workspace_branch_deletion_policy if user_config is not None else "delete_if_safe"
+                    )
+                    try:
+                        # The worktree checkout lives at `<environment_id>/code/`,
+                        # not at `<environment_id>` itself (which is the workspace dir
+                        # containing state/, artifacts/, and code/).
+                        remove_worktree(
+                            user_repo_path=project.get_local_user_path(),
+                            destination=Path(environment_id) / "code",
+                            branch_name=requested_branch_name,
+                            deletion_policy=deletion_policy,
+                            concurrency_group=concurrency_group,
                         )
-                        try:
-                            # The worktree checkout lives at `<environment_id>/code/`,
-                            # not at `<environment_id>` itself (which is the workspace dir
-                            # containing state/, artifacts/, and code/).
-                            remove_worktree(
-                                user_repo_path=project.get_local_user_path(),
-                                destination=Path(environment_id) / "code",
-                                branch_name=requested_branch_name,
-                                deletion_policy=deletion_policy,
-                                concurrency_group=concurrency_group,
-                            )
-                        except Exception as e:
-                            logger.info("Failed to remove worktree for workspace {}: {}", workspace_id, e)
-                    else:
-                        logger.info(
-                            "Skipping worktree removal for workspace {} (project={}, branch={})",
-                            workspace_id,
-                            project,
-                            requested_branch_name,
-                        )
+                    except Exception as e:
+                        logger.info("Failed to remove worktree for workspace {}: {}", workspace_id, e)
+                else:
+                    logger.info(
+                        "Skipping worktree removal for workspace {} (project={}, branch={})",
+                        workspace_id,
+                        project,
+                        requested_branch_name,
+                    )
                 environment_manager.delete_environment(environment_id)
                 logger.info("Deleted environment {} for workspace {}", environment_id, workspace_id)
 
@@ -579,9 +529,8 @@ class DefaultWorkspaceService(WorkspaceService):
         project: Project,
         workspace_id: WorkspaceID,
         concurrency_group: ConcurrencyGroup,
-        root_progress_handle: RootProgressHandle,
         task_id: str,
-    ) -> EnvironmentTypes:
+    ) -> LocalEnvironment:
         """Create or resume the environment for a workspace, protected by a per-workspace lock.
 
         The lock ensures that concurrent tasks in the same workspace don't create
@@ -598,7 +547,7 @@ class DefaultWorkspaceService(WorkspaceService):
                 raise WorkspaceNotFoundError(workspace_id)
 
             environment_id_to_resume = workspace.environment_id
-            environment: Environment | None = None
+            environment: LocalEnvironment | None = None
 
             user_config = get_user_config_instance()
             env_var_override = user_config.env_var_override_enabled if user_config is not None else False
@@ -612,34 +561,27 @@ class DefaultWorkspaceService(WorkspaceService):
                     project_path=project_path,
                     project_id=project.object_id,
                     concurrency_group=concurrency_group,
-                    initialization_strategy=workspace.initialization_strategy,
                     env_var_override=env_var_override,
                 )
                 logger.debug(
                     "Resumed existing environment {} for workspace {}", environment_id_to_resume, workspace_id
                 )
-            except (EnvironmentNotFoundError, EnvironmentConfigurationChangedError) as e:
+            except EnvironmentNotFoundError as e:
                 logger.debug("Unable to resume environment: {}", e)
 
-                with (
-                    timeout_monitor(
-                        concurrency_group,
-                        timeout=_ENVIRONMENT_CREATION_TIMEOUT_SECONDS,
-                        on_timeout=lambda timeout: logger.warning(
-                            "Environment creation is taking longer than expected ({}s) for workspace {}",
-                            timeout,
-                            workspace_id,
-                        ),
+                with timeout_monitor(
+                    concurrency_group,
+                    timeout=_ENVIRONMENT_CREATION_TIMEOUT_SECONDS,
+                    on_timeout=lambda timeout: logger.warning(
+                        "Environment creation is taking longer than expected ({}s) for workspace {}",
+                        timeout,
+                        workspace_id,
                     ),
-                    start_finish_context(
-                        root_progress_handle.track_environment_setup(task_id)
-                    ) as environment_setup_handle,  # noqa: F841
                 ):
                     environment = self.environment_manager.create_environment(
                         project_path=project_path,
                         project_id=project.object_id,
                         concurrency_group=concurrency_group,
-                        initialization_strategy=workspace.initialization_strategy,
                         source_branch=workspace.source_branch,
                         requested_branch_name=workspace.requested_branch_name,
                         env_var_override=env_var_override,
@@ -647,8 +589,7 @@ class DefaultWorkspaceService(WorkspaceService):
                 logger.debug("Created new environment {} for workspace {}", environment.environment_id, workspace_id)
 
             # Type narrowing for pycharm/the type checker
-            assert isinstance(environment, extract_leaf_types(EnvironmentTypes))
-            environment = cast(EnvironmentTypes, environment)
+            assert isinstance(environment, LocalEnvironment)
 
             # Expose sculpt CLI env vars in the terminal so bare `sculpt` invocations
             # can reach the backend and resolve the workspace/project without flags.
@@ -681,22 +622,18 @@ class DefaultWorkspaceService(WorkspaceService):
         workspace_id: WorkspaceID,
         task_id: TaskID,
         concurrency_group: ConcurrencyGroup,
-        root_progress_handle: RootProgressHandle,
         shutdown_event: ReadOnlyEvent,
-    ) -> Iterator[AgentExecutionEnvironment]:
+    ) -> Iterator[LocalAgentExecutionEnvironment]:
         """Set up the environment for a workspace and wrap it for agent use."""
         environment = self._create_or_resume_environment(
             project=project,
             workspace_id=workspace_id,
             concurrency_group=concurrency_group,
-            root_progress_handle=root_progress_handle,
             task_id=str(task_id),
         )
 
         # Wrap the environment in AgentExecutionEnvironment for per-task namespacing
-        agent_environment = LocalAgentExecutionEnvironment(
-            environment, task_id, dependency_management_service=self.dependency_management_service
-        )
+        agent_environment = LocalAgentExecutionEnvironment(environment, task_id)
         logger.debug(
             "Created AgentExecutionEnvironment for task {} with state_path={}",
             task_id,
@@ -793,17 +730,6 @@ class DefaultWorkspaceService(WorkspaceService):
         """Get the directory for storing workspace artifacts."""
         return self.workspace_sync_dir / str(workspace_id)
 
-    def get_persistent_task_artifacts_dir(
-        self,
-        workspace_id: WorkspaceID,
-        task_id: TaskID,
-    ) -> Path | None:
-        with self.data_model_service.open_transaction(request_id=RequestID()) as txn:
-            workspace = txn.get_workspace(workspace_id)
-        if workspace is None or workspace.environment_id is None:
-            return None
-        return Path(workspace.environment_id) / ARTIFACTS_DIRECTORY / TASKS_SUBDIRECTORY / str(task_id)
-
     def get_workspace_working_directory(
         self,
         workspace: Workspace,
@@ -811,7 +737,7 @@ class DefaultWorkspaceService(WorkspaceService):
     ) -> Path | None:
         """Get the git working directory for a workspace.
 
-        Delegates to the Environment abstraction so IN_PLACE vs CLONE path logic
+        Delegates to the Environment abstraction so the worktree checkout path
         lives in one place (LocalEnvironment.get_working_directory).
 
         Returns None if the workspace's environment hasn't been initialized yet.
@@ -825,8 +751,6 @@ class DefaultWorkspaceService(WorkspaceService):
             raise WorkspaceNotFoundError(workspace.object_id)
 
         if workspace.environment_id is None:
-            if workspace.initialization_strategy == WorkspaceInitializationStrategy.IN_PLACE:
-                return project.get_local_user_path()
             return None
 
         environment = self.environment_manager.resume_environment(
@@ -834,7 +758,6 @@ class DefaultWorkspaceService(WorkspaceService):
             project_path=project.get_local_user_path(),
             project_id=project.object_id,
             concurrency_group=self.concurrency_group,
-            initialization_strategy=workspace.initialization_strategy,
         )
         return environment.get_working_directory()
 
@@ -1065,7 +988,7 @@ class DefaultWorkspaceService(WorkspaceService):
             artifact_dir = self._get_workspace_artifact_dir(workspace_id)
             artifact_dir.mkdir(parents=True, exist_ok=True)
 
-            artifact_path = artifact_dir / ArtifactType.DIFF
+            artifact_path = artifact_dir / DIFF_ARTIFACT_DIRNAME
             artifact_path.write_text(diff_artifact.model_dump_json(indent=2))
 
             metadata = {"generated_at": generated_at.isoformat()}
@@ -1152,7 +1075,7 @@ class DefaultWorkspaceService(WorkspaceService):
             )
 
         artifact_dir = self._get_workspace_artifact_dir(workspace_id)
-        artifact_path = artifact_dir / ArtifactType.DIFF
+        artifact_path = artifact_dir / DIFF_ARTIFACT_DIRNAME
 
         if not artifact_path.exists():
             # Artifact missing — generate on-demand (lazy diff from startup).

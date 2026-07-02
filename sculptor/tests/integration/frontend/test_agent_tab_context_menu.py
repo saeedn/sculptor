@@ -30,10 +30,10 @@ def test_agent_context_menu_has_rename_and_delete(
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
 
     # Step 1: Create a workspace.
-    start_task_and_wait_for_ready(page, prompt="Agent test", workspace_name="Agent WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Agent WS")
 
     # Step 2: Add a second agent.
-    agent_tab_bar.get_add_agent_button().click()
+    agent_tab_bar.add_terminal_agent()
 
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(2)
@@ -62,7 +62,7 @@ def test_agent_context_menu_rename(
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
 
     # Step 1: Create a workspace.
-    start_task_and_wait_for_ready(page, prompt="Agent rename test", workspace_name="Rename WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Rename WS")
 
     # Step 2: Right-click agent tab and select Rename.
     agent_tabs = agent_tab_bar.get_agent_tabs()
@@ -102,9 +102,9 @@ def test_agent_context_menu_delete(
     agent_tab_bar = PlaywrightAgentTabBarElement(page)
 
     # Step 1: Create a workspace and add a second agent.
-    start_task_and_wait_for_ready(page, prompt="Delete test", workspace_name="Delete WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Delete WS")
 
-    agent_tab_bar.get_add_agent_button().click()
+    agent_tab_bar.add_terminal_agent()
 
     agent_tabs = agent_tab_bar.get_agent_tabs()
     expect(agent_tabs).to_have_count(2)

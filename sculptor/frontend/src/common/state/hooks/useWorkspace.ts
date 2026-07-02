@@ -1,7 +1,7 @@
 import { useAtomValue } from "jotai";
 
 import type { Workspace } from "../../../api";
-import { workspaceAtomFamily, workspaceIdsAtom } from "../atoms/workspaces";
+import { workspaceAtomFamily } from "../atoms/workspaces";
 
 /**
  * Hook to access workspace data by ID.
@@ -16,22 +16,4 @@ export const useWorkspace = (workspaceId: string | null | undefined): Workspace 
   }
 
   return workspace;
-};
-
-/**
- * Hook to detect whether a task's workspace has been deleted.
- * Returns false while workspaces are still loading (avoids false positives on initial page load).
- */
-export const useIsWorkspaceDeleted = (workspaceId: string | null): boolean => {
-  const workspace = useWorkspace(workspaceId);
-  const workspaceIds = useAtomValue(workspaceIdsAtom);
-  if (workspaceId === null) {
-    return false;
-  }
-
-  // If workspaces haven't loaded yet, don't report as deleted
-  if (workspaceIds === undefined) {
-    return false;
-  }
-  return workspace === null;
 };

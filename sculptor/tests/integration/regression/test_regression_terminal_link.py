@@ -46,8 +46,9 @@ def test_terminal_link_opens_correct_url(sculptor_instance_: SculptorInstance) -
     page = sculptor_instance_.page
     test_url = "https://example.com/test-link"
 
-    # Step 1: Create workspace and open terminal
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    # Step 1: Create workspace (plain terminal first agent — a model-free
+    # vehicle, no chat model) and open the workspace terminal panel.
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
 
     # Step 2: Echo a URL into the terminal and wait for it to appear in the buffer

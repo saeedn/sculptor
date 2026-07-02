@@ -22,10 +22,8 @@ from pathlib import Path
 from queue import Queue
 from subprocess import TimeoutExpired
 from threading import Event
-from threading import Thread
 from typing import Any
 from typing import Callable
-from typing import IO
 from typing import Mapping
 from typing import Sequence
 from typing import TypeVar
@@ -167,7 +165,6 @@ class RunningProcess:
         output_queue: Queue[tuple[str, bool]] | None,
         shutdown_event: MutableEvent,
         is_checked: bool = False,
-        open_stdin: bool = False,
         isolate_process_group: bool = False,
     ) -> None:
         self._command = command
@@ -178,11 +175,7 @@ class RunningProcess:
         self._thread: ObservableThread | None = None
         self._stdout_lines: list[str] = []
         self._stderr_lines: list[str] = []
-        self._open_stdin = open_stdin
         self._isolate_process_group = isolate_process_group
-        self._stdin_pipe: IO[bytes] | None = None
-        self._stdin_queue: Queue[str | None] | None = None
-        self._stdin_writer_thread: Thread | None = None
         # The live ``subprocess.Popen`` handle, captured via ``on_popen_ready``
         # once the worker thread spawns it. Lets ``kill_now`` signal the process
         # (group) directly without coordinating with that worker thread.
@@ -316,9 +309,6 @@ class RunningProcess:
             "isolate_process_group": self._isolate_process_group,
             "on_popen_ready": self._set_popen,
         }
-        if self._open_stdin:
-            extra_kwargs["stdin_mode"] = subprocess.PIPE
-            extra_kwargs["on_stdin_ready"] = self._set_stdin_pipe
         self._thread = ObservableThread(
             target=lambda: context.run(self.run, {**kwargs, **extra_kwargs}),
             name=self._get_name(),
@@ -362,9 +352,9 @@ class RunningProcess:
             self._completed_process = run_local_command_modern_version(**kwargs)
         except BaseException as e:
             # Don't swallow irrecoverable exceptions — re-raise so
-            # ObservableThread.run's outer handler can flush sentry and
-            # exit the program. The handler is no-op by default; sculptor
-            # registers one via set_irrecoverable_exception_handler.
+            # ObservableThread.run's outer handler can exit the program.
+            # The handler is no-op by default; sculptor registers one via
+            # set_irrecoverable_exception_handler.
             if is_exception_irrecoverable(e):
                 raise
             # `self._thread` is set by `start()` before `self._thread.start()`,
@@ -392,69 +382,6 @@ class RunningProcess:
         # pyrefly: ignore [missing-attribute]
         self._output_queue.put((line, is_stdout))
 
-    def _set_stdin_pipe(self, pipe: IO[bytes]) -> None:
-        """Callback invoked once the subprocess stdin handle is available.
-
-        Starts a dedicated writer thread that drains ``_stdin_queue`` and
-        writes each item to the pipe.  This mirrors the queue-based pattern
-        used for stdout/stderr and ensures that callers of ``write_stdin``
-        never block on a full pipe buffer.
-        """
-        self._stdin_pipe = pipe
-        self._stdin_queue = Queue()
-        self._stdin_writer_thread = Thread(
-            target=self._stdin_writer_loop,
-            name=f"stdin-writer: {' '.join(self._command)}"[:80],
-            daemon=True,
-        )
-        self._stdin_writer_thread.start()
-
-    def _stdin_writer_loop(self) -> None:
-        """Drain ``_stdin_queue``, writing each item to the pipe.
-
-        A ``None`` sentinel signals the loop to close the pipe and exit.
-        """
-        pipe = self._stdin_pipe
-        queue = self._stdin_queue
-        assert pipe is not None and queue is not None
-        try:
-            while True:
-                item = queue.get()
-                if item is None:
-                    break
-                pipe.write(item.encode("utf-8"))
-                pipe.flush()
-        except OSError as exc:
-            logger.debug("stdin writer stopped: {}", exc)
-        finally:
-            try:
-                pipe.close()
-            except OSError:
-                pass
-            self._stdin_pipe = None
-
-    def write_stdin(self, data: str) -> None:
-        """Enqueue *data* for writing to the process's stdin.
-
-        The actual write happens on a dedicated thread, so this method never
-        blocks on a full pipe buffer.  Only works if started with
-        ``open_stdin=True``.
-        """
-        queue = self._stdin_queue
-        assert queue is not None, "Process was not started with open_stdin=True"
-        queue.put(data)
-
-    def close_stdin(self) -> None:
-        """Signal the stdin writer thread to close the pipe and wait for it to finish."""
-        queue = self._stdin_queue
-        if queue is not None:
-            queue.put(None)  # sentinel
-            self._stdin_queue = None
-        thread = self._stdin_writer_thread
-        if thread is not None:
-            thread.join(timeout=5.0)
-            self._stdin_writer_thread = None
-
 
 ProcessClassType = TypeVar("ProcessClassType", bound=RunningProcess)
 
@@ -474,7 +401,6 @@ def run_background(
     process_class: type[ProcessClassType] = RunningProcess,
     process_class_kwargs: Mapping[str, object] | None = None,
     log_command: bool = True,
-    open_stdin: bool = False,
     isolate_process_group: bool = False,
 ) -> ProcessClassType:
     """
@@ -511,7 +437,6 @@ def run_background(
         shutdown_event=true_shutdown_event,
         command=command,
         is_checked=is_checked,
-        open_stdin=open_stdin,
         isolate_process_group=isolate_process_group,
         **(process_class_kwargs or {}),
     )

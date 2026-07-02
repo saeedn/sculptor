@@ -11,14 +11,13 @@ from uuid import uuid4
 
 import pytest
 
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.async_monkey_patches_test import expect_exact_logged_errors
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.primitives.ids import LocalEnvironmentID
 from sculptor.primitives.ids import ProjectID
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LOCAL_WORKSPACE_DIR
 from sculptor.services.workspace_service.environment_manager.environments.local_environment import LocalEnvironment
-from sculptor.services.workspace_service.environment_manager.environments.worktree_strategy import WorktreeError
+from sculptor.services.workspace_service.environment_manager.environments.worktree import WorktreeError
 from sculptor.testing.local_git_repo import LocalGitRepo
 
 
@@ -26,15 +25,18 @@ from sculptor.testing.local_git_repo import LocalGitRepo
 def local_environment(test_root_concurrency_group: ConcurrencyGroup) -> Generator[LocalEnvironment, None, None]:
     workspace_dir = LOCAL_WORKSPACE_DIR / str(uuid4().hex)
     workspace_dir.mkdir(parents=True, exist_ok=True)
-    # Create a repo directory to simulate the user's repo
+    # Create a real git repo (with a `main` branch + commit) to simulate the
+    # user's repo, so `git worktree add -b <new> <code-dir> main` succeeds.
     repo_dir = workspace_dir / "repo"
-    repo_dir.mkdir(parents=True, exist_ok=True)
+    make_test_repo(repo_dir)
     try:
         local_env = LocalEnvironment.create(
             environment_id=LocalEnvironmentID(str(workspace_dir)),
             project_id=ProjectID(),
             concurrency_group=test_root_concurrency_group,
             repo_host_path=repo_dir,
+            source_branch="main",
+            requested_branch_name="ws/local-env",
         )
         yield local_env
     finally:
@@ -43,8 +45,8 @@ def local_environment(test_root_concurrency_group: ConcurrencyGroup) -> Generato
 
 
 @dataclass
-class CloneTestContext:
-    """Shared context for clone-mode environment tests."""
+class WorktreeTestContext:
+    """Shared context for worktree-mode environment tests."""
 
     workspace_dir: Path
     source_repo_path: Path
@@ -53,16 +55,20 @@ class CloneTestContext:
 
 
 @pytest.fixture
-def clone_test_ctx(
+def worktree_test_ctx(
     test_root_concurrency_group: ConcurrencyGroup, tmp_path: Path
-) -> Generator[CloneTestContext, None, None]:
-    """Set up a workspace dir, source repo, and fake sculptor folder for clone-mode tests."""
+) -> Generator[WorktreeTestContext, None, None]:
+    """Set up a workspace dir, source repo (with a `main` branch + commit), and fake sculptor folder.
+
+    The source repo has a real commit on ``main`` so ``git worktree add -b <new>
+    <code-dir> main`` succeeds.
+    """
     workspace_dir = LOCAL_WORKSPACE_DIR / uuid4().hex
     workspace_dir.mkdir(parents=True, exist_ok=True)
     source_repo_path = tmp_path / "source_repo"
     make_test_repo(source_repo_path)
     try:
-        yield CloneTestContext(
+        yield WorktreeTestContext(
             workspace_dir=workspace_dir,
             source_repo_path=source_repo_path,
             sculptor_folder=tmp_path / "fake_sculptor",
@@ -130,17 +136,18 @@ def test_run_setup_subprocess_on_pid_skipped_on_pgid_failure(
     assert pids == []
 
 
-def test_run_setup_subprocess_cwd_is_working_directory(clone_test_ctx: CloneTestContext) -> None:
-    """In CLONE mode the setup command must run inside the cloned working
-    directory (workspace/code/), not the user's source repo. Build artifacts
-    have to land in the clone for the agent to see them."""
+def test_run_setup_subprocess_cwd_is_working_directory(worktree_test_ctx: WorktreeTestContext) -> None:
+    """In worktree mode the setup command must run inside the worktree checkout
+    (workspace/code/), not the user's source repo. Build artifacts have to land
+    in the worktree for the agent to see them."""
     env = LocalEnvironment.create(
-        environment_id=LocalEnvironmentID(str(clone_test_ctx.workspace_dir)),
+        environment_id=LocalEnvironmentID(str(worktree_test_ctx.workspace_dir)),
         project_id=ProjectID(),
-        concurrency_group=clone_test_ctx.concurrency_group,
-        repo_host_path=clone_test_ctx.source_repo_path,
-        initialization_strategy=WorkspaceInitializationStrategy.CLONE,
-        sculptor_folder=clone_test_ctx.sculptor_folder,
+        concurrency_group=worktree_test_ctx.concurrency_group,
+        repo_host_path=worktree_test_ctx.source_repo_path,
+        source_branch="main",
+        requested_branch_name="ws/setup-cwd",
+        sculptor_folder=worktree_test_ctx.sculptor_folder,
     )
     chunks: list[bytes] = []
     rc = env.run_setup_subprocess("pwd", chunks.append, lambda _pid: None, Event())
@@ -150,7 +157,7 @@ def test_run_setup_subprocess_cwd_is_working_directory(clone_test_ctx: CloneTest
     assert expected in captured or captured.strip().endswith(expected), (
         f"setup ran in {captured.strip()!r}, expected {expected!r}"
     )
-    assert str(clone_test_ctx.source_repo_path.resolve()) not in captured, (
+    assert str(worktree_test_ctx.source_repo_path.resolve()) not in captured, (
         f"setup should NOT run in the user's source repo, got: {captured!r}"
     )
 
@@ -283,7 +290,7 @@ def test_write_file_writes_bytes_content(local_environment: LocalEnvironment) ->
     """Test that write_file correctly writes binary content (e.g. images)."""
     # Simulate a PNG file header as binary content
     binary_content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-    file_path = str(local_environment.get_attachments_path() / "test_image.png")
+    file_path = str(local_environment.get_state_path() / "test_image.png")
     local_environment.write_file(path=file_path, content=binary_content, mode="wb")
 
     host_path = local_environment.to_host_path(Path("/" + file_path.lstrip("/")))
@@ -293,7 +300,7 @@ def test_write_file_writes_bytes_content(local_environment: LocalEnvironment) ->
 def test_write_file_raises_type_error_when_bytes_content_with_text_mode(local_environment: LocalEnvironment) -> None:
     """Test that write_file raises TypeError when bytes content is passed with text mode."""
     binary_content = b"\x89PNG\r\n\x1a\n" + b"\x00" * 100
-    file_path = str(local_environment.get_attachments_path() / "should_fail.png")
+    file_path = str(local_environment.get_state_path() / "should_fail.png")
 
     with pytest.raises(TypeError, match="Cannot write bytes content with text mode"):
         local_environment.write_file(path=file_path, content=binary_content)
@@ -314,19 +321,25 @@ def _collect_stdout(environment: LocalEnvironment, command: list[str]) -> str:
     return "".join(lines)
 
 
-def test_project_env_vars_available_in_process(clone_test_ctx: CloneTestContext) -> None:
-    """Project env vars from .sculptor/.env should be available in spawned processes."""
-    env_dir = clone_test_ctx.source_repo_path / ".sculptor"
+def test_project_env_vars_available_in_process(worktree_test_ctx: WorktreeTestContext) -> None:
+    """Project env vars from .sculptor/.env should be available in spawned processes.
+
+    Gitignored files don't follow the worktree, so ``create`` copies the source
+    repo's ``.sculptor/.env`` into the worktree checkout; the vars must then load
+    from the checkout's copy.
+    """
+    env_dir = worktree_test_ctx.source_repo_path / ".sculptor"
     env_dir.mkdir(parents=True, exist_ok=True)
     (env_dir / ".env").write_text("SCTEST_PROJ_VAR=hello_from_env\n")
 
     env = LocalEnvironment.create(
-        environment_id=LocalEnvironmentID(str(clone_test_ctx.workspace_dir)),
+        environment_id=LocalEnvironmentID(str(worktree_test_ctx.workspace_dir)),
         project_id=ProjectID(),
-        concurrency_group=clone_test_ctx.concurrency_group,
-        repo_host_path=clone_test_ctx.source_repo_path,
-        initialization_strategy=WorkspaceInitializationStrategy.CLONE,
-        sculptor_folder=clone_test_ctx.sculptor_folder,
+        concurrency_group=worktree_test_ctx.concurrency_group,
+        repo_host_path=worktree_test_ctx.source_repo_path,
+        source_branch="main",
+        requested_branch_name="ws/env-vars",
+        sculptor_folder=worktree_test_ctx.sculptor_folder,
     )
 
     output = _collect_stdout(env, ["printenv", "SCTEST_PROJ_VAR"])
@@ -363,25 +376,6 @@ def test_env_var_override_true_overrides_existing(
     assert "new_value" in output
 
 
-def test_get_system_prompt_dispatches_on_initialization_strategy(local_environment: LocalEnvironment) -> None:
-    """get_system_prompt returns a distinct <Environment mode> block for each strategy."""
-    local_environment.initialization_strategy = WorkspaceInitializationStrategy.IN_PLACE
-    in_place_prompt = local_environment.get_system_prompt()
-    assert in_place_prompt is not None and "in-place mode" in in_place_prompt
-
-    local_environment.initialization_strategy = WorkspaceInitializationStrategy.CLONE
-    clone_prompt = local_environment.get_system_prompt()
-    assert clone_prompt is not None and "clone mode" in clone_prompt
-
-    local_environment.initialization_strategy = WorkspaceInitializationStrategy.WORKTREE
-    worktree_prompt = local_environment.get_system_prompt()
-    assert worktree_prompt is not None
-    assert "worktree mode" in worktree_prompt
-    assert "`.git`" in worktree_prompt
-    assert "local` remote" in worktree_prompt
-    assert "NEVER" in worktree_prompt
-
-
 def test_create_worktree_happy_path(tmp_path: Path, test_root_concurrency_group: ConcurrencyGroup) -> None:
     """LocalEnvironment.create with WORKTREE mode runs git worktree add and returns the environment."""
     user_repo_path = tmp_path / "user_repo"
@@ -393,7 +387,6 @@ def test_create_worktree_happy_path(tmp_path: Path, test_root_concurrency_group:
             project_id=ProjectID(),
             concurrency_group=test_root_concurrency_group,
             repo_host_path=user_repo_path,
-            initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
             source_branch="main",
             requested_branch_name="feat/x",
         )
@@ -421,7 +414,6 @@ def test_create_worktree_missing_branch_name_raises(
                 project_id=ProjectID(),
                 concurrency_group=test_root_concurrency_group,
                 repo_host_path=user_repo_path,
-                initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
                 source_branch="main",
                 requested_branch_name=None,
             )
@@ -443,7 +435,6 @@ def test_create_worktree_missing_source_branch_raises(
                 project_id=ProjectID(),
                 concurrency_group=test_root_concurrency_group,
                 repo_host_path=user_repo_path,
-                initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
                 source_branch=None,
                 requested_branch_name="feat/x",
             )
@@ -465,7 +456,6 @@ def test_create_worktree_branch_exists_raises(tmp_path: Path, test_root_concurre
                     project_id=ProjectID(),
                     concurrency_group=test_root_concurrency_group,
                     repo_host_path=user_repo_path,
-                    initialization_strategy=WorkspaceInitializationStrategy.WORKTREE,
                     source_branch="main",
                     requested_branch_name="feat/x",
                 )

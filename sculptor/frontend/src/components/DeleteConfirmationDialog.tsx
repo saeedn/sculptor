@@ -2,7 +2,7 @@ import { AlertDialog, Button, Flex } from "@radix-ui/themes";
 import type { ReactElement } from "react";
 import { useRef } from "react";
 
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 
 import { ElementIds } from "../api";
 import styles from "./DeleteConfirmationDialog.module.scss";

@@ -1,12 +1,7 @@
 import { atom } from "jotai";
-import { atomWithStorage } from "jotai/utils";
-
-import { isLlmModel } from "~/common/Guards.ts";
-import { getTelemetryEnabled } from "~/common/Telemetry.ts";
 
 import type { CiBabysitterConfig, CustomActionsConfig, UserConfig } from "../../../api";
-import { LlmModel } from "../../../api";
-import { themeBuilderSettingsAtom } from "./themeBuilder";
+import { themeAppearanceAtom } from "./theme";
 
 /**
  * PRIMARY ATOM: Global UserConfig State
@@ -30,58 +25,12 @@ export const userConfigAtom = atom<UserConfig | null>(null);
  * need for manual subscription management and ensures consistent behavior.
  */
 
-// Theme setting — derives from the theme builder (localStorage) so that the
-// Radix <Theme> appearance and all consumers (e.g. diff panel CodeMirror)
-// stay in sync.  The server-side userConfig.appTheme field is no longer used.
+// Theme setting — derives from the persisted theme settings (localStorage) so
+// that the Radix <Theme> appearance and all consumers (e.g. diff panel
+// CodeMirror) stay in sync. The server-side userConfig.appTheme field is no
+// longer used.
 export const appThemeAtom = atom<"light" | "dark" | "system">((get) => {
-  return get(themeBuilderSettingsAtom).appearance;
-});
-
-// Experimental settings
-
-export const isAlwaysInterruptAndSendAtom = atom<boolean>(
-  (get) => get(userConfigAtom)?.isAlwaysInterruptAndSend ?? false,
-);
-
-// Model preferences
-
-export const lastUsedModelAtom = atomWithStorage<string | null>("sculptor-last-used-model", null);
-
-export const configuredDefaultModelAtom = atom<string | null>((get) => get(userConfigAtom)?.defaultLlm ?? null);
-
-export const defaultModelAtom = atom<string>((get) => {
-  const configuredDefaultModel = get(configuredDefaultModelAtom);
-  if (configuredDefaultModel && isLlmModel(configuredDefaultModel)) {
-    return configuredDefaultModel;
-  }
-  const lastUsedModel = get(lastUsedModelAtom);
-  if (lastUsedModel && isLlmModel(lastUsedModel)) {
-    return lastUsedModel;
-  }
-  // Product default when nothing else is selected. Fable is currently disabled
-  // with an indefinite timeline, so the default falls back to the 1M-context
-  // Opus (CLAUDE_4_OPUS, shown as "Opus (1M)"; SCU-1576). Fable stays available
-  // in the switcher for if/when it returns.
-  return LlmModel.CLAUDE_4_OPUS;
-});
-
-// User identity settings
-export const userEmailAtom = atom<string | undefined>((get) => get(userConfigAtom)?.userEmail);
-
-export const userFullNameAtom = atom<string | undefined>((get) => get(userConfigAtom)?.userFullName ?? undefined);
-
-export const isTelemetryEnabledAtom = atom<boolean>((get) => {
-  const config = get(userConfigAtom);
-  if (config == null) {
-    // Pre-handshake, mirror Telemetry.ts's runtime gate — which already
-    // honors the persisted opt-out from a previous session — so the UI never
-    // disagrees with the actual SDK gating after a restart.
-    return getTelemetryEnabled();
-  }
-  // Must match Telemetry.ts's computeIsTelemetryEnabled: the backend
-  // normalizes mixed configs to all-off on load, and the AND keeps the same
-  // conservative bias here.
-  return (config.isErrorReportingEnabled ?? false) && (config.isProductAnalyticsEnabled ?? false);
+  return get(themeAppearanceAtom);
 });
 
 // Custom actions
@@ -98,7 +47,7 @@ export const customActionsAtom = atom<CustomActionsConfig>((get) => {
 
 // PR creation settings
 const DEFAULT_PR_CREATION_PROMPT =
-  "Push my changes to origin and create a pull request. Check whether the repo uses GitHub (gh) or GitLab (glab) and use the appropriate tool. Write a clear description summarizing the changes.";
+  "Push my changes to origin and create a pull request using the GitHub CLI (gh). Write a clear description summarizing the changes.";
 
 export const prCreationPromptAtom = atom<string>(
   (get) => get(userConfigAtom)?.prCreationPrompt ?? DEFAULT_PR_CREATION_PROMPT,
@@ -119,9 +68,9 @@ export const prDefaultTargetBranchAtom = atom<string>(
 // that object with sensible per-field defaults for when the config hasn't
 // been loaded yet.
 const DEFAULT_CI_BABYSITTER_PIPELINE_PROMPT =
-  "Investigate the failing pipeline for this MR, identify the root cause, fix the code, commit, and push.";
+  "Investigate the failing pipeline for this PR, identify the root cause, fix the code, commit, and push.";
 const DEFAULT_CI_BABYSITTER_MERGE_CONFLICT_PROMPT =
-  "This MR has a merge conflict with its base branch. Fetch the latest, then rebase against the base branch, resolve all conflicts, and force-push the result.";
+  "This PR has a merge conflict with its base branch. Fetch the latest, then rebase against the base branch, resolve all conflicts, and force-push the result.";
 
 export const ciBabysitterConfigAtom = atom<CiBabysitterConfig | null>(
   (get) => get(userConfigAtom)?.ciBabysitter ?? null,
@@ -140,7 +89,7 @@ export const ciBabysitterMergeConflictPromptAtom = atom<string>(
 );
 
 // Which agent the babysitter drives: the discriminated union from the backend
-// (MRU | Claude | Pi | Registered{registrationId}); null until config loads.
+// (MRU | Registered{registrationId}); null until config loads.
 export const ciBabysitterAgentAtom = atom<NonNullable<CiBabysitterConfig["agent"]> | null>(
   (get) => get(ciBabysitterConfigAtom)?.agent ?? null,
 );
@@ -169,24 +118,6 @@ export const commitPromptAtom = atom<string>((get) => get(userConfigAtom)?.commi
 // Project environment variable settings
 export const envVarOverrideEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.envVarOverrideEnabled ?? false);
 
-// Smooth streaming preference
-export const isSmoothStreamingUserPreferenceAtom = atom<boolean>(
-  (get) => (get(userConfigAtom)?.isSmoothStreamingEnabled as boolean | undefined) ?? true,
-);
-
-// Per-workspace panel layout
-export const isPanelLayoutPerWorkspaceAtom = atom<boolean>(
-  (get) => get(userConfigAtom)?.isPanelLayoutPerWorkspace ?? false,
-);
-
-// In-place workspaces (opt-in — off by default)
-export const isInPlaceWorkspacesEnabledAtom = atom<boolean>(
-  (get) => get(userConfigAtom)?.enableInPlaceWorkspaces ?? false,
-);
-
-// Clone workspaces (opt-in — off by default; worktree is the default mode)
-export const isCloneWorkspacesEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.enableCloneWorkspaces ?? false);
-
 // Default branch-naming pattern (user-global default)
 export const defaultWorkspaceBranchNamingPatternAtom = atom<string>(
   (get) => get(userConfigAtom)?.defaultWorkspaceBranchNamingPattern ?? "<user>/<slug>",
@@ -198,31 +129,3 @@ export const workspaceBranchDeletionPolicyAtom = atom<"never" | "delete_if_safe"
     (get(userConfigAtom)?.workspaceBranchDeletionPolicy as "never" | "delete_if_safe" | "always" | undefined) ??
     "delete_if_safe",
 );
-
-// Review All combined diff view (experimental — off by default)
-export const isReviewAllEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.enableReviewAll ?? false);
-
-// Entity mentions (experimental — off by default)
-export const isEntityMentionsEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.enableEntityMentions ?? false);
-
-// Rich markdown rendering (experimental — off by default)
-export const isRichMarkdownRenderingEnabledAtom = atom<boolean>(
-  (get) => get(userConfigAtom)?.enableRichMarkdownRendering ?? false,
-);
-
-// Pi agent (experimental — off by default). Gates only whether the pi option
-// is offered in the agent-type pickers (the + button menu and the
-// new-workspace form); an already-created pi agent keeps running regardless.
-export const isPiAgentEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.enablePiAgent ?? false);
-
-// Frontend plugin system (experimental — off by default). Gates plugin
-// loading at boot and the Plugins settings section. Enabling takes effect
-// immediately (PluginLoader bootstraps when the flag turns on); disabling only
-// fully takes effect after a reload, since already-loaded plugins are not
-// unloaded mid-session.
-export const isFrontendPluginsEnabledAtom = atom<boolean>((get) => get(userConfigAtom)?.enableFrontendPlugins ?? false);
-
-// Agent defaults
-export const isDefaultFastModeAtom = atom<boolean>((get) => get(userConfigAtom)?.defaultFastMode ?? false);
-
-export const defaultEffortLevelAtom = atom<string>((get) => get(userConfigAtom)?.defaultEffortLevel ?? "xhigh");

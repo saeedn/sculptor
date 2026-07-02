@@ -15,9 +15,7 @@ const ROOT_CTX: PaletteContext = {
   route: { isHome: true, isWorkspace: false, isSettings: false, isAddWorkspace: false, isAgent: false },
   activeWorkspaceId: null,
   activeAgentId: null,
-  hasChatPanel: false,
   hasTerminalPanel: false,
-  isZenMode: false,
   page: null,
 };
 
@@ -36,27 +34,16 @@ const makeRuntime = (): CommandRuntime => {
     },
     ui: {
       toggleHelpDialog: noop,
-      toggleDevPanel: noop,
-      toggleZenMode: noop,
-      toggleFocusMode: noop,
-      toggleLeftPanel: noop,
-      toggleBottomPanel: noop,
-      toggleRightPanel: noop,
       togglePanel: noop,
       setTheme: noop,
-      focusChatInput: noop,
-      showChatSearch: noop,
-      jumpChatToBottom: noop,
       nextWorkspaceTab: noop,
       previousWorkspaceTab: noop,
       nextAgent: noop,
       previousAgent: noop,
       createAgent: noop,
-      openReportProblem: noop,
       clearActiveTerminal: noop,
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },
-    electron: { isAvailable: false, reloadWindow: noop },
   };
 };
 
@@ -70,9 +57,7 @@ const setWorkspaceIds = (ids: Array<string>): void => {
   getDefaultStore().set(workspaceIdsAtom, ids);
 };
 
-const setTasks = (
-  tasks: Array<{ id: string; title?: string; workspaceId: string; createdAt: string; initialPrompt?: string }>,
-): void => {
+const setTasks = (tasks: Array<{ id: string; title?: string; workspaceId: string; createdAt: string }>): void => {
   // tasksArrayAtom is derived from taskIdsAtom + taskAtomFamily, so we
   // seed those primitive atoms instead of trying to write the derived one.
   const store = getDefaultStore();
@@ -85,7 +70,6 @@ const setTasks = (
         title: t.title ?? null,
         workspaceId: t.workspaceId,
         createdAt: t.createdAt,
-        initialPrompt: t.initialPrompt ?? "",
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } as any,
     );
@@ -261,13 +245,12 @@ describe("buildAgentProvider", () => {
     expect(cmds.find((c) => c.id === "agents.page.t1")?.subtitle).toBe("Current agent");
   });
 
-  it("falls back to the initial prompt when no title is set", () => {
+  it("falls back to 'Untitled agent' when no title is set", () => {
     setTasks([
       {
         id: "t1",
         workspaceId: "ws1",
         createdAt: "2024-01-01T00:00:00Z",
-        initialPrompt: "Refactor the renderer",
       },
       {
         id: "t2",
@@ -279,7 +262,7 @@ describe("buildAgentProvider", () => {
     const cmd = buildAgentProvider(makeRuntime())
       .produce(WS1_CTX)
       .find((c) => c.id === "agents.page.t1");
-    expect(cmd?.title).toContain("Refactor the renderer");
+    expect(cmd?.title).toContain("Untitled agent");
   });
 
   it("page-scoped entries declare onPage = agents.switch", () => {

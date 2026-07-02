@@ -1,7 +1,6 @@
 """Output formatting utilities for the sculpt CLI."""
 
 import datetime
-import json
 import sys
 from collections.abc import Sequence
 from typing import NoReturn

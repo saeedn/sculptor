@@ -49,69 +49,6 @@ export const INVALID_ACTIVE_INDEX = -1;
 export type TabEntry = { tabId: string; agentId: string | null };
 export type TabsState = { order: Array<TabEntry>; activeIndex: number };
 
-const LEGACY_TAB_ORDER_KEY = "sculptor-tab-order";
-
-const isValidTabsState = (value: unknown): value is TabsState => {
-  if (value === null || typeof value !== "object") return false;
-  const v = value as { order?: unknown; activeIndex?: unknown };
-  if (!Array.isArray(v.order) || typeof v.activeIndex !== "number") return false;
-  for (const entry of v.order) {
-    if (entry === null || typeof entry !== "object") return false;
-    const e = entry as { tabId?: unknown; agentId?: unknown };
-    if (typeof e.tabId !== "string") return false;
-    if (e.agentId !== null && typeof e.agentId !== "string") return false;
-  }
-  return true;
-};
-
-/**
- * Storage wrapper for `tabsAtom` that performs a one-time migration from the
- * legacy flat `sculptor-tab-order` array to the new `sculptor-tabs` shape on
- * the first read.  After migration, the legacy key is removed.  All other
- * operations defer to Jotai's standard JSON storage (so cross-tab `subscribe`
- * keeps working).  Exported for unit testing.
- */
-export const createMigratingTabsStorage = (): ReturnType<typeof createJSONStorage<TabsState>> => {
-  const base = createJSONStorage<TabsState>(() => localStorage);
-  return {
-    ...base,
-    getItem: (key: string, initialValue: TabsState): TabsState => {
-      try {
-        const raw = localStorage.getItem(key);
-        if (raw !== null) {
-          try {
-            const parsed: unknown = JSON.parse(raw);
-            if (isValidTabsState(parsed)) return parsed;
-          } catch (e) {
-            console.warn("[tabsAtom] sculptor-tabs is malformed, falling back to legacy key:", e);
-          }
-        }
-        const legacyRaw = localStorage.getItem(LEGACY_TAB_ORDER_KEY);
-        if (legacyRaw !== null) {
-          try {
-            const legacy: unknown = JSON.parse(legacyRaw);
-            if (Array.isArray(legacy)) {
-              const order: Array<TabEntry> = legacy
-                .filter((id): id is string => typeof id === "string")
-                .map((tabId) => ({ tabId, agentId: null }));
-              const migrated: TabsState = { order, activeIndex: INVALID_ACTIVE_INDEX };
-              localStorage.setItem(key, JSON.stringify(migrated));
-              localStorage.removeItem(LEGACY_TAB_ORDER_KEY);
-              return migrated;
-            }
-          } catch (e) {
-            console.warn("[tabsAtom] legacy sculptor-tab-order is malformed:", e);
-          }
-          localStorage.removeItem(LEGACY_TAB_ORDER_KEY);
-        }
-      } catch (e) {
-        console.warn("[tabsAtom] failed to read storage:", e);
-      }
-      return initialValue;
-    },
-  };
-};
-
 /**
  * Persisted tab state: the ordered list of open tabs (workspace IDs +
  * pseudo-tab IDs), an activeIndex pointer that restores the user's last-
@@ -123,7 +60,7 @@ export const createMigratingTabsStorage = (): ReturnType<typeof createJSONStorag
 export const tabsAtom = atomWithStorage<TabsState>(
   "sculptor-tabs",
   { order: [], activeIndex: INVALID_ACTIVE_INDEX },
-  createMigratingTabsStorage(),
+  createJSONStorage<TabsState>(() => localStorage),
   { getOnInit: true },
 );
 
@@ -493,7 +430,7 @@ export const updateWorkspacesAtom = atom(null, (get, set, workspaces: ReadonlyAr
     // active observers refetch. The same `diffUpdatedAt` bump fires for any
     // git event the backend surfaces — file changes, commits, branch
     // movement — so it's the right shared trigger. Non-git workspace queries
-    // (e.g. future MR status) live outside the `git` subtree and are
+    // (e.g. future PR status) live outside the `git` subtree and are
     // unaffected. We compare against the prior atom value here rather than
     // tracking the previous snapshot externally.
     const previous = get(workspaceAtomFamily(workspace.objectId));
@@ -515,7 +452,7 @@ export const updateWorkspacesAtom = atom(null, (get, set, workspaces: ReadonlyAr
       if (existingStatus === null) {
         set(workspaceSetupStatusAtomFamily(workspace.objectId), {
           workspaceId: workspace.objectId,
-          status: workspace.setupStatus as "not_configured" | "pending" | "running" | "succeeded" | "failed" | "legacy",
+          status: workspace.setupStatus as "not_configured" | "pending" | "running" | "succeeded" | "failed",
           runId: workspace.setupRunId ?? null,
           exitCode: workspace.setupExitCode ?? null,
           startedAt: workspace.setupStartedAt ?? null,
@@ -559,52 +496,21 @@ export const updateWorkspacesAtom = atom(null, (get, set, workspaces: ReadonlyAr
   if (!isHydrated) {
     set(hasHydratedWorkspaceTabsAtom, true);
 
-    // One-time migration: if the old localStorage key exists, migrate its
-    // open/closed state to the backend and adopt its ordering for tabsAtom.
-    const OLD_KEY = "sculptor-open-workspace-tab-ids";
-    const oldRaw = localStorage.getItem(OLD_KEY);
-    if (oldRaw !== null) {
-      try {
-        const oldOpenIds = JSON.parse(oldRaw) as Array<string>;
-        const oldOpenSet = new Set(oldOpenIds);
-
-        // Workspaces NOT in the old open set should be closed on the backend
-        const toClose = Array.from(currentWorkspaceIds).filter((id) => !oldOpenSet.has(id) && !isPseudoTabId(id));
-        console.info("[workspace-migration] migrating from localStorage to backend:", {
-          openCount: oldOpenIds.filter((id) => !isPseudoTabId(id)).length,
-          closeCount: toClose.length,
-          totalWorkspaces: currentWorkspaceIds.size,
-        });
-        if (toClose.length > 0) {
-          void batchUpdateOpenState({ body: { workspaceIds: toClose, isOpen: false } });
-        }
-
-        // Adopt the old tab order (it already includes pseudo-tabs)
-        nextTabsState = {
-          order: oldOpenIds.map((tabId): TabEntry => ({ tabId, agentId: null })),
-          activeIndex: INVALID_ACTIVE_INDEX,
-        };
-      } catch (e) {
-        console.warn("[workspace-migration] failed to parse old localStorage key:", e);
-      }
-      localStorage.removeItem(OLD_KEY);
-    } else {
-      const hasRealTabs = nextTabsState.order.some((e) => !isPseudoTabId(e.tabId));
-      if (!hasRealTabs) {
-        // No saved tab order (first-time or cleared localStorage) — initialize
-        // tab order from all open workspaces, preserving any existing pseudo-tabs.
-        const openIds = Array.from(currentWorkspaceIds).filter((id) => {
-          const ws = get(workspaceAtomFamily(id));
-          return ws !== null && !ws.isDeleted && ws.isOpen;
-        });
-        nextTabsState = {
-          ...nextTabsState,
-          order: [...nextTabsState.order, ...openIds.map((id): TabEntry => ({ tabId: id, agentId: null }))],
-        };
-      }
-      // If saved tab order exists, leave it as-is; effectiveOpenTabIdsAtom
-      // will filter out closed/deleted workspaces and append newly opened ones.
+    const hasRealTabs = nextTabsState.order.some((e) => !isPseudoTabId(e.tabId));
+    if (!hasRealTabs) {
+      // No saved tab order (first-time or cleared localStorage) — initialize
+      // tab order from all open workspaces, preserving any existing pseudo-tabs.
+      const openIds = Array.from(currentWorkspaceIds).filter((id) => {
+        const ws = get(workspaceAtomFamily(id));
+        return ws !== null && !ws.isDeleted && ws.isOpen;
+      });
+      nextTabsState = {
+        ...nextTabsState,
+        order: [...nextTabsState.order, ...openIds.map((id): TabEntry => ({ tabId: id, agentId: null }))],
+      };
     }
+    // If saved tab order exists, leave it as-is; effectiveOpenTabIdsAtom
+    // will filter out closed/deleted workspaces and append newly opened ones.
   }
 
   if (nextTabsState !== initialTabsState) {

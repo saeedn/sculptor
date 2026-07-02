@@ -162,7 +162,6 @@ export const HistoryFileList = ({ files, viewMode, onFileClick }: HistoryFileLis
             depth={depth}
             isExpanded={expandedFolders.has(node.path)}
             isFocused={false}
-            isActiveFile={false}
             folderChangeCount={folderChangeCounts.get(node.path) ?? 0}
             addedLines={file?.additions}
             removedLines={file?.deletions}

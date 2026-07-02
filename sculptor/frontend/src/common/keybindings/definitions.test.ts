@@ -82,27 +82,6 @@ const BLOCKLISTED_SHORTCUTS: Array<string> = [
   "Ctrl+K",
   "Ctrl+T",
   "Ctrl+O",
-
-  // TipTap / ProseMirror StarterKit defaults — consumed inside the chat editor.
-  // Any shortcut here will be eaten by the editor before global handlers see it.
-  // Exceptions intentionally kept off this list (handled at the input layer):
-  //   Meta+Enter → send_message (hardBreak overridden)
-  //   Meta+I     → focus_input (italic — only fires from outside the editor)
-  "Meta+B",
-  "Meta+U",
-  "Meta+E",
-  "Meta+Shift+S",
-  "Meta+Shift+7",
-  "Meta+Shift+8",
-  "Meta+Shift+B",
-  "Meta+Alt+0",
-  "Meta+Alt+1",
-  "Meta+Alt+2",
-  "Meta+Alt+3",
-  "Meta+Alt+4",
-  "Meta+Alt+5",
-  "Meta+Alt+6",
-  "Meta+Alt+C",
 ];
 
 const blocklist = new Set(BLOCKLISTED_SHORTCUTS.map((s) => s.toLowerCase()));
@@ -125,13 +104,6 @@ describe("KEYBINDING_DEFINITIONS", () => {
       (d) => !d.name || d.name.trim().length === 0 || !d.description || d.description.trim().length === 0,
     );
     expect(bad).toEqual([]);
-  });
-
-  it("blocklist includes Meta+Shift+B (TipTap blockquote)", () => {
-    // Regression guard: removing this from the blocklist lets TipTap's
-    // blockquote shortcut collide with any chat shortcut bound to the same
-    // combo.  See commit d8c77629.
-    expect(BLOCKLISTED_SHORTCUTS).toContain("Meta+Shift+B");
   });
 
   it("has no default bindings that conflict with the blocklist", () => {

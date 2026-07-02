@@ -21,23 +21,19 @@ behavior**.
 
 | Prefix | Area |
 |--------|------|
-| `SHELL` | App shell: tabs, top bar, window controls, zen/focus mode, version, status banners |
+| `SHELL` | App shell: tabs, top bar, window controls, version, status banners |
 | `ROUTE` | Routing, redirects, error/404 pages, startup |
 | `HELP` | Keyboard-shortcuts (Help) dialog |
 | `HOME` | Home page / recent-workspaces list |
-| `ONB` | Onboarding wizard |
+| `ONB` | Onboarding (PATH check & add first repo) |
 | `ADDWS` | Add-workspace page (create workspace form) |
-| `ADDREPO` | Add-repository flow and dialogs |
-| `WS` | Workspace shell (chat input, banner, PR button, agent tabs, peek, etc.) |
-| `CHAT` | Chat-alpha interface, status, search, navigation, subagents, tasks, questions |
-| `MSG` | Chat message & tool-content rendering |
-| `PANEL` | Workspace side panels (files, changes, history, diff, terminal, notes, skills, actions, browser) |
+| `ADDREPO` | Add-repository flow, dialogs, and path autocomplete |
+| `WS` | Workspace shell (banner, PR button, agent tabs, terminal agent, peek, layout) |
+| `PANEL` | Workspace side panels (files, changes, history, diff, terminal, actions) |
 | `CMDP` | Command palette |
 | `SET` | Settings page |
 | `ACT` | Actions feature components |
-| `SKILL` | Skills UI components |
-| `MENT` | Mentions, mention pickers, path autocomplete, mention chips |
-| `DEV` | Dev/debug panels and markdown-diff anchors |
+| `DEV` | Dev/debug panels and markdown links |
 
 ---
 
@@ -184,27 +180,7 @@ behavior**.
   - When: the user hovers a top-bar button.
   - Then: a tooltip shows the button name and its keyboard shortcut.
 
-## Zen & focus modes
-
-- **SHELL-028 — Enter zen mode**
-  - Given: the user is on a workspace page.
-  - When: the user presses `Cmd+Shift+\`.
-  - Then: the top bar and side panels hide, leaving only the chat; a draggable title bar is shown.
-
-- **SHELL-029 — Exit zen mode via floating button**
-  - Given: zen mode is active.
-  - When: the user moves the mouse to the top-left hot zone.
-  - Then: an "Exit zen mode" button appears; clicking it restores the normal layout.
-
-- **SHELL-030 — Tab cycling works in zen mode**
-  - Given: zen mode is active.
-  - When: the user presses `Cmd+[` / `Cmd+]`.
-  - Then: the active tab changes even though the top bar remains hidden.
-
-- **SHELL-031 — Toggle focus mode**
-  - Given: the user is on a workspace page.
-  - When: the user presses `Cmd+\`.
-  - Then: all side panels collapse and the chat expands; pressing again restores the panels.
+## Panel toggles
 
 - **SHELL-032 — Toggle individual panels via keyboard**
   - Given: the user is on a workspace page.
@@ -218,42 +194,17 @@ behavior**.
   - When: the user presses `Cmd+Shift+D`.
   - Then: the app switches between light and dark mode immediately, with no reload.
 
-## Version indicator & updates
+## Version indicator
 
 - **SHELL-034 — Version number shown**
-  - Given: the user is on a non-workspace page (and not in zen mode).
+  - Given: the user is on a non-workspace page.
   - When: the page renders.
   - Then: the version number is visible in the bottom-right corner.
 
 - **SHELL-035 — Open version popover**
   - Given: the version number is visible.
-  - When: the user clicks it (or the adjacent bug icon).
-  - Then: a popover opens showing version details, update status, and diagnostics (platform, uptime, active agents, disk, paths, Claude CLI info).
-
-- **SHELL-036 — Update-available dot**
-  - Given: an update is downloading or ready.
-  - When: viewing the version indicator.
-  - Then: a colored dot appears next to the version number.
-
-- **SHELL-037 — Downloading-update toast**
-  - Given: an update download begins.
-  - When: the download is in progress.
-  - Then: a toast shows "Downloading update…" with a percentage.
-
-- **SHELL-038 — Update-ready toast & install**
-  - Given: an update finished downloading.
-  - When: the toast appears with "Install and restart" and the user clicks it.
-  - Then: the button shows "Restarting…" and the app restarts.
-
-- **SHELL-039 — Update-error toast**
-  - Given: the auto-updater errors.
-  - When: the error occurs.
-  - Then: an error toast appears and auto-dismisses after a few seconds.
-
-- **SHELL-040 — Dismiss download toast**
-  - Given: a downloading-update toast is showing.
-  - When: the user dismisses it.
-  - Then: the toast disappears and does not reappear while the same download continues.
+  - When: the user clicks the version number.
+  - Then: a popover opens showing the version number, the git SHA, and diagnostics (platform, uptime, active agents, disk, paths, install info).
 
 - **SHELL-041 — Dev-tools toggles in version popover**
   - Given: the version popover is open.
@@ -265,12 +216,12 @@ behavior**.
 - **SHELL-042 — Backend-unresponsive banner**
   - Given: the backend becomes unresponsive.
   - When: the status changes.
-  - Then: a yellow banner appears at the bottom: "Backend not responding. Please try restarting the app."
+  - Then: a centered warning banner (triangle-alert icon) reads "The backend process is down or unresponsive. Please restart the application."
 
 - **SHELL-043 — Backend health-warning banner**
   - Given: the backend reports a health warning.
   - When: the status changes.
-  - Then: a yellow warning banner appears with the warning message (and optional link).
+  - Then: a yellow warning banner appears with the warning message.
 
 - **SHELL-044 — Missing project-folder banner**
   - Given: the active workspace's project folder is not found.
@@ -280,17 +231,17 @@ behavior**.
 - **SHELL-045 — Backend loading splash**
   - Given: the app is starting and the backend is launching.
   - When: viewing the screen.
-  - Then: a splash with the Sculptor logo, "Loading" message, and progress bar is shown until the backend is ready.
+  - Then: a splash with the Sculptor logo, a "beta" label, and a progress bar (with an optional status message) is shown until the backend is ready.
 
 - **SHELL-046 — Backend shutting-down screen**
   - Given: the app is quitting / restarting the backend.
   - When: the status becomes shutting-down.
-  - Then: a "Shutting down…" message with a progress bar is shown; if stalled past ~30s a recovery message appears.
+  - Then: a "Shutting down..." message with a progress bar is shown; if stalled past ~30s a recovery message appears.
 
 - **SHELL-047 — Dev-mode indicator**
   - Given: the app is running from source (not packaged).
   - When: viewing the page.
-  - Then: a dev-mode indicator is shown (bottom-left); hovering it shows a "Running from source" tooltip with the workspace id.
+  - Then: a dev-mode indicator is shown (bottom-center); hovering it shows a "Running from source" tooltip with the workspace id.
 
 ## Window & zoom
 
@@ -327,11 +278,6 @@ behavior**.
   - Given: the route error page is shown.
   - When: the user clicks "Copy Error to Clipboard".
   - Then: the error text is copied (a person can paste it elsewhere).
-
-- **ROUTE-006 — Clear custom-backend command from error page**
-  - Given: a custom backend command is set and causing errors, and the error page shows the clear button.
-  - When: the user clicks "Clear Custom Backend Command".
-  - Then: the button becomes disabled and its label changes to indicate the command was cleared and a restart is needed.
 
 ---
 
@@ -371,7 +317,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **HOME-003 — Search bar present & autofocused**
   - Given: at least one workspace exists.
   - When: the page loads.
-  - Then: a search input with placeholder "Search workspaces…" is shown and focused.
+  - Then: a search input with placeholder "Search workspaces..." is shown and focused.
 
 - **HOME-004 — Filter workspaces by query**
   - Given: the workspace list is populated.
@@ -406,7 +352,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **HOME-010 — Workspace row contents**
   - Given: a workspace exists.
   - When: the row is shown.
-  - Then: it shows a status dot, the workspace name, the branch name (monospace), a PR/MR button if a branch exists, the project name (revealed on hover), a relative last-activity time, and a delete button (revealed on hover).
+  - Then: it shows a status dot, the workspace name, the branch name (monospace), a PR button if a branch exists, the project name (revealed on hover), a relative last-activity time, and a delete button (revealed on hover).
 
 - **HOME-011 — Row hover/focus styling**
   - Given: a workspace row.
@@ -453,151 +399,39 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - When: the user clicks Delete (or presses Enter).
   - Then: the dialog closes and the row disappears from the list immediately.
 
-- **HOME-020 — PR/MR button states on a row**
+- **HOME-020 — PR button states on a row**
   - Given: a workspace row with a branch.
   - When: the PR status is known.
-  - Then: the button reflects the state: a spinner + "Checking PR…" while loading; "Create PR"/"Create MR" when none exists; "PR #N"/"MR !N" with pipeline & review status dots when open; a merged/closed badge when merged/closed; an "Assign PR" option when a PR targets a different branch; and an error button (warning/info icon) on failure.
+  - Then: the button reflects the state: a spinner + "Checking PR…" while loading; "Create PR" when none exists; "PR #N" with pipeline & review status dots when open; a merged/closed badge when merged/closed; an "Assign PR" option when a PR targets a different branch; and an error button (warning/info icon) on failure.
   - (See WS-PR scenarios for full PR-button behavior; rows reuse the same component.)
 
 ---
 
-# ONB — Onboarding wizard
+# ONB — Onboarding (PATH check & add first repo)
 
 ## Step indicator
 
-- **ONB-001 — Step indicator shows three steps**
+- **ONB-034 — Step indicator shows two steps**
   - Given: the onboarding wizard is shown.
   - When: viewing the bottom indicator.
-  - Then: three dots represent Email, Installation, and Add-Repo; the current step is visually distinct, past steps are clickable, future steps are disabled.
+  - Then: two dots represent the PATH check and Add-Repo steps; the current step is visually distinct, a completed step is clickable to return to it, and an upcoming step is not clickable.
 
-- **ONB-002 — Navigate to a past step**
-  - Given: the user is on the Installation step.
-  - When: the user clicks the Email step dot.
-  - Then: the wizard returns to the Email step.
+## PATH check step
 
-- **ONB-003 — Future steps not clickable**
-  - Given: the user is on the Email step.
-  - When: the user clicks the Installation/Add-Repo dots.
-  - Then: nothing happens (they appear disabled).
+- **ONB-035 — PATH-check screen contents**
+  - Given: the PATH check step is shown.
+  - When: the page renders.
+  - Then: a "Check your tools" heading and an explanatory line stating Sculptor only checks (never installs) the tools are shown, with a status row for `claude` and one for `git`: each found tool shows a green check and "{name} found on your PATH".
 
-## Email / welcome step
+- **ONB-036 — Missing tool message & install link**
+  - Given: the PATH check step is shown and a required tool is not on PATH.
+  - When: the page renders.
+  - Then: that tool's row shows a red icon and "{name} not found on your PATH", a message that it can still continue but the tool must be installed, and a "How to install {name}" link (there is no install button).
 
-- **ONB-004 — Email step fields**
-  - Given: the Email step is shown.
-  - When: viewing the form.
-  - Then: a "Full name" input (autofocused), an "Email address" input, a marketing opt-in checkbox (unchecked), a telemetry checkbox (checked), and terms/privacy links are visible, along with the message "Your code is yours — Imbue does not store your repositories or train on your code".
-
-- **ONB-005 — Get Started disabled without valid email**
-  - Given: the Email step is shown.
-  - When: the email field is empty or lacks an "@".
-  - Then: the "Get Started" button is disabled.
-
-- **ONB-006 — Get Started enabled with valid email**
-  - Given: the Email step is shown.
-  - When: the user types an email containing "@".
-  - Then: the "Get Started" button becomes enabled.
-
-- **ONB-007 — Submit email (loading)**
-  - Given: a valid email is entered.
-  - When: the user clicks "Get Started" (or presses Enter).
-  - Then: the button shows a spinner and is disabled while the request is in flight; on success the wizard advances to the Installation step.
-
-- **ONB-008 — Submit email error**
-  - Given: a valid email is submitted.
-  - When: the request fails.
-  - Then: a red error message appears below the button.
-
-- **ONB-009 — Continue without an account**
-  - Given: the Email step is shown.
-  - When: the user clicks "Continue without an account".
-  - Then: the link/button disables while in flight and the wizard advances to the Installation step.
-
-- **ONB-010 — Toggle marketing / telemetry checkboxes**
-  - Given: the Email step is shown.
-  - When: the user clicks the marketing or telemetry checkbox.
-  - Then: that checkbox toggles checked/unchecked.
-
-## Installation step
-
-- **ONB-011 — Installation step header**
-  - Given: the Installation step is shown.
-  - When: viewing the page.
-  - Then: "Let's get you set up" and "The following are required to use Sculptor" are shown.
-
-- **ONB-012 — Dependency card: loading**
-  - Given: the Installation step loads.
-  - When: dependency status is being fetched.
-  - Then: each dependency card shows a spinner and "—" for path/version.
-
-- **ONB-013 — Dependency card: not installed**
-  - Given: a dependency (Claude/Git) is not installed.
-  - When: status loads.
-  - Then: the card shows a red error icon, "not installed", and an Install button.
-
-- **ONB-014 — Dependency card: installed**
-  - Given: a dependency is installed at the right version (and authenticated for Claude).
-  - When: status loads.
-  - Then: the card shows a green checkmark and the path/version.
-
-- **ONB-015 — Dependency card: wrong version**
-  - Given: a dependency is installed at the wrong version.
-  - When: status loads.
-  - Then: the card shows a red error and, when expanded, the current and required versions.
-
-- **ONB-016 — Claude card: needs auth**
-  - Given: Claude is installed but not signed in.
-  - When: status loads.
-  - Then: the card shows a yellow warning, "not signed in", and a Sign-in button.
-
-- **ONB-017 — Claude card: authenticating**
-  - Given: the user clicked Sign in.
-  - When: authentication is in progress.
-  - Then: a spinner and "authenticating" appear with a help message about running `claude auth login` in a terminal.
-
-- **ONB-018 — Claude managed install (progress)**
-  - Given: Claude is managed and not installed.
-  - When: installation runs (auto-triggered on load or via Install).
-  - Then: the card shows "installing" with a circular progress percentage.
-
-- **ONB-019 — Install error & retry**
-  - Given: an install fails.
-  - When: the failure occurs.
-  - Then: the card shows an error; the user can retry / re-check.
-
-- **ONB-020 — Expand dependency card**
-  - Given: a dependency card is shown.
-  - When: the user clicks it.
-  - Then: a details section expands revealing path, version, and mode controls; the chevron flips.
-
-- **ONB-021 — Install popover / command**
-  - Given: a dependency is not installed.
-  - When: the user opens the Install affordance.
-  - Then: a popover shows the install command (e.g., `brew install claude-code`) and a docs link.
-
-- **ONB-022 — Override binary path**
-  - Given: a dependency card is expanded.
-  - When: the user clicks "override", enters a path, and clicks Apply.
-  - Then: a valid path updates the card; an invalid path shows "No executable found at this path".
-
-- **ONB-023 — Switch managed/custom mode**
-  - Given: a dependency card is expanded.
-  - When: the user clicks "Use System PATH" / "Use Managed".
-  - Then: the mode switches and the UI updates accordingly.
-
-- **ONB-024 — Continue button gating**
-  - Given: the Installation step is shown.
-  - When: any required dependency is missing/unauthenticated.
-  - Then: the Continue button is disabled; once all are satisfied it is enabled.
-
-- **ONB-025 — Check again**
-  - Given: the Installation step is shown.
-  - When: the user clicks the "check again" link.
-  - Then: the text changes to "Checking…" briefly and the cards refresh with current status.
-
-- **ONB-026 — Continue from installation**
-  - Given: dependencies are satisfied and Continue is enabled.
-  - When: the user clicks Continue (or presses Enter).
-  - Then: if the user already has projects, onboarding completes; otherwise the Add-Repo step is shown.
+- **ONB-037 — Continue into the app**
+  - Given: the PATH check step is shown.
+  - When: the user clicks "Continue".
+  - Then: the wizard advances regardless of whether a tool is missing (the check is non-blocking) — to the Add-Repo step if the user has no repos, otherwise straight into the app.
 
 ## Add-repo step
 
@@ -668,7 +502,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **ADDWS-006 — Repo selector dropdown**
   - Given: the repo selector is shown.
   - When: the user clicks it.
-  - Then: a dropdown lists all projects plus an "Add Repository" entry.
+  - Then: a dropdown lists all projects plus an "Add new repository" entry.
 
 - **ADDWS-007 — Select a different project**
   - Given: the repo dropdown is open.
@@ -677,8 +511,8 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 - **ADDWS-008 — Add repository from selector**
   - Given: the repo dropdown is open.
-  - When: the user clicks "Add Repository".
-  - Then: the Add Repository dialog opens; on success the new project is auto-selected.
+  - When: the user clicks "Add new repository".
+  - Then: the add-repository dialog opens; on success the new project is auto-selected.
 
 - **ADDWS-009 — Branch selector loading**
   - Given: a project is selected and branch info is loading.
@@ -688,20 +522,15 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **ADDWS-010 — Branch selector dropdown & selection**
   - Given: branch info loaded.
   - When: the user opens the branch selector and clicks a branch.
-  - Then: the dropdown lists recent branches (and a "Fetch more branches" option), and selecting one updates the source branch and clears any branch-name override.
+  - Then: the dropdown lists recent branches with a search filter, and selecting one updates the source branch.
 
-- **ADDWS-011 — Branch selector disabled for in-place**
-  - Given: the mode is In-place.
-  - When: viewing the branch selector.
-  - Then: it is disabled with a tooltip explaining in-place workspaces use the current branch.
-
-- **ADDWS-012 — Branch-name field visibility & label**
-  - Given: the mode is Worktree / Clone / In-place.
+- **ADDWS-012 — Branch-name field**
+  - Given: the create-workspace form is shown.
   - When: viewing the form.
-  - Then: Worktree shows a required branch-name field; Clone shows an optional one; In-place shows no branch-name field.
+  - Then: a required branch-name field for the worktree branch is shown.
 
 - **ADDWS-013 — Branch-name auto-fill preview**
-  - Given: Worktree mode and the user typed a workspace name.
+  - Given: the user typed a workspace name.
   - When: the form is shown.
   - Then: the branch-name field auto-fills a preview (with a "…" spinner while fetching) derived from the name, updating as the name changes.
 
@@ -718,22 +547,12 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **ADDWS-016 — Agent-type selector options**
   - Given: the form is shown.
   - When: the user opens the agent-type selector.
-  - Then: it lists Claude, Terminal, Pi (only if enabled), and any registered custom agents; re-opening rescans for newly registered agents.
+  - Then: it lists a plain Terminal plus the registered terminal agents (labelled by their display name, e.g. the bundled Claude registration); re-opening rescans for newly registered agents.
 
 - **ADDWS-017 — Select agent type & MRU**
   - Given: the agent-type dropdown is open.
   - When: the user selects a type.
-  - Then: the button shows the new type; the selection is remembered as the default for next time. A previously-selected type that is no longer available falls back to Claude.
-
-- **ADDWS-018 — Mode selector visibility**
-  - Given: clone and/or in-place workspaces are enabled in settings.
-  - When: viewing the form.
-  - Then: an environment/mode selector is shown (Worktree always; Clone and/or In-place when enabled); if neither experimental mode is enabled, the selector is hidden and defaults to Worktree.
-
-- **ADDWS-019 — Change mode updates branch fields**
-  - Given: a mode is selected.
-  - When: the user switches to Clone or In-place.
-  - Then: the branch-name field changes to optional (Clone) or disappears and the branch selector disables (In-place).
+  - Then: the button shows the new type; the selection is remembered as the default for next time. A previously-selected registered agent that is no longer available falls back to a still-available type (Terminal).
 
 - **ADDWS-020 — Create button gating & tooltips**
   - Given: the form is shown.
@@ -758,7 +577,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **ADDWS-024 — Create error: generic failure**
   - Given: the user submits the form.
   - When: workspace or agent creation fails.
-  - Then: an error toast ("Failed to create workspace" / "Failed to create agent") with details is shown.
+  - Then: an error toast titled "Failed to create workspace" with the failure details is shown.
 
 ---
 
@@ -766,8 +585,8 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 - **ADDREPO-001 — Open add-repo dialog**
   - Given: the repo selector dropdown is open (or another add-repo entry point).
-  - When: the user clicks "Add Repository".
-  - Then: a modal opens with a path input (focused) and, on desktop, a Browse button.
+  - When: the user clicks "Add new repository".
+  - Then: a modal opens with a path input (focused) and, on desktop, an "Or browse for a folder" link.
 
 - **ADDREPO-002 — Cancel dialog**
   - Given: the dialog is open and not validating.
@@ -781,7 +600,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 - **ADDREPO-004 — Add valid repo**
   - Given: a valid path is entered.
-  - When: the user clicks "Add Repository".
+  - When: the user clicks "Add new repository".
   - Then: on success the dialog closes and the new repo is selected in the dropdown.
 
 - **ADDREPO-005 — Dialog resets on reopen**
@@ -806,127 +625,18 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 ---
 
-# WS — Workspace shell (chat input, banner, PR, agents, peek)
+# WS — Workspace shell (banner, PR, agent tabs, terminal agent, peek, layout)
 
-## Chat input & sending
+## PR button
 
-- **WS-001 — Type and send a message**
-  - Given: a workspace with an active agent.
-  - When: the user types in the chat input and clicks Send (or presses the send keybinding).
-  - Then: the message is sent, the editor clears, and any attachments clear.
-
-- **WS-002 — Send button disabled states**
-  - Given: the chat input.
-  - When: the editor is empty, or the agent is busy (for non-`/btw` content).
-  - Then: the Send button is disabled; hovering shows the reason.
-
-- **WS-003 — Interrupt-and-send**
-  - Given: the agent is busy and the user typed a message.
-  - When: the user presses the interrupt-and-send keybinding.
-  - Then: the running turn is interrupted and the new message is sent.
-
-- **WS-004 — Send failure feedback**
-  - Given: the user sends a message.
-  - When: sending fails.
-  - Then: an error toast appears, the editor text is preserved, and the Send button reflects the error on hover.
-
-- **WS-005 — Attach files via drag-and-drop**
-  - Given: file attachment is supported.
-  - When: the user drags files over the chat input.
-  - Then: a "Drop to attach images" overlay appears; on drop the files are added to a preview list.
-
-- **WS-006 — Attach files via upload button**
-  - Given: file attachment is supported.
-  - When: the user clicks the upload button and selects files.
-  - Then: the files are added to the attachment preview list.
-
-- **WS-007 — Remove an attached file**
-  - Given: files are attached.
-  - When: the user clicks a file's remove button.
-  - Then: that file is removed from the preview list.
-
-- **WS-008 — Mention/insert menu**
-  - Given: the chat input.
-  - When: the user clicks the "+" toolbar button (or types a trigger).
-  - Then: a picker opens offering files, skills/commands, and entities (see MENT scenarios).
-
-- **WS-009 — Model selector**
-  - Given: the chat input toolbar.
-  - When: the user opens the model selector and picks a model.
-  - Then: the selection is highlighted and applied to future messages.
-
-- **WS-010 — Effort selector**
-  - Given: the chat input toolbar.
-  - When: the user opens the effort selector and picks a level.
-  - Then: the choice is applied to future messages.
-
-- **WS-011 — Fast-mode toggle**
-  - Given: the model supports fast mode.
-  - When: the user toggles fast mode.
-  - Then: the toggle state changes and is applied to future messages.
-
-- **WS-012 — Plan-mode toggle**
-  - Given: an agent that supports interactive plan mode.
-  - When: the user toggles plan mode and sends a message.
-  - Then: the toggle's styling changes when active; sending enters plan mode (or exits it if already in plan mode).
-
-- **WS-013 — Multiline input**
-  - Given: the chat input.
-  - When: the user inserts line breaks (Shift+Enter).
-  - Then: the editor grows to show multiple lines; sending submits the whole text as one message.
-
-- **WS-014 — `/clear` pseudo-command**
-  - Given: the agent supports context reset.
-  - When: the user types `/clear` and sends.
-  - Then: the context is cleared and a success toast appears (or, if unsupported, a "capability unsupported" toast).
-
-- **WS-015 — `/copy` pseudo-command**
-  - Given: there is an assistant message.
-  - When: the user types `/copy` and sends.
-  - Then: the last assistant message is copied and a "copied" toast appears (or an error toast if there is none).
-
-- **WS-016 — `/btw` side chat**
-  - Given: an active session exists.
-  - When: the user types `/btw <question>` and sends.
-  - Then: a side-chat popup opens showing the question and the agent's streamed answer (or a toast if no session yet).
-
-## Queued messages
-
-- **WS-017 — Queued-message bar appears**
-  - Given: the agent is running and the user queued a message.
-  - When: viewing the chat.
-  - Then: a queued-message bar appears below the input showing the queued text.
-
-- **WS-018 — Remove a queued message**
-  - Given: a queued message is shown.
-  - When: the user clicks its remove icon.
-  - Then: the queued message is deleted and the bar disappears.
-
-- **WS-019 — Edit a queued message (empty editor)**
-  - Given: a queued message is shown and the editor is empty.
-  - When: the user clicks edit.
-  - Then: the queued message is removed and its text is restored to the editor.
-
-- **WS-020 — Edit-conflict dialog**
-  - Given: a queued message exists and the editor already has unsaved text.
-  - When: the user clicks edit.
-  - Then: an Undo/Queued dialog opens offering "Keep queued", "Remove", and "Overwrite", plus a copy button; each option behaves as labeled.
-
-- **WS-021 — Interrupt-and-send a queued message**
-  - Given: a queued message bar is shown and interruption is supported.
-  - When: the user clicks the interrupt-and-send (arrow-up) button.
-  - Then: the running turn is interrupted and the queued message is sent; the button is hidden if interruption is unsupported.
-
-## PR / MR button
-
-- **WS-022 — Checking PR/MR status**
+- **WS-022 — Checking PR status**
   - Given: a workspace with a branch.
   - When: PR status is loading.
-  - Then: a spinner with "Checking PR…" / "Checking MR…" is shown.
+  - Then: a spinner with "Checking PR..." is shown.
 
-- **WS-023 — Create PR/MR**
+- **WS-023 — Create PR**
   - Given: no PR exists for the branch.
-  - When: the user clicks "Create PR"/"Create MR".
+  - When: the user clicks "Create PR".
   - Then: a default PR-creation prompt (including the target branch) is sent to the agent.
 
 - **WS-024 — Edit PR prompt before creating**
@@ -935,14 +645,14 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - Then: a dialog opens to edit the prompt; Save updates it and closes.
 
 - **WS-025 — Open PR display**
-  - Given: an open PR/MR exists.
+  - Given: an open PR exists.
   - When: viewing the button.
-  - Then: it shows "PR #N"/"MR !N" with pipeline and review status dots.
+  - Then: it shows "PR #N" with pipeline and review status dots.
 
 - **WS-026 — Open PR in browser**
   - Given: an open PR button is shown.
   - When: the user clicks the PR number.
-  - Then: the PR/MR opens in the browser.
+  - Then: the PR opens in the browser.
 
 - **WS-027 — PR detail dropdown**
   - Given: an open PR button is shown.
@@ -967,7 +677,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **WS-031 — Assign PR (target mismatch)**
   - Given: a PR exists for a different target than the workspace's.
   - When: viewing the button.
-  - Then: an "Assign PR"/"Assign MR" button is shown; opening it offers "Create PR → {target}" and "switch target to {target}".
+  - Then: an "Assign PR" button is shown; opening it offers "Create PR → {target}" and "switch target to {target}".
 
 - **WS-032 — PR error states**
   - Given: PR status checking failed.
@@ -989,24 +699,14 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **WS-035 — Repo segment menu**
   - Given: the banner shows the repo name.
   - When: the user clicks the repo segment.
-  - Then: a dropdown offers Open folder, Copy path, Copy relative path, and Open in installed apps (VS Code, etc.), each performing its labeled action; the chosen app is remembered.
-
-- **WS-036 — Initialization-strategy badge**
-  - Given: the workspace uses clone or in-place mode.
-  - When: viewing the banner.
-  - Then: a "clone" or "in-place" badge is shown next to the repo name (no badge for worktree).
+  - Then: a dropdown offers Open folder, Copy relative path, Copy path, and Open in installed apps (VS Code, etc.), each performing its labeled action; the chosen app is remembered.
 
 ## Banner & diff summary
-
-- **WS-037 — Banner visibility**
-  - Given: the user is/ is not in zen mode.
-  - When: viewing the workspace.
-  - Then: the banner with repo/branch/PR info is shown normally and hidden in zen mode.
 
 - **WS-038 — Banner progressive collapse**
   - Given: the viewport narrows.
   - When: space becomes constrained.
-  - Then: banner elements collapse in priority order (PR button → diff summary → repo segment).
+  - Then: banner elements collapse lowest-priority first (diff summary → repo segment → PR button); the PR button is highest priority and collapses last.
 
 - **WS-039 — Copy branch name from banner**
   - Given: the branch name is shown in the banner.
@@ -1028,12 +728,12 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **WS-042 — Switch agents**
   - Given: multiple agent tabs.
   - When: the user clicks another agent tab (or presses the next/previous-agent keybinding).
-  - Then: the view switches to that agent's chat/state.
+  - Then: the view switches to that agent's terminal/state.
 
 - **WS-043 — Agent status-dot tooltip**
-  - Given: an agent tab.
-  - When: the user hovers its status dot.
-  - Then: a tooltip shows the status label and time since last activity / creation.
+  - Given: the workspace peek popover's agent list.
+  - When: the user hovers an agent's status dot.
+  - Then: a tooltip shows the status label and time since last activity / creation. (The agent-tab status dot reflects the same state but carries no tooltip.)
 
 - **WS-044 — Create a new agent**
   - Given: agent tabs are shown.
@@ -1043,7 +743,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **WS-045 — Choose agent type when creating**
   - Given: the "+" chevron menu.
   - When: the user opens it.
-  - Then: it lists Claude, Pi (if enabled), Terminal, and registered custom agents; selecting one creates that type and remembers it.
+  - Then: it lists a plain Terminal and the registered terminal agents (e.g. "Claude CLI"); selecting one creates that type and remembers it as the default.
 
 - **WS-046 — Rename an agent (double-click)**
   - Given: an agent tab.
@@ -1053,7 +753,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **WS-047 — Agent context menu**
   - Given: an agent tab.
   - When: the user right-clicks it.
-  - Then: a menu offers Rename, Mark as unread, Delete, and a Diagnostics submenu (Debug View toggle; copy Claude session id / transcript path / Sculptor transcript path — disabled when unavailable).
+  - Then: a menu offers Rename, Mark unread, Copy agent name, a Diagnostics submenu (Debug View toggle; Copy agent id; Copy claude session id; Copy Sculptor transcript file path — disabled when unavailable), and Delete (last).
 
 - **WS-048 — Delete an agent**
   - Given: an agent context menu (or close button) is used.
@@ -1062,7 +762,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 - **WS-049 — Mark agent unread**
   - Given: a read agent.
-  - When: the user chooses "Mark as unread".
+  - When: the user chooses "Mark unread".
   - Then: the agent's status indicator changes to unread.
 
 - **WS-050 — Reorder agent tabs**
@@ -1073,65 +773,21 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 ## Terminal agent panel
 
 - **WS-051 — Terminal agent shows a terminal**
-  - Given: a terminal-type agent (no chat interface).
+  - Given: an agent in a workspace.
   - When: viewing the agent.
-  - Then: a full-pane terminal is shown instead of the chat, streaming output.
+  - Then: a full-pane terminal is shown as the agent surface, streaming output.
 
 - **WS-052 — Terminal persists across agent switches**
   - Given: a terminal agent is active.
   - When: the user switches away and back.
   - Then: the terminal reconnects and previous scrollback is restored.
 
-## Ask-user-question (input area)
-
-- **WS-053 — Question panel replaces input**
-  - Given: the agent issues an AskUserQuestion.
-  - When: the question arrives.
-  - Then: a question panel replaces the chat input, showing a category chip, the question, options (plus "Other"), and navigation controls.
-
-- **WS-054 — Single-select answer**
-  - Given: a single-select question.
-  - When: the user clicks an option and submits.
-  - Then: only that option is selected and the answer is sent.
-
-- **WS-055 — Multi-select answer**
-  - Given: a multi-select question.
-  - When: the user checks multiple options and submits.
-  - Then: all selected options are sent.
-
-- **WS-056 — Custom "Other" answer**
-  - Given: a question with an alternative option.
-  - When: the user clicks "Other" and types text.
-  - Then: a textarea captures the custom answer.
-
-- **WS-057 — Navigate between questions**
-  - Given: multiple questions.
-  - When: the user uses Tab/Shift+Tab, arrows, or the progress dots.
-  - Then: the current question changes and dots show answered/unanswered/current.
-
-- **WS-058 — Submit / next / dismiss**
-  - Given: questions are shown.
-  - When: the user submits.
-  - Then: if unanswered questions remain the button reads "Next" and jumps to the first unanswered; when all answered, submitting sends all answers and closes the panel; a Dismiss option closes without answering.
-
-## Error input / restore
-
-- **WS-059 — Agent error state with restore**
-  - Given: the agent is in an error state and its workspace still exists.
-  - When: viewing the input area.
-  - Then: an error message with "Click here to try to restore the agent" is shown; clicking attempts restore.
-
-- **WS-060 — Deleted-workspace error state**
-  - Given: the agent errored and its workspace was deleted.
-  - When: viewing the input area.
-  - Then: a message states the workspace was deleted and cannot be restored (no restore link).
-
 ## Workspace peek
 
 - **WS-061 — Peek popover on hover**
   - Given: workspace tabs are shown.
   - When: the user hovers a workspace tab for a moment.
-  - Then: a peek popover appears showing status, agent list, PR/MR info, branch, and diff stats.
+  - Then: a peek popover appears showing status, agent list, PR info, branch, and diff stats.
 
 - **WS-062 — Smooth peek transitions**
   - Given: a peek popover is open.
@@ -1139,7 +795,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - Then: the popover content swaps instantly; leaving all tabs closes it after a short delay.
 
 - **WS-063 — Expand more agents in peek**
-  - Given: a workspace with more than 5 agents.
+  - Given: a workspace with more than 6 agents (at least two beyond the first five).
   - When: viewing its peek popover.
   - Then: only 5 agents show with a "+N more agents" button that reveals the rest.
 
@@ -1151,9 +807,9 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 ## Bottom bar & layout
 
 - **WS-065 — Panel toggle buttons**
-  - Given: not in zen mode.
+  - Given: the user is on a workspace page.
   - When: viewing the bottom bar.
-  - Then: toggle buttons for the left, bottom, and right panels and a focus-mode button are shown.
+  - Then: toggle buttons for the left, bottom, and right panels are shown.
 
 - **WS-066 — Toggle a panel from the bottom bar**
   - Given: a panel has content.
@@ -1171,495 +827,16 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - Then: a tooltip shows the name and keybinding.
 
 - **WS-069 — Diff split resize / collapse / expand**
-  - Given: the diff panel is open beside the chat.
+  - Given: the diff panel is open beside the agent pane.
   - When: the user drags the divider.
-  - Then: the panels resize; dragging past a threshold collapses the diff panel; an expand control maximizes the diff and collapses the chat, and vice-versa.
+  - Then: the panels resize; dragging past a threshold collapses the diff panel; an expand control toggles between maximizing the diff (collapsing the agent pane) and restoring the split.
 
-## Chat search bar (workspace-level)
-
-- **WS-070 — Open chat search**
-  - Given: a chat panel is visible.
-  - When: the user presses `Cmd+Shift+F` (or `Cmd+F` in the chat).
-  - Then: a search bar opens above the chat with its input focused.
-
-- **WS-071 — Search and match counter**
-  - Given: the chat search bar is open.
-  - When: the user types a query.
-  - Then: matches are highlighted and a "X/Y" counter is shown ("0/0" with the input turning red when none).
-
-- **WS-072 — Navigate matches**
-  - Given: search has matches.
-  - When: the user presses Enter / Shift+Enter (or the up/down arrows).
-  - Then: focus moves to the next / previous match.
-
-- **WS-073 — Close chat search**
-  - Given: the chat search bar is open.
-  - When: the user presses Escape or clicks close.
-  - Then: the search bar closes and highlights clear.
-
-## Setup config & BTW popup
+## Setup config
 
 - **WS-074 — Setup config prompt**
   - Given: a workspace with no setup command configured.
-  - When: viewing the chat intro.
+  - When: viewing the workspace, above the terminal agent surface.
   - Then: a prompt with a "Configure a workspace setup command" link is shown; clicking it opens settings to the repositories section.
-
-- **WS-075 — BTW popup display & streaming**
-  - Given: the user ran `/btw`.
-  - When: the side chat processes.
-  - Then: a draggable popup appears in the corner showing the question and the streamed answer (with a blinking cursor while streaming).
-
-- **WS-076 — BTW popup drag / close / error**
-  - Given: the BTW popup is open.
-  - When: the user drags its handle / clicks close or Escape / an error occurs.
-  - Then: it moves and stays within the viewport / closes and returns focus to the input / shows an error in red.
-
----
-
-# CHAT — Chat interface, status, search, navigation, subagents, tasks
-
-## Chat intro / empty state
-
-- **CHAT-001 — Chat intro on empty conversation**
-  - Given: a workspace with no messages.
-  - When: the page loads.
-  - Then: an intro card shows the project/branch, workspace name, agent name, creation time, source-branch info, a shared-code warning, and a `/sculptor:help` hint.
-
-- **CHAT-002 — Intro reflects workspace type**
-  - Given: the workspace is in-place / branched / cloned.
-  - When: the intro renders.
-  - Then: it shows "Working directly in {branch}", "Branched off {branch}", or "Cloned {branch} from {project}" accordingly.
-
-- **CHAT-003 — Setup status card in intro**
-  - Given: the workspace has pending setup commands.
-  - When: the intro renders.
-  - Then: a setup status card appears below the intro showing the setup step, progress, and elapsed time.
-
-- **CHAT-004 — Setup card controls**
-  - Given: the setup status card is shown.
-  - When: the user hovers/clicks it.
-  - Then: a popover reveals the setup command, output, and edit/play/stop controls; running shows live scrolling output; success shows a checkmark; failure shows an error.
-
-## Status pill
-
-- **CHAT-005 — Status pill hidden when idle**
-  - Given: the agent is idle with no tasks.
-  - When: viewing the chat.
-  - Then: no status pill is shown.
-
-- **CHAT-006 — Status pill states**
-  - Given: the agent is active.
-  - When: it transitions between phases.
-  - Then: the pill shows "Thinking…", "Streaming…", "Calling Tools…", "Waiting on agent…", "Compacting…", or "Stopped" with an animated icon and a live elapsed-time counter (frozen when stopped/compacting/complete).
-
-- **CHAT-007 — Task progress in pill**
-  - Given: a plan with tasks exists and the agent is active.
-  - When: the pill renders.
-  - Then: it shows "X / N · {task subject}".
-
-- **CHAT-008 — All-tasks-complete celebration**
-  - Given: all tasks reach completed.
-  - When: the last task completes.
-  - Then: the pill shows "X of N done" without a timer and lingers briefly.
-
-- **CHAT-009 — Stop button in pill**
-  - Given: the agent is running and supports interruption.
-  - When: the pill is shown.
-  - Then: a square stop button is shown (with a "Stop (Ctrl+C)" tooltip); clicking it or pressing Ctrl+C interrupts; if interruption is unsupported the button is disabled with an explanatory tooltip.
-
-- **CHAT-010 — Task graph on pill hover/click**
-  - Given: the pill with tasks is shown.
-  - When: the user hovers (or clicks to pin) the pill.
-  - Then: a popover shows the task graph with nodes colored by status (completed/in-progress/pending); clicking again or outside closes it.
-
-## Agent tasks panel & graph
-
-- **CHAT-011 — Tasks empty state**
-  - Given: no plan/tasks.
-  - When: the tasks popover opens.
-  - Then: a "No tasks" message is shown.
-
-- **CHAT-012 — Task list with status icons**
-  - Given: tasks exist.
-  - When: the panel opens.
-  - Then: a scrollable list shows each task's status icon (checkmark/bar/box), subject, and description, colored green/blue/outline for completed/in-progress/pending.
-
-- **CHAT-013 — Pending tasks fade downstream**
-  - Given: an in-progress task with downstream pending tasks.
-  - When: the panel renders.
-  - Then: downstream pending tasks fade with distance.
-
-- **CHAT-014 — Waiting/blocked badge**
-  - Given: a task is blocked by others.
-  - When: it is shown.
-  - Then: a "Waiting on #1, #2 (+N more)" badge is shown.
-
-- **CHAT-015 — Graph compact vs normal**
-  - Given: 15+ tasks vs fewer.
-  - When: the panel opens.
-  - Then: the graph renders in compact mode (small nodes) for 15+ tasks, larger nodes otherwise.
-
-- **CHAT-016 — Expand a task**
-  - Given: a task with a description.
-  - When: the user clicks the task row.
-  - Then: the row expands to show the full description/active form.
-
-## In-chat search
-
-- **CHAT-017 — Open in-chat search**
-  - Given: the chat is loaded.
-  - When: the user opens search (`Cmd+F`).
-  - Then: a search bar slides in at the top with the input focused and selected.
-
-- **CHAT-018 — Search results & highlight**
-  - Given: the search bar is open.
-  - When: the user types a query.
-  - Then: an "active/total" count is shown and matches are highlighted; the active match scrolls into view.
-
-- **CHAT-019 — Next/previous match with wrap**
-  - Given: matches exist.
-  - When: the user presses Enter / Shift+Enter (or clicks next/prev).
-  - Then: the active match advances/retreats, wrapping at the ends.
-
-- **CHAT-020 — Close in-chat search**
-  - Given: the search bar is open.
-  - When: the user presses Escape or clicks close.
-  - Then: the bar closes, focus returns to the chat, and highlights clear.
-
-- **CHAT-021 — Search auto-closes on task switch**
-  - Given: search is open with a query.
-  - When: the user navigates to a different agent/task.
-  - Then: the search bar closes automatically.
-
-- **CHAT-022 — Auto-scroll suppressed during search**
-  - Given: the agent is streaming and search is open.
-  - When: new messages arrive.
-  - Then: the chat does not jump to the bottom while searching.
-
-## Jump-to-bottom & scrolling
-
-- **CHAT-023 — Jump button hidden at bottom**
-  - Given: the chat is scrolled to the bottom.
-  - When: at rest.
-  - Then: no jump-to-bottom button is shown.
-
-- **CHAT-024 — Jump button appears when scrolled up**
-  - Given: the user scrolled up.
-  - When: after a short debounce.
-  - Then: a "Jump" button with a down-arrow appears at the bottom-right.
-
-- **CHAT-025 — "New activity" label while streaming**
-  - Given: the user is scrolled up and the agent is streaming.
-  - When: new content arrives below the viewport.
-  - Then: the button label changes to "New activity", reverting to "Jump" after streaming.
-
-- **CHAT-026 — Click jump-to-bottom**
-  - Given: the jump button is visible.
-  - When: the user clicks it.
-  - Then: the chat smoothly scrolls to the latest message and the button disappears.
-
-- **CHAT-027 — Auto-scroll engagement**
-  - Given: the chat is at the bottom and the agent is streaming.
-  - When: new messages arrive.
-  - Then: the chat auto-scrolls; scrolling up disengages auto-scroll; returning to the bottom re-engages it.
-
-- **CHAT-028 — Scroll position persists per task**
-  - Given: the user scrolled to a position.
-  - When: they switch to another agent/task and back.
-  - Then: the scroll position is restored.
-
-- **CHAT-029 — Viewport stability on resize / density toggle**
-  - Given: a message above the viewport changes height (or tool density toggles).
-  - When: the change occurs.
-  - Then: the currently viewed message stays anchored without jumping.
-
-## Prompt navigator (dot rail)
-
-- **CHAT-030 — Dot rail visibility**
-  - Given: the chat has user messages.
-  - When: the chat loads.
-  - Then: a vertical dot rail appears on the right edge with one dot per user prompt (hidden when there are none).
-
-- **CHAT-031 — Active dot & navigation**
-  - Given: multiple prompts.
-  - When: the user clicks a dot.
-  - Then: the chat scrolls to that prompt and the dot becomes active.
-
-- **CHAT-032 — Dot preview popover**
-  - Given: the dot rail is shown.
-  - When: the user hovers a dot.
-  - Then: a popover shows "PROMPT N", the full prompt text, and a copy button; the popover switches instantly between dots while hovering.
-
-- **CHAT-033 — Collapsed rail with many prompts**
-  - Given: many user messages with limited height.
-  - When: the rail renders.
-  - Then: a "+N" collapsed indicator appears; clicking it expands the rail, and clicking outside collapses it.
-
-- **CHAT-034 — Copy prompt from rail**
-  - Given: a dot popover (or its right-click menu).
-  - When: the user clicks copy / "Copy prompt".
-  - Then: the prompt text is copied (copy icon shows a checkmark briefly).
-
-## Subagents
-
-- **CHAT-035 — Subagent pill while running**
-  - Given: a subagent is running.
-  - When: its pill renders.
-  - Then: an animated icon, the subagent prompt text, and a live elapsed time are shown.
-
-- **CHAT-036 — Subagent pill completed**
-  - Given: a subagent finished.
-  - When: its pill renders.
-  - Then: a result icon replaces the animation and the elapsed time is frozen.
-
-- **CHAT-037 — Subagent popover**
-  - Given: a subagent pill.
-  - When: the user clicks it (or hovers).
-  - Then: a popover shows the prompt, the nested tools the subagent used, and its response (rendered markdown); Escape closes it.
-
-- **CHAT-038 — Subagent keyboard navigation**
-  - Given: a subagent popover is open in a row.
-  - When: the user presses arrow keys.
-  - Then: focus moves left/right through nested tool pills and up/down to adjacent rows.
-
-## Turn footer
-
-- **CHAT-039 — Turn footer metrics**
-  - Given: an assistant turn finished.
-  - When: viewing the footer.
-  - Then: it shows the duration, a "Stopped" label if interrupted, the token count, context usage %, and a "N files changed" link, separated by bullets.
-
-- **CHAT-040 — Token breakdown popover**
-  - Given: a token count is shown.
-  - When: the user clicks it.
-  - Then: a popover breaks down input, output, reasoning tokens, and the context current/threshold.
-
-- **CHAT-041 — Files-changed popover & open diff**
-  - Given: a turn changed files.
-  - When: the user clicks "N files changed" and then a file.
-  - Then: a list of modified files with status badges is shown; clicking a file opens its diff in the side panel.
-
-## Ask-user-question block (in-chat history)
-
-- **CHAT-042 — Answered question in history**
-  - Given: a question was answered.
-  - When: viewing it in the chat history.
-  - Then: it shows the selected options as static text (custom text in a code block), with no inputs.
-
-- **CHAT-043 — Dismissed question in history**
-  - Given: a question was dismissed.
-  - When: viewing it.
-  - Then: a "DISMISSED" badge is shown and the options appear dimmed.
-
-## Debug chat view
-
-- **CHAT-044 — Debug view content**
-  - Given: Debug View is enabled for an agent.
-  - When: viewing the chat.
-  - Then: each message is listed with role, id, timestamp, and block types; tool_use/tool_result names are listed.
-
-- **CHAT-045 — Debug timestamp toggle**
-  - Given: the debug view shows timestamps.
-  - When: the user clicks a timestamp.
-  - Then: it toggles between relative and absolute formats.
-
----
-
-# MSG — Message & tool-content rendering
-
-## Messages
-
-- **MSG-001 — Assistant message grouping**
-  - Given: an assistant message with mixed content.
-  - When: it renders.
-  - Then: text, tools, errors, warnings, context summaries, and files are grouped and shown in order.
-
-- **MSG-002 — Streaming cursor**
-  - Given: the agent is streaming text in the last message.
-  - When: text is arriving.
-  - Then: a blinking cursor is shown at the end of the streamed content.
-
-- **MSG-003 — User message text & timestamp**
-  - Given: a user message.
-  - When: it renders.
-  - Then: the text renders as markdown with a human-readable timestamp below.
-
-- **MSG-004 — Copy a user message**
-  - Given: a user message with text.
-  - When: the user hovers it and clicks copy.
-  - Then: the text is copied (icon shows a checkmark for ~1.5s).
-
-- **MSG-005 — User message attachments & "via" badge**
-  - Given: a user message with files and/or a `sentVia` method.
-  - When: it renders.
-  - Then: file previews are shown and a "via {method}" badge appears above the message when applicable.
-
-## Markdown
-
-- **MSG-006 — Markdown elements render**
-  - Given: assistant/user text with markdown.
-  - When: it renders.
-  - Then: paragraphs, headings, ordered/unordered lists (markers preserved), and emoji render correctly.
-
-- **MSG-007 — Links open externally**
-  - Given: a markdown link.
-  - When: the user clicks it.
-  - Then: it opens in a new browser tab (external).
-
-- **MSG-008 — Images suppressed**
-  - Given: a markdown image.
-  - When: it renders.
-  - Then: the image is not displayed.
-
-- **MSG-009 — Inline file-path linkification**
-  - Given: text/inline-code containing a workspace file path.
-  - When: it renders.
-  - Then: the path becomes a clickable link (monospace); clicking (or Enter/Space when focused) opens the file in the diff/file view.
-
-- **MSG-010 — Blockquote with copy**
-  - Given: a markdown blockquote.
-  - When: the user hovers it and clicks copy.
-  - Then: the quoted text (with "> " prefixes) is copied (checkmark for ~1.5s).
-
-## Code blocks
-
-- **MSG-011 — Code block plain → highlighted**
-  - Given: a fenced code block with a language.
-  - When: it first renders, then syntax highlighting loads.
-  - Then: it shows as plain monospace then swaps to colored tokens with no layout shift.
-
-- **MSG-012 — Copy code block**
-  - Given: a code block.
-  - When: the user hovers it and clicks copy.
-  - Then: the (trimmed) code is copied (checkmark for ~1.5s).
-
-- **MSG-013 — Code search highlight**
-  - Given: an active chat search with matches inside code.
-  - When: rendered.
-  - Then: matches are highlighted over the syntax coloring.
-
-## Tables
-
-- **MSG-014 — Table horizontal scroll & wrap toggle**
-  - Given: a wide table.
-  - When: it renders / the user hovers and clicks the wrap toggle.
-  - Then: the table scrolls horizontally with fade indicators; toggling switches to wrapped cells (fades disappear) and back.
-
-- **MSG-015 — Copy table as markdown**
-  - Given: a table.
-  - When: the user hovers it and clicks copy.
-  - Then: the table is copied as markdown (checkmark for ~1.5s).
-
-## Tool pills & rows
-
-- **MSG-016 — Tool pill icon & label**
-  - Given: a tool call.
-  - When: it renders.
-  - Then: a pill shows the tool-specific icon (Bash terminal, Read file, Edit pencil, Grep search, etc.; a wrench fallback for unknown tools) and label.
-
-- **MSG-017 — Executing tool indicator**
-  - Given: a command-style tool (Bash/Monitor) is running.
-  - When: the pill renders.
-  - Then: a pulsing dot replaces the icon while it runs.
-
-- **MSG-018 — Tool pill error state**
-  - Given: a tool finished with an error.
-  - When: the pill renders.
-  - Then: it shows error styling (red).
-
-- **MSG-019 — Open a tool popover**
-  - Given: a tool pill.
-  - When: the user clicks it (or hovers in default density).
-  - Then: a popover opens with the tool's details; clicking pins it, clicking again unpins, scrolling the chat closes it, Escape closes it.
-
-- **MSG-020 — Tool pill keyboard navigation**
-  - Given: a focused tool pill / open popover.
-  - When: the user presses arrow keys.
-  - Then: focus moves between pills in the row and across rows.
-
-- **MSG-021 — Expanded tool density**
-  - Given: tool density is "expanded".
-  - When: a tool row renders.
-  - Then: each tool is a full-width row with inline icon, label, title, and meta (duration/line count); clicking opens the popover (no hover-open).
-
-- **MSG-022 — Tool popover: Read**
-  - Given: a Read tool result.
-  - When: the popover opens.
-  - Then: it shows the file path (with optional line range and an outside-workspace icon+tooltip), line-count meta, copy-path and open-in-Sculptor actions, and the file content.
-
-- **MSG-023 — Tool popover: Bash/Monitor**
-  - Given: a Bash/Monitor tool.
-  - When: the popover opens.
-  - Then: it shows an optional description, the command (code style), live/elapsed duration, a copy-command action, and auto-scrolling output (with a streaming cursor while running) and a copy-output action.
-
-- **MSG-024 — Tool popover: Grep**
-  - Given: a Grep tool.
-  - When: the popover opens.
-  - Then: it shows the quoted pattern, search path, match-count meta, and matching lines.
-
-- **MSG-025 — Bash status badge**
-  - Given: a Bash tool.
-  - When: it renders.
-  - Then: a badge shows running (elapsed + spinner), success (duration + checkmark), error (duration + X), or background (with an arrow icon).
-
-## File chips (diff tools)
-
-- **MSG-026 — File chip stats**
-  - Given: a Write/Edit tool.
-  - When: the chip renders.
-  - Then: it shows the filename with green "+N" (and red "−N" unless a new file); skeletons show while stats load.
-
-- **MSG-027 — File chip executing/error**
-  - Given: the file tool is running or errored.
-  - When: the chip renders.
-  - Then: it shows "Writing…"/"Editing…" (disabled) or error styling.
-
-- **MSG-028 — File chip diff popover**
-  - Given: a finished file chip.
-  - When: the user clicks it (or hovers).
-  - Then: a popover shows the file path and a syntax-highlighted unified diff with word-level highlights; it offers open-in-diff-panel (or open-in-file-view for plan/outside-workspace files) and copy-path; scrolling the chat closes it.
-
-## Other blocks
-
-- **MSG-029 — Error block**
-  - Given: an error block.
-  - When: it renders.
-  - Then: a red badge with the error type and message is shown; clicking expands a traceback (when present).
-
-- **MSG-030 — Claude-binary-missing error**
-  - Given: a Claude-binary-not-found error.
-  - When: it renders.
-  - Then: a special layout with installation status and a link to the dependencies settings is shown (with a "Claude installed" badge when applicable).
-
-- **MSG-031 — Retry request**
-  - Given: an error is the last message and the task is not in a terminal error state.
-  - When: viewing the block.
-  - Then: a red "Retry Request" button is shown; clicking retries and then disables with an "already retried" tooltip.
-
-- **MSG-032 — Warning block**
-  - Given: a warning block.
-  - When: it renders.
-  - Then: an orange badge with the type/message is shown; clicking expands a traceback when present (non-clickable when none).
-
-- **MSG-033 — Context summary**
-  - Given: a context-compaction/clearing event.
-  - When: it renders.
-  - Then: a pill with a label and a truncated preview is shown; clicking opens a scrollable popover with the full summary as markdown.
-
-- **MSG-034 — Exit-plan-mode block states**
-  - Given: a plan review block.
-  - When: it renders.
-  - Then: it shows the appropriate state — "Plan ready for review" (pulsing dot, click opens the plan file), inline plan markdown when provided, "Plan approved" (green), "Plan review dismissed" (gray), "Plan revision requested" (orange, expandable feedback), or "Plan reviewed" (historical, no actions).
-
-- **MSG-035 — Outside-workspace icon**
-  - Given: a tool result file path outside the workspace.
-  - When: it renders.
-  - Then: a folder-output icon appears with a "Path outside of the workspace" tooltip.
-
-- **MSG-036 — Search-match highlight in messages**
-  - Given: an active chat search.
-  - When: messages render.
-  - Then: all matches are highlighted, with the active occurrence styled distinctly.
 
 ---
 
@@ -1670,12 +847,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **PANEL-001 — Browse / Changes / Commits tabs**
   - Given: the file browser panel.
   - When: the user clicks the Browse, Changes, or Commits tab.
-  - Then: the corresponding view is shown; Changes and Commits show a count badge when there are changes/commits.
-
-- **PANEL-002 — Review all**
-  - Given: changes/commits exist and the Review-all feature is enabled.
-  - When: the user clicks "Review all".
-  - Then: a combined diff tab opens showing all files.
+  - Then: the corresponding view is shown; the Changes and Commits tabs show an inline count ("Changes N" / "Commits N") when there are changes/commits.
 
 - **PANEL-003 — Toggle tree/flat view**
   - Given: a file list view.
@@ -1725,7 +897,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **PANEL-012 — File context menu**
   - Given: a file/folder in the tree.
   - When: the user right-clicks it.
-  - Then: a menu offers Open diff view, View file, Copy file path, Copy relative path, Open in OS, and (folders) Expand all / Collapse all, plus Close tab / Close other tabs when a diff tab is open — each performing its labeled action.
+  - Then: a menu offers Open diff view, View file, Copy file path, Copy relative path, Open in default app, Open containing folder, and (folders) Expand all children / Collapse all children, plus Close tab / Close other tabs / Close all when a diff tab is open — each performing its labeled action.
 
 - **PANEL-013 — Empty / loading file tree**
   - Given: no files / the tree is loading.
@@ -1811,7 +983,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **PANEL-028 — Special file states**
   - Given: a renamed/deleted/binary file.
   - When: the diff renders.
-  - Then: a "Renamed from X to Y" banner, a "Deleted" banner, or a "Binary file (cannot display)" message is shown.
+  - Then: a rename banner (diff-style `--- a/{old}` / `+++ b/{new}` lines), a "This file was deleted" banner, or a "Binary file — cannot preview" message is shown.
 
 - **PANEL-029 — Large-diff truncation**
   - Given: a diff exceeding the line threshold.
@@ -1827,16 +999,6 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - Given: a file opened via "View file".
   - When: the tab renders.
   - Then: the full file content is shown read-only with syntax highlighting (not a diff).
-
-- **PANEL-032 — Combined diff view**
-  - Given: the Review-all combined diff is open.
-  - When: it renders.
-  - Then: each file is a collapsible section with breadcrumb and +/− stats; expand/collapse-all and a "Commit N changes" button are available.
-
-- **PANEL-033 — Markdown render toggle**
-  - Given: a markdown file in the diff (rich-rendering feature).
-  - When: the toggle is available.
-  - Then: the user can switch between source and rendered views (toggle disabled with a hint when the feature is off).
 
 ## Terminal panel
 
@@ -1858,56 +1020,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **PANEL-037 — Terminal starting state**
   - Given: a terminal is starting.
   - When: the panel mounts.
-  - Then: a "Starting terminal…" message is shown.
-
-## Notes panel
-
-- **PANEL-038 — Edit & persist notes**
-  - Given: the notes panel.
-  - When: the user types.
-  - Then: the content updates and is preserved when switching away and back.
-
-- **PANEL-039 — Add notes to prompt**
-  - Given: notes with content.
-  - When: the user clicks "Add notes to prompt".
-  - Then: the notes are inserted into the chat prompt; if the prompt already has text, a conflict dialog offers how to merge.
-
-- **PANEL-040 — Copy notes / disabled states**
-  - Given: the notes panel.
-  - When: notes have content / are empty.
-  - Then: the copy button copies the text / is disabled; "Add to prompt" is disabled when there are no notes or no task.
-
-## Skills panel
-
-- **PANEL-041 — Skill type sections**
-  - Given: skills loaded.
-  - When: the panel renders.
-  - Then: skills are grouped by type (Custom, Sculptor, Built-in) with collapsible headers; collapsed headers show a count badge.
-
-- **PANEL-042 — Skill hover popover**
-  - Given: a skill chip.
-  - When: the user hovers it.
-  - Then: a popover shows the description; hovering another chip swaps content instantly; leaving closes it after a short delay.
-
-- **PANEL-043 — Invoke a skill**
-  - Given: a skill chip.
-  - When: the user clicks it.
-  - Then: `/skill-name` is inserted into the chat input.
-
-- **PANEL-044 — Open skill in Sculptor**
-  - Given: a custom/sculptor skill popover.
-  - When: the user clicks "open in Sculptor".
-  - Then: a file-view tab opens showing the skill file (built-in skills have no such option).
-
-- **PANEL-045 — Skills search & filter**
-  - Given: the skills panel.
-  - When: the user opens search and types, navigates with arrows, presses Enter, or filters by type.
-  - Then: the list filters in real time, the selection moves and auto-scrolls, Enter inserts the selected skill, Escape closes search, and the type-filter popover toggles which types are shown (active filters highlight the icon).
-
-- **PANEL-046 — Skills empty / loading / error / unavailable**
-  - Given: skills are loading / failed / none exist / unsupported / the agent is running.
-  - When: the panel renders.
-  - Then: "Loading…" / an error / "No skills found" / "Skills unavailable" is shown, and chips appear disabled while the agent is running.
+  - Then: a "Starting terminal..." message is shown.
 
 ## Actions panel
 
@@ -1919,12 +1032,12 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **PANEL-048 — Trigger an action**
   - Given: an action chip.
   - When: the user clicks it.
-  - Then: an auto-submit action sends its prompt immediately; a manual action appends its prompt to the input; chips are disabled while the agent is running.
+  - Then: an auto-submit action types its prompt into the terminal and presses Enter; a draft action types its prompt into the terminal without pressing Enter (the user edits/sends); chips are disabled while the agent is running.
 
 - **PANEL-049 — Queue an action**
   - Given: the agent is running and an action chip's context menu.
   - When: the user chooses "Queue message".
-  - Then: the action prompt is queued instead of auto-submitted.
+  - Then: the action prompt is delivered to the terminal; the "Queue message" item appears only while the agent is running (there is no separate message queue).
 
 - **PANEL-050 — Add / edit / delete an action**
   - Given: the actions panel.
@@ -1941,27 +1054,10 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - When: the user drags an action or group.
   - Then: a drop indicator appears and the order updates on drop; actions can be moved between groups; built-in items are not draggable.
 
-## Browser panel
-
-- **PANEL-053 — Browser controls (desktop)**
-  - Given: the browser panel in the desktop app.
-  - When: the user enters a URL and presses Enter / clicks back / forward / reload / screenshot.
-  - Then: it navigates to the URL / goes back / forward / reloads / copies a screenshot to the clipboard; back/forward/screenshot are disabled when unavailable.
-
-- **PANEL-054 — Browser URL behavior & errors**
-  - Given: the address bar.
-  - When: the page navigates or an invalid URL is entered.
-  - Then: the address bar follows navigation, the URL is selected on focus, an invalid URL shows an error banner, and an empty URL submit does nothing.
-
-- **PANEL-055 — Browser web-mode placeholder**
-  - Given: not running in the desktop app.
-  - When: the browser panel is shown.
-  - Then: a "Browser panel requires the desktop app" placeholder is shown with controls disabled.
-
 ## Panel state persistence
 
 - **PANEL-056 — Panel state persists**
-  - Given: the user has set folder-expansion, scroll position, active tab, view mode, diff view type, line-wrapping, and diff scope.
+  - Given: the user has set folder-expansion, scroll position, active tab, view mode, diff view type, and line-wrapping.
   - When: switching tabs/files and returning.
   - Then: each of these states is restored.
 
@@ -1974,7 +1070,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **CMDP-001 — Open the palette**
   - Given: the app is open on any page.
   - When: the user presses `Cmd+K` (or clicks the command icon).
-  - Then: the palette opens with the input focused, commands grouped (Workspaces → Navigation → Theme & Layout → Chat → Terminal → Help), and the first row selected.
+  - Then: the palette opens with the input focused, commands grouped (Workspaces → Navigation → Theme & Layout → Terminal → Help), and the first row selected.
 
 - **CMDP-002 — Open directly to the workspace switcher**
   - Given: the app is open.
@@ -2065,20 +1161,15 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - When: the user runs "Toggle theme" or opens "Switch theme…" and picks Light/Dark/System.
   - Then: the theme flips or is set accordingly.
 
-- **CMDP-019 — Layout & panel commands**
+- **CMDP-019 — Panel commands**
   - Given: the palette is open on a workspace.
-  - When: the user opens "Toggle layout…" / "Toggle panel visibility…" and runs toggle-left/right/bottom-panel, focus mode, zen mode, or a specific panel toggle.
-  - Then: the corresponding panel/mode toggles (panel toggles keep the palette open; focus/zen close it).
-
-- **CMDP-020 — Chat commands**
-  - Given: the palette is open on a workspace with a chat panel.
-  - When: the user runs Focus chat input / Search within chat / Jump to bottom / Toggle tool-call density.
-  - Then: the input focuses / chat search opens / chat scrolls to bottom / tool rows expand or compact (the row label reflects the next action); chat commands are hidden without a chat panel.
+  - When: the user opens "Toggle panel visibility…" and runs a panel toggle (Files, Actions, Terminal, …).
+  - Then: the corresponding panel visibly toggles and the palette closes.
 
 - **CMDP-021 — Terminal & help commands**
   - Given: the palette is open.
-  - When: the user runs Clear terminal / Show keyboard shortcuts / Report a problem.
-  - Then: the terminal clears (hidden without a terminal panel) / the shortcuts dialog opens / the feedback form opens.
+  - When: the user runs Clear terminal / Show keyboard shortcuts.
+  - Then: the terminal clears (hidden without a terminal panel) / the shortcuts dialog opens.
 
 ## Workspace & agent commands
 
@@ -2094,13 +1185,13 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 - **CMDP-024 — Workspace actions sub-page**
   - Given: a workspace.
-  - When: the user opens "Workspace actions…" and runs Commit changes / Create PR (or MR) / Open PR / Rename / Close / Close others / Close all / Delete.
-  - Then: each performs its action (Commit disabled without changes; Open PR disabled without an open PR; Delete and others as labeled), and the label reflects PR vs MR by provider.
+  - When: the user opens "Workspace actions…" and runs Commit changes / Create PR / Open PR / Rename / Close / Close others / Close all / Delete.
+  - Then: each performs its action (Commit disabled without changes; Open PR disabled without an open PR; Delete and others as labeled).
 
 - **CMDP-025 — Open-in sub-page**
-  - Given: external apps are available and the backend is local.
+  - Given: external apps are available.
   - When: the user opens "Open in…" and selects Finder / VS Code / Terminal / etc.
-  - Then: the repo opens in the chosen app (the preferred app ranks first); the entry is disabled on a remote backend.
+  - Then: the repo opens in the chosen app (the preferred app ranks first).
 
 - **CMDP-026 — Go to agent switcher**
   - Given: 2+ agents in a workspace.
@@ -2114,7 +1205,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 - **CMDP-028 — Settings sub-page**
   - Given: the palette is open.
-  - When: the user opens "Go to settings…" and selects a section (Appearance, Keybindings, Experimental, …).
+  - When: the user opens "Go to settings…" and selects a section (General, Keybindings, Repositories, Git, CI, File browser, Environment variables, Actions).
   - Then: the app navigates to that settings section.
 
 - **CMDP-029 — Pointer & open-time behavior**
@@ -2141,7 +1232,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **SET-001 — Section navigation**
   - Given: the settings page.
   - When: the user clicks a sidebar item (or selects from the mobile dropdown).
-  - Then: the active section changes and its content is shown; sections include General, Agent, Keybindings, Panels, Dependencies, Pi, Repositories, Git, CI, File Browser, Environment Variables, Privacy, Experimental, Actions, Theme Builder.
+  - Then: the active section changes and its content is shown; the sections are General, Keybindings, Repositories, Git, CI, File browser, Environment variables, and Actions.
 
 - **SET-002 — Deep-link to a section**
   - Given: a URL with a section parameter.
@@ -2165,18 +1256,6 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - When: the user picks Light / Dark / System.
   - Then: the app appearance changes immediately.
 
-- **SET-006 — Update channel & check/install**
-  - Given: the General section.
-  - When: the user picks an update channel, clicks "Check for updates", or "Install and restart".
-  - Then: a toast confirms the channel change, the check shows a spinner, and install restarts the app (button shows "Restarting…").
-
-## Agent
-
-- **SET-007 — Default model / fast mode / effort**
-  - Given: the Agent section.
-  - When: the user changes the default model, toggles fast mode, or selects an effort level.
-  - Then: each shows "Setting updated" and applies to new agents.
-
 ## Keybindings
 
 - **SET-008 — Search keybindings**
@@ -2199,57 +1278,11 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - When: the user clicks the X on a chip / "Reset all to defaults".
   - Then: that binding / all bindings revert to default.
 
-## Panels
-
-- **SET-012 — Panel zone assignment & hotkey**
-  - Given: the Panels section.
-  - When: the user changes a panel's zone or assigns a panel hotkey.
-  - Then: the panel moves zones / the hotkey is set (with conflict checking); disabled where rules/enabled-state prevent it.
-
-- **SET-013 — Enable/disable & reset panels**
-  - Given: the Panels section.
-  - When: the user toggles a non-builtin panel or clicks "Reset to defaults".
-  - Then: the panel appears/disappears / all panel layout settings reset.
-
-## Dependencies
-
-- **SET-014 — Claude CLI source mode & status**
-  - Given: the Dependencies section.
-  - When: the user switches Managed/Custom.
-  - Then: the mode switches (brief settling spinner) and the status shows version/health (up to date, in/out of range, not installed, no path).
-
-- **SET-015 — Claude managed install / custom path**
-  - Given: the Dependencies section.
-  - When: the user clicks Install/Retry (managed) or enters a path and clicks Apply (custom).
-  - Then: a progress bar runs and the version updates / the path is validated and applied; active version and path are displayed.
-
-- **SET-016 — Git status**
-  - Given: the Dependencies section.
-  - When: viewing the Git row.
-  - Then: it shows "v{version} — Installed" or a not-installed message.
-
-## Pi (experimental)
-
-- **SET-017 — Pi disabled banner**
-  - Given: pi is not enabled.
-  - When: viewing the Pi section.
-  - Then: a banner links to the Experimental section to enable it.
-
-- **SET-018 — Pi source mode, install, path, versions**
-  - Given: the Pi section.
-  - When: the user switches Managed/Custom, installs, or sets a custom path.
-  - Then: the status (pinned/outside-pinned/not-installed/no-path), pinned & detected versions, active path, and install progress are shown; a custom-mode warning with an install command appears.
-
-- **SET-019 — Pi API-key env vars**
-  - Given: the Pi section.
-  - When: the user adds or removes an env-var name.
-  - Then: the variable list updates with a "Setting updated" toast.
-
 ## Repositories
 
 - **SET-020 — Add / list repositories**
   - Given: the Repositories section.
-  - When: the user clicks "Add repository".
+  - When: the user clicks "Add new repository".
   - Then: the add-repo dialog opens; the list shows each repo's name, path, agent count, and an accessibility warning when the path is missing.
 
 - **SET-021 — Configure a repository**
@@ -2278,41 +1311,22 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 - **SET-025 — CI babysitter settings**
   - Given: the CI section.
-  - When: the user toggles the babysitter, sets the retry cap (1–10), or edits the pipeline-failed / merge-conflict prompts.
+  - When: the user toggles the babysitter, selects the babysitter agent (most-recently-used or a specific registered harness), sets the retry cap (1–10), or edits the pipeline-failed / merge-conflict prompts.
   - Then: each saves with a toast; the dependent fields disable when the babysitter is off; prompts have reset-to-default.
 
 ## File browser
 
 - **SET-026 — File-browser settings**
-  - Given: the File Browser section.
+  - Given: the File browser section.
   - When: the user sets the default split ratio (20–80%), tab-close behavior, line-wrapping, default diff view, or the commit prompt.
   - Then: each saves with a toast (commit prompt has reset-to-default).
 
 ## Environment variables
 
 - **SET-027 — Env-var settings**
-  - Given: the Environment Variables section.
+  - Given: the Environment variables section.
   - When: the user toggles "override existing variables" or clicks refresh.
   - Then: the toggle saves with a toast; the list of loaded variables (global and repo-specific) refreshes.
-
-## Privacy
-
-- **SET-028 — Email & telemetry**
-  - Given: the Privacy section.
-  - When: the user views the email (read-only) and toggles telemetry.
-  - Then: enabling telemetry saves immediately; disabling opens a confirmation ("Turn telemetry off?") with a "Disabling Telemetry…" spinner, then a toast (or an error toast on failure).
-
-## Experimental
-
-- **SET-029 — Experimental toggles**
-  - Given: the Experimental section.
-  - When: the user toggles any feature (Always interrupt and send, Smooth streaming, Per-workspace panel layout, In-place workspaces, Clone workspaces, Review all, Entity mentions, Rich markdown rendering, Pi agent).
-  - Then: each shows "Setting updated".
-
-- **SET-030 — Custom backend command & timeout**
-  - Given: the Experimental/Advanced section.
-  - When: the user sets a custom backend command or readiness timeout.
-  - Then: each saves with a "restart required" toast.
 
 ## Actions
 
@@ -2331,28 +1345,6 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - When: the user drags to reorder or rename a group inline.
   - Then: the order updates and the group renames with a success toast.
 
-## Theme builder
-
-- **SET-034 — Appearance / fonts / code theme**
-  - Given: the Theme Builder section.
-  - When: the user changes appearance mode, primary font, code font, or code theme.
-  - Then: the UI updates to reflect each choice.
-
-- **SET-035 — Color pickers**
-  - Given: a color setting (Accent, Gray, Danger, Success, Warning, Info).
-  - When: the user clicks a swatch or enters a custom hex (with a light/dark hex override toggle).
-  - Then: the color applies; an invalid hex is shown in red.
-
-- **SET-036 — Radius / scaling / panel background**
-  - Given: the Theme Builder section.
-  - When: the user picks a radius, scaling, or panel-background option.
-  - Then: borders / overall UI size / panel translucency update accordingly.
-
-- **SET-037 — Component gallery & reset theme**
-  - Given: the Theme Builder section.
-  - When: the user clicks the component-gallery button or "Reset to defaults".
-  - Then: the component gallery opens / theme settings reset (with a toast).
-
 ---
 
 # ACT — Actions feature components
@@ -2360,7 +1352,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **ACT-001 — Action chip appearance & trigger**
   - Given: an action chip.
   - When: viewing/clicking it.
-  - Then: it shows a play icon (auto-submit) or text-cursor icon (draft), a tooltip with the prompt on hover, and clicking executes (send or append); disabled chips ignore clicks.
+  - Then: it shows a play icon (auto-submit) or text-cursor icon (draft), a tooltip with the prompt on hover, and clicking types the prompt into the terminal (auto-submit presses Enter, draft leaves it for the user to send); disabled chips ignore clicks.
 
 - **ACT-002 — Action context menu**
   - Given: an action chip.
@@ -2386,85 +1378,6 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - Given: custom actions/groups (built-ins are not draggable).
   - When: the user drags an action or group.
   - Then: drop indicators show before/after positions; dropping into a group moves the action there; dropping outside removes it from the group.
-
----
-
-# SKILL — Skills UI components
-
-- **SKILL-001 — Skill chip**
-  - Given: a skill chip.
-  - When: viewing/clicking it (or pressing Enter/Space when focused).
-  - Then: it shows `/skill-name`; clicking inserts it into the editor; an optional "Open in Sculptor" button appears for custom/sculptor skills; disabled chips are not interactive; the keyboard-target chip is highlighted.
-
-- **SKILL-002 — Skill hover content**
-  - Given: a skill chip.
-  - When: the user hovers/focuses it.
-  - Then: a popover shows the type badge (Built-in/Sculptor/Custom), the skill id, and description; hovering another chip in the group swaps content instantly; scrolling suppresses flapping.
-
-- **SKILL-003 — Skills search navigation**
-  - Given: the skills search input (placeholder "Search skills…").
-  - When: the user types, arrows, presses Enter, or clears.
-  - Then: the list filters in real time, arrows move the selection, Enter inserts the selected skill, Escape/clear closes search.
-
----
-
-# MENT — Mentions, pickers, path autocomplete, mention chips
-
-## Mention chips
-
-- **MENT-001 — File/folder mention chip**
-  - Given: a file/folder mention chip in a message.
-  - When: viewing/clicking/hovering it.
-  - Then: it shows the icon and basename (start-truncated for long paths); clicking opens the file or reveals the folder; hovering shows a popover with the full path and an action hint ("Click to open" / "Click to reveal in file browser").
-
-- **MENT-002 — Skill mention chip**
-  - Given: a skill mention chip.
-  - When: hovering it.
-  - Then: a popover shows the type badge, skill id, and description; it is not clickable.
-
-- **MENT-003 — Entity mention chip**
-  - Given: an entity (repository/workspace/agent) mention chip.
-  - When: viewing/clicking/hovering it.
-  - Then: it shows a type-colored icon and name; clicking a workspace/agent navigates to it (repositories and deleted entities are not clickable, shown strike-through); hovering shows an entity detail popover.
-
-- **MENT-004 — Mention detail panes**
-  - Given: an agent / workspace / repository mention.
-  - When: its detail popover opens.
-  - Then: it shows the entity's icon, title, optional badge, body lines, and a meta footer (e.g., agent count); deleted entities show a gray icon, strike-through title, and a "no longer exists" note.
-
-## Mention pickers
-
-- **MENT-005 — Category picker (+ trigger)**
-  - Given: the chat input.
-  - When: the user types `+`.
-  - Then: a category list appears (Files, Commands, Repositories, Workspaces, and Images if image upload is supported); Tab/Enter/click drills into a category.
-
-- **MENT-006 — File picker (@ trigger)**
-  - Given: a file mention session.
-  - When: the user types `@` and a name.
-  - Then: a list of files/folders with highlighted matches and parent paths is shown; Tab/ArrowRight/Enter drills into folders, Enter/click on a file inserts it, Shift+Tab/Escape steps back or closes; empty states show "Type to search files" / "No matching files or folders".
-
-- **MENT-007 — Skill picker (/ trigger)**
-  - Given: a skill mention session.
-  - When: the user types `/` and a name.
-  - Then: a list of skills with a detail pane (type badge, id, description) is shown; Tab/Enter/click inserts the skill; the detail pane hides while typing; "No matching skills" when empty.
-
-- **MENT-008 — Entity picker**
-  - Given: an entity mention session.
-  - When: the user selects a type and drills in.
-  - Then: sectioned lists (Repositories/Workspaces/Agents) are shown; workspaces are drillable to their agents (chevron), agents/repositories insert on Enter/click; Shift+Tab pops one level.
-
-- **MENT-009 — Image upload from picker**
-  - Given: the harness supports image upload.
-  - When: the user selects the Images category.
-  - Then: an image-upload dialog is triggered (the Images row is hidden when unsupported).
-
-## Path autocomplete
-
-- **MENT-010 — Path autocomplete dropdown & submit**
-  - Given: a path input (e.g., add-repo).
-  - When: the user types a path with "/" or "~", navigates directories, and submits.
-  - Then: after a debounce a spinner then matching directories appear (or "No matching directories"); clicking a directory drills in; Enter (dropdown closed) or `Cmd+Enter` submits the trimmed path; Escape/Tab close the dropdown.
 
 ---
 
@@ -2494,14 +1407,11 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 ## Coverage notes
 
-- Some behaviors are gated by feature flags / capabilities and only appear when enabled:
-  entity mentions, rich markdown rendering, clone/in-place workspaces, Review-all,
-  Pi agent, image upload, CI babysitter, and the dev/devtools panels. Tests should set
-  the relevant flag (or assert the gated UI is absent when off).
-- The home-page rows and the workspace banner reuse the same PR/MR button component, so
+- Some behaviors are gated by capabilities and only appear when enabled: the CI babysitter
+  and the dev/devtools panels. Tests should set the relevant state (or assert the gated UI
+  is absent when off).
+- The home-page rows and the workspace banner reuse the same PR button component, so
   the WS-PR scenarios (WS-022…WS-032) also describe the home-row PR behavior (HOME-020).
 - Status dots (running / waiting / error / ready / read / unread, plus the two-dot mixed
   state) use one shared component across tab strips, home rows, agent tabs, peek popovers,
   and the command palette; verify the same color/animation mapping in each surface.
-- Animations (status-pill and subagent-pill "thinking" variants) are randomized per
-  appearance; tests should assert that *an* animation is present rather than a specific one.

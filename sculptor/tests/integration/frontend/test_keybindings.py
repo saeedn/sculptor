@@ -27,7 +27,7 @@ def _navigate_to_keybindings(sculptor_instance_: SculptorInstance):
 @pytest.mark.release
 @user_story("to see all keybinding categories in settings")
 def test_keybindings_section_renders_all_categories(sculptor_instance_: SculptorInstance) -> None:
-    """The keybindings section should show all 4 categories with their bindings."""
+    """The keybindings section should show each category with its bindings."""
     keybindings = _navigate_to_keybindings(sculptor_instance_)
 
     # Verify keybinding rows from each category are visible:
@@ -35,10 +35,10 @@ def test_keybindings_section_renders_all_categories(sculptor_instance_: Sculptor
     expect(keybindings.get_keybinding_row("command_palette")).to_be_visible()
     # Workspaces
     expect(keybindings.get_keybinding_row("new_workspace")).to_be_visible()
-    # Chat
-    expect(keybindings.get_keybinding_row("send_message")).to_be_visible()
     # Navigation
     expect(keybindings.get_keybinding_row("home")).to_be_visible()
+    # Terminal
+    expect(keybindings.get_keybinding_row("clear_terminal")).to_be_visible()
 
 
 @pytest.mark.release
@@ -49,9 +49,9 @@ def test_search_filters_keybindings(sculptor_instance_: SculptorInstance) -> Non
 
     keybindings.search("search")
 
-    # "Command palette" and "Chat search" should be visible
+    # "Command palette" and "Find in file" should be visible
     expect(keybindings.get_keybinding_row("command_palette")).to_be_visible()
-    expect(keybindings.get_keybinding_row("chat_search")).to_be_visible()
+    expect(keybindings.get_keybinding_row("find_in_file")).to_be_visible()
 
     # Unrelated bindings should be hidden
     expect(keybindings.get_keybinding_row("new_workspace")).to_have_count(0)
@@ -414,23 +414,3 @@ def test_customized_keybinding_is_honored(sculptor_instance_: SculptorInstance) 
     # Reset keybindings for subsequent tests
     keybindings = _navigate_to_keybindings(sculptor_instance_)
     keybindings.reset_all_to_defaults()
-
-
-@pytest.mark.release
-@user_story("to see arrow key symbols in panel toggle keybindings")
-def test_panel_toggle_keybindings_display_arrow_symbols(sculptor_instance_: SculptorInstance) -> None:
-    """Panel toggle keybindings should display arrow symbols (← → ↓) not letter keys."""
-    keybindings = _navigate_to_keybindings(sculptor_instance_)
-    keybindings.reset_all_to_defaults()
-
-    # Toggle left panel should show ← (ArrowLeft)
-    left_display = keybindings.get_keybinding_display_text("toggle_left_panel")
-    expect(left_display).to_contain_text("←")
-
-    # Toggle right panel should show → (ArrowRight)
-    right_display = keybindings.get_keybinding_display_text("toggle_right_panel")
-    expect(right_display).to_contain_text("→")
-
-    # Toggle bottom panel should show ↓ (ArrowDown)
-    bottom_display = keybindings.get_keybinding_display_text("toggle_bottom_panel")
-    expect(bottom_display).to_contain_text("↓")

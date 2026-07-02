@@ -1,53 +1,27 @@
 import { execSync, spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import * as readline from "node:readline";
 import { pathToFileURL } from "node:url";
 
 import { randomBytes } from "crypto";
 import type { MenuItemConstructorOptions } from "electron";
-import {
-  app,
-  BrowserWindow,
-  clipboard,
-  dialog,
-  globalShortcut,
-  ipcMain,
-  Menu,
-  net,
-  protocol,
-  shell,
-  webContents,
-} from "electron";
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, net, protocol, shell } from "electron";
 import Store from "electron-store";
 
 import type { AnyBackendStatus, SculptorDevInfo } from "../shared/types";
 import { APP_SCHEME, getAppRendererUrl, resolveRequestToFilePath, shouldFallbackToIndex } from "./appProtocol";
-import { initAutoUpdater } from "./autoUpdater";
 import type { ZoomCommand } from "./constants";
 import {
   BACKEND_PORT_CHANNEL_NAME,
   BACKEND_STATUS_CHANGE_CHANNEL_NAME,
-  BROWSER_PANEL_CAPTURE_TO_CLIPBOARD_CHANNEL_NAME,
-  BROWSER_PANEL_OPEN_IN_PANEL_CHANNEL_NAME,
-  CAPTURE_SCREENSHOT_CHANNEL_NAME,
-  GET_APP_VERSION_CHANNEL_NAME,
-  GET_AUTO_UPDATE_STATUS_CHANNEL_NAME,
   GET_CURRENT_BACKEND_STATUS_CHANNEL_NAME,
-  GET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME,
   GET_DEV_INFO_CHANNEL_NAME,
-  GET_FILE_DATA_CHANNEL_NAME,
-  IS_CUSTOM_COMMAND_MODE_CHANNEL_NAME,
-  SAVE_FILE_CHANNEL_NAME,
   SELECT_PROJECT_DIRECTORY_CHANNEL_NAME,
-  SET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME,
   ZOOM_COMMAND_CHANNEL_NAME,
 } from "./constants";
 import { createDevIcon } from "./devIcon";
 import { PORT } from "./electronOnlyUtils";
-import { migrateLocalStorageToAppScheme, MIGRATION_BLANK_PATH } from "./localStorageMigration";
 import { finalizeLogger, getSculptorFolder, logger } from "./logger";
-import { registerTestIpcHandlers } from "./testIpcHandlers";
 import {
   flushTracingBeforeExit,
   initializeElectronTracing,
@@ -148,21 +122,6 @@ let window: BrowserWindow | null = null;
 let currentBackendStatus: AnyBackendStatus = { status: "loading", payload: { message: "Initializing..." } };
 let stderrBuffer = "";
 let isQuitting = false;
-// True only during the one-time startup localStorage migration, which opens and
-// destroys a transient window before the main window exists. Destroying it would
-// otherwise fire window-all-closed and quit the app mid-startup (see the handler).
-let isMigrating = false;
-let autoUpdaterManager: ReturnType<typeof initAutoUpdater> = null;
-let isInCustomCommandMode = false;
-let customCommandBackendUrl: string | null = null;
-// Resolved once customCommandBackendUrl is set (or immediately if not in custom command mode).
-let resolveBackendUrl: ((url: string | null) => void) | null = null;
-const backendUrlReady: Promise<string | null> = new Promise((resolve) => {
-  resolveBackendUrl = resolve;
-});
-let restartCount = 0;
-const MAX_RESTARTS = 3;
-const RESTART_BASE_DELAY_MS = 2000;
 
 const MAX_STDERR_BUFFER_SIZE = 10 * 1024 * 1024; // 10 MB
 const MAX_BYTE_PER_CHARACTER = 4; // at worst characters are 4 bytes in JS
@@ -199,9 +158,9 @@ if (process.env.SCULPTOR_SESSION_TOKEN) {
 const userDataOverride = process.env.SCULPTOR_USER_DATA_DIR;
 if (userDataOverride) {
   app.setPath("userData", userDataOverride);
-  // Also redirect the cache directory so that libraries like electron-updater
-  // (which stores downloads in app.getPath("cache")) don't leak state between
-  // test instances or across CI runs on persistent runners.
+  // Also redirect the cache directory so libraries that cache to
+  // app.getPath("cache") don't leak state between test instances or across CI
+  // runs on persistent runners.
   app.setPath("cache", path.join(userDataOverride, "cache"));
 } else if (!app.isPackaged || app.getVersion().includes("-dev.")) {
   app.setPath("userData", path.join(getSculptorFolder(), "internal", "electron"));
@@ -232,9 +191,6 @@ const store = new Store({
       width: WINDOW_WIDTH,
       height: WINDOW_HEIGHT,
     },
-    updateChannel: "STABLE",
-    customBackendCommand: "",
-    backendReadinessTimeout: 60,
   },
 });
 
@@ -256,40 +212,6 @@ const sendBackendState = (state: AnyBackendStatus): void => {
 // and the gutter repaint together (no jitter).
 const sendZoomCommand = (command: ZoomCommand): void => {
   window?.webContents.send(ZOOM_COMMAND_CHANNEL_NAME, command);
-};
-
-const URL_PATTERN = /https?:\/\/[^\s]+:\d+/;
-
-const parseUrlFromStdout = (stdout: NodeJS.ReadableStream, timeoutMs: number): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const collectedLines: Array<string> = [];
-    const rl = readline.createInterface({ input: stdout });
-
-    const timer = setTimeout(() => {
-      reject(
-        new Error(`No backend URL found in stdout within ${timeoutMs / 1000}s. Output:\n${collectedLines.join("\n")}`),
-      );
-      rl.close();
-    }, timeoutMs);
-
-    rl.on("line", (line) => {
-      const match = line.match(URL_PATTERN);
-
-      if (match) {
-        clearTimeout(timer);
-        resolve(match[0]);
-        rl.close();
-      } else {
-        collectedLines.push(line);
-        logger.info(`[custom-command stdout] ${line}`);
-      }
-    });
-
-    rl.on("close", () => {
-      clearTimeout(timer);
-      reject(new Error(`stdout closed before a backend URL was found. Output:\n${collectedLines.join("\n")}`));
-    });
-  });
 };
 
 // Wait for backend to be ready by polling the health endpoint
@@ -376,39 +298,6 @@ const setupProcessHandlers = (proc: ReturnType<typeof spawn>): void => {
       return;
     }
 
-    if (isInCustomCommandMode && restartCount < MAX_RESTARTS) {
-      logger.warn(
-        `[main] custom command exited code=${code} signal=${signal}, stderr: ${stderrBuffer.trim().slice(-500) || "(empty)"}`,
-      );
-      restartCustomCommand().catch((err) => {
-        logger.error("[main] restart failed:", err);
-        sendBackendState({
-          status: "error",
-          payload: {
-            message: `Backend restart failed: ${(err as Error).message}`,
-            stack: (err as Error).stack,
-          },
-        });
-      });
-
-      return;
-    }
-
-    if (isInCustomCommandMode && restartCount >= MAX_RESTARTS) {
-      logger.error(
-        `[main] custom command failed after ${MAX_RESTARTS} attempts, last exit code=${code} signal=${signal}, stderr: ${stderrBuffer.trim().slice(-500) || "(empty)"}`,
-      );
-      sendBackendState({
-        status: "error",
-        payload: {
-          message: `Backend could not be started after ${MAX_RESTARTS} attempts`,
-          stack: stderrBuffer.trim().slice(-500),
-        },
-      });
-
-      return;
-    }
-
     logger.warn(`[main] backend exited code=${code} signal=${signal}`);
     const exitMessage = signal ? `Backend killed with signal ${signal}` : `Backend exited with code ${code}`;
     sendBackendState({
@@ -421,95 +310,6 @@ const setupProcessHandlers = (proc: ReturnType<typeof spawn>): void => {
       },
     });
   });
-};
-
-const spawnCustomCommand = (customCommand: string): void => {
-  const shellPath = getShellPath();
-
-  logger.info(`[main] spawning custom backend command: ${customCommand}`);
-
-  const updateChannel = store.get("updateChannel", "STABLE") as string;
-  const sculptorChannel = updateChannel === "STABLE" ? "slim" : "slim-rc";
-
-  pythonBackgroundProcess = spawn("sh", ["-c", customCommand], {
-    stdio: ["ignore", "pipe", "pipe"],
-    env: {
-      ...process.env,
-      SESSION_TOKEN: SESSION_TOKEN,
-      SCULPTOR_VERSION: app.getVersion(),
-      SCULPTOR_CHANNEL: sculptorChannel,
-      PATH: shellPath,
-    },
-    detached: true,
-  });
-
-  setupProcessHandlers(pythonBackgroundProcess);
-};
-
-const restartCustomCommand = async (): Promise<void> => {
-  restartCount++;
-  const delay = restartCount * RESTART_BASE_DELAY_MS;
-
-  logger.info(`[main] restarting custom command (attempt ${restartCount}/${MAX_RESTARTS}), delay ${delay}ms`);
-  sendBackendState({
-    status: "loading",
-    payload: { message: `Backend exited unexpectedly. Restarting (attempt ${restartCount}/${MAX_RESTARTS})...` },
-  });
-
-  await sleep(delay);
-
-  if (isQuitting) {
-    return;
-  }
-
-  const customCommand = process.env.SCULPTOR_CUSTOM_BACKEND_CMD || (store.get("customBackendCommand", "") as string);
-
-  if (!customCommand) {
-    sendBackendState({
-      status: "error",
-      payload: { message: "Custom backend command is empty, cannot restart", stack: "" },
-    });
-
-    return;
-  }
-
-  stderrBuffer = "";
-  spawnCustomCommand(customCommand);
-
-  const readinessTimeoutSec = store.get("backendReadinessTimeout", 60) as number;
-  const readinessTimeoutMs = readinessTimeoutSec * 1000;
-
-  try {
-    customCommandBackendUrl = await parseUrlFromStdout(pythonBackgroundProcess!.stdout!, readinessTimeoutMs);
-    resolveBackendUrl?.(customCommandBackendUrl);
-    logger.info(`[main] parsed backend URL from restarted command: ${customCommandBackendUrl}`);
-
-    pythonBackgroundProcess!.stdout?.on("data", (data) => {
-      try {
-        process.stdout.write(data);
-      } catch {
-        // Swallow
-      }
-    });
-  } catch (err) {
-    logger.error("[main] failed to parse URL from restarted command:", err);
-    sendBackendState({
-      status: "error",
-      payload: {
-        message: `Custom command did not output a backend URL: ${(err as Error).message}`,
-        stack: (err as Error).stack,
-      },
-    });
-
-    return;
-  }
-
-  const isRunning = await waitForBackend(customCommandBackendUrl, undefined, readinessTimeoutMs);
-
-  if (isRunning && !isQuitting) {
-    restartCount = 0;
-    sendBackendState({ status: "running", payload: { message: "Backend is running." } });
-  }
 };
 
 // Where to launch the sidecar from in DEV vs PROD
@@ -758,7 +558,6 @@ const createWindow = async (): Promise<void> => {
       contextIsolation: true,
       nodeIntegration: false,
       spellcheck: true,
-      webviewTag: true,
     },
   });
 
@@ -848,54 +647,6 @@ const createWindow = async (): Promise<void> => {
     return { action: "deny" };
   });
 
-  // Browser panel <webview> elements. Keep `target="_blank"` links and
-  // `window.open` calls inside the same panel instead of spawning an OS
-  // window. Two layers:
-  //
-  // 1. setWindowOpenHandler on the guest webContents catches window.open()
-  //    and form-submit popups; we deny the popup and tell the renderer to
-  //    navigate the matching panel.
-  // 2. A small script injected on every dom-ready intercepts clicks on
-  //    `<a target="_blank">` links before Chromium's popup blocker can
-  //    decide they came without user activation. It rewrites them to
-  //    navigate the same frame, which keeps the panel pointed at the
-  //    expected URL even for synthetic clicks. (`allowpopups` on the
-  //    <webview> tag is not enough — verified empirically:
-  //    test_browser_panel_navigation_tour fails on the synthetic
-  //    `popup-link.click()` without this interceptor.)
-  window.webContents.on("did-attach-webview", (_event, attachedContents) => {
-    attachedContents.setWindowOpenHandler(({ url }) => {
-      window?.webContents.send(BROWSER_PANEL_OPEN_IN_PANEL_CHANNEL_NAME, {
-        webContentsId: attachedContents.id,
-        url,
-      });
-      return { action: "deny" };
-    });
-    const injectTargetBlankInterceptor = (): void => {
-      void attachedContents
-        .executeJavaScript(
-          `
-          (() => {
-            if (window.__sculptorBrowserPanelHooksInstalled) return;
-            window.__sculptorBrowserPanelHooksInstalled = true;
-            document.addEventListener("click", (event) => {
-              const link = event.target instanceof Element ? event.target.closest("a[target=_blank]") : null;
-              if (!link) return;
-              const href = link.href;
-              if (!href) return;
-              event.preventDefault();
-              window.location.href = href;
-            }, true);
-          })();
-          `,
-        )
-        .catch(() => {
-          // Swallow: the page may have navigated away before we could inject.
-        });
-    };
-    attachedContents.on("dom-ready", injectTargetBlankInterceptor);
-  });
-
   // This handles other links.
   window.webContents.on("will-navigate", (event, url) => {
     if (!urlStartsWith(url, appUrl)) {
@@ -925,10 +676,9 @@ const createWindow = async (): Promise<void> => {
   });
 
   // Intercept window close to show a confirmation dialog.
-  // Skip if already quitting (e.g., user already confirmed, or auto-update).
+  // Skip if already quitting (e.g., user already confirmed).
   window.on("close", (e) => {
     if (isQuitting) return;
-    if (autoUpdaterManager?.isUpdating) return;
 
     e.preventDefault();
     logger.info("[main] window close intercepted, showing confirmation dialog");
@@ -970,14 +720,6 @@ const registerAppProtocolHandler = (): void => {
   const bundleDir = path.join(app.getAppPath(), ".vite/build/renderer");
   protocol.handle(APP_SCHEME, async (request) => {
     const { pathname, search } = new URL(request.url);
-    // Blank doc for the one-time localStorage origin migration: lets the main
-    // process open a page on this origin to write without booting the renderer.
-    if (pathname === MIGRATION_BLANK_PATH) {
-      return new Response('<!doctype html><meta charset="utf-8"><title>migrating</title>', {
-        headers: { "content-type": "text/html; charset=utf-8" },
-      });
-    }
-
     if (APP_SCHEME_DEV_SERVER_ORIGIN !== null) {
       // Test/dev: proxy to the Vite dev server, preserving path + query so its
       // on-the-fly module transforms and asset requests resolve there. (The
@@ -1009,17 +751,6 @@ app.whenReady().then(async () => {
   // Register the app-scheme file handler before any window loads from it.
   registerAppProtocolHandler();
 
-  // One-time: carry renderer localStorage from the legacy file:// origin to
-  // sculptor://app before any window loads, so an in-place upgrade keeps the
-  // user's layout, theme, tabs, etc. Gated, capped, and never throws.
-  if (app.isPackaged && shouldUseAppScheme && !isInPytest) {
-    // Suppress the window-all-closed quit while the migration's transient window
-    // opens and closes (the main window doesn't exist yet). Cleared once the
-    // main window is created, below.
-    isMigrating = true;
-    await migrateLocalStorageToAppScheme(store);
-  }
-
   traceMark("electron.app_ready");
   createApplicationMenu();
 
@@ -1044,124 +775,11 @@ app.whenReady().then(async () => {
     return SESSION_TOKEN;
   });
 
-  ipcMain.handle(GET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME, () => {
-    return {
-      customBackendCommand: store.get("customBackendCommand") as string,
-      backendReadinessTimeout: store.get("backendReadinessTimeout") as number,
-    };
-  });
-
-  ipcMain.handle(
-    SET_CUSTOM_BACKEND_SETTINGS_CHANNEL_NAME,
-    (_event, settings: { customBackendCommand?: string; backendReadinessTimeout?: number }) => {
-      if (settings.customBackendCommand !== undefined) {
-        store.set("customBackendCommand", settings.customBackendCommand);
-      }
-
-      if (settings.backendReadinessTimeout !== undefined) {
-        store.set("backendReadinessTimeout", settings.backendReadinessTimeout);
-      }
-    },
-  );
-
-  ipcMain.handle(IS_CUSTOM_COMMAND_MODE_CHANNEL_NAME, () => isInCustomCommandMode);
   ipcMain.handle(GET_DEV_INFO_CHANNEL_NAME, () => getDevInfo());
-  ipcMain.handle(GET_APP_VERSION_CHANNEL_NAME, () => app.getVersion());
-  ipcMain.handle("get-backend-url", () => backendUrlReady);
-
-  ipcMain.handle(CAPTURE_SCREENSHOT_CHANNEL_NAME, async () => {
-    if (!window) {
-      throw new Error("No window available for screenshot capture");
-    }
-    const image = await window.webContents.capturePage();
-    const png = image.toPNG();
-    return png.buffer.slice(png.byteOffset, png.byteOffset + png.byteLength);
-  });
-
-  ipcMain.handle(BROWSER_PANEL_CAPTURE_TO_CLIPBOARD_CHANNEL_NAME, async (_event, webContentsId: number) => {
-    const contents = webContents.fromId(webContentsId);
-    if (!contents) {
-      throw new Error(`No webContents with id ${webContentsId}`);
-    }
-    const image = await contents.capturePage();
-    clipboard.writeImage(image);
-  });
-
-  if (isInPytest) {
-    registerTestIpcHandlers(ipcMain);
-  }
-
-  ipcMain.handle(SAVE_FILE_CHANNEL_NAME, async (_event, fileData: ArrayBuffer, originalFilename: string) => {
-    try {
-      const userDataPath = app.getPath("userData");
-      const filesDir = path.join(userDataPath, "files");
-
-      if (!fs.existsSync(filesDir)) {
-        fs.mkdirSync(filesDir, { recursive: true });
-      }
-
-      const { randomUUID } = await import("crypto");
-      const uuid = randomUUID();
-      const ext = path.extname(originalFilename);
-      const uniqueFilename = `${uuid}${ext}`;
-      const filePath = path.join(filesDir, uniqueFilename);
-
-      fs.writeFileSync(filePath, Buffer.from(fileData));
-
-      logger.info(`File saved to: ${filePath}`);
-      return filePath;
-    } catch (error) {
-      logger.error("Error saving file:", error);
-      throw error;
-    }
-  });
-
-  ipcMain.handle(GET_FILE_DATA_CHANNEL_NAME, async (_event, filePath: string) => {
-    try {
-      const fileBuffer = fs.readFileSync(filePath);
-      const base64Data = fileBuffer.toString("base64");
-
-      const ext = path.extname(filePath).toLowerCase();
-      const mimeTypes: Record<string, string> = {
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".gif": "image/gif",
-        ".webp": "image/webp",
-        ".svg": "image/svg+xml",
-        ".mp4": "video/mp4",
-        ".webm": "video/webm",
-        ".mov": "video/quicktime",
-      };
-      if (!mimeTypes[ext]) {
-        throw new Error(`Unsupported file extension: ${ext}`);
-      }
-      const mimeType = mimeTypes[ext];
-
-      return `data:${mimeType};base64,${base64Data}`;
-    } catch (error) {
-      logger.error("Error getting file data:", error);
-      throw error;
-    }
-  });
 
   // We can only create the window _after_ the handlers have been defined, because createWindow() invokes preload.ts
   // which depends on the handlers.
   await createWindow();
-
-  // Main window exists now, so the migration's transient-window quit suppression
-  // is no longer needed (any future window-all-closed is a real user close).
-  isMigrating = false;
-
-  // Initialize auto-updater (no-op for unpackaged/dev builds)
-  autoUpdaterManager = initAutoUpdater(window!, store, () => {
-    sendBackendState({ status: "shutting_down", payload: { message: "Installing update..." } });
-  });
-
-  // Renderer pulls initial auto-update status on mount, avoiding push race conditions.
-  ipcMain.handle(GET_AUTO_UPDATE_STATUS_CHANNEL_NAME, () => {
-    return autoUpdaterManager ? autoUpdaterManager.getStatus() : { type: "disabled" };
-  });
 
   // Switch the logger from the temp file to the final location inside the
   // sculptor folder now that the data folder is known.
@@ -1169,104 +787,48 @@ app.whenReady().then(async () => {
 
   const startTime = performance.now();
 
-  let shouldStartBackend = !IS_DEVELOPMENT || process.env.START_BACKEND_IN_DEV;
+  const shouldStartBackend = !IS_DEVELOPMENT || process.env.START_BACKEND_IN_DEV;
   logger.info(
     `[main] backend startup: ${shouldStartBackend} (IS_DEV=${IS_DEVELOPMENT}, START_BACKEND_IN_DEV=${process.env.START_BACKEND_IN_DEV})`,
   );
 
-  // In dev mode, SCULPTOR_CUSTOM_BACKEND_CMD env var overrides the store setting
-  // and forces backend startup (since the custom command IS the backend)
-  if (process.env.SCULPTOR_CUSTOM_BACKEND_CMD && !shouldStartBackend) {
-    shouldStartBackend = true;
-    logger.info("[main] SCULPTOR_CUSTOM_BACKEND_CMD set - forcing backend startup in dev mode");
-  }
-
   if (shouldStartBackend) {
-    const customCommand = process.env.SCULPTOR_CUSTOM_BACKEND_CMD || (store.get("customBackendCommand", "") as string);
-
     sendBackendState({ status: "loading", payload: { message: "Waiting for backend..." } });
 
-    if (customCommand) {
-      // Custom command mode: spawn user's command and parse URL from stdout
-      isInCustomCommandMode = true;
-      spawnCustomCommand(customCommand);
-      // Note: resolveBackendUrl is called after parseUrlFromStdout succeeds
+    // Spawn the packaged backend binary locally.
+    const shellPath = getShellPath();
+    logger.info("[main] Using PATH:", shellPath);
 
-      const readinessTimeoutSec = store.get("backendReadinessTimeout", 60) as number;
-      const readinessTimeoutMs = readinessTimeoutSec * 1000;
+    const { cmd, args } = await getBackendCommand();
+    logger.info("[main] spawning backend without initial project:", cmd, args.join(" "));
 
+    pythonBackgroundProcess = spawn(cmd, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        PATH: shellPath,
+        SESSION_TOKEN: SESSION_TOKEN,
+      },
+      detached: true,
+    });
+
+    pythonBackgroundProcess.stdout?.on("data", (data) => {
       try {
-        customCommandBackendUrl = await parseUrlFromStdout(pythonBackgroundProcess!.stdout!, readinessTimeoutMs);
-        resolveBackendUrl?.(customCommandBackendUrl);
-        logger.info(`[main] parsed backend URL from custom command: ${customCommandBackendUrl}`);
-
-        // After URL is found, pipe remaining stdout through
-        pythonBackgroundProcess!.stdout?.on("data", (data) => {
-          try {
-            process.stdout.write(data);
-          } catch {
-            // Swallow
-          }
-        });
-      } catch (err) {
-        resolveBackendUrl?.(null);
-        logger.error("[main] failed to parse URL from custom command:", err);
-        sendBackendState({
-          status: "error",
-          payload: {
-            message: `Custom command did not output a backend URL: ${(err as Error).message}`,
-            stack: (err as Error).stack,
-          },
-        });
+        process.stdout.write(data);
+      } catch {
+        // Swallow — can fail if the app has crashed
       }
-    } else {
-      // Default mode: not a custom command, resolve immediately
-      resolveBackendUrl?.(null);
+    });
 
-      // Default mode: spawn the packaged backend binary
-      const shellPath = getShellPath();
-      logger.info("[main] Using PATH:", shellPath);
-
-      const { cmd, args } = await getBackendCommand();
-      logger.info("[main] spawning backend without initial project:", cmd, args.join(" "));
-
-      pythonBackgroundProcess = spawn(cmd, args, {
-        stdio: ["ignore", "pipe", "pipe"],
-        env: {
-          ...process.env,
-          PATH: shellPath,
-          SESSION_TOKEN: SESSION_TOKEN,
-        },
-        detached: true,
-      });
-
-      pythonBackgroundProcess.stdout?.on("data", (data) => {
-        try {
-          process.stdout.write(data);
-        } catch {
-          // Swallow — can fail if the app has crashed
-        }
-      });
-
-      setupProcessHandlers(pythonBackgroundProcess);
-    }
+    setupProcessHandlers(pythonBackgroundProcess);
 
     logger.info("[main] backend process started, waiting for it to be ready...");
   } else {
-    resolveBackendUrl?.(null);
     logger.info("[main] skipping starting the python backend (it should already be running)");
   }
 
-  // Determine which URL to poll for health
-  let isRunning: boolean;
-
-  if (isInCustomCommandMode && customCommandBackendUrl) {
-    const readinessTimeoutSec = store.get("backendReadinessTimeout", 60) as number;
-    isRunning = await waitForBackend(customCommandBackendUrl, undefined, readinessTimeoutSec * 1000);
-  } else {
-    // In client_only mode, still try to connect to backend (which should be running remotely)
-    isRunning = await waitForBackend(await PORT);
-  }
+  // Poll the local backend health endpoint.
+  const isRunning = await waitForBackend(await PORT);
 
   if (isRunning && !isQuitting) {
     restartCount = 0;
@@ -1277,8 +839,7 @@ app.whenReady().then(async () => {
     }
 
     if (isTracingEnabled()) {
-      const backendBaseUrl =
-        isInCustomCommandMode && customCommandBackendUrl ? customCommandBackendUrl : `http://127.0.0.1:${await PORT}`;
+      const backendBaseUrl = `http://127.0.0.1:${await PORT}`;
       setBackendUrlForTracing(backendBaseUrl);
       traceMark("electron.backend_ready");
     }
@@ -1316,7 +877,7 @@ const cleanupBackendProcess = async (): Promise<void> => {
       // take far longer than the default budget — without the extension the
       // SIGKILL fires while viztracer is still loading and the trace file is
       // never written.
-      const baseGracePeriodMs = isInCustomCommandMode ? 15000 : 32000;
+      const baseGracePeriodMs = 32000;
       const gracePeriodMs = tracingTeardownGracePeriodMs(baseGracePeriodMs);
       await killProcessAndWait(pythonBackgroundProcess, gracePeriodMs);
     }
@@ -1339,7 +900,7 @@ app.on("before-quit", async (e): Promise<void> => {
   e.preventDefault();
 
   try {
-    const statusMessage = autoUpdaterManager?.isUpdating ? "Installing update..." : "Shutting down...";
+    const statusMessage = "Shutting down...";
     logger.info("[main] before-quit: %s", statusMessage);
     await shutdownBackend(statusMessage);
   } catch (error) {
@@ -1378,15 +939,6 @@ function killProcessAndWait(process: ReturnType<typeof spawn>, timeoutMs: number
 
 app.on("window-all-closed", (): void => {
   logger.info("[main] window-all-closed fired, isQuitting=%s, platform=%s", isQuitting, process.platform);
-
-  // The one-time localStorage migration opens and closes a transient window
-  // before the main window is created; its close leaves zero windows. Ignore
-  // that so the app doesn't quit itself mid-startup (the main window is on its
-  // way). Cleared once createWindow() returns.
-  if (isMigrating) {
-    logger.info("[main] window-all-closed during migration — ignoring");
-    return;
-  }
 
   if (IS_DEVELOPMENT && isQuitting) {
     // In dev mode, CTRL-C kills the Vite dev server simultaneously, crashing

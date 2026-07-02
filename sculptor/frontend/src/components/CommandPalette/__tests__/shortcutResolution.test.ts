@@ -4,7 +4,6 @@ import { describe, expect, it, vi } from "vitest";
 import { KEYBINDING_DEFINITIONS } from "~/common/keybindings/definitions.ts";
 import type { KeybindingId } from "~/common/keybindings/types.ts";
 
-import { buildChatCommands } from "../builtinCommands/chat.ts";
 import { buildHelpCommands } from "../builtinCommands/help.ts";
 import { buildNavigationCommands } from "../builtinCommands/navigation.ts";
 import { buildPanelCommands } from "../builtinCommands/panels.ts";
@@ -39,35 +38,22 @@ const makeRuntime = (): CommandRuntime =>
     navigate: { toHome: noop, toSettings: vi.fn(), toAddWorkspace: noop, toWorkspace: vi.fn(), toAgent: vi.fn() },
     ui: {
       toggleHelpDialog: noop,
-      toggleDevPanel: noop,
-      toggleZenMode: noop,
-      toggleFocusMode: noop,
-      toggleLeftPanel: noop,
-      toggleBottomPanel: noop,
-      toggleRightPanel: noop,
       togglePanel: noop,
       setTheme: noop,
-      focusChatInput: noop,
-      showChatSearch: noop,
-      jumpChatToBottom: noop,
       nextWorkspaceTab: noop,
       previousWorkspaceTab: noop,
       nextAgent: noop,
       previousAgent: noop,
-      openReportProblem: noop,
       clearActiveTerminal: noop,
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },
-    electron: { isAvailable: false, reloadWindow: noop },
   }) as unknown as CommandRuntime;
 
 const WORKSPACE_CTX: PaletteContext = {
   route: { isHome: false, isWorkspace: true, isSettings: false, isAddWorkspace: false, isAgent: false },
   activeWorkspaceId: "ws-1",
   activeAgentId: null,
-  hasChatPanel: true,
   hasTerminalPanel: false,
-  isZenMode: false,
   page: null,
 };
 
@@ -77,9 +63,8 @@ const collectStaticShortcuts = (): Array<KeybindingId> => {
     ...buildNavigationCommands(runtime),
     ...buildWorkspaceActionCommands(runtime),
     ...buildSettingsCommands(runtime),
-    ...buildPanelCommands(runtime),
+    ...buildPanelCommands(),
     ...buildThemeCommands(runtime),
-    ...buildChatCommands(runtime),
     ...buildTerminalCommands(runtime),
     ...buildHelpCommands(runtime),
   ];

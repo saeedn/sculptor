@@ -9,7 +9,7 @@ import { determineFileStatus, isBinaryFile } from "~/pages/workspace/panels/file
 
 import { diffPanelStateAtomFamily } from "./atoms.ts";
 import type { SingleFileDiffTab } from "./types.ts";
-import { isCombinedTab, isCommitDiffTab, isFileViewTab, TARGET_BRANCH_DIFF_PREFIX } from "./types.ts";
+import { isCommitDiffTab, isFileViewTab, TARGET_BRANCH_DIFF_PREFIX } from "./types.ts";
 
 type ActiveFileDiffResult = {
   filePath: string | null;
@@ -21,7 +21,6 @@ type ActiveFileDiffResult = {
   addedLines: number;
   removedLines: number;
   isBinary: boolean;
-  isCombined: boolean;
   isFileView: boolean;
   isCommitDiff: boolean;
   /** True when the active tab shows a vs-target-branch diff (the "All" scope). */
@@ -48,7 +47,6 @@ const EMPTY_RESULT: Omit<ActiveFileDiffResult, "isFetching" | "targetBranchMerge
   addedLines: 0,
   removedLines: 0,
   isBinary: false,
-  isCombined: false,
   isFileView: false,
   isCommitDiff: false,
   isTargetBranchDiff: false,
@@ -79,11 +77,6 @@ export const useActiveFileDiff = (workspaceId: string): ActiveFileDiffResult => 
 
     const activeTab = openTabs.find((t) => t.filePath === activeTabPath);
     if (!activeTab) return EMPTY_RESULT;
-
-    // Combined review tab — DiffPanel renders CombinedDiffView for this case
-    if (isCombinedTab(activeTab)) {
-      return { ...EMPTY_RESULT, filePath: activeTabPath, tabFilePath: activeTabPath, isCombined: true };
-    }
 
     // File view tab — DiffPanel renders ReadOnlyPreview for this case
     if (isFileViewTab(activeTab)) {
@@ -117,7 +110,6 @@ export const useActiveFileDiff = (workspaceId: string): ActiveFileDiffResult => 
         addedLines: lineCounts.added,
         removedLines: lineCounts.removed,
         isBinary: false,
-        isCombined: false,
         isFileView: false,
         isCommitDiff: false,
         isTargetBranchDiff: tabScope === "vs-target-branch",
@@ -177,7 +169,6 @@ export const useActiveFileDiff = (workspaceId: string): ActiveFileDiffResult => 
       addedLines: fileChange.changes.added,
       removedLines: fileChange.changes.removed,
       isBinary,
-      isCombined: false,
       isFileView: false,
       isCommitDiff: false,
       isTargetBranchDiff: tabScope === "vs-target-branch",

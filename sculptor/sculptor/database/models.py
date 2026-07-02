@@ -1,19 +1,13 @@
 import datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Annotated
 from typing import Any
-
-from pydantic import Tag
 
 from sculptor.database.automanaged import DatabaseModel
 from sculptor.database.workspace_enums import DiffStatus
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.foundation.pydantic_serialization import build_discriminator
 from sculptor.foundation.serialization import SerializedException
 from sculptor.interfaces.agents.agent import AgentConfigTypes
-from sculptor.interfaces.agents.agent import PartialResponseBlockAgentMessage
 from sculptor.interfaces.agents.agent import PersistentMessageTypes
 from sculptor.interfaces.agents.tasks import TaskState
 from sculptor.primitives.ids import AgentMessageID
@@ -22,23 +16,13 @@ from sculptor.primitives.ids import OrganizationReference
 from sculptor.primitives.ids import ProjectID
 from sculptor.primitives.ids import TaskID as AgentTaskID
 from sculptor.primitives.ids import UserReference
-from sculptor.primitives.ids import UserSettingsID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.state.messages import AgentMessageSource
-from sculptor.state.messages import LLMModel
-from sculptor.state.messages import ModelOption
 
 TaskID = AgentTaskID
 
 
 # Basic tables
-
-
-class UserSettings(DatabaseModel):
-    """Settings for a locally stored user."""
-
-    object_id: UserSettingsID
-    user_reference: UserReference
 
 
 class Project(DatabaseModel):
@@ -62,7 +46,6 @@ class Project(DatabaseModel):
     # whether the project has been deleted by the user
     is_deleted: bool = False
 
-    default_system_prompt: str | None = None
     workspace_setup_command: str | None = None
     # Per-project override of UserConfig.default_workspace_branch_naming_pattern.
     naming_pattern: str | None = None
@@ -94,14 +77,12 @@ class Workspace(DatabaseModel):
     organization_reference: OrganizationReference
     # User-provided or auto-generated description of the workspace
     description: str
-    initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None = None
     target_branch: str | None = None
     environment_id: str | None = None
     source_git_hash: str | None = None
     is_deleted: bool = False
     is_open: bool = True
-    setup_command_triggered: bool = False
     setup_status: str = "pending"
     setup_run_id: str | None = None
     setup_command: str | None = None
@@ -112,7 +93,7 @@ class Workspace(DatabaseModel):
     setup_log_truncated: bool = False
     diff_status: DiffStatus = DiffStatus.NONE
     diff_updated_at: datetime.datetime | None = None
-    # User-supplied or auto-generated branch name. Required for WORKTREE workspaces (validated at the API layer); optional for CLONE; null for IN_PLACE.
+    # User-supplied or auto-generated branch name. Required for WORKTREE workspaces (validated at the API layer).
     requested_branch_name: str | None = None
 
 
@@ -133,7 +114,6 @@ class AgentTaskInputsV2(TaskInputs):
     Contains the necessary information for the task runner.
 
     The `agent_config` is used to configure the `Agent` itself. It contains the full (versioned) command to be run.
-    The `git_hash` records the starting commit for diff computation.
     """
 
     object_type: str = "AgentTaskInputsV2"
@@ -141,38 +121,10 @@ class AgentTaskInputsV2(TaskInputs):
     # which agent to run
     agent_config: AgentConfigTypes
 
-    # the output of `git rev-parse HEAD` at the time the task was created.
-    # used for diff computation against the starting state.
-    git_hash: str
 
-    system_prompt: str | None = None
-
-    # The model selected by the user when creating this agent.
-    # Used as fallback when no messages have been sent yet.
-    default_model: LLMModel | None = None
-
-
-class NoOpTaskInputsV1(TaskInputs):
-    """Test-only task input that runs a no-op handler and completes immediately.
-
-    Used by the task-service tests to exercise the non-agent task path.
-    """
-
-    object_type: str = "NoOpTaskInputsV1"
-
-
-class MustBeShutDownTaskInputsV1(TaskInputs):
-    """Used in testing to make sure we can shut down tasks that do nothing but wait."""
-
-    object_type: str = "MustBeShutDownTaskInputsV1"
-
-
-TaskInputTypes = Annotated[
-    Annotated[AgentTaskInputsV2, Tag("AgentTaskInputsV2")]
-    | Annotated[NoOpTaskInputsV1, Tag("NoOpTaskInputsV1")]
-    | Annotated[MustBeShutDownTaskInputsV1, Tag("MustBeShutDownTaskInputsV1")],
-    build_discriminator(),
-]
+# Terminal agents are the only surviving task backend, so this is a single-member
+# alias rather than a discriminated union.
+TaskInputTypes = AgentTaskInputsV2
 
 
 class BaseTaskState(SerializableModel):
@@ -186,7 +138,6 @@ class AgentTaskStateV2(BaseTaskState):
     """
 
     object_type: str = "AgentTaskStateV2"
-    last_processed_message_id: AgentMessageID | None = None
     title: str | None = None
     workspace_id: WorkspaceID
     # Terminal agents only: the session id the registered program last
@@ -196,25 +147,9 @@ class AgentTaskStateV2(BaseTaskState):
     # Terminal agents only: the shell pid of the handler's last PTY spawn,
     # used to reap a crash-surviving shell before relaunching.
     terminal_shell_pid: int | None = None
-    # pi agents only: the curated model catalog the agent fetched from pi at
-    # start (get_available_models), surfaced by the pi harness's
-    # get_available_models so the chat switcher offers pi's real models.
-    available_models: list[ModelOption] = []
-    # pi agents only: the model pi reported as current at start (get_state.model),
-    # surfaced by the pi harness's get_selected_model_id as the switcher's value.
-    current_model: ModelOption | None = None
 
 
-class NoOpTaskStateV1(BaseTaskState):
-    """Test-only task state paired with NoOpTaskInputsV1."""
-
-    object_type: str = "NoOpTaskStateV1"
-
-
-TaskStateTypes = Annotated[
-    Annotated[AgentTaskStateV2, Tag("AgentTaskStateV2")] | Annotated[NoOpTaskStateV1, Tag("NoOpTaskStateV1")],
-    build_discriminator(),
-]
+TaskStateTypes = AgentTaskStateV2
 
 
 class Task(DatabaseModel):
@@ -251,12 +186,6 @@ class Task(DatabaseModel):
     # the inputs to the task.  Tasks are executed by dispatching on this type.
     input_data: TaskInputTypes
 
-    # Limits
-
-    # may specify a timeout (so that we do not end up with unexpectedly long-running tasks)
-    # note that, for agents, it doesn't make sense to specify a timeout since they are expected to run until completed.
-    max_seconds: float | None = None
-
     # State
 
     # used to track the current state of the task while it is running.
@@ -286,9 +215,6 @@ class SavedAgentMessage(DatabaseModel):
     message: PersistentMessageTypes
     # this is taken directly from the Message, so that we can query it more easily.
     source: AgentMessageSource
-    # this is basically just true if the message is a `StreamingChatResponseChunkAgentMessage`
-    # it's here so that we can not bother to include partial messages in some queries.
-    is_partial: bool
 
     def model_post_init(self, context: Any) -> None:
         if self.object_id != self.message.message_id:
@@ -299,10 +225,6 @@ class SavedAgentMessage(DatabaseModel):
             raise ValueError(
                 f"SavedAgentMessage source {self.source} does not match message source {self.message.source}."
             )
-        if self.is_partial != isinstance(self.message, PartialResponseBlockAgentMessage):
-            raise ValueError(
-                f"SavedAgentMessage is_partial {self.is_partial} does not match message type {type(self.message)}."
-            )
 
     @classmethod
     def build(cls, message: PersistentMessageTypes, task_id: TaskID) -> "SavedAgentMessage":
@@ -311,7 +233,6 @@ class SavedAgentMessage(DatabaseModel):
             task_id=task_id,
             message=message,
             source=message.source,
-            is_partial=isinstance(message, PartialResponseBlockAgentMessage),
         )
 
 
@@ -323,29 +244,17 @@ class NotificationImportance(StrEnum):
     """
     From the Apple Human Interface Guidelines: https://developer.apple.com/design/human-interface-guidelines/managing-notifications
 
-    Passive. Information people can view at their leisure, like a restaurant recommendation.
-
-    Active (the default). Information people might appreciate knowing about when it arrives, like a score update on their favorite sports team.
-
     Time Sensitive. Information that directly impacts the person and requires their immediate attention, like an account security issue or a package delivery.
-
-    Critical. Urgent information about health and safety that directly impacts the person and demands their immediate attention. Critical notifications are extremely rare and typically come from governmental and public agencies or apps that help people manage their health or home.
     """
 
-    PASSIVE = "PASSIVE"
-    ACTIVE = "ACTIVE"
     TIME_SENSITIVE = "TIME_SENSITIVE"
-    CRITICAL = "CRITICAL"
 
 
 class Notification(DatabaseModel):
     object_id: NotificationID
-    # When user_reference is None, it applies to all users.
-    user_reference: UserReference | None
+    user_reference: UserReference
     # by convention, only the first line will be shown directly to the user, and of that, only the first X characters.
     # we assume that this is roughly markdown (eg, for formatting, links, etc).
     message: str
-    importance: NotificationImportance = NotificationImportance.ACTIVE
+    importance: NotificationImportance = NotificationImportance.TIME_SENSITIVE
     task_id: TaskID | None = None
-    # Notifications can be related to a whole project, not necessarily a specific task.
-    project_id: ProjectID | None = None

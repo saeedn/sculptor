@@ -4,8 +4,6 @@ from playwright.sync_api import expect
 
 from sculptor.constants import ElementIDs
 from sculptor.testing.elements.base import PlaywrightIntegrationTestElement
-from sculptor.testing.elements.base import clear_tiptap
-from sculptor.testing.elements.base import type_into_tiptap
 
 
 class PlaywrightActionDialogElement(PlaywrightIntegrationTestElement):
@@ -18,18 +16,11 @@ class PlaywrightActionDialogElement(PlaywrightIntegrationTestElement):
         name_input.fill(name)
 
     def fill_prompt(self, prompt: str) -> None:
-        """Fill the action prompt editor (TipTap contenteditable).
-
-        Uses ``type_into_tiptap`` which calls TipTap's ``insertContent()`` API
-        directly — more reliable than Playwright's ``type()`` for
-        contenteditable elements. Clears existing content first via TipTap's
-        ``clearContent()`` for idempotent behavior in both "create" (empty
-        editor) and "edit" (pre-existing content) modes.
-        """
+        """Fill the action prompt textarea (``fill`` clears then sets, so it covers
+        both create and edit modes)."""
         prompt_input = self.get_by_test_id(ElementIDs.ACTION_DIALOG_PROMPT_INPUT)
         expect(prompt_input).to_be_visible()
-        clear_tiptap(prompt_input)
-        type_into_tiptap(self._page, prompt_input, prompt)
+        prompt_input.fill(prompt)
 
     def click_save(self) -> None:
         """Click the 'Save Action' button."""
@@ -53,18 +44,6 @@ class PlaywrightActionDialogElement(PlaywrightIntegrationTestElement):
         name_input = self._page.get_by_test_id(ElementIDs.ACTION_DIALOG_NEW_GROUP_NAME_INPUT)
         expect(name_input).to_be_visible()
         name_input.fill(group_name)
-
-    def get_prompt_input(self) -> Locator:
-        """Get the prompt editor (TipTap contenteditable) locator."""
-        return self.get_by_test_id(ElementIDs.ACTION_DIALOG_PROMPT_INPUT)
-
-    def get_mention_span(self) -> Locator:
-        """Get the mention span inside the prompt editor."""
-        return self.get_prompt_input().get_by_test_id(ElementIDs.MENTION_SPAN)
-
-    def get_group_select(self) -> Locator:
-        """Get the group select trigger."""
-        return self.get_by_test_id(ElementIDs.ACTION_DIALOG_GROUP_SELECT)
 
     def get_auto_submit_switch(self) -> Locator:
         """Get the auto-submit switch."""

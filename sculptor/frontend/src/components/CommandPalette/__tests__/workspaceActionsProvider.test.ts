@@ -32,9 +32,7 @@ const ROOT_CTX: PaletteContext = {
   route: { isHome: true, isWorkspace: false, isSettings: false, isAddWorkspace: false, isAgent: false },
   activeWorkspaceId: null,
   activeAgentId: null,
-  hasChatPanel: false,
   hasTerminalPanel: false,
-  isZenMode: false,
   page: null,
 };
 
@@ -61,27 +59,16 @@ const makeCommandRuntime = (): CommandRuntime => {
     navigate: { toHome: noop, toSettings: noop, toAddWorkspace: noop, toWorkspace: vi.fn(), toAgent: vi.fn() },
     ui: {
       toggleHelpDialog: noop,
-      toggleDevPanel: noop,
-      toggleZenMode: noop,
-      toggleFocusMode: noop,
-      toggleLeftPanel: noop,
-      toggleBottomPanel: noop,
-      toggleRightPanel: noop,
       togglePanel: noop,
       setTheme: noop,
-      focusChatInput: noop,
-      showChatSearch: noop,
-      jumpChatToBottom: noop,
       nextWorkspaceTab: noop,
       previousWorkspaceTab: noop,
       nextAgent: noop,
       previousAgent: noop,
       createAgent: noop,
-      openReportProblem: noop,
       clearActiveTerminal: noop,
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },
-    electron: { isAvailable: false, reloadWindow: noop },
   };
 };
 
@@ -89,7 +76,6 @@ type ActionRuntimeOverrides = {
   hasUncommittedChanges?: boolean;
   hasOpenPr?: boolean;
   canCreatePr?: boolean;
-  prTerm?: "merge request" | "pull request";
   canOpenInOS?: boolean;
 };
 
@@ -101,13 +87,12 @@ const makeActionRuntime = (overrides: ActionRuntimeOverrides = {}): WorkspaceAct
   beginDelete: vi.fn(),
   canCloseOthers: vi.fn(() => true),
   commitChanges: vi.fn(),
-  createMergeRequest: vi.fn(),
-  openMergeRequest: vi.fn(),
+  createPullRequest: vi.fn(),
+  openPullRequest: vi.fn(),
   openInApp: vi.fn(),
   hasUncommittedChanges: vi.fn(() => overrides.hasUncommittedChanges ?? false),
   hasOpenPr: vi.fn(() => overrides.hasOpenPr ?? false),
   canCreatePr: vi.fn(() => overrides.canCreatePr ?? true),
-  prTerm: vi.fn(() => overrides.prTerm ?? "pull request"),
   canOpenInOS: vi.fn(() => overrides.canOpenInOS ?? true),
   isMacUi: vi.fn(() => true),
 });
@@ -160,87 +145,38 @@ describe("buildWorkspaceActionsProvider", () => {
     expect(cmds.find((c) => c.id === "workspaces.action.ws1.open_pr")?.disabled).toBe(true);
   });
 
-  it("create_pr title flips for GitLab repos", () => {
+  it("create_pr uses pull request title and subtitle", () => {
     seedWorkspace("ws1", "Active");
     setWorkspaceIds(["ws1"]);
-    const gh = buildWorkspaceActionsProvider(
-      makeCommandRuntime(),
-      makeActionRuntime({ prTerm: "pull request" }),
-    ).produce(wsCtx("ws1"));
-    const gl = buildWorkspaceActionsProvider(
-      makeCommandRuntime(),
-      makeActionRuntime({ prTerm: "merge request" }),
-    ).produce(wsCtx("ws1"));
-    expect(gh.find((c) => c.id === "workspaces.action.ws1.create_pr")?.title).toBe("Create pull request");
-    expect(gl.find((c) => c.id === "workspaces.action.ws1.create_pr")?.title).toBe("Create merge request");
+    const cmds = buildWorkspaceActionsProvider(makeCommandRuntime(), makeActionRuntime()).produce(wsCtx("ws1"));
+    const createPr = cmds.find((c) => c.id === "workspaces.action.ws1.create_pr");
+    expect(createPr?.title).toBe("Create pull request");
+    expect(createPr?.subtitle).toBe("Push and open a new pull request");
   });
 
-  it("create_pr subtitle flips for GitLab repos", () => {
+  it("open_pr uses pull request subtitle", () => {
     seedWorkspace("ws1", "Active");
     setWorkspaceIds(["ws1"]);
-    const gh = buildWorkspaceActionsProvider(
-      makeCommandRuntime(),
-      makeActionRuntime({ prTerm: "pull request" }),
-    ).produce(wsCtx("ws1"));
-    const gl = buildWorkspaceActionsProvider(
-      makeCommandRuntime(),
-      makeActionRuntime({ prTerm: "merge request" }),
-    ).produce(wsCtx("ws1"));
-    expect(gh.find((c) => c.id === "workspaces.action.ws1.create_pr")?.subtitle).toBe(
-      "Push and open a new pull request",
+    const cmds = buildWorkspaceActionsProvider(makeCommandRuntime(), makeActionRuntime({ hasOpenPr: true })).produce(
+      wsCtx("ws1"),
     );
-    expect(gl.find((c) => c.id === "workspaces.action.ws1.create_pr")?.subtitle).toBe(
-      "Push and open a new merge request",
-    );
-  });
-
-  it("open_pr subtitle flips for GitLab repos", () => {
-    seedWorkspace("ws1", "Active");
-    setWorkspaceIds(["ws1"]);
-    const gh = buildWorkspaceActionsProvider(
-      makeCommandRuntime(),
-      makeActionRuntime({ hasOpenPr: true, prTerm: "pull request" }),
-    ).produce(wsCtx("ws1"));
-    const gl = buildWorkspaceActionsProvider(
-      makeCommandRuntime(),
-      makeActionRuntime({ hasOpenPr: true, prTerm: "merge request" }),
-    ).produce(wsCtx("ws1"));
-    expect(gh.find((c) => c.id === "workspaces.action.ws1.open_pr")?.subtitle).toBe(
+    expect(cmds.find((c) => c.id === "workspaces.action.ws1.open_pr")?.subtitle).toBe(
       "Open the existing pull request in your browser",
     );
-    expect(gl.find((c) => c.id === "workspaces.action.ws1.open_pr")?.subtitle).toBe(
-      "Open the existing merge request in your browser",
-    );
   });
 
-  it("create_pr keywords are provider-aware (GitHub-only on GitHub, GitLab-only on GitLab)", () => {
+  it("create_pr keywords use pull request terminology", () => {
     seedWorkspace("ws1", "Active");
     setWorkspaceIds(["ws1"]);
-    const gh = buildWorkspaceActionsProvider(
-      makeCommandRuntime(),
-      makeActionRuntime({ prTerm: "pull request" }),
-    ).produce(wsCtx("ws1"));
-    const gl = buildWorkspaceActionsProvider(
-      makeCommandRuntime(),
-      makeActionRuntime({ prTerm: "merge request" }),
-    ).produce(wsCtx("ws1"));
-    const ghKw = gh.find((c) => c.id === "workspaces.action.ws1.create_pr")?.keywords ?? [];
-    const glKw = gl.find((c) => c.id === "workspaces.action.ws1.create_pr")?.keywords ?? [];
-    expect(ghKw).toContain("pr");
-    expect(ghKw).toContain("pull");
-    expect(ghKw).toContain("github");
-    expect(ghKw).not.toContain("mr");
-    expect(ghKw).not.toContain("merge");
-    expect(ghKw).not.toContain("gitlab");
-    expect(glKw).toContain("mr");
-    expect(glKw).toContain("merge");
-    expect(glKw).toContain("gitlab");
-    expect(glKw).not.toContain("pr");
-    expect(glKw).not.toContain("pull");
-    expect(glKw).not.toContain("github");
-    // "request" stays on both — generic noun some users prefer.
-    expect(ghKw).toContain("request");
-    expect(glKw).toContain("request");
+    const cmds = buildWorkspaceActionsProvider(makeCommandRuntime(), makeActionRuntime()).produce(wsCtx("ws1"));
+    const kw = cmds.find((c) => c.id === "workspaces.action.ws1.create_pr")?.keywords ?? [];
+    expect(kw).toContain("pr");
+    expect(kw).toContain("pull");
+    expect(kw).toContain("github");
+    expect(kw).toContain("request");
+    expect(kw).not.toContain("mr");
+    expect(kw).not.toContain("merge");
+    expect(kw).not.toContain("gitlab");
   });
 
   it("emits an Open-in opener and one entry per app from getOpenWithItems()", () => {
@@ -289,22 +225,14 @@ describe("buildWorkspaceActionsProvider", () => {
     );
   });
 
-  it("create_pr disabled subtitle uses the git provider's term", () => {
+  it("create_pr disabled subtitle uses pull request terminology", () => {
     seedWorkspace("ws1", "Active");
     setWorkspaceIds(["ws1"]);
-    const gh = buildWorkspaceActionsProvider(
-      makeCommandRuntime(),
-      makeActionRuntime({ canCreatePr: false, prTerm: "pull request" }),
-    ).produce(wsCtx("ws1"));
-    const gl = buildWorkspaceActionsProvider(
-      makeCommandRuntime(),
-      makeActionRuntime({ canCreatePr: false, prTerm: "merge request" }),
-    ).produce(wsCtx("ws1"));
-    expect(gh.find((c) => c.id === "workspaces.action.ws1.create_pr")?.subtitle).toBe(
-      "An open pull request already exists",
+    const cmds = buildWorkspaceActionsProvider(makeCommandRuntime(), makeActionRuntime({ canCreatePr: false })).produce(
+      wsCtx("ws1"),
     );
-    expect(gl.find((c) => c.id === "workspaces.action.ws1.create_pr")?.subtitle).toBe(
-      "An open merge request already exists",
+    expect(cmds.find((c) => c.id === "workspaces.action.ws1.create_pr")?.subtitle).toBe(
+      "An open pull request already exists",
     );
   });
 

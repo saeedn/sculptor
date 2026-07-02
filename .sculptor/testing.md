@@ -7,7 +7,7 @@ When fixing bugs, all fixes MUST have an integration (e2e) test using Playwright
 
 **Purely visual bugs MUST NOT have automated tests.** Verify those with before/after screenshots instead. In particular, you MUST NOT write integration tests whose only assertions read layout properties (CSS dimensions, line-clamp, clipping, `page.evaluate()` reads of computed style, etc.) — those tests assert rendering, not behaviour, and the right evidence is a screenshot. See `docs/development/review/integration_tests.md#no_layout_only_tests`.
 
-**Bugs whose behaviour depends on real Claude (e.g. agent stdin/stdout protocol, Claude binary behaviour, subagent runtime) MUST be verified against real Claude** — `fake_claude` cannot faithfully model these. Use `/auto-qa-changes` (which runs real Claude by default) for the after-fix verification. `fake_claude` remains the correct standin when the bug is about Sculptor's own UI and does not depend on Claude's actual responses.
+**Bugs whose behaviour depends on real Claude (e.g. the Claude CLI's terminal behaviour, its lifecycle hooks, subagent runtime) MUST be verified against real Claude** — the fake terminal agent cannot faithfully model these. Use `/auto-qa-changes` (which runs the real `claude` CLI) for the after-fix verification. The fake terminal agent (`sculptor/sculptor/testing/fake_terminal_agent.py`) remains the correct standin when the bug is about Sculptor's own UI and does not depend on the agent tool's actual behaviour.
 
 **"Impossible" means exactly one of these:**
 - The buggy code path is not reachable from any UI surface (e.g. it is internal-only, a CLI-only entrypoint, or a background job with no UI trigger).
@@ -27,30 +27,11 @@ If you believe the bug qualifies for fallback, you MUST get explicit user approv
 - **Integration tests:** pytest + Playwright (Chromium)
 - **Run all unit tests:** `just test-unit`
 - **Run backend unit tests:** `just test-unit-backend`
-- **Run backend unit tests on Offload (Modal):** `just test-unit-offload` (cloud alternative; see "When to use Offload" below)
 - **Run frontend unit tests:** `just test-unit-frontend`
 - **Run integration tests:** use the `/run-integration-test` skill (do NOT run pytest directly)
 - **Run a single backend test:** `uv run --project sculptor pytest path/to/test.py::test_name -v`
 - **Test location:** backend unit tests next to source in `sculptor/sculptor/`, integration tests in `sculptor/tests/integration/`
 - **Conventions:** test files named `*_test.py` or `test_*.py`; see `sculptor/pytest.ini` for markers and config
-
-### When to use Offload for backend unit tests
-
-Default to local `just test-unit-backend` (`pytest -n 8`): on an idle machine it is
-~1.5× faster than Offload (≈90s vs ≈135s warm) and free. Reach for
-`just test-unit-offload` (runs the suite across Modal cloud sandboxes; config in
-`offload-unit.toml`) only when one of these holds:
-
-- **The machine is under load / CPU-contended** (e.g. several agents running at once).
-  Offload's wall-clock is independent of local load, so when local cores are saturated
-  and `-n 8` crawls, Offload still finishes in ≈135s.
-- **You're chasing local-only flakiness.** Offload runs each batch in an isolated Linux
-  sandbox; load/timing-sensitive tests that flake locally (e.g. PTY/subprocess tests)
-  tend to pass deterministically there, on the same Linux collection CI uses.
-
-Caveats: the first run after a dependency change does a full Modal image build (several
-minutes); warm runs are ≈2–2.5 min. Offload collects a slightly different Linux set
-(~1203 vs ~1208 locally).
 
 ## Bug Tracking
 - **System:** Linear

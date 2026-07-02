@@ -4,7 +4,6 @@ project to internal files.
 
 import subprocess
 import tomllib
-from enum import IntEnum
 from functools import cache
 from importlib import resources
 
@@ -43,69 +42,6 @@ def pyproject_version() -> str:
         return tomllib.load(f)["project"]["version"]
 
 
-def is_prerelease(version_str: str) -> bool:
-    """Helper function that hides the string"""
-    return Version(version_str).is_prerelease
-
-
-def is_devrelease(version_str: str) -> bool:
-    """Helper function that hides the string"""
-    return Version(version_str).is_devrelease
-
-
-class VersionComponent(IntEnum):
-    """Enum for the version components."""
-
-    MAJOR = 0
-    MINOR = 1
-    PATCH = 2
-    PRE_RELEASE = 3
-    STRIP_PRE_RELEASE = -3
-
-
-def next_version(version: str, index: VersionComponent) -> str:
-    """Given an existing version and an index to bump, return the next version.
-
-    The index is 0 for major, 1 for minor, 2 for patch, and 3 for rc.
-    An index of -3 will strip the pre-release information.
-    """
-    v = Version(version)
-    major, minor, patch, pre, post = v.major, v.minor, v.micro, v.pre, v.post
-
-    if index == VersionComponent.MAJOR:
-        major += 1
-        minor = 0
-        patch = 0
-        pre = None
-        post = None
-    elif index == VersionComponent.MINOR:
-        minor += 1
-        patch = 0
-        pre = None
-        post = None
-
-    elif index == VersionComponent.PATCH:
-        patch += 1
-        pre = None
-        post = None
-    elif index == VersionComponent.PRE_RELEASE:
-        if post is not None:
-            raise ValueError("Pre releases cannot be bumped with a post-release index")
-        if pre is None:
-            pre = ("rc", 1)
-        else:
-            pre = (pre[0], pre[1] + 1)
-    elif index == VersionComponent.STRIP_PRE_RELEASE:
-        if pre is not None:
-            pre = None
-        if post is not None:
-            raise ValueError("Attempted to strip pre-release information, but post-release information is present")
-
-    return str(
-        Version(f"{major}.{minor}.{patch}{''.join(map(str, pre)) if pre else ''}{'post' + str(post) if post else ''}")
-    )
-
-
 def pep_440_to_semver(version: str) -> str:
     """Convert a version string to a semver-compatible version string, for use by Electron.
 
@@ -127,7 +63,7 @@ def pep_440_to_semver(version: str) -> str:
 
 def _get_version_and_sha():
     try:
-        return pyproject_version(), dev_git_sha(), None, None
+        return pyproject_version(), dev_git_sha()
     except FileNotFoundError:
         # Production mode: trust built _version.py
         from sculptor import _version  # type: ignore[reportMissingImports]
@@ -135,9 +71,7 @@ def _get_version_and_sha():
         return (
             _version.__version__,
             _version.__git_sha__,
-            getattr(_version, "ci_job_id", None),
-            getattr(_version, "ci_ref", None),
         )
 
 
-__version__, __git_sha__, ci_job_id, ci_ref = _get_version_and_sha()
+__version__, __git_sha__ = _get_version_and_sha()

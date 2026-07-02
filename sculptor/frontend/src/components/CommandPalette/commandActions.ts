@@ -3,7 +3,7 @@ import { useEffect, useRef } from "react";
 
 /**
  * Imperative action callbacks that the palette invokes directly. Components
- * that own each piece of UI (chat panel, workspace tabs, agent tabs)
+ * that own each piece of UI (terminal panel, workspace tabs, agent tabs)
  * register their callbacks here on mount; the palette runtime reads them
  * out and calls them. The same callback is also wired via
  * `useKeybindingHandler` (or a raw keydown listener), so the binding and
@@ -15,7 +15,6 @@ import { useEffect, useRef } from "react";
  * point at actions with no shortcut.
  */
 export type CommandActionId =
-  | "chat.jumpToBottom"
   | "workspace.closeCurrent"
   | "workspace.nextTab"
   | "workspace.previousTab"
@@ -39,7 +38,7 @@ export const commandActionsAtom = atom<Readonly<Partial<Record<CommandActionId, 
 /**
  * Register a callback for `id` while the calling component is mounted.
  * The latest callback wins if a sibling registers under the same id —
- * this happens in practice when the chat panel mounts in two routes
+ * this happens in practice when the terminal panel mounts in two routes
  * during navigation (the unmount cleanup runs after the new mount, but
  * since we key by ref-equality on the previous value, we don't accidentally
  * clear the new entry on the old unmount).

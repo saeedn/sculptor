@@ -19,7 +19,6 @@ See the [justfile](../../justfile).
 - [Linting](linting.md) — formatters, linters, ratchets
 - [CLI Tools](cli.md) — sculpt CLI and API client
 - [Tracing](tracing.md) — distributed tracing and instrumentation
-- [PostHog](posthog.md) — product analytics
 - [Code review rules](review/) — review categories for [Sculptor](review/sculptor.md),
   [React](review/react.md), and [integration tests](review/integration_tests.md)
 

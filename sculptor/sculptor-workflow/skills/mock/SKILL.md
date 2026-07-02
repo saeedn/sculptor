@@ -278,7 +278,7 @@ the spec using Decisions and Rejected Alternatives as input.
 
 ## Rules
 
-- **Ask every question with your question tool** — `mcp__sculptor__ask_user_question` if it's available, otherwise the built-in `AskUserQuestion`. Never ask in plain text: only the tool call puts the workspace into the "waiting for input" state that alerts the user.
+- **Ask every question with your question tool** — the built-in `AskUserQuestion`. Never ask in plain text: only the tool call puts the workspace into the "waiting for input" state that alerts the user.
 - **Every turn in Step 8 MUST end with the checklist footer AND
   a question to the user via your question tool.** The footer is the drift-prevention
   anchor; the tool call keeps the ritual intact. Missing either is a

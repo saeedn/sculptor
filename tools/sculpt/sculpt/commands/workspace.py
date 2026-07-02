@@ -15,9 +15,7 @@ from sculpt.client.models.create_workspace_request_v2 import CreateWorkspaceRequ
 from sculpt.client.models.http_validation_error import HTTPValidationError
 from sculpt.client.models.recent_workspace_response import RecentWorkspaceResponse
 from sculpt.client.models.update_workspace_request import UpdateWorkspaceRequest
-from sculpt.commands._workspace_helpers import STRATEGY_MAPPING
 from sculpt.commands._workspace_helpers import resolve_requested_branch_name
-from sculpt.commands._workspace_helpers import resolve_strategy
 from sculpt.commands.data_types import WorkspaceCreateOutput
 from sculpt.commands.data_types import WorkspaceDeleteOutput
 from sculpt.commands.data_types import WorkspaceListItem
@@ -56,11 +54,6 @@ def create(
             + " or matched against the current working directory."
         ),
     ),
-    strategy: str = typer.Option(
-        "worktree",
-        "--strategy",
-        help=f"Initialization strategy ({', '.join(STRATEGY_MAPPING)})",
-    ),
     branch: str | None = typer.Option(None, "--branch", help="Source branch"),
     branch_name: str | None = typer.Option(
         None,
@@ -81,12 +74,9 @@ def create(
     client = get_authenticated_client(base_url)
     project_id = resolve_project(repo, client)
 
-    strategy_enum = resolve_strategy(strategy, json_output=json_output)
-
     resolved_branch_name = resolve_requested_branch_name(
         client=client,
         project_id=project_id,
-        strategy=strategy_enum,
         branch_name=branch_name,
         workspace_name=name,
         json_output=json_output,
@@ -94,7 +84,6 @@ def create(
 
     request = CreateWorkspaceRequestV2(
         project_id=project_id,
-        initialization_strategy=strategy_enum,
         source_branch=branch,
         description=name,
         requested_branch_name=resolved_branch_name,
@@ -117,7 +106,6 @@ def create(
             id=result.object_id,
             repo_id=result.project_id,
             description=result.description,
-            strategy=result.initialization_strategy.value,
             source_branch=result.source_branch,
         )
         typer.echo(output.model_dump_json(indent=2))
@@ -125,7 +113,6 @@ def create(
 
     typer.echo(f"Workspace created: {result.object_id}")
     typer.echo(f"Repo: {result.project_id}")
-    typer.echo(f"Strategy: {result.initialization_strategy.value}")
     if result.source_branch:
         typer.echo(f"Branch: {result.source_branch}")
     if result.description:
@@ -161,7 +148,6 @@ def _list_all(client: Client, json_output: bool) -> None:
                 repo_id=w.project_id,
                 repo_path=repo_lookup.get(w.project_id, w.project_name),
                 description=w.description,
-                strategy=w.initialization_strategy.value,
                 source_branch=w.source_branch,
                 agent_count=w.agent_count,
                 is_open=w.is_open,
@@ -177,12 +163,11 @@ def _list_all(client: Client, json_output: bool) -> None:
         typer.echo("No workspaces found.")
         return
 
-    headers = ["ID", "REPO", "STRATEGY", "BRANCH", "AGENTS", "DESCRIPTION"]
+    headers = ["ID", "REPO", "BRANCH", "AGENTS", "DESCRIPTION"]
     rows = [
         [
             w.object_id,
             truncate(repo_lookup.get(w.project_id, w.project_name), _RECENT_REPO_DISPLAY_MAX_LENGTH),
-            w.initialization_strategy.value,
             w.source_branch or "-",
             str(w.agent_count),
             truncate(w.description, _RECENT_DESCRIPTION_DISPLAY_MAX_LENGTH),
@@ -222,7 +207,6 @@ def _list_for_project(client: Client, project_id: str, json_output: bool) -> Non
                 id=w.object_id,
                 repo_id=w.project_id,
                 description=w.description,
-                strategy=w.initialization_strategy.value,
                 source_branch=w.source_branch,
                 target_branch=w.target_branch,
                 requested_branch_name=w.requested_branch_name,
@@ -237,11 +221,10 @@ def _list_for_project(client: Client, project_id: str, json_output: bool) -> Non
         typer.echo("No workspaces found.")
         return
 
-    headers = ["ID", "STRATEGY", "BRANCH", "DESCRIPTION"]
+    headers = ["ID", "BRANCH", "DESCRIPTION"]
     rows = [
         [
             w.object_id,
-            w.initialization_strategy.value,
             w.source_branch or "-",
             truncate(w.description, _PROJECT_DESCRIPTION_DISPLAY_MAX_LENGTH),
         ]
@@ -272,7 +255,6 @@ def show(
             repo_id=ws.project_id,
             repo_path=repo_path,
             description=ws.description,
-            strategy=ws.initialization_strategy.value,
             source_branch=ws.source_branch,
             agent_count=ws.agent_count,
             is_open=ws.is_open,
@@ -285,7 +267,6 @@ def show(
     lines = [
         f"Workspace: {ws.object_id}",
         f"Repo: {repo_path} ({ws.project_id})",
-        f"Strategy: {ws.initialization_strategy.value}",
         f"Branch: {ws.source_branch or '-'}",
         f"Description: {ws.description}",
         f"Created: {format_datetime(ws.created_at)}",

@@ -7,19 +7,18 @@ from typing import Literal
 
 from sculptor.database.models import Project
 from sculptor.database.models import Workspace
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.foundation.errors import ExpectedError
 from sculptor.foundation.event_utils import ReadOnlyEvent
-from sculptor.foundation.progress_tracking.progress_tracking import RootProgressHandle
 from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.interfaces.agents.artifacts import DiffArtifact
-from sculptor.interfaces.environments.agent_execution_environment import AgentExecutionEnvironment
 from sculptor.primitives.ids import TaskID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.primitives.service import Service
 from sculptor.services.data_model_service.data_types import DataModelTransaction
-from sculptor.services.workspace_service.setup_command_runner import SetupStateProvider
+from sculptor.services.workspace_service.environment_manager.environments.local_agent_execution_environment import (
+    LocalAgentExecutionEnvironment,
+)
 
 # The default workspace setup command when a project has not configured one.
 # Fetches the origin remote if present; succeeds silently if origin is missing
@@ -133,7 +132,6 @@ class WorkspaceService(Service, ABC):
     def create_workspace(
         self,
         project: Project,
-        initialization_strategy: WorkspaceInitializationStrategy,
         source_branch: str | None,
         requested_branch_name: str | None,
         description: str | None,
@@ -145,10 +143,8 @@ class WorkspaceService(Service, ABC):
 
         Args:
             project: The project to create the workspace for.
-            initialization_strategy: Strategy for workspace initialization (IN_PLACE, CLONE, or WORKTREE).
-            source_branch: Branch to use for CLONE strategy, or base ref for WORKTREE.
-            requested_branch_name: Final branch name; required for WORKTREE, optional
-                for CLONE, must be None for IN_PLACE.
+            source_branch: Base ref off which to create the worktree branch.
+            requested_branch_name: Final branch name; required for WORKTREE.
             description: Optional description for the workspace.
             transaction: Database transaction for atomicity.
             target_branch: Diff/merge target branch. When None, a default is resolved
@@ -156,15 +152,6 @@ class WorkspaceService(Service, ABC):
 
         Returns:
             The created Workspace.
-        """
-
-    @abstractmethod
-    def make_setup_state_provider(self, workspace_id: str) -> SetupStateProvider:
-        """Build a workspace-scoped provider for the agent setup-reminder feature.
-
-        The provider asks ``SetupCommandRunner`` for the absolute setup-log
-        path internally — callers never need to compute workspace state
-        directories themselves.
         """
 
     @abstractmethod
@@ -220,9 +207,8 @@ class WorkspaceService(Service, ABC):
         workspace_id: WorkspaceID,
         task_id: TaskID,
         concurrency_group: ConcurrencyGroup,
-        root_progress_handle: RootProgressHandle,
         shutdown_event: ReadOnlyEvent,
-    ) -> Iterator[AgentExecutionEnvironment]:
+    ) -> Iterator[LocalAgentExecutionEnvironment]:
         """
         Set up the environment for a workspace.
 
@@ -246,7 +232,6 @@ class WorkspaceService(Service, ABC):
             workspace_id: The workspace to set up environment for.
             task_id: The task requesting the environment (for per-task namespacing).
             concurrency_group: Concurrency group for process management.
-            root_progress_handle: Progress handle for tracking setup.
             shutdown_event: Event to signal shutdown.
 
         Yields:
@@ -368,8 +353,7 @@ class WorkspaceService(Service, ABC):
         """
         Get the git working directory for a workspace.
 
-        For IN_PLACE workspaces, returns the project's local path.
-        For CLONE workspaces, returns the cloned repository path inside the environment.
+        Returns the worktree checkout path inside the environment.
         Returns None if the workspace's environment hasn't been initialized yet.
 
         Args:
@@ -378,22 +362,6 @@ class WorkspaceService(Service, ABC):
 
         Returns:
             The working directory path, or None if the environment isn't ready.
-        """
-
-    @abstractmethod
-    def get_persistent_task_artifacts_dir(
-        self,
-        workspace_id: WorkspaceID,
-        task_id: TaskID,
-    ) -> Path | None:
-        """Return the on-disk directory where the agent writes per-task artifact
-        snapshots for the given task, or None if the workspace's environment
-        has not been initialized yet.
-
-        This is the stable, source-of-truth location: {workspace_root}/artifacts/tasks/{task_id}/
-        — distinct from the host-side task_sync cache, which is a latest-only
-        mirror that can be wiped without losing data. Used by the task service
-        to backfill the cache when it is missing (SCU-1245).
         """
 
     # Workspace Git Operations

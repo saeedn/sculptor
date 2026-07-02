@@ -8,17 +8,12 @@ Tests verify:
 - "Close Others" context menu removes all tabs except the right-clicked one
 """
 
-import json
-
 from playwright.sync_api import expect
 
 from sculptor.testing.pages.add_workspace_page import PlaywrightAddWorkspacePage
 from sculptor.testing.pages.home_page import PlaywrightHomePage
 from sculptor.testing.pages.project_layout import PlaywrightProjectLayoutPage
-from sculptor.testing.playwright_utils import get_local_storage_item
 from sculptor.testing.playwright_utils import navigate_to_home_page
-from sculptor.testing.playwright_utils import remove_local_storage_item
-from sculptor.testing.playwright_utils import set_local_storage_items
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
@@ -41,8 +36,8 @@ def test_close_workspace_tab_removes_tab_without_deletion(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Task A", workspace_name="Workspace A")
-    start_task_and_wait_for_ready(page, prompt="Task B", workspace_name="Workspace B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace A")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Workspace B")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -74,8 +69,8 @@ def test_cmd_w_closes_workspace_tab(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Task 1", workspace_name="WS One")
-    start_task_and_wait_for_ready(page, prompt="Task 2", workspace_name="WS Two")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS One")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS Two")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -109,8 +104,8 @@ def test_cmd_shift_w_deletes_active_workspace(
     layout = PlaywrightProjectLayoutPage(page=page)
 
     # "Delete WS" is active after creation.
-    start_task_and_wait_for_ready(page, prompt="Task 1", workspace_name="Keep WS")
-    start_task_and_wait_for_ready(page, prompt="Task 2", workspace_name="Delete WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Keep WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Delete WS")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -148,8 +143,8 @@ def test_reopen_closed_workspace_from_list(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Task A", workspace_name="Closeable WS")
-    start_task_and_wait_for_ready(page, prompt="Task B", workspace_name="Remaining WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Closeable WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Remaining WS")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -184,8 +179,8 @@ def test_close_all_workspace_tabs_via_context_menu(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Task X", workspace_name="WS Alpha")
-    start_task_and_wait_for_ready(page, prompt="Task Y", workspace_name="WS Beta")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS Alpha")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS Beta")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -221,8 +216,8 @@ def test_close_others_workspace_tabs_via_context_menu(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Task P", workspace_name="WS First")
-    start_task_and_wait_for_ready(page, prompt="Task Q", workspace_name="WS Second")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS First")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="WS Second")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -252,8 +247,8 @@ def test_reopen_closed_workspace_from_home_page(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Task A", workspace_name="Home Reopen WS")
-    start_task_and_wait_for_ready(page, prompt="Task B", workspace_name="Stay Open WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Home Reopen WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Stay Open WS")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -290,8 +285,8 @@ def test_closed_workspace_stays_closed(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Task A", workspace_name="Flappy WS")
-    start_task_and_wait_for_ready(page, prompt="Task B", workspace_name="Stable WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Flappy WS")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Stable WS")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -338,8 +333,8 @@ def test_close_after_reopen_from_home_page(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Task A", workspace_name="Reopen Close A")
-    start_task_and_wait_for_ready(page, prompt="Task B", workspace_name="Reopen Close B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Reopen Close A")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Reopen Close B")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -405,8 +400,8 @@ def test_close_after_reopen_from_home(
     page = sculptor_instance_.page
     layout = PlaywrightProjectLayoutPage(page=page)
 
-    start_task_and_wait_for_ready(page, prompt="Task A", workspace_name="Home Close A")
-    start_task_and_wait_for_ready(page, prompt="Task B", workspace_name="Home Close B")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Home Close A")
+    start_task_and_wait_for_ready(page, agent_type="terminal", workspace_name="Home Close B")
 
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
@@ -437,65 +432,3 @@ def test_close_after_reopen_from_home(
     page.wait_for_timeout(3000)
 
     expect(workspace_tabs).to_have_count(1)
-
-
-@user_story("to preserve my open/closed workspace state when upgrading to backend tracking")
-def test_localstorage_migration_preserves_closed_state(
-    sculptor_instance_: SculptorInstance,
-) -> None:
-    """Simulates an upgrade from localStorage-based to backend-based open/closed tracking.
-
-    The migration reads the old localStorage key, determines which workspaces
-    were closed, sends a batch PATCH to close them on the backend, and deletes
-    the old key.
-
-    Steps:
-    1. Create two workspaces (both open by default)
-    2. Get their workspace IDs from the DOM
-    3. Set old localStorage key with only ONE workspace ID (simulating a user
-       who had closed the other)
-    4. Remove new tab-order key so migration triggers on reload
-    5. Reload the page
-    6. Verify the "closed" workspace appears in the closed dropdown
-    7. Verify the old localStorage key was deleted
-    """
-    page = sculptor_instance_.page
-    layout = PlaywrightProjectLayoutPage(page=page)
-
-    start_task_and_wait_for_ready(page, prompt="Agent 1", workspace_name="Migrate Open")
-    start_task_and_wait_for_ready(page, prompt="Agent 2", workspace_name="Migrate Closed")
-
-    workspace_tabs = layout.get_workspace_tabs()
-    expect(workspace_tabs).to_have_count(2)
-
-    open_ws_id = workspace_tabs.nth(0).get_attribute("data-tab-id")
-    closed_ws_id = workspace_tabs.nth(1).get_attribute("data-tab-id")
-    assert open_ws_id is not None
-    assert closed_ws_id is not None
-
-    # Simulate old localStorage state: only the first workspace was "open"
-    set_local_storage_items(
-        page,
-        {
-            "sculptor-open-workspace-tab-ids": json.dumps([open_ws_id]),
-        },
-    )
-    # Remove the new tab-order key so the migration path triggers
-    remove_local_storage_item(page, "sculptor-tab-order")
-
-    # Full reload to reinitialize all Jotai atoms — migration runs during hydration.
-    # Using page.reload() instead of soft_reload_page() because the migration
-    # requires a completely fresh atom store (hasHydratedWorkspaceTabsAtom must
-    # start as false).
-    page.reload()
-
-    # The open workspace should have a tab; the closed one should not
-    expect(workspace_tabs).to_have_count(1)
-
-    # The closed workspace should appear in the closed workspaces dropdown
-    pill = layout.get_closed_workspaces_pill()
-    expect(pill).to_be_visible()
-    expect(pill).to_contain_text("1")
-
-    old_key = get_local_storage_item(page, "sculptor-open-workspace-tab-ids")
-    assert old_key is None, f"Old localStorage key should have been deleted, but found: {old_key}"

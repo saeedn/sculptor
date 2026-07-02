@@ -40,7 +40,7 @@ the TOML at the copied hooks file.)
     `claude` from PATH);
   - `$SCULPT_PLUGINS_DIR` — the bundled Sculptor plugin directories, loaded
     via `--plugin-dir` (same plugins chat agents get: `sculptor-plugin`,
-    `sculptor-workflow`, `sculptor-experimental`).
+    `sculptor-workflow`).
 - It launches with `--dangerously-skip-permissions` (matching how Sculptor
   runs Claude for chat agents); the settings file skips the one-time
   bypass-permissions disclaimer so the TUI lands directly at its prompt. This

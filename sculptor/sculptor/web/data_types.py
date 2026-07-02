@@ -1,39 +1,20 @@
 import datetime
 from enum import Enum
 from enum import StrEnum
-from enum import auto
 from pathlib import Path
-from typing import Annotated
 from typing import Any
 from typing import Literal
 
-from pydantic import EmailStr
 from pydantic import Field
-from pydantic import Tag
 
-from sculptor.config.settings import SculptorSettings
-from sculptor.database.workspace_enums import WorkspaceInitializationStrategy
 from sculptor.foundation.pydantic_serialization import SerializableModel
-from sculptor.foundation.pydantic_serialization import build_discriminator
-from sculptor.foundation.upper_case_str_enum import UpperCaseStrEnum
 from sculptor.interfaces.agents.artifacts import DiffArtifact
-from sculptor.interfaces.agents.artifacts import TaskListArtifact
 from sculptor.primitives.ids import ProjectID
-from sculptor.primitives.ids import TaskID
 from sculptor.primitives.ids import WorkspaceID
 from sculptor.services.data_model_service.api import CompletedTransaction
 from sculptor.services.task_service.api import TaskMessageContainer
 from sculptor.services.terminal_agent_registry.registry import TerminalAgentRegistration
 from sculptor.services.workspace_service.api import GitOperationResult
-from sculptor.state.chat_state import AskUserQuestionData
-from sculptor.state.messages import EffortLevel
-from sculptor.state.messages import LLMModel
-from sculptor.state.messages import Message
-
-
-class TaskInterface(StrEnum):
-    TERMINAL = "TERMINAL"
-    API = "API"
 
 
 class AgentTypeName(StrEnum):
@@ -42,8 +23,6 @@ class AgentTypeName(StrEnum):
     `REGISTERED` requires a `registration_id` alongside it.
     """
 
-    CLAUDE = "claude"
-    PI = "pi"
     TERMINAL = "terminal"
     REGISTERED = "registered"
 
@@ -68,14 +47,14 @@ class WorkspaceTargetBranchesInfo(SerializableModel):
 
 
 class PrApproval(SerializableModel):
-    """A reviewer's approval status on a pull/merge request."""
+    """A reviewer's approval status on a pull request."""
 
     name: str
     approved: bool
 
 
 class PrComment(SerializableModel):
-    """An unresolved comment on a pull/merge request."""
+    """An unresolved comment on a pull request."""
 
     author: str
     file_path: str
@@ -101,18 +80,16 @@ class PrStatusInfo(SerializableModel):
     error_category: (
         Literal["cli_missing", "not_authenticated", "no_access", "network_error", "rate_limited", "transient"] | None
     ) = None
-    error_provider: Literal["gitlab", "github"] | None = None
     error_message: str | None = None
     mismatched_pr_iid: int | None = None
     mismatched_pr_target_branch: str | None = None
-    mismatched_pr_web_url: str | None = None
 
 
 class PrStatusInfoCleared(SerializableModel):
     """Sentinel pushed to the stream to clear a workspace's PR status on the frontend.
 
     When the workspace branch changes, the old PR status is stale. This signal
-    causes the frontend atom to be set to null, showing "Checking MR/PR..." until
+    causes the frontend atom to be set to null, showing "Checking PR..." until
     the next poll result arrives.
     """
 
@@ -123,35 +100,13 @@ class RequestModel(SerializableModel):
     pass
 
 
-class StartTaskRequest(RequestModel):
-    prompt: str
-    interface: str = TaskInterface.TERMINAL.value
-    model: LLMModel
-    files: list[str] = Field(default_factory=list)
-    initialization_strategy: WorkspaceInitializationStrategy = WorkspaceInitializationStrategy.IN_PLACE
-    name: str | None = None
-    source_branch: str | None = None
-    # Mutually exclusive with initialization_strategy.
-    # When provided, the task will be created in an existing workspace
-    workspace_id: WorkspaceID | None = None
-    enter_plan_mode: bool = False
-    fast_mode: bool = False
-    effort: EffortLevel = EffortLevel.EXTRA_HIGH
-    sent_via: str | None = None
-    # None means "use the user's most-recently-used harness" (the server
-    # resolves it). Prompt-ful creation is always a chat agent; terminal types
-    # are rejected (422).
-    agent_type: AgentTypeName | None = None
-
-
 class CreateWorkspaceRequestV2(RequestModel):
     """Create workspace request with project_id in body (not URL)."""
 
     project_id: str
-    initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None = None
     description: str | None = None
-    # Final branch name after user edits; required for WORKTREE, optional for CLONE, must be None for IN_PLACE.
+    # Final branch name after user edits; required for WORKTREE workspaces.
     requested_branch_name: str | None = None
     # Diff/merge target branch. When None, the backend resolves a sensible default
     # from the repo (origin's default branch, else local main/master).
@@ -170,17 +125,9 @@ class BatchUpdateOpenStateRequest(RequestModel):
 
 
 class CreateAgentRequest(RequestModel):
-    """Create agent request — prompt is optional for the '+' button flow."""
+    """Create agent request for the '+' button flow (terminal agents take no prompt)."""
 
-    prompt: str | None = None
-    model: LLMModel | None = None
-    interface: str = TaskInterface.TERMINAL.value
-    files: list[str] = Field(default_factory=list)
     name: str | None = None
-    enter_plan_mode: bool = False
-    fast_mode: bool = False
-    effort: EffortLevel = EffortLevel.EXTRA_HIGH
-    sent_via: str | None = None
     # None means "use the user's most-recently-used harness" (the server
     # resolves it, matching the app's "+" button default).
     agent_type: AgentTypeName | None = None
@@ -225,7 +172,6 @@ class WorkspaceResponse(SerializableModel):
     object_id: WorkspaceID
     project_id: ProjectID
     description: str
-    initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None
     target_branch: str | None
     requested_branch_name: str | None
@@ -273,7 +219,6 @@ class RecentWorkspaceResponse(SerializableModel):
     object_id: WorkspaceID
     project_id: ProjectID
     description: str
-    initialization_strategy: WorkspaceInitializationStrategy
     source_branch: str | None
     is_deleted: bool
     created_at: datetime.datetime
@@ -289,37 +234,6 @@ class ListWorkspacesResponse(SerializableModel):
     workspaces: list[RecentWorkspaceResponse]
 
 
-class SendMessageRequest(RequestModel):
-    message: str
-    model: LLMModel
-    files: list[str] = Field(default_factory=list)
-    enter_plan_mode: bool = False
-    exit_plan_mode: bool = False
-    fast_mode: bool = False
-    effort: EffortLevel = EffortLevel.EXTRA_HIGH
-    sent_via: str | None = None
-
-
-class AnswerQuestionRequest(RequestModel):
-    answers: dict[str, str]
-    notes: dict[str, str] = Field(default_factory=dict)
-    question_data: AskUserQuestionData
-    tool_use_id: str
-    model: LLMModel
-
-
-class BtwRequest(RequestModel):
-    question: str
-    request_id: str
-
-
-class SetModelRequest(RequestModel):
-    # The chosen ModelOption's identity. Sent only for harnesses with a backend
-    # model list (pi); the pi adapter issues pi's `set_model` RPC with these.
-    provider: str
-    model_id: str
-
-
 class WorkspaceSetupCommandRequest(RequestModel):
     # None resets to the current default; "" means the user explicitly wants no command.
     workspace_setup_command: str | None
@@ -329,12 +243,6 @@ class NamingPatternRequest(RequestModel):
     naming_pattern: str
 
 
-ArtifactDataResponse = Annotated[
-    Annotated[TaskListArtifact, Tag("TaskListArtifact")] | Annotated[DiffArtifact, Tag("DiffArtifact")],
-    build_discriminator(),
-]
-
-
 class ReadFileRequest(RequestModel):
     file_path: str
 
@@ -342,10 +250,6 @@ class ReadFileRequest(RequestModel):
 class OpenFileUiRequest(RequestModel):
     file_path: str
     mode: Literal["auto", "diff", "file"]
-
-
-class WebviewNavigateRequest(RequestModel):
-    url: str = Field(min_length=1)
 
 
 class DiscardFileRequest(RequestModel):
@@ -444,24 +348,13 @@ class RepoInfo(SerializableModel):
     current_branch: str
     recent_branches: list[str]
     project_id: ProjectID
-    is_gitlab_origin: bool = False
     is_github_origin: bool = False
-    remote_branches: list[str] = Field(default_factory=list)
 
 
 class CurrentBranchInfo(SerializableModel):
     """Lightweight repository information with just current branch"""
 
     current_branch: str
-
-
-class SkillInfo(SerializableModel):
-    """Information about a single Claude Code skill."""
-
-    name: str
-    description: str
-    source: Literal["custom", "plugin"]
-    file_path: str | None = None
 
 
 class InitializeGitRepoRequest(RequestModel):
@@ -485,20 +378,20 @@ class ProjectInitializationRequest(RequestModel):
 class ConfigStatusResponse(SerializableModel):
     """Response for config status check"""
 
-    has_email: bool
-    has_privacy_consent: bool
     has_project: bool
     has_dependencies_passing: bool
 
 
-class UploadFileResponse(SerializableModel):
-    file_id: str
+class ToolAvailability(SerializableModel):
+    """Whether the external CLI tools onboarding checks for are on PATH."""
+
+    claude: bool
+    git: bool
 
 
 class HealthCheckResponse(SerializableModel):
     version: str
     git_sha: str
-    python_version: str
     platform: str
     platform_version: str
     free_disk_gb: float
@@ -510,49 +403,6 @@ class HealthCheckResponse(SerializableModel):
     data_directory: str
     install_mode: str
     install_path: str
-    ci_job_id: str | None = None
-    ci_ref: str | None = None
-    dependencies_status: "DependenciesStatus | None" = None
-
-
-class UploadDiagnosticsRequest(RequestModel):
-    """Request to upload a diagnostics report."""
-
-    description: str
-    current_url: str
-    frontend_diagnostics: dict[str, str | float | int | None] = Field(default_factory=dict)
-
-
-class UploadDiagnosticsResponse(SerializableModel):
-    """Response after a diagnostics report is uploaded."""
-
-    report_id: str
-    s3_url: str
-
-
-class EmailConfigRequest(RequestModel):
-    """Request to save user email configuration"""
-
-    user_email: EmailStr
-    full_name: str | None = None
-    did_opt_in_to_marketing: bool = False
-    is_telemetry_enabled: bool = True
-
-
-class SkipAccountSetupRequest(RequestModel):
-    """Request to complete the onboarding welcome step without an account.
-
-    The user keeps the anonymous, instance-id-based identity; the only choice
-    they make on the welcome step is whether telemetry stays on.
-    """
-
-    is_telemetry_enabled: bool = True
-
-
-class SetTelemetryRequest(RequestModel):
-    """Toggle the binary telemetry consent."""
-
-    enabled: bool
 
 
 class UpdateUserConfigRequest(RequestModel):
@@ -563,8 +413,7 @@ class UpdateUserConfigRequest(RequestModel):
     The handler merges into the current config and re-validates as a full
     ``UserConfig``. This avoids the lost-update race where a stale
     full-object PUT clobbers fields recently changed by another writer
-    (e.g. a debounced panel-layout sync overwriting
-    ``enable_in_place_workspaces``).
+    (e.g. a debounced panel-layout sync overwriting a setting toggle).
     """
 
     user_config: dict[str, Any]
@@ -600,102 +449,14 @@ class AgentDiagnosticsResponse(SerializableModel):
     """Diagnostics information for a specific agent."""
 
     session_id: str | None = None
-    transcript_file_path: str | None = None
     sculptor_transcript_file_path: str | None = None
-
-
-class VersionRangeInfo(SerializableModel):
-    """Version range configuration for Claude CLI compatibility."""
-
-    min_version: str
-    max_version: str
-    recommended_version: str
-
-
-class InstallProgress(SerializableModel):
-    """Progress of an ongoing managed binary installation."""
-
-    tool: str
-    bytes_downloaded: int
-    total_bytes: int | None = None
-
-
-class BinaryMode(UpperCaseStrEnum):
-    MANAGED = auto()
-    CUSTOM = auto()
-
-
-class DependencyInfo(SerializableModel):
-    """Rich status information for a single dependency binary."""
-
-    installed: bool
-    path: str | None = None
-    version: str | None = None
-    is_override: bool = False
-    mode: BinaryMode | None = None
-    version_range: VersionRangeInfo | None = None
-    is_version_in_range: bool | None = None
-    managed_version: str | None = None
-    is_authenticated: bool | None = None
-    # Per-tool managed-install state. Carried here (rather than a single
-    # top-level field) so a Claude install and a pi install never clobber each
-    # other's progress/error.
-    install_progress: InstallProgress | None = None
-    # Reason this tool's most recent managed install/upgrade failed, if any.
-    # Surfaced so the UI can explain a failed update instead of silently showing
-    # a stale, out-of-range binary. Cleared when a new install starts or one
-    # succeeds.
-    install_error: str | None = None
-
-
-class AuthResult(SerializableModel):
-    """Result of a Claude authentication attempt."""
-
-    success: bool
-    auth_url: str | None = None
-    error: str | None = None
-
-
-class AuthStartResult(SerializableModel):
-    """Result of starting an interactive Claude authentication session.
-
-    Authentication is two steps so it works in headless/remote environments
-    (e.g. a container) where the browser-loopback flow can't reach the user's
-    browser: start returns the sign-in ``auth_url`` and leaves the CLI running,
-    waiting on stdin; the user signs in and pastes the resulting code back via
-    :class:`SubmitAuthCodeRequest`.
-
-    On a machine with a usable local browser the CLI completes the loopback flow
-    on its own and no code is needed — that case returns ``success=True`` with
-    ``needs_code=False``.
-    """
-
-    auth_url: str | None = None
-    needs_code: bool = False
-    success: bool = False
-    error: str | None = None
-
-
-class SubmitAuthCodeRequest(RequestModel):
-    """Submit the code the user pasted from the sign-in page to finish authentication."""
-
-    code: str
-    tool: str = "CLAUDE"
-
-
-class DependenciesStatus(SerializableModel):
-    """Status of required dependencies with path/version info."""
-
-    git: DependencyInfo
-    claude: DependencyInfo
-    pi: DependencyInfo
 
 
 class WorkspaceSetupStatus(SerializableModel):
     """Status snapshot for a workspace setup run."""
 
     workspace_id: WorkspaceID
-    status: Literal["not_configured", "pending", "running", "succeeded", "failed", "legacy"]
+    status: Literal["not_configured", "pending", "running", "succeeded", "failed"]
     run_id: str | None = None
     exit_code: int | None = None
     started_at: float | None = None
@@ -719,7 +480,7 @@ class WorkspaceSetupOutputChunk(SerializableModel):
 class WorkspaceSetupSnapshot(SerializableModel):
     """Per-workspace setup snapshot embedded in WorkspaceResponse."""
 
-    status: Literal["not_configured", "pending", "running", "succeeded", "failed", "legacy"]
+    status: Literal["not_configured", "pending", "running", "succeeded", "failed"]
     run_id: str | None = None
     exit_code: int | None = None
     started_at: float | None = None
@@ -727,28 +488,10 @@ class WorkspaceSetupSnapshot(SerializableModel):
     log_truncated: bool = False
 
 
-class BtwUpdate(SerializableModel):
-    """Streaming update for a `/btw` side-chat reply."""
-
-    workspace_id: WorkspaceID
-    agent_id: TaskID
-    request_id: str
-    state: Literal["running", "done", "error", "aborted"]
-    answer: str
-    error_message: str | None = None
-
-
 class OpenFileUiAction(SerializableModel):
     workspace_id: WorkspaceID
     file_path: str
     mode: Literal["auto", "diff", "file"]
-
-
-class WebviewCommandUiAction(SerializableModel):
-    workspace_id: WorkspaceID
-    seq: int
-    kind: Literal["navigate", "refresh"]
-    url: str | None = None
 
 
 # Generic system dependency models for unified frontend rendering
@@ -761,20 +504,15 @@ class DirectoryEntry(SerializableModel):
     path: str
 
 
-TaskUpdateTypes = Message | CompletedTransaction
-UserUpdateSourceTypes = CompletedTransaction | SculptorSettings
+TaskUpdateTypes = CompletedTransaction
 StreamingUpdateSourceTypes = (
     TaskMessageContainer
     | TaskUpdateTypes
-    | UserUpdateSourceTypes
     | WorkspaceBranchInfo
     | WorkspaceTargetBranchesInfo
-    | DependenciesStatus
     | WorkspaceSetupStatus
     | WorkspaceSetupOutputChunk
     | PrStatusInfo
     | PrStatusInfoCleared
-    | BtwUpdate
     | OpenFileUiAction
-    | WebviewCommandUiAction
 )

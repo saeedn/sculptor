@@ -12,7 +12,7 @@ type RequireOnboardingProps = {
 export const RequireOnboarding = ({ children }: RequireOnboardingProps): ReactElement => {
   const [isCheckingConfig, setIsCheckingConfig] = useState(true);
   const [isOnboardingComplete, setIsOnboardingComplete] = useState(false);
-  const [currentOnboardingStep, setCurrentOnboardingStep] = useState<OnboardingStep>(OnboardingStep.EMAIL);
+  const [currentOnboardingStep, setCurrentOnboardingStep] = useState<OnboardingStep>(OnboardingStep.PATH_CHECK);
 
   // Check config status to determine if onboarding is needed
   useEffect(() => {
@@ -22,34 +22,23 @@ export const RequireOnboarding = ({ children }: RequireOnboardingProps): ReactEl
           meta: { skipWsAck: true },
         });
 
-        // Privacy consent marks the welcome step as completed — an email is
-        // optional (the user can continue without an account and stay
-        // anonymous).
-        const hasUserConfig = configStatus.hasPrivacyConsent;
-        const isComplete = hasUserConfig && configStatus.hasDependenciesPassing && configStatus.hasProject;
+        // Onboarding is complete once the user has registered a project. The
+        // PATH check is advisory and never gates completion.
+        const isComplete = configStatus.hasProject;
 
         if (isComplete) {
           setIsOnboardingComplete(true);
-        } else if (!hasUserConfig) {
-          // New user: start from the beginning. A legacy user with an email
-          // but no recorded consent resumes at installation; completing
-          // onboarding backfills the consent.
-          setCurrentOnboardingStep(configStatus.hasEmail ? OnboardingStep.INSTALLATION : OnboardingStep.EMAIL);
-          setIsOnboardingComplete(false);
-        } else if (!configStatus.hasProject) {
-          // Returning user: config exists but no project (e.g. deleted last repo).
-          setCurrentOnboardingStep(OnboardingStep.ADD_REPO);
-          setIsOnboardingComplete(false);
         } else {
-          // Returning user: config exists but deps aren't passing.
-          setCurrentOnboardingStep(OnboardingStep.INSTALLATION);
+          // New users start at the PATH-check screen; returning users without
+          // a project still pass through it before reaching add-repo.
+          setCurrentOnboardingStep(OnboardingStep.PATH_CHECK);
           setIsOnboardingComplete(false);
         }
       } catch (error) {
         console.error("Failed to check config status:", error);
         // If config check fails, assume onboarding is needed
         setIsOnboardingComplete(false);
-        setCurrentOnboardingStep(OnboardingStep.EMAIL);
+        setCurrentOnboardingStep(OnboardingStep.PATH_CHECK);
       }
       setIsCheckingConfig(false);
     };

@@ -93,7 +93,7 @@ When you're done with the task, report one of:
 
 - **Success (committed):** `Task <X.Y> completed. Commit: <hash>. All verification passed.`
 - **Success (no commit):** `Task <X.Y> completed. No changes to commit. All verification passed.` — use this when the task was about spawning an agent, running verification, or otherwise didn't produce code changes.
-- **Failure:** Use your question tool — `mcp__sculptor__ask_user_question` if it's available, otherwise the built-in `AskUserQuestion` — to surface the failure (it raises the "waiting for input" status that alerts the user): what went wrong, what you tried, and options for the user.
+- **Failure:** Use your question tool — the built-in `AskUserQuestion` — to surface the failure (it raises the "waiting for input" status that alerts the user): what went wrong, what you tried, and options for the user.
 
 Do not include full test output in your report — just summarize the
 result.

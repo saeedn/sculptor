@@ -8,8 +8,7 @@
 ## Please don't send AI-generated reports
 
 We don't accept AI-generated security reports. We get a lot of them, and we don't
-have the resources to triage automated noise. Sending one is grounds for a ban —
-the same bar we hold contributions to in [`CONTRIBUTING.md`](CONTRIBUTING.md). A
+have the resources to triage automated noise. Sending one is grounds for a ban. A
 good report comes from a person who understands the issue and can explain it.
 
 ## Reporting a vulnerability
@@ -38,8 +37,7 @@ Sculptor drives coding agents that can read and write files, run commands, and
 reach the tools and git remotes you've connected. **Agents act with your
 access.** Each task runs in its workspace — a separate copy of your
 repo — and for stronger isolation you can run agents in the experimental
-[container backend](docs/help/experimental/container_backend.md) (Docker or a
-remote).
+container backend (Docker or a remote).
 
 **The local app is a trust boundary.** Sculptor runs a local web server (HTTP
 and WebSockets) bound to `127.0.0.1`. A per-session token stops web pages you

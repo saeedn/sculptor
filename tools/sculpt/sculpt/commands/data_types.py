@@ -15,7 +15,6 @@ class WorkspaceCreateOutput(BaseModel):
     id: str = Field(description="Unique workspace ID")
     repo_id: str = Field(description="Associated repo/project ID")
     description: str | None = Field(description="User-provided description")
-    strategy: str = Field(description="Workspace initialization strategy (clone, in-place, or worktree)")
     source_branch: str | None = Field(description="Source branch name")
 
 
@@ -26,7 +25,6 @@ class WorkspaceListItem(BaseModel):
     repo_id: str = Field(description="Associated repo/project ID")
     repo_path: str = Field(description="Local filesystem path of the repo")
     description: str | None = Field(description="User-provided description")
-    strategy: str = Field(description="Workspace initialization strategy")
     source_branch: str | None = Field(description="Source branch name")
     agent_count: int = Field(description="Number of agents in the workspace")
     is_open: bool = Field(description="Whether the workspace is open")
@@ -40,7 +38,6 @@ class WorkspaceListProjectItem(BaseModel):
     id: str = Field(description="Unique workspace ID")
     repo_id: str = Field(description="Associated repo/project ID")
     description: str | None = Field(description="User-provided description")
-    strategy: str = Field(description="Workspace initialization strategy")
     source_branch: str | None = Field(description="Source branch the workspace was cut from")
     target_branch: str | None = Field(
         description="Diff/merge target branch (the parent branch for a stacked workspace)"
@@ -56,7 +53,6 @@ class WorkspaceShowOutput(BaseModel):
     repo_id: str = Field(description="Associated repo/project ID")
     repo_path: str = Field(description="Local filesystem path of the repo")
     description: str | None = Field(description="User-provided description")
-    strategy: str = Field(description="Workspace initialization strategy")
     source_branch: str | None = Field(description="Source branch name")
     agent_count: int = Field(description="Number of agents in the workspace")
     is_open: bool = Field(description="Whether the workspace is open")
@@ -94,7 +90,6 @@ class AgentCreateOutput(BaseModel):
     id: str = Field(description="Unique agent ID")
     title: str = Field(description="Agent title")
     status: str = Field(description="Agent infrastructure status")
-    model: str = Field(description="LLM model identifier")
     workspace_id: str = Field(description="Parent workspace ID")
     created_at: str = Field(description="ISO 8601 datetime of creation")
 
@@ -105,7 +100,6 @@ class AgentListItem(BaseModel):
     id: str = Field(description="Unique agent ID")
     title: str = Field(description="Agent title")
     status: str = Field(description="Agent infrastructure status")
-    model: str = Field(description="LLM model identifier")
     workspace_id: str = Field(description="Parent workspace ID")
     created_at: str = Field(description="ISO 8601 datetime of creation")
 
@@ -116,20 +110,11 @@ class AgentShowOutput(BaseModel):
     id: str = Field(description="Unique agent ID")
     title: str = Field(description="Agent title")
     status: str = Field(description="Agent infrastructure status")
-    model: str = Field(description="LLM model identifier")
-    interface: str = Field(description="Agent interface type")
     created_at: str = Field(description="ISO 8601 datetime of creation")
     updated_at: str = Field(description="ISO 8601 datetime of last update")
     repo_id: str = Field(description="Associated repo/project ID")
     workspace_id: str = Field(description="Parent workspace ID")
     is_deleted: bool = Field(description="Whether the agent has been deleted")
-    artifact_names: list[str] = Field(description="Names of artifacts produced by the agent")
-    current_activity: str | None = Field(description="What the agent is currently doing")
-    last_activity: str | None = Field(description="Last recorded activity")
-    task_completed: int = Field(description="Number of completed tasks")
-    task_total: int = Field(description="Total number of tasks")
-    current_task_subject: str | None = Field(description="Subject of the in-progress task")
-    waiting_detail: str | None = Field(description="Detail about what the agent is waiting for")
     error_detail: str | None = Field(description="Error detail if agent is in error state")
 
 
@@ -161,20 +146,7 @@ class AgentStatusOutput(BaseModel):
     id: str = Field(description="Unique agent ID")
     status: str = Field(description="Agent infrastructure status")
     updated_at: str = Field(description="ISO 8601 datetime of last update")
-    current_activity: str | None = Field(description="What the agent is currently doing")
-    last_activity: str | None = Field(description="Last recorded activity")
-    waiting_detail: str | None = Field(description="Detail about what the agent is waiting for")
     error_detail: str | None = Field(description="Error detail if agent is in error state")
-    task_completed: int = Field(description="Number of completed tasks")
-    task_total: int = Field(description="Total number of tasks")
-    current_task_subject: str | None = Field(description="Subject of the in-progress task")
-
-
-class AgentInterruptOutput(BaseModel):
-    """Output of ``sculpt agent interrupt --json``."""
-
-    interrupted: bool = Field(description="Always true on success")
-    id: str = Field(description="Interrupted agent ID")
 
 
 class RunOutput(BaseModel):
@@ -182,8 +154,6 @@ class RunOutput(BaseModel):
 
     workspace_id: str = Field(description="Created workspace ID")
     agent_id: str = Field(description="Created agent ID")
-    strategy: str = Field(description="Workspace initialization strategy")
-    model: str = Field(description="LLM model identifier")
     prompt: str = Field(description="The task prompt")
 
 

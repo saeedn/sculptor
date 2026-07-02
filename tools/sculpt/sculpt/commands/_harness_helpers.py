@@ -33,8 +33,8 @@ def fetch_terminal_agent_registrations(client: Client, json_output: bool) -> lis
 def resolve_harness_selection(harness: str | None, client: Client, json_output: bool) -> HarnessSelection | None:
     """Resolve an explicitly requested harness, or None to let the server decide.
 
-    An explicit choice is validated against the built-in harnesses (Claude,
-    Pi, Terminal) and the server's registered terminal agents. With no
+    An explicit choice is validated against the built-in harnesses (Terminal)
+    and the server's registered terminal agents. With no
     choice, this returns None so the caller omits the agent type and the
     server applies the user's most-recently-used harness from the app.
     """

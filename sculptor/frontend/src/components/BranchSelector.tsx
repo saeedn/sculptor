@@ -15,7 +15,6 @@ type BranchSelectorProps = {
   sourceBranch: string | undefined;
   setUserSelectedBranch: (branch: string) => void;
   disabled?: boolean;
-  triggerVariant?: "soft" | "ghost";
 };
 
 const BranchSelectorComponent = ({
@@ -24,7 +23,6 @@ const BranchSelectorComponent = ({
   sourceBranch,
   setUserSelectedBranch,
   disabled = false,
-  triggerVariant = "soft",
 }: BranchSelectorProps): ReactElement => {
   const [shouldFetch, setShouldFetch] = useState(false);
   const [isFetchingBranches, setIsFetchingBranches] = useState(false);
@@ -81,7 +79,6 @@ const BranchSelectorComponent = ({
           </Text>
         </Flex>
       }
-      triggerVariant={triggerVariant}
       testId={ElementIds.BRANCH_SELECTOR}
       className={styles.dropdownButton}
       onOpenChange={(open) => open && setShouldFetch(true)}

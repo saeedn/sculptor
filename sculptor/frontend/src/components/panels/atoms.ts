@@ -5,8 +5,8 @@ import { atomFamily, atomWithStorage } from "jotai/utils";
 import { keybindingsMapAtom } from "~/common/keybindings/atoms.ts";
 import type { KeybindingId } from "~/common/keybindings/types.ts";
 import { atomWithDebouncedStorage } from "~/common/state/atoms/atomWithDebouncedStorage.ts";
-import type { LayoutSide, PanelDefinition, PanelId, ZoneId } from "~/components/panels/types.ts";
-import { LAYOUT_SIDES, SIDE_ZONE_MAP, ZONE_IDS } from "~/components/panels/types.ts";
+import type { PanelDefinition, PanelId, ZoneId } from "~/components/panels/types.ts";
+import { ZONE_IDS } from "~/components/panels/types.ts";
 
 // Writable atom holding the current set of registered panels.
 // Starts empty; set via PanelRegistryProvider (React) or
@@ -44,42 +44,7 @@ export const zoneOrderAtom = atomWithDebouncedStorage<Partial<Record<ZoneId, Arr
   200,
 );
 
-export const panelEnabledAtom = atomWithStorage<Record<PanelId, boolean>>("sculptor-panel-enabled", {}, undefined, {
-  getOnInit: true,
-});
-
-export const focusModeActiveAtom = atomWithStorage<boolean>("sculptor-focus-mode-active", false, undefined, {
-  getOnInit: true,
-});
-
-export const focusModeSavedVisibilityAtom = atomWithStorage<Partial<Record<ZoneId, boolean>>>(
-  "sculptor-focus-mode-saved-visibility",
-  {},
-  undefined,
-  { getOnInit: true },
-);
-
-export const zenModeActiveAtom = atomWithStorage<boolean>("sculptor-zen-mode-active", false, undefined, {
-  getOnInit: true,
-});
-
-// Tracks whether zen mode itself activated focus mode, so zen exit
-// knows whether to also deactivate focus mode.
-export const didZenImplyFocusModeAtom = atomWithStorage<boolean>("sculptor-zen-mode-implied-focus", false, undefined, {
-  getOnInit: true,
-});
-
-// Tracks the currently active workspace ID for per-workspace panel layout.
-// Set by WorkspacePageContent on mount/navigation; null when not viewing a workspace.
-export const activeWorkspaceIdAtom = atom<string | null>(null);
-
-// Tracks whether a chat panel (real or skeleton) is currently mounted.
-// Chat-panel components flip this to `true` on mount and `false` on unmount,
-// giving the rest of the app a reactive, DOM-free signal that can be read
-// from React render paths (e.g. the command palette's visibility filter).
-export const chatPanelMountedAtom = atom<boolean>(false);
-
-// Same pattern for the terminal panel — flipped by `TerminalPanelContent` so
+// Tracks whether the terminal panel is mounted — flipped by `TerminalPanelContent` so
 // commands like "Clear terminal" can gate their visibility on whether there's
 // a terminal to act on at all.
 export const terminalPanelMountedAtom = atom<boolean>(false);
@@ -89,17 +54,14 @@ export const terminalPanelMountedAtom = atom<boolean>(false);
 export const panelKeybindingId = (panelId: PanelId): KeybindingId => `panel_${panelId}`;
 
 // Read-only map of panel id → bound shortcut string, sourced from
-// `keybindingsMapAtom` via `panel_<id>` keys. Disabled panels and
-// panels with empty/null bindings are omitted entirely.
+// `keybindingsMapAtom` via `panel_<id>` keys. Panels with empty/null
+// bindings are omitted entirely.
 
 export const panelShortcutsAtom = atom<Record<PanelId, string>>((get) => {
   const registry = get(panelRegistryAtom);
   const keybindingsMap = get(keybindingsMapAtom);
-  const enabled = get(panelEnabledAtom);
   const result: Record<PanelId, string> = {};
   for (const panel of registry) {
-    const isEnabled = (panel.isBuiltin ?? false) || (enabled[panel.id] ?? panel.defaultEnabled ?? true);
-    if (!isEnabled) continue;
     const binding = keybindingsMap[panelKeybindingId(panel.id)]?.binding ?? "";
     if (binding) result[panel.id] = binding;
   }
@@ -115,15 +77,8 @@ const panelsInZoneAtomMap = new Map<ZoneId, Atom<ReadonlyArray<PanelId>>>(
     atom<ReadonlyArray<PanelId>>((get) => {
       const assignments = get(zoneAssignmentsAtom);
       const order = get(zoneOrderAtom);
-      const registry = get(panelRegistryAtom);
-      const enabled = get(panelEnabledAtom);
-      const isEnabled = (panelId: PanelId): boolean => {
-        const def = registry.find((p) => p.id === panelId);
-        if (def?.isBuiltin ?? false) return true;
-        return enabled[panelId] ?? def?.defaultEnabled ?? true;
-      };
       const panelsInZone = (Object.entries(assignments) as ReadonlyArray<[PanelId, ZoneId]>)
-        .filter(([panelId, zone]) => zone === zoneId && isEnabled(panelId))
+        .filter(([, zone]) => zone === zoneId)
         .map(([panelId]) => panelId);
 
       const zoneOrder = order[zoneId];
@@ -157,58 +112,20 @@ const isZoneVisibleAtomMap = new Map<ZoneId, Atom<boolean>>(
   ]),
 );
 
-export const isZoneVisibleAtom = (zoneId: ZoneId): Atom<boolean> => {
-  return isZoneVisibleAtomMap.get(zoneId)!;
-};
-
-// Derived: is left side visible (top-left OR bottom-left)
+// Derived: is left side visible
 export const isLeftSideVisibleAtom = atom<boolean>((get) => {
-  return get(isZoneVisibleAtomMap.get("top-left")!) || get(isZoneVisibleAtomMap.get("bottom-left")!);
+  return get(isZoneVisibleAtomMap.get("top-left")!);
 });
 
-// Derived: is right side visible (top-right OR bottom-right)
+// Derived: is right side visible
 export const isRightSideVisibleAtom = atom<boolean>((get) => {
-  return get(isZoneVisibleAtomMap.get("top-right")!) || get(isZoneVisibleAtomMap.get("bottom-right")!);
+  return get(isZoneVisibleAtomMap.get("top-right")!);
 });
 
 // Derived: is bottom visible
 export const isBottomVisibleAtom = atom<boolean>((get) => {
   return get(isZoneVisibleAtomMap.get("bottom")!);
 });
-
-// Stores the per-zone visibility snapshot taken when a side is hidden,
-// so it can be fully restored when toggled back on.
-export const savedSideVisibilityAtom = atom<Partial<Record<LayoutSide, Partial<Record<ZoneId, boolean>>>>>({});
-
-// Derived: is a layout side currently visible (any of its zones visible)
-const isSideVisibleAtomMap = new Map<LayoutSide, Atom<boolean>>(
-  LAYOUT_SIDES.map((side) => [
-    side,
-    atom<boolean>((get) => {
-      const zones = SIDE_ZONE_MAP[side];
-      return zones.some((zoneId) => get(isZoneVisibleAtomMap.get(zoneId)!));
-    }),
-  ]),
-);
-
-export const isSideVisibleAtom = (side: LayoutSide): Atom<boolean> => {
-  return isSideVisibleAtomMap.get(side)!;
-};
-
-// Derived: does a layout side have any panels assigned to any of its zones?
-const sideHasPanelsAtomMap = new Map<LayoutSide, Atom<boolean>>(
-  LAYOUT_SIDES.map((side) => [
-    side,
-    atom<boolean>((get) => {
-      const zones = SIDE_ZONE_MAP[side];
-      return zones.some((zoneId) => get(panelsInZoneAtomMap.get(zoneId)!).length > 0);
-    }),
-  ]),
-);
-
-export const sideHasPanelsAtom = (side: LayoutSide): Atom<boolean> => {
-  return sideHasPanelsAtomMap.get(side)!;
-};
 
 const activePanelInZoneAtomMap = new Map<ZoneId, Atom<PanelDefinition | undefined>>(
   ZONE_IDS.map((zoneId) => [

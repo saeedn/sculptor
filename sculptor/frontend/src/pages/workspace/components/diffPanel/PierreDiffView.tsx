@@ -6,7 +6,7 @@ import type { ErrorInfo, ReactElement, ReactNode, RefObject } from "react";
 import { Component, useCallback, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 
 import { ElementIds } from "~/api";
-import { themeCodeThemeAtom } from "~/common/state/atoms/themeBuilder.ts";
+import { themeCodeThemeAtom } from "~/common/state/atoms/theme.ts";
 import { getShikiThemes } from "~/common/theme/shikiThemes.ts";
 
 import { splitDiffColumnRatioAtom } from "./atoms.ts";
@@ -20,17 +20,10 @@ type PierreDiffViewProps = {
   viewType: DiffViewType;
   overflow: "wrap" | "scroll";
   themeType: "light" | "dark" | "system";
-  className?: string;
   /** Full old-file lines (each ending with `\n`). Enables hunk expansion. */
   oldLines?: Array<string>;
   /** Full new-file lines (each ending with `\n`). Enables hunk expansion. */
   newLines?: Array<string>;
-  /**
-   * When true, the component does not render its own drag handle.
-   * Use this when a parent component renders a single handle that spans
-   * multiple diffs (e.g. the combined "Review all" view).
-   */
-  hideHandle?: boolean;
 };
 
 /**
@@ -118,10 +111,8 @@ export const PierreDiffView = ({
   viewType,
   overflow,
   themeType,
-  className,
   oldLines,
   newLines,
-  hideHandle = false,
 }: PierreDiffViewProps): ReactElement => {
   const splitRatio = useAtomValue(splitDiffColumnRatioAtom);
   const codeTheme = useAtomValue(themeCodeThemeAtom);
@@ -249,7 +240,7 @@ export const PierreDiffView = ({
     <div ref={wrapperRef} className={styles.splitWrapper} style={splitStyle}>
       <div className={styles.scrollColumn}>
         <div
-          className={`${styles.container} ${className ?? ""}`}
+          className={styles.container}
           data-testid={viewType === "unified" ? ElementIds.DIFF_VIEW_UNIFIED : ElementIds.DIFF_VIEW_SPLIT}
         >
           <div ref={pierreRef}>
@@ -264,7 +255,7 @@ export const PierreDiffView = ({
         </div>
         {hasScrollbar && <StickyHorizontalScrollbar containerRef={pierreRef} />}
       </div>
-      {isSplit && !hideHandle && <SplitDiffHandle containerRef={wrapperRef as RefObject<HTMLElement | null>} />}
+      {isSplit && <SplitDiffHandle containerRef={wrapperRef as RefObject<HTMLElement | null>} />}
     </div>
   );
 };

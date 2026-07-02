@@ -18,7 +18,6 @@ from sculptor.database.models import AgentTaskStateV2
 from sculptor.database.models import Project
 from sculptor.database.models import Task
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
-from sculptor.interfaces.agents.agent import ClaudeCodeSDKAgentConfig
 from sculptor.interfaces.agents.agent import EnvironmentAcquiredRunnerMessage
 from sculptor.interfaces.agents.agent import RegisteredTerminalAgentConfig
 from sculptor.interfaces.agents.agent import TerminalAgentConfig
@@ -72,7 +71,7 @@ _NO_OPT_IN_CONFIG = RegisteredTerminalAgentConfig(
 def _create_task(
     services: CompleteServiceCollection,
     project: Project,
-    agent_config: RegisteredTerminalAgentConfig | TerminalAgentConfig | ClaudeCodeSDKAgentConfig,
+    agent_config: RegisteredTerminalAgentConfig | TerminalAgentConfig,
 ) -> Task:
     user_session = authenticate_anonymous(services, RequestID())
     task = Task(
@@ -82,8 +81,6 @@ def _create_task(
         project_id=project.object_id,
         input_data=AgentTaskInputsV2(
             agent_config=agent_config,
-            git_hash="initialhash",
-            system_prompt=None,
         ),
         current_state=AgentTaskStateV2(workspace_id=WorkspaceID()),
         outcome=TaskState.RUNNING,
@@ -161,7 +158,7 @@ def test_single_line_prompt_is_bracketed_paste_then_separate_submit(
     _seed_run_start(services, task.object_id)
     _seed_signal(services, task.object_id, TerminalStatusSignal.IDLE)
 
-    prompt = "Investigate the failing pipeline for this MR, identify the root cause, fix the code, commit, and push."
+    prompt = "Investigate the failing pipeline for this PR, identify the root cause, fix the code, commit, and push."
     with _registered_manager(task.object_id, tmp_path) as manager:
         response = _post_input(client, task, {"text": prompt})
         assert response.status_code == 204, response.text
@@ -346,15 +343,11 @@ def test_no_live_terminal_is_rejected(
     assert response.status_code == 409
 
 
-def test_chat_and_unknown_agents_are_404(
+def test_unknown_agent_is_404(
     client: TestClient,
     test_already_started_services: CompleteServiceCollection,
     test_project: Project,
 ) -> None:
-    services = test_already_started_services
-    chat_task = _create_task(services, test_project, ClaudeCodeSDKAgentConfig())
-    assert _post_input(client, chat_task, {"text": "hello"}).status_code == 404
-
     assert client.post(f"/api/v1/agents/{TaskID()}/terminal/input", json={"text": "hello"}).status_code == 404
 
 

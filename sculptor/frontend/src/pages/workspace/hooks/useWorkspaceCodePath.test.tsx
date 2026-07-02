@@ -4,7 +4,6 @@ import type { ReactElement, ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { Workspace } from "~/api";
-import { WorkspaceInitializationStrategy } from "~/api";
 import { workspaceAtomFamily } from "~/common/state/atoms/workspaces";
 
 import { useWorkspaceCodePath } from "./useWorkspaceCodePath";
@@ -20,7 +19,6 @@ const makeWorkspace = (overrides: Partial<Workspace> = {}): Workspace => ({
   projectId: "proj-1",
   organizationReference: "org-1",
   description: "test",
-  initializationStrategy: WorkspaceInitializationStrategy.CLONE,
   environmentId: ENVIRONMENT_ID,
   ...overrides,
 });
@@ -40,46 +38,13 @@ afterEach(() => {
 });
 
 describe("useWorkspaceCodePath", () => {
-  it("returns `${environmentId}/code` for CLONE workspaces", () => {
-    const store = createStore();
-    store.set(
-      workspaceAtomFamily("ws-1"),
-      makeWorkspace({ initializationStrategy: WorkspaceInitializationStrategy.CLONE }),
-    );
-
-    const { result } = renderWithStore(store, "ws-1");
-
-    expect(result.current).toBe(`${ENVIRONMENT_ID}/code`);
-  });
-
   it("returns `${environmentId}/code` for WORKTREE workspaces", () => {
-    // Regression: previously, WORKTREE workspaces fell through to repoInfo.repoPath
-    // (the user's source repo) — so every absolute path inside the worktree was
-    // flagged as "outside the workspace" by makeRelative().
     const store = createStore();
-    store.set(
-      workspaceAtomFamily("ws-1"),
-      makeWorkspace({ initializationStrategy: WorkspaceInitializationStrategy.WORKTREE }),
-    );
+    store.set(workspaceAtomFamily("ws-1"), makeWorkspace());
 
     const { result } = renderWithStore(store, "ws-1");
 
     expect(result.current).toBe(`${ENVIRONMENT_ID}/code`);
-  });
-
-  it("returns null when a CLONE workspace has no environmentId yet", () => {
-    const store = createStore();
-    store.set(
-      workspaceAtomFamily("ws-1"),
-      makeWorkspace({
-        initializationStrategy: WorkspaceInitializationStrategy.CLONE,
-        environmentId: null,
-      }),
-    );
-
-    const { result } = renderWithStore(store, "ws-1");
-
-    expect(result.current).toBeNull();
   });
 
   it("returns null when a WORKTREE workspace has no environmentId yet", () => {
@@ -87,7 +52,6 @@ describe("useWorkspaceCodePath", () => {
     store.set(
       workspaceAtomFamily("ws-1"),
       makeWorkspace({
-        initializationStrategy: WorkspaceInitializationStrategy.WORKTREE,
         environmentId: null,
       }),
     );

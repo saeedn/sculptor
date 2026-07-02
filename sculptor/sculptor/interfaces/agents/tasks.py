@@ -9,6 +9,5 @@ class TaskState(StrEnum):
     QUEUED = "QUEUED"
     RUNNING = "RUNNING"
     FAILED = "FAILED"
-    CANCELLED = "CANCELLED"
     DELETED = "DELETED"
     SUCCEEDED = "SUCCEEDED"

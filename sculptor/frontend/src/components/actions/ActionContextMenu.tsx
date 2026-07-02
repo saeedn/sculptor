@@ -2,7 +2,7 @@ import { ContextMenu, Text } from "@radix-ui/themes";
 import type { ReactElement, ReactNode } from "react";
 
 import type { CustomAction, CustomActionGroup } from "~/api";
-import { useThemeDangerColor } from "~/common/state/hooks/useThemeBuilder.ts";
+import { useThemeDangerColor } from "~/common/state/hooks/useTheme.ts";
 
 type ActionContextMenuProps = {
   action: CustomAction;
@@ -13,7 +13,6 @@ type ActionContextMenuProps = {
   onMoveToGroup: (action: CustomAction, groupId: string | null) => void;
   isAgentRunning?: boolean;
   onQueueMessage?: (prompt: string) => void;
-  onOpenChange?: (open: boolean) => void;
 };
 
 // WARNING: Do not wrap this component's children in a <Tooltip>.
@@ -31,7 +30,6 @@ export const ActionContextMenu = ({
   onMoveToGroup,
   isAgentRunning,
   onQueueMessage,
-  onOpenChange,
 }: ActionContextMenuProps): ReactElement => {
   const dangerColor = useThemeDangerColor();
 
@@ -60,7 +58,7 @@ export const ActionContextMenu = ({
   };
 
   return (
-    <ContextMenu.Root onOpenChange={onOpenChange}>
+    <ContextMenu.Root>
       <ContextMenu.Trigger>{children}</ContextMenu.Trigger>
       <ContextMenu.Content size="1">
         {isAgentRunning && onQueueMessage && (

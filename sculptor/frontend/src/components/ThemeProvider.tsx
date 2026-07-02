@@ -1,155 +1,14 @@
 import { Theme as RadixTheme } from "@radix-ui/themes";
-import type { CSSProperties, PropsWithChildren, ReactElement } from "react";
-import { useLayoutEffect, useMemo, useRef } from "react";
+import type { PropsWithChildren, ReactElement } from "react";
+import { useLayoutEffect, useRef } from "react";
 
-import type { AccentColor, ColorSettingKey, GrayColor, HexOverrides } from "~/common/state/atoms/themeBuilder.ts";
-import { COLOR_SETTING_KEYS, DEFAULT_HEX_OVERRIDES } from "~/common/state/atoms/themeBuilder.ts";
-import { useThemeBuilderSettings } from "~/common/state/hooks/useThemeBuilder.ts";
-import { generateColorScale, isValidHex } from "~/common/theme/generateColorScale.ts";
-import { getColorScale, resolveGrayColor } from "~/common/theme/radixColorHexMap.ts";
+import { useThemeAccentColor, useThemeGrayColor } from "~/common/state/hooks/useTheme.ts";
 import { useResolvedTheme } from "~/common/Utils.ts";
-
-/**
- * Maps a ColorSettingKey to the CSS variable prefix used by Radix.
- * accentColor -> "accent", grayColor -> "gray", dangerColor/successColor/etc. -> their color name.
- */
-const getCssVarPrefix = (
-  key: ColorSettingKey,
-  settings: {
-    accentColor: AccentColor;
-    grayColor: GrayColor;
-    dangerColor: AccentColor;
-    successColor: AccentColor;
-    warningColor: AccentColor;
-    infoColor: AccentColor;
-  },
-): string => {
-  switch (key) {
-    case "accentColor":
-      return settings.accentColor;
-    case "grayColor": {
-      const resolved = resolveGrayColor(settings.grayColor, settings.accentColor);
-      return resolved;
-    }
-    case "dangerColor":
-      return settings.dangerColor;
-    case "successColor":
-      return settings.successColor;
-    case "warningColor":
-      return settings.warningColor;
-    case "infoColor":
-      return settings.infoColor;
-  }
-};
-
-const buildHexOverrideStyles = (
-  hexOverrides: HexOverrides,
-  resolvedAppearance: "light" | "dark",
-  settings: {
-    accentColor: AccentColor;
-    grayColor: GrayColor;
-    dangerColor: AccentColor;
-    successColor: AccentColor;
-    warningColor: AccentColor;
-    infoColor: AccentColor;
-  },
-): CSSProperties => {
-  const cssVars: Record<string, string> = {};
-
-  for (const key of COLOR_SETTING_KEYS) {
-    const override = hexOverrides[key];
-    if (!override.enabled) {
-      continue;
-    }
-
-    const hex = resolvedAppearance === "light" ? override.lightHex : override.darkHex;
-    if (hex === "" || !isValidHex(hex)) {
-      continue;
-    }
-
-    const prefix = getCssVarPrefix(key, settings);
-    const scale = generateColorScale(hex, resolvedAppearance);
-    const defaultScale = getColorScale(prefix, resolvedAppearance);
-
-    for (let step = 1; step <= 12; step++) {
-      const customValue = scale[step - 1];
-      const defaultValue = defaultScale[step - 1];
-      // Only override if the custom scale differs from the default
-      if (customValue !== defaultValue) {
-        cssVars[`--${prefix}-${step}`] = customValue;
-      }
-    }
-
-    // For accentColor, also override the --accent-N aliases that Radix uses
-    if (key === "accentColor") {
-      for (let step = 1; step <= 12; step++) {
-        cssVars[`--accent-${step}`] = scale[step - 1];
-      }
-    }
-
-    // For grayColor, also override the --gray-N aliases
-    if (key === "grayColor") {
-      for (let step = 1; step <= 12; step++) {
-        cssVars[`--gray-${step}`] = scale[step - 1];
-      }
-    }
-  }
-
-  return cssVars as CSSProperties;
-};
-
-/** System-default fallback stacks matching index.css. */
-const SYSTEM_DEFAULT_FONT = '"Inter", sans-serif';
-const SYSTEM_MONO_FONT = '"JetBrains Mono", monospace';
-
-const buildFontStyles = (primaryFont: string | undefined, codeFont: string | undefined): CSSProperties | undefined => {
-  const isCustomPrimary = primaryFont !== undefined && primaryFont !== "System default";
-  const isCustomCode = codeFont !== undefined && codeFont !== "System default";
-
-  if (!isCustomPrimary && !isCustomCode) {
-    return undefined;
-  }
-
-  const vars: Record<string, string> = {};
-
-  if (isCustomPrimary) {
-    const fontStack = `"${primaryFont}", ${SYSTEM_DEFAULT_FONT}`;
-    vars["--default-font-family"] = fontStack;
-    vars["--heading-font-family"] = fontStack;
-    vars["--strong-font-family"] = fontStack;
-    vars["--em-font-family"] = fontStack;
-    vars["--quote-font-family"] = fontStack;
-  }
-
-  if (isCustomCode) {
-    const monoStack = `"${codeFont}", ${SYSTEM_MONO_FONT}`;
-    vars["--code-font-family"] = monoStack;
-    vars["--mono-font-family"] = monoStack;
-    // Pierre diffs: CSS custom properties inherit through shadow DOM
-    vars["--diffs-font-family"] = monoStack;
-  }
-
-  return vars as CSSProperties;
-};
 
 export const ImbueTheme = ({ children }: PropsWithChildren): ReactElement => {
   const appearance = useResolvedTheme();
-  const settings = useThemeBuilderSettings();
-  const hexOverrides = settings.hexOverrides ?? DEFAULT_HEX_OVERRIDES;
-
-  const hasAnyHexOverride = COLOR_SETTING_KEYS.some((key) => hexOverrides[key].enabled);
-
-  const overrideStyles = useMemo(() => {
-    if (!hasAnyHexOverride) {
-      return undefined;
-    }
-    return buildHexOverrideStyles(hexOverrides, appearance, settings);
-  }, [hasAnyHexOverride, hexOverrides, appearance, settings]);
-
-  const fontStyles = useMemo(
-    () => buildFontStyles(settings.primaryFont, settings.codeFont),
-    [settings.primaryFont, settings.codeFont],
-  );
+  const accentColor = useThemeAccentColor();
+  const grayColor = useThemeGrayColor();
 
   // Track whether this is the initial mount (no theme switch yet).
   const prevAppearanceRef = useRef(appearance);
@@ -188,16 +47,8 @@ export const ImbueTheme = ({ children }: PropsWithChildren): ReactElement => {
   }, [appearance]);
 
   return (
-    <RadixTheme
-      accentColor={settings.accentColor}
-      appearance={appearance}
-      grayColor={settings.grayColor}
-      panelBackground={settings.panelBackground}
-      radius={settings.radius}
-      scaling={settings.scaling}
-      style={fontStyles}
-    >
-      <div style={overrideStyles}>{children}</div>
+    <RadixTheme accentColor={accentColor} appearance={appearance} grayColor={grayColor}>
+      {children}
     </RadixTheme>
   );
 };

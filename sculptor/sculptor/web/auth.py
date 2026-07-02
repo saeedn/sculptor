@@ -16,7 +16,6 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from pydantic import BaseModel
 from pydantic import ConfigDict
-from pydantic import EmailStr
 from starlette import status
 from starlette.requests import HTTPConnection
 from starlette.types import ASGIApp
@@ -26,7 +25,6 @@ from starlette.types import Send
 from starlette.websockets import WebSocket
 
 from sculptor.config.settings import SculptorSettings
-from sculptor.database.models import UserSettings
 from sculptor.primitives.constants import ANONYMOUS_ORGANIZATION_REFERENCE
 from sculptor.primitives.constants import ANONYMOUS_USER_REFERENCE
 from sculptor.primitives.ids import OrganizationReference
@@ -34,8 +32,6 @@ from sculptor.primitives.ids import RequestID
 from sculptor.primitives.ids import UserReference
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.services.data_model_service.data_types import DataModelTransaction
-
-ANONYMOUS_USER_EMAIL = "_anonymous@imbue.com"
 
 
 class UserSession(BaseModel):
@@ -45,8 +41,6 @@ class UserSession(BaseModel):
     )
 
     user_reference: UserReference
-    user_settings: UserSettings
-    user_email: EmailStr
     # A session is always scoped to a single organization.
     organization_reference: OrganizationReference
     request_id: RequestID
@@ -72,25 +66,16 @@ class UserSession(BaseModel):
         with logger.contextualize(**self.logger_kwargs):
             yield
 
-    @property
-    def is_anonymous(self) -> bool:
-        return self.user_reference == ANONYMOUS_USER_REFERENCE
-
 
 def authenticate_anonymous(services: CompleteServiceCollection, request_id: RequestID) -> UserSession:
     """
     Create an anonymous user session.
 
     """
-    user_email = ANONYMOUS_USER_EMAIL
     organization_reference = ANONYMOUS_ORGANIZATION_REFERENCE
     user_reference = ANONYMOUS_USER_REFERENCE
-    with services.data_model_service.open_transaction(RequestID()) as transaction:
-        user_settings = transaction.get_or_create_user_settings(user_reference)
     return UserSession(
         user_reference=user_reference,
-        user_settings=user_settings,
-        user_email=user_email,
         organization_reference=organization_reference,
         request_id=request_id,
         logger_kwargs={},

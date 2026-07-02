@@ -47,7 +47,7 @@ E        - element is not enabled
 
 ### 2. "File not found" in Electron Window (DEV_ELECTRON mode)
 
-**Symptom:** The Electron window shows `{"detail":"File not found: "}` as plain JSON text instead of the React app. Tests using the `sculptor_instance_` shared fixture fail with `ERROR at setup` and the traceback shows `expect(home_page.get_sidebar_toggle_button()).to_be_visible()` timing out at `resources.py`. The test log shows `"GET / HTTP/1.1" 404`.
+**Symptom:** The Electron window shows `{"detail":"File not found: "}` as plain JSON text instead of the React app. Tests using the `sculptor_instance_` shared fixture fail with `ERROR at setup` and the traceback shows a home-page element `expect(...)` timing out inside `resources.py`. The test log shows `"GET / HTTP/1.1" 404`.
 
 **Root cause:** In `DEV_ELECTRON` mode (the default), the React frontend is served by the Vite dev server, **not** the backend. The backend's catch-all route `@APP.get("/{filename:path}")` in `app.py` tries to serve static files from `frontend-dist/` or `frontend/dist/`, but those directories don't contain built files in dev mode. If code navigates the Playwright page to the backend URL (e.g., `page.goto(http://127.0.0.1:{backend_port})`), the backend returns a 404 with the "File not found" JSON detail.
 
@@ -60,19 +60,19 @@ E        - element is not enabled
 
 **Key file:** `sculptor/sculptor/testing/resources.py` — the `_get_or_create_shared_instance` function.
 
-### 3. FakeClaude Command Parsing Errors
+### 3. Fake Terminal-Agent Command Failures
 
-**Symptom:** Task enters `ERROR` state immediately after creation, or FakeClaude returns an unexpected response. The test log may contain JSON parsing errors from the FakeClaude command handler.
+**Symptom:** A test using the fake terminal agent (`sculptor/sculptor/testing/fake_terminal_agent.py`) times out waiting for a side effect — `wait_for_command_done` raises `AssertionError: Command ... did not complete`, an expected file never appears in the diff, or the tab dot stays stuck on `running`.
 
-**Root cause:** The `fake_claude:` command string has malformed JSON — e.g., missing backticks, unescaped quotes, or incorrect nesting.
+**Root cause:** The runner program executes each command in a busy→idle turn; a failing command crashes the runner, so later commands are never picked up. Common causes:
+- `edit_file` whose `old_string` isn't present (`RuntimeError: edit_file: old_string not found in ...`)
+- `wait_for_file` whose sentinel is never created (`RuntimeError: wait_for_file timed out ...`) — check the test calls `release_fake_agent_wait(...)` with the same sentinel path
+- An unknown `op` in a hand-built command dict (`ValueError: unknown fake-terminal-agent command op`) — use the DSL builders (`write_file`/`edit_file`/`bash`/`sleep`/`wait_for_file`/`multi_step`) instead of raw dicts
+- The agent's ready banner (`FAKE-TERMINAL-AGENT-READY`) never printed — the registration TOML or runner copy in `<sculptor_folder>/terminal_agents/` is missing or malformed
 
-**How to identify:** Search the test log for `json.JSONDecodeError` or `FakeClaude` error messages.
+**How to identify:** The runner runs inside the agent's PTY, so its Python traceback is visible in the terminal panel — check the failure screenshot / trace for the xterm contents, and search the test log for `RuntimeError`, `Traceback`, or the banner string. Also inspect the commands directory (`terminal_agents/fake-terminal-agent__commands/`): each executed command file `NNNNNN.json` gains a `.done` marker; the first file without one is where execution stopped.
 
-**How to fix:** Check the command string formatting. FakeClaude commands must follow this format:
-```
-fake_claude:<command> `<json_args>`
-```
-The JSON must be wrapped in backticks. Use multiline strings for complex JSON to avoid formatting mistakes.
+**How to fix:** Correct the failing command (or the missing release call) and re-run. If the test must observe a transient busy state, gate it on `wait_for_file` + `release_fake_agent_wait` rather than `sleep` — see `no_wall_clock_in_fake_agent` in `docs/development/review/integration_tests.md`.
 
 ## Playwright Test Artifacts
 
@@ -91,9 +91,9 @@ When a test fails, Playwright records several artifacts that are invaluable for 
 sculptor/test-results/<test-file-stem>-<test-name>-<browser>/
 ```
 
-For example, a failure in `test_task_page_chatting.py::test_starting_text` produces:
+For example, a failure in `test_restarts.py::test_chats_persist_on_restart` produces:
 ```
-sculptor/test-results/test-task-page-chatting-test-starting-text-chromium/trace.zip
+sculptor/test-results/test-restarts-test-chats-persist-on-restart-chromium/trace.zip
 ```
 
 **In CI** — artifacts are uploaded as workflow artifacts. To download them:
@@ -107,7 +107,7 @@ sculptor/test-results/test-task-page-chatting-test-starting-text-chromium/trace.
 
 2. The download contains test artifacts organized under `test-results/<test-dir>/`, where `<test-dir>` is derived from the test file and test name. Depending on the test configuration, each directory may include failure screenshots (e.g. `test-failed-1.png`), Playwright traces, and video recordings. For example:
    ```
-   test-results/tests-integration-frontend-test-ask-user-question-py-test-ask-user-question-dismiss/test-failed-1.png
+   test-results/tests-integration-frontend-test-home-page-py-test-empty-state-shown-for-new-user/test-failed-1.png
    ```
 
 3. List the downloaded files to find artifacts for a specific test:
@@ -206,7 +206,7 @@ When diagnosing a failure, search the log output for these patterns (using `grep
 | `element is not visible` | Playwright retrying on a hidden element |
 | `"GET / HTTP/1.1" 404` | Backend received root request and returned 404 — likely a DEV_ELECTRON navigation bug |
 | `File not found:` | Backend's catch-all static file route can't find frontend files (expected in DEV_ELECTRON mode) |
-| `json.JSONDecodeError` | Malformed JSON in a FakeClaude command string |
+| `RuntimeError` / `Traceback` | The fake terminal agent's runner crashed mid-command (see failure mode 3) |
 
 ### Timeline Reconstruction
 

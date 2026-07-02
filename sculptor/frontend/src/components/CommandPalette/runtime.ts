@@ -32,12 +32,6 @@ export type CommandRuntime = {
   };
   ui: {
     toggleHelpDialog: () => void;
-    toggleDevPanel: () => void;
-    toggleZenMode: () => void;
-    toggleFocusMode: () => void;
-    toggleLeftPanel: () => void;
-    toggleBottomPanel: () => void;
-    toggleRightPanel: () => void;
     /**
      * Toggle the visibility of one specific panel by id (e.g. "files",
      * "terminal", "notes"). Smart-toggles via `usePanelActions`: opens
@@ -46,9 +40,6 @@ export type CommandRuntime = {
      */
     togglePanel: (panelId: string) => void;
     setTheme: (mode: AppearanceMode) => void;
-    focusChatInput: () => void;
-    showChatSearch: () => void;
-    jumpChatToBottom: () => void;
     /** Cycle to the next/previous workspace tab. Wraps `next_tab` / `previous_tab`. */
     nextWorkspaceTab: () => void;
     previousWorkspaceTab: () => void;
@@ -62,8 +53,6 @@ export type CommandRuntime = {
      * `AgentTabs`. No-op when no workspace is mounted.
      */
     createAgent: () => void;
-    /** Open the Report a problem (file a bug) popover. */
-    openReportProblem: () => void;
     /**
      * Clear the active terminal tab's visible buffer and scrollback. No-op
      * when no terminal panel is mounted or no terminal tab has registered
@@ -79,9 +68,5 @@ export type CommandRuntime = {
      * (and re-registering all builtin commands) on every config change.
      */
     updateField: (field: UserConfigField, value: unknown) => Promise<unknown>;
-  };
-  electron: {
-    isAvailable: boolean;
-    reloadWindow: () => void;
   };
 };

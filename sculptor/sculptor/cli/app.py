@@ -10,7 +10,6 @@ actually starting the backend.
 """
 
 import os
-import webbrowser
 from pathlib import Path
 
 import typer
@@ -28,16 +27,11 @@ from sculptor.utils.tracing import get_trace_to_path
 from sculptor.utils.tracing import is_tracing_enabled
 from sculptor.web.app import APP
 from sculptor.web.middleware import get_settings
-from sculptor.web.middleware import register_on_startup
 
 # Single-line so the implicit_string_concat ratchet is happy and so the
 # typer.BadParameter output does not carry the indentation a triple-quoted
 # block would introduce.
 _LATE_START_ERROR_MESSAGE = "--trace-to must be passed at the sculptor CLI entry point so the bootstrap in cli/main.py can start viztracer before the backend imports run. Passing it through the typer callback alone is not supported."
-
-# Fallback frontend (vite) port used only when SCULPTOR_FRONTEND_PORT is unset;
-# in dev mode the launcher normally sets that variable explicitly.
-_DEFAULT_FRONTEND_PORT = 5174
 
 
 typer_cli = typer.Typer(
@@ -70,17 +64,6 @@ def main(
         resolve_path=True,
     ),
     version: Annotated[bool | None, typer.Option("--version", callback=cmd_version)] = None,
-    open_browser: bool = typer.Option(
-        True,
-        "--open-browser/--no-open-browser",
-        help="If the browser should automatically open on sculptor startup.",
-    ),
-    serve_static: bool = typer.Option(
-        True,
-        "--serve-static/--no-serve-static",
-        help="If true, the main webserver will also serve the distributed asset files.",
-        hidden=True,
-    ),
     packaged_entrypoint: bool = typer.Option(
         False,
         "--packaged-entrypoint",
@@ -145,13 +128,6 @@ def main(
     # We bind to 127.0.0.1 to avoid exposing the server to the network by default.
     # (In theory, we could use "localhost" to also support IPv6 [::1] but we'd need to handle ipv6 in docker port binding setup then.)
     server = SyncCloseServer(config=Config(APP, host=settings.BIND_HOST, port=port, log_config=None, log_level=None))
-    frontend_port = int(os.environ.get("SCULPTOR_FRONTEND_PORT", _DEFAULT_FRONTEND_PORT))
-
-    if not serve_static:
-        port = frontend_port
-
-    if open_browser:
-        register_on_startup(lambda: _start_browser(f"http://localhost:{port}"))
 
     # The trace flush lives in the FastAPI lifespan's `finally` (see
     # `_write_trace_if_enabled` in `web/middleware.py`), not here. uvicorn's
@@ -160,11 +136,6 @@ def main(
     # on SIGTERM/SIGINT — which is the only realistic way to stop a
     # dev-mode Sculptor.
     server.run()
-
-
-def _start_browser(target_url: str) -> None:
-    logger.info("Done starting server! Please open {} in your browser.", target_url)
-    webbrowser.open(target_url, new=2)
 
 
 def entrypoint() -> None:

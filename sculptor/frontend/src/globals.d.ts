@@ -19,6 +19,4 @@ declare global {
      * The renderer reads this synchronously at boot in common/tracing.ts. */
     __SCULPTOR_TRACING__?: { enabled: boolean };
   }
-
-  declare const API_URL_BASE: string | undefined;
 }

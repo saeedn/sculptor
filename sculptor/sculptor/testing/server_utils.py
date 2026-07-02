@@ -207,7 +207,6 @@ def get_sculptor_command_backend_only(
         "python",
         "-m",
         "sculptor.cli.main",
-        "--no-open-browser",
         f"--port={port}",
     ]
     if repo_path is not None:

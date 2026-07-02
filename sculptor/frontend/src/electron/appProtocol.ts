@@ -27,6 +27,15 @@ export const APP_ORIGIN = `${APP_SCHEME}://${APP_HOST}`;
 export const getAppRendererUrl = (): string => `${APP_ORIGIN}/index.html`;
 
 /**
+ * Whether a request on the app scheme targets the backend API rather than a
+ * renderer asset. Everything under /api/ is forwarded to the backend by the
+ * main process over Node's HTTP stack (see registerAppProtocolHandler in
+ * main.ts), which keeps renderer API traffic out of Chromium's
+ * six-connections-per-host socket pool.
+ */
+export const isBackendApiPath = (pathname: string): boolean => pathname === "/api" || pathname.startsWith("/api/");
+
+/**
  * Map a request URL on the app scheme to an absolute file path inside
  * `bundleDir`. Returns `null` only when the request is malformed or targets
  * another scheme or host; a valid app-host request always resolves to a path

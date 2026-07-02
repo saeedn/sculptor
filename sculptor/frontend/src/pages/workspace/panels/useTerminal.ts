@@ -8,7 +8,7 @@ import { Terminal as XTerm } from "@xterm/xterm";
 import { useAtomValue, useSetAtom } from "jotai";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { baseUrl } from "~/apiClient.ts";
+import { wsBaseUrl } from "~/apiClient.ts";
 import { getSessionToken, SESSION_TOKEN_HEADER_NAME } from "~/common/Auth.ts";
 import { keybindingsMapAtom } from "~/common/keybindings/atoms.ts";
 import { shouldHandleKeybinding } from "~/common/ShortcutUtils.ts";
@@ -192,33 +192,11 @@ const buildTerminalTheme = (panelBg: string, appTheme: string): ITheme => {
   };
 };
 
-/** Resolve the scheme + host portion of the terminal WebSocket URL. */
-const resolveTerminalWsBaseUrl = async (terminalPath: string): Promise<string> => {
-  // Prefer the already-resolved baseUrl (handles both default and custom-command backends).
-  if (baseUrl) {
-    const httpUrl = new URL(baseUrl);
-    const wsProtocol = httpUrl.protocol === "https:" ? "wss:" : "ws:";
-    return `${wsProtocol}//${httpUrl.host}${terminalPath}`;
-  }
-
-  if (API_URL_BASE) {
-    const apiUrl = new URL(API_URL_BASE);
-    const wsProtocol = apiUrl.protocol === "https:" ? "wss:" : "ws:";
-    return `${wsProtocol}//${apiUrl.host}${terminalPath}`;
-  }
-
-  if (window.sculptor) {
-    const port = await window.sculptor.getBackendPort();
-    return `ws://localhost:${port}${terminalPath}`;
-  }
-  // Fallback for browser-only mode (e.g., testing)
-  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${wsProtocol}//${window.location.host}${terminalPath}`;
-};
-
 /** Construct the WebSocket URL for the terminal backend, including auth. */
 const getWebSocketUrl = async (terminalPath: string): Promise<string> => {
-  const wsUrl = await resolveTerminalWsBaseUrl(terminalPath);
+  // wsBaseUrl is resolved once at startup by configureClient (Electron: the
+  // backend port from the preload; browser harness: the page's own origin).
+  const wsUrl = `${wsBaseUrl}${terminalPath}`;
   // Attach the session token for CSRF protection, mirroring useWebsocket.ts.
   // The handshake can't carry a custom header, so the token goes in the query
   // string. In the browser (non-Electron) path getSessionToken() is undefined

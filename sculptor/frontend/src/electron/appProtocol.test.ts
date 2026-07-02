@@ -15,6 +15,7 @@ import {
   APP_ORIGIN,
   APP_SCHEME,
   getAppRendererUrl,
+  isBackendApiPath,
   resolveRequestToFilePath,
   shouldFallbackToIndex,
 } from "./appProtocol";
@@ -79,6 +80,22 @@ describe("resolveRequestToFilePath", () => {
 
   it("rejects malformed URLs", () => {
     expect(resolveRequestToFilePath(BUNDLE, "not a url")).toBeNull();
+  });
+});
+
+describe("isBackendApiPath", () => {
+  it("matches API paths so they proxy to the backend instead of the SPA fallback", () => {
+    expect(isBackendApiPath("/api/v1/tasks")).toBe(true);
+    expect(isBackendApiPath("/api/v1/stream")).toBe(true);
+    expect(isBackendApiPath("/api")).toBe(true);
+  });
+
+  it("does not match renderer assets or routes", () => {
+    expect(isBackendApiPath("/")).toBe(false);
+    expect(isBackendApiPath("/index.html")).toBe(false);
+    expect(isBackendApiPath("/assets/index-abc.js")).toBe(false);
+    // A prefix collision must not be proxied.
+    expect(isBackendApiPath("/apiary")).toBe(false);
   });
 });
 

@@ -2,6 +2,18 @@
 
 Sculptor is packaged as a desktop app using [Electron Forge](https://www.electronforge.io/).
 
+## Backend transport
+
+The renderer is served from the custom `sculptor://app` origin, and all API
+requests are same-origin relative (`/api/...`). The Electron main process
+intercepts them in the `sculptor://` protocol handler and forwards them to the
+local backend over Node's HTTP stack (see `registerAppProtocolHandler` in
+`frontend/src/electron/main.ts`). This keeps renderer API traffic out of
+Chromium's six-connections-per-host HTTP/1.1 socket pool, which concurrent
+bursts of API calls used to exhaust — stalling the UI. WebSockets (the unified
+state stream and terminals) are exempt from that limit and connect directly to
+`ws://localhost:<backend port>`.
+
 ## Commands
 
 ```bash

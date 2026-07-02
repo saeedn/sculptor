@@ -8,6 +8,7 @@ Tests verify:
 - Workspace row branch display shows current branch (not source branch)
 """
 
+import pytest
 from playwright.sync_api import expect
 
 from sculptor.testing.fake_terminal_agent import bash
@@ -20,6 +21,11 @@ from sculptor.testing.playwright_utils import soft_reload_page
 from sculptor.testing.playwright_utils import start_task_and_wait_for_ready
 from sculptor.testing.sculptor_instance import SculptorInstance
 from sculptor.testing.user_stories import user_story
+
+# Run these core-flow tests in Electron too: they cover workspace creation,
+# the unified stream, and navigation, so they exercise the sculptor://app
+# API proxy in the Electron main process (the packaged app's only transport).
+pytestmark = pytest.mark.browser_and_electron
 
 
 @user_story("to see my recent workspaces on the home page")

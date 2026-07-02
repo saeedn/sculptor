@@ -9,7 +9,13 @@ import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, net, protoco
 import Store from "electron-store";
 
 import type { AnyBackendStatus, SculptorDevInfo } from "../shared/types";
-import { APP_SCHEME, getAppRendererUrl, resolveRequestToFilePath, shouldFallbackToIndex } from "./appProtocol";
+import {
+  APP_SCHEME,
+  getAppRendererUrl,
+  isBackendApiPath,
+  resolveRequestToFilePath,
+  shouldFallbackToIndex,
+} from "./appProtocol";
 import type { ZoomCommand } from "./constants";
 import {
   BACKEND_PORT_CHANNEL_NAME,
@@ -336,7 +342,7 @@ const getBackendCommand = async (): Promise<{ cmd: string; args: Array<string> }
   logger.info("[main] Filtered user args:", userArgs);
 
   // Base arguments for sculptor_main
-  const baseArgs = ["--port", String(await PORT), "--no-open-browser", "--packaged-entrypoint"];
+  const baseArgs = ["--port", String(await PORT), "--packaged-entrypoint"];
 
   const exe = "sculptor_backend/sculptor_backend";
   const bin = path.join(resourcesPath(), exe);
@@ -708,23 +714,63 @@ const createWindow = async (): Promise<void> => {
 };
 
 /**
- * Serve the built renderer bundle over the custom `sculptor://app` scheme.
- * Maps each request to a file inside the bundle directory (with a path-
- * traversal guard) and streams it back via `net.fetch`, which infers the MIME
+ * Forward a renderer /api request on the sculptor://app origin to the local
+ * backend over Node's HTTP stack (undici's global fetch). Chromium caps
+ * HTTP/1.1 connections at six per host, and bursts of concurrent API calls
+ * (per-file contents, per-commit diffs, ...) used to exhaust that pool and
+ * stall every other request; requests on a custom scheme never enter that
+ * pool, and undici's agent has no per-origin connection cap. This must NOT
+ * use Electron's `net.fetch`, which routes through Chromium's network stack
+ * and would reintroduce the same limit in the main process.
+ */
+const proxyApiRequestToBackend = async (request: Request, pathWithQuery: string): Promise<Response> => {
+  const target = `http://127.0.0.1:${await PORT}${pathWithQuery}`;
+  try {
+    const response = await fetch(target, {
+      method: request.method,
+      headers: request.headers,
+      body: request.body,
+      // Required by undici when the request carries a streaming body.
+      duplex: "half",
+      redirect: "manual",
+    } as RequestInit);
+    // undici has already decompressed the body, so the original
+    // content-encoding/content-length no longer describe the bytes we return;
+    // forwarding them would corrupt the response the renderer sees.
+    const headers = new Headers(response.headers);
+    headers.delete("content-encoding");
+    headers.delete("content-length");
+    return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+  } catch (error) {
+    logger.warn(`[main] API proxy request to ${pathWithQuery} failed:`, error);
+    return new Response("Sculptor backend is unavailable", { status: 502 });
+  }
+};
+
+/**
+ * Serve the custom `sculptor://app` scheme. Requests under /api/ are proxied
+ * to the backend over Node's HTTP stack (see proxyApiRequestToBackend); all
+ * other requests map to files inside the bundle directory (with a path-
+ * traversal guard) and stream back via `net.fetch`, which infers the MIME
  * type from the extension. Extensionless misses fall back to the SPA shell.
- * This file-serving branch is the packaged-build path; under
- * SCULPTOR_USE_APP_SCHEME=1 (integration tests) the handler instead proxies to
- * the Vite dev server. Only a plain `npm run dev` never hits this handler.
+ * The file-serving branch is the packaged-build path; under
+ * SCULPTOR_USE_APP_SCHEME=1 (integration tests) non-API requests instead
+ * proxy to the Vite dev server. Only a plain `npm run dev` never hits this
+ * handler.
  */
 const registerAppProtocolHandler = (): void => {
   const bundleDir = path.join(app.getAppPath(), ".vite/build/renderer");
   protocol.handle(APP_SCHEME, async (request) => {
     const { pathname, search } = new URL(request.url);
+    if (isBackendApiPath(pathname)) {
+      return proxyApiRequestToBackend(request, `${pathname}${search}`);
+    }
+
     if (APP_SCHEME_DEV_SERVER_ORIGIN !== null) {
       // Test/dev: proxy to the Vite dev server, preserving path + query so its
-      // on-the-fly module transforms and asset requests resolve there. (The
-      // app's API/WebSocket traffic goes straight to the backend via absolute
-      // URLs, so it never reaches this handler.)
+      // on-the-fly module transforms and asset requests resolve there.
+      // (WebSockets connect straight to the backend and never reach this
+      // handler — custom schemes cannot carry them.)
       return net.fetch(`${APP_SCHEME_DEV_SERVER_ORIGIN}${pathname}${search}`);
     }
     const resolved = resolveRequestToFilePath(bundleDir, request.url);

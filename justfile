@@ -572,10 +572,10 @@ backend repo_path=".":
     cd "{{justfile_directory()}}/sculptor"
     if [ "{{repo_path}}" = "none" ]; then
       echo "Starting without initial project..."
-      uv run --project sculptor python -m sculptor.cli.main --no-open-browser --no-serve-static
+      uv run --project sculptor python -m sculptor.cli.main
     else
       echo "Using repository path: {{repo_path}}"
-      uv run --project sculptor python -m sculptor.cli.main --no-open-browser --no-serve-static "{{justfile_directory()}}/{{repo_path}}"
+      uv run --project sculptor python -m sculptor.cli.main "{{justfile_directory()}}/{{repo_path}}"
     fi
 
 [group("dev")]

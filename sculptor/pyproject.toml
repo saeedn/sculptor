@@ -105,4 +105,3 @@ packaging = [
 [project.scripts]
 sculptor = "sculptor.cli.main:main"
 builder = "builder.cli:app"  # Utilities for building and releasing Sculptor
-

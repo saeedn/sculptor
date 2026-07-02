@@ -41,7 +41,6 @@ const WORKSPACE_WITH_TERMINAL_CTX: PaletteContext = {
 };
 
 const makeRuntime = (overrides: Partial<CommandRuntime> = {}): CommandRuntime => {
-  const noop = (): void => {};
   const base: CommandRuntime = {
     store: getDefaultStore(),
     navigate: {

@@ -30,7 +30,6 @@ from sculptor.service_collections.service_collection import get_services
 from sculptor.services.project_service.default_implementation import update_most_recently_used_project
 from sculptor.utils.migration import ensure_sculptor_folder_ready
 from sculptor.utils.shutdown import GLOBAL_SHUTDOWN_EVENT
-from sculptor.utils.tracing import get_trace_to_path
 from sculptor.utils.tracing import is_tracing_enabled
 from sculptor.utils.tracing import stop_and_write_trace
 from sculptor.web.auth import UserSession
@@ -219,11 +218,12 @@ def _write_trace_if_enabled() -> None:
     if not is_tracing_enabled():
         return
     try:
-        stop_and_write_trace()
-        logger.info(
-            "Trace written to {}. Open https://ui.perfetto.dev and drop this file there to view.",
-            get_trace_to_path(),
-        )
+        result = stop_and_write_trace()
+        if result is not None:
+            logger.info(
+                "Trace written to {}. Open https://ui.perfetto.dev and drop this file there to view.",
+                result.path,
+            )
     except Exception as e:
         logger.opt(exception=e).error("Failed to write trace file")
 

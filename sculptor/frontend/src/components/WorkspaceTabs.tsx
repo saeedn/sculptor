@@ -49,6 +49,23 @@ import { WorkspacePeekOverlay } from "~/pages/workspace/components/WorkspacePeek
 
 import styles from "./WorkspaceTabs.module.scss";
 
+const ICON_SIZE = 14;
+
+// Derive the active tab id from the live URL hash (e.g. "#/ws/<id>/agent/<id>").
+// cycleTab reads this at keypress time rather than a closed-over route value: the
+// keydown listener re-registers only after React commits, while navigate() updates
+// the hash synchronously, so the closed-over value lags after a rapid first press.
+const getCurrentTabIdFromHash = (hash: string): string | null => {
+  const pathname = hash.replace(/^#/, "").split("?")[0] ?? "";
+  if (pathname === "/home") return HOME_TAB_ID;
+  if (pathname === "/settings") return SETTINGS_TAB_ID;
+  const newWorkspaceDraftId = pathname.match(/^\/ws\/new\/([^/?]+)/)?.[1];
+  if (newWorkspaceDraftId != null) return newWorkspaceTabId(newWorkspaceDraftId);
+  const workspaceId = pathname.match(/^\/ws\/(?!new\b)([^/?]+)/)?.[1];
+  if (workspaceId != null) return workspaceId;
+  return null;
+};
+
 export const WorkspaceTabs = (): ReactElement => {
   const dangerColor = useThemeDangerColor();
   const workspaces = useAtomValue(workspacesArrayAtom);
@@ -168,15 +185,8 @@ export const WorkspaceTabs = (): ReactElement => {
     (direction: 1 | -1): void => {
       if (effectiveOpenTabIds.length === 0) return;
 
-      const currentIndex = activeWorkspaceID
-        ? effectiveOpenTabIds.indexOf(activeWorkspaceID)
-        : isHomeRoute
-          ? effectiveOpenTabIds.indexOf(HOME_TAB_ID)
-          : isSettingsRoute
-            ? effectiveOpenTabIds.indexOf(SETTINGS_TAB_ID)
-            : addWorkspaceDraftId
-              ? effectiveOpenTabIds.indexOf(newWorkspaceTabId(addWorkspaceDraftId))
-              : -1;
+      const currentTabId = getCurrentTabIdFromHash(window.location.hash);
+      const currentIndex = currentTabId !== null ? effectiveOpenTabIds.indexOf(currentTabId) : -1;
 
       const nextIndex = (currentIndex + direction + effectiveOpenTabIds.length) % effectiveOpenTabIds.length;
       const nextTabId = effectiveOpenTabIds[nextIndex];
@@ -195,11 +205,7 @@ export const WorkspaceTabs = (): ReactElement => {
       }
     },
     [
-      activeWorkspaceID,
-      addWorkspaceDraftId,
       effectiveOpenTabIds,
-      isHomeRoute,
-      isSettingsRoute,
       handleWorkspaceClick,
       navigateToAddWorkspace,
       navigateToHome,

@@ -20,7 +20,7 @@ See the [justfile](../../justfile).
 - [CLI Tools](cli.md) — sculpt CLI and API client
 - [Tracing](tracing.md) — distributed tracing and instrumentation
 - [Code review rules](review/) — review categories for [Sculptor](review/sculptor.md),
-  [React](review/react.md), and [integration tests](review/integration_tests.md)
+  [React](review/react.md), [design](review/design.md), and [integration tests](review/integration_tests.md)
 
 ## Expectations
 

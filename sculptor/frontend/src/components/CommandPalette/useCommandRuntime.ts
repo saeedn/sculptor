@@ -6,22 +6,12 @@ import type { UserConfigField } from "../../api";
 import { useImbueNavigate } from "../../common/NavigateUtils.ts";
 import { themeSettingsAtom } from "../../common/state/atoms/theme.ts";
 import { openWorkspaceTabAtom } from "../../common/state/atoms/workspaces.ts";
-import { useDevPanel } from "../../common/state/hooks/useDevPanel.ts";
 import { useHelpDialog } from "../../common/state/hooks/useHelpDialog.ts";
 import { useOpenSettings } from "../../common/state/hooks/useOpenSettings.ts";
 import { useUserConfig } from "../../common/state/hooks/useUserConfig.ts";
 import { usePanelActions } from "../panels/hooks.ts";
 import { type CommandActionId, commandActionsAtom } from "./commandActions.ts";
 import type { AppStore, CommandRuntime } from "./runtime.ts";
-
-const isElectronAvailable = (): boolean =>
-  typeof window !== "undefined" && Boolean((window as { sculptor?: unknown }).sculptor);
-
-const reloadElectronWindow = (): void => {
-  // The Electron preload exposes window.sculptor; when not present,
-  // fallback to the browser-side reload.
-  window.location.reload();
-};
 
 /**
  * Hook variant of `useCallback` whose returned function identity is
@@ -59,7 +49,6 @@ export const useCommandRuntime = (): CommandRuntime => {
   const openSettings = useOpenSettings();
 
   const { toggleHelpDialog } = useHelpDialog();
-  const { toggleDevPanel } = useDevPanel();
   const { togglePanel } = usePanelActions();
 
   const setThemeSettings = useSetAtom(themeSettingsAtom);
@@ -94,7 +83,6 @@ export const useCommandRuntime = (): CommandRuntime => {
   });
 
   const uiToggleHelpDialog = useEvent((): void => toggleHelpDialog());
-  const uiToggleDevPanel = useEvent((): void => toggleDevPanel());
   const uiTogglePanel = useEvent((panelId: string): void => togglePanel(panelId));
   const setTheme = useEvent((mode: "light" | "dark" | "system"): void => {
     setThemeSettings((prev) => ({ ...prev, appearance: mode }));
@@ -109,7 +97,6 @@ export const useCommandRuntime = (): CommandRuntime => {
   const updateConfigField = useEvent(
     (field: UserConfigField, value: unknown): Promise<unknown> => updateField(field, value),
   );
-  const reloadWindow = useEvent((): void => reloadElectronWindow());
 
   // The runtime object reference stays stable across renders because
   // every dep below is identity-stable for the lifetime of this
@@ -121,7 +108,6 @@ export const useCommandRuntime = (): CommandRuntime => {
   // recompute path is effectively dead code — it runs once. If a future
   // contributor adds a non-stable value to this list, expect cascading
   // re-registrations of every builtin and dynamic provider.
-  // `electron.isAvailable` is a module-level read, not reactive.
   return useMemo<CommandRuntime>(
     () => ({
       // The Jotai Provider's store is referentially stable across
@@ -131,7 +117,6 @@ export const useCommandRuntime = (): CommandRuntime => {
       navigate: { toHome, toSettings, toAddWorkspace, toWorkspace, toAgent },
       ui: {
         toggleHelpDialog: uiToggleHelpDialog,
-        toggleDevPanel: uiToggleDevPanel,
         togglePanel: uiTogglePanel,
         setTheme,
         nextWorkspaceTab,
@@ -142,7 +127,6 @@ export const useCommandRuntime = (): CommandRuntime => {
         clearActiveTerminal,
       },
       config: { updateField: updateConfigField },
-      electron: { isAvailable: isElectronAvailable(), reloadWindow },
     }),
     [
       store,
@@ -152,7 +136,6 @@ export const useCommandRuntime = (): CommandRuntime => {
       toWorkspace,
       toAgent,
       uiToggleHelpDialog,
-      uiToggleDevPanel,
       uiTogglePanel,
       setTheme,
       nextWorkspaceTab,
@@ -162,7 +145,6 @@ export const useCommandRuntime = (): CommandRuntime => {
       createAgent,
       clearActiveTerminal,
       updateConfigField,
-      reloadWindow,
     ],
   );
 };

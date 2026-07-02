@@ -151,7 +151,7 @@ export interface FrontendConfigOptions {
 function devServer(env: Record<string, string>, defaultFrontendPort: number): import("vite").ServerOptions {
   const apiPort = Number(env.SCULPTOR_API_PORT || 5050);
   const fePort = Number(env.SCULPTOR_FRONTEND_PORT || defaultFrontendPort);
-  const apiTarget = env.SCULPTOR_CUSTOM_BACKEND_URL || `http://127.0.0.1:${apiPort}`;
+  const apiTarget = env.SCULPTOR_DEV_BACKEND_URL || `http://127.0.0.1:${apiPort}`;
 
   console.log(`Proxying frontend: target=${apiTarget} SCULPTOR_FRONTEND_PORT=${fePort}`);
 

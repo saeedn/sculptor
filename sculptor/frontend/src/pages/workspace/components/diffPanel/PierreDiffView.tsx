@@ -20,7 +20,6 @@ type PierreDiffViewProps = {
   viewType: DiffViewType;
   overflow: "wrap" | "scroll";
   themeType: "light" | "dark" | "system";
-  className?: string;
   /** Full old-file lines (each ending with `\n`). Enables hunk expansion. */
   oldLines?: Array<string>;
   /** Full new-file lines (each ending with `\n`). Enables hunk expansion. */
@@ -112,7 +111,6 @@ export const PierreDiffView = ({
   viewType,
   overflow,
   themeType,
-  className,
   oldLines,
   newLines,
 }: PierreDiffViewProps): ReactElement => {
@@ -242,7 +240,7 @@ export const PierreDiffView = ({
     <div ref={wrapperRef} className={styles.splitWrapper} style={splitStyle}>
       <div className={styles.scrollColumn}>
         <div
-          className={`${styles.container} ${className ?? ""}`}
+          className={styles.container}
           data-testid={viewType === "unified" ? ElementIds.DIFF_VIEW_UNIFIED : ElementIds.DIFF_VIEW_SPLIT}
         >
           <div ref={pierreRef}>

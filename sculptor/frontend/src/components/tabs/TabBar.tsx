@@ -19,13 +19,11 @@ export const TabBar = ({
   tabs,
   openTabIds,
   activeTabId,
-  maxTabWidth = DEFAULT_TAB_WIDTH,
   onActivate,
   onClose,
   onReorder,
   children,
   rightContent,
-  className,
   tabBarClassName,
   onDoubleClick,
   alwaysCloseable = false,
@@ -122,14 +120,14 @@ export const TabBar = ({
     // Compact variant: no width management
     if (isCompact) return undefined;
 
-    if (containerWidth === 0) return maxTabWidth;
+    if (containerWidth === 0) return DEFAULT_TAB_WIDTH;
 
     const childrenWidth = childrenRef.current?.offsetWidth ?? 0;
     const availableWidth = containerWidth - childrenWidth;
-    const naturalWidth = Math.min(availableWidth / openTabIds.length, maxTabWidth);
+    const naturalWidth = Math.min(availableWidth / openTabIds.length, DEFAULT_TAB_WIDTH);
 
     return Math.max(MIN_TAB_WIDTH, naturalWidth);
-  }, [containerWidth, openTabIds.length, maxTabWidth, isCompact]);
+  }, [containerWidth, openTabIds.length, isCompact]);
 
   const isCloseable = alwaysCloseable || openTabIds.length > 1;
   const isDragActive = dragState.activeId !== null;
@@ -261,7 +259,7 @@ export const TabBar = ({
   }
 
   return (
-    <div className={`${styles.container} ${className ?? ""}`}>
+    <div className={styles.container}>
       {tabBarRow}
       <div role="tabpanel" data-testid="tab-content" className={styles.contentArea}>
         {activeTab?.content}

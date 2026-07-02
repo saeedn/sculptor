@@ -9,9 +9,9 @@ import type { PanelId, ZoneId } from "~/components/panels/types.ts";
 import styles from "./Sidebar.module.scss";
 
 const SidebarZone = ({ zoneId, panelIds }: { zoneId: ZoneId; panelIds: ReadonlyArray<PanelId> }): ReactElement => (
-  <div data-droppable-id={zoneId}>
+  <div data-zone-id={zoneId}>
     {panelIds.map((panelId) => (
-      <SidebarIcon key={panelId} panelId={panelId} zoneId={zoneId} />
+      <SidebarIcon key={panelId} panelId={panelId} />
     ))}
   </div>
 );

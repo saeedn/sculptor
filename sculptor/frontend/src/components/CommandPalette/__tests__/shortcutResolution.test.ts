@@ -38,7 +38,6 @@ const makeRuntime = (): CommandRuntime =>
     navigate: { toHome: noop, toSettings: vi.fn(), toAddWorkspace: noop, toWorkspace: vi.fn(), toAgent: vi.fn() },
     ui: {
       toggleHelpDialog: noop,
-      toggleDevPanel: noop,
       togglePanel: noop,
       setTheme: noop,
       nextWorkspaceTab: noop,
@@ -48,7 +47,6 @@ const makeRuntime = (): CommandRuntime =>
       clearActiveTerminal: noop,
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },
-    electron: { isAvailable: false, reloadWindow: noop },
   }) as unknown as CommandRuntime;
 
 const WORKSPACE_CTX: PaletteContext = {

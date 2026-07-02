@@ -210,7 +210,7 @@ const PeekHeader = ({
       <span className={styles.wsName}>{workspaceName}</span>
     </div>
     {prStatus != null && prStatus.prState !== "none" && (
-      <div className={styles.mrRow}>
+      <div className={styles.prRow}>
         <a
           className={styles.mrPill}
           href={prStatus.prWebUrl ?? "#"}

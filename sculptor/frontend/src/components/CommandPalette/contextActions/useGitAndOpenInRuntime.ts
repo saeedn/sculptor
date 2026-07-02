@@ -20,8 +20,8 @@ import { isMac } from "../../../electron/utils.ts";
  */
 export type GitAndOpenInRuntime = {
   commitChanges: (workspace: Workspace) => void;
-  createMergeRequest: (workspace: Workspace) => void;
-  openMergeRequest: (workspace: Workspace) => void;
+  createPullRequest: (workspace: Workspace) => void;
+  openPullRequest: (workspace: Workspace) => void;
   openInApp: (workspace: Workspace, app: ExternalApp) => void;
 
   hasUncommittedChanges: (workspace: Workspace) => boolean;
@@ -56,14 +56,14 @@ export const useGitAndOpenInRuntime = (): GitAndOpenInRuntime => {
         // diff visible), so this path is unreachable from the UI.
         void chatActions.sendMessage?.(prompt);
       },
-      createMergeRequest: (ws): void => {
+      createPullRequest: (ws): void => {
         const chatActions = store.get(chatActionsAtom);
         const prompt = store.get(prCreationPromptAtom);
         const targetBranch = ws.targetBranch;
         const message = targetBranch ? `${prompt}\n\nTarget the pull request against \`${targetBranch}\`.` : prompt;
         void chatActions.sendMessage?.(message);
       },
-      openMergeRequest: (ws): void => {
+      openPullRequest: (ws): void => {
         const prStatus = store.get(prStatusAtomFamily(ws.objectId));
         const url = prStatus?.prWebUrl;
         if (url) window.open(url, "_blank");

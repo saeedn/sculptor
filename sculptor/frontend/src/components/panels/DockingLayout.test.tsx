@@ -109,7 +109,7 @@ const getClickableIcon = (container: HTMLElement, panelId: string): HTMLElement 
   getIconElement(container, panelId);
 
 const getDropZone = (container: HTMLElement, zoneId: string): HTMLElement | null =>
-  container.querySelector(`[data-droppable-id="${zoneId}"]`);
+  container.querySelector(`[data-zone-id="${zoneId}"]`);
 
 const getIconsInZone = (container: HTMLElement, zoneId: string): Array<string> => {
   const zone = getDropZone(container, zoneId);

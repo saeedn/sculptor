@@ -7,29 +7,3 @@
   letter-spacing: 0.04px;
   line-height: 16px;
 }
-
-.clickable {
-  border-radius: var(--radius-1);
-  margin: 0 -5px;
-  padding: 5px;
-
-  &:hover {
-    background-color: var(--accent-3);
-    cursor: pointer;
-    transition: all var(--duration-normal);
-  }
-}
-
-.underlined {
-  cursor: pointer;
-  text-decoration-line: underline;
-  text-decoration-skip-ink: none;
-  text-decoration-style: solid;
-  text-decoration-thickness: auto;
-  text-underline-offset: auto;
-  text-underline-position: from-font;
-
-  &:hover {
-    color: var(--accent-10);
-  }
-}

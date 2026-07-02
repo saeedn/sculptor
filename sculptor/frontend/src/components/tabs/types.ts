@@ -29,12 +29,9 @@ export type TabBarProps = {
   onActivate: (tabId: string) => void;
   onClose: (tabId: string) => void;
   onReorder: (newOrder: Array<string>) => void;
-  maxTabWidth?: number;
   children?: ReactNode;
   /** Content rendered at the far right of the tab bar, outside the scroll area. */
   rightContent?: ReactNode;
-  /** CSS class for the outermost wrapper (only rendered when tabs have content). */
-  className?: string;
   /** CSS class for the tab bar row element. */
   tabBarClassName?: string;
   /** Called when a tab is double-clicked. */

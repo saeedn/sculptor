@@ -53,7 +53,6 @@ const makeRuntime = (overrides: Partial<CommandRuntime> = {}): CommandRuntime =>
     },
     ui: {
       toggleHelpDialog: vi.fn(),
-      toggleDevPanel: vi.fn(),
       togglePanel: vi.fn(),
       setTheme: vi.fn(),
       nextWorkspaceTab: vi.fn(),
@@ -64,7 +63,6 @@ const makeRuntime = (overrides: Partial<CommandRuntime> = {}): CommandRuntime =>
       clearActiveTerminal: vi.fn(),
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },
-    electron: { isAvailable: false, reloadWindow: noop },
   };
   return { ...base, ...overrides } as CommandRuntime;
 };

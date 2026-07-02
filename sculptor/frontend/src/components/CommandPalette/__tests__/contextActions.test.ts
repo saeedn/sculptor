@@ -36,8 +36,8 @@ const makeWorkspaceRuntime = (overrides: WorkspaceRuntimeOverrides = {}): Worksp
   beginDelete: vi.fn(),
   canCloseOthers: vi.fn(() => overrides.canCloseOthers ?? true),
   commitChanges: vi.fn(),
-  createMergeRequest: vi.fn(),
-  openMergeRequest: vi.fn(),
+  createPullRequest: vi.fn(),
+  openPullRequest: vi.fn(),
   openInApp: vi.fn(),
   hasUncommittedChanges: vi.fn(() => overrides.hasUncommittedChanges ?? false),
   hasOpenPr: vi.fn(() => overrides.hasOpenPr ?? false),
@@ -134,12 +134,12 @@ describe("buildWorkspaceActions", () => {
     expect(actions.find((a) => a.id === "open_pr")?.title).toBe("Open pull request");
   });
 
-  it("open_pr perform routes to runtime.openMergeRequest", () => {
+  it("open_pr perform routes to runtime.openPullRequest", () => {
     const runtime = makeWorkspaceRuntime({ hasOpenPr: true });
     const actions = buildWorkspaceActions(runtime);
     const ws = fakeWorkspace("w1");
     actions.find((a) => a.id === "open_pr")?.perform(ws as never);
-    expect(runtime.openMergeRequest).toHaveBeenCalledWith(ws);
+    expect(runtime.openPullRequest).toHaveBeenCalledWith(ws);
   });
 });
 

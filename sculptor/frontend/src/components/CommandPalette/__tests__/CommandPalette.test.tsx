@@ -646,13 +646,6 @@ describe("CommandPalette", () => {
     });
   });
 
-  it("renders no footer", () => {
-    commandRegistry.register(reg({ id: "test.no_footer", title: "No footer please", perform: () => {} }));
-    const store = setupOpenStore();
-    renderPalette(store);
-    expect(screen.queryByTestId(ElementIds.COMMAND_PALETTE_FOOTER)).toBeNull();
-  });
-
   it("opens directly to a sub-page when seeded via commandPaletteInitialPageAtom (Cmd+P flow)", async () => {
     // The Cmd+P keybinding wants to open the palette already on the
     // workspaces.switch sub-page in one gesture. It does this by

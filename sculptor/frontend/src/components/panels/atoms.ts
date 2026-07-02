@@ -112,10 +112,6 @@ const isZoneVisibleAtomMap = new Map<ZoneId, Atom<boolean>>(
   ]),
 );
 
-export const isZoneVisibleAtom = (zoneId: ZoneId): Atom<boolean> => {
-  return isZoneVisibleAtomMap.get(zoneId)!;
-};
-
 // Derived: is left side visible
 export const isLeftSideVisibleAtom = atom<boolean>((get) => {
   return get(isZoneVisibleAtomMap.get("top-left")!);

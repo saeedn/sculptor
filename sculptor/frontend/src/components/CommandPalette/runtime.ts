@@ -32,7 +32,6 @@ export type CommandRuntime = {
   };
   ui: {
     toggleHelpDialog: () => void;
-    toggleDevPanel: () => void;
     /**
      * Toggle the visibility of one specific panel by id (e.g. "files",
      * "terminal", "notes"). Smart-toggles via `usePanelActions`: opens
@@ -69,9 +68,5 @@ export type CommandRuntime = {
      * (and re-registering all builtin commands) on every config change.
      */
     updateField: (field: UserConfigField, value: unknown) => Promise<unknown>;
-  };
-  electron: {
-    isAvailable: boolean;
-    reloadWindow: () => void;
   };
 };

@@ -36,7 +36,7 @@ export const buildWorkspaceActions = (runtime: WorkspaceActionRuntime): Readonly
     paletteKeywords: ["pr", "pull", "request", "github"],
     disabled: (ws): boolean => !runtime.canCreatePr(ws),
     disabledReason: (): string => "An open pull request already exists",
-    perform: (ws): void => runtime.createMergeRequest(ws),
+    perform: (ws): void => runtime.createPullRequest(ws),
   },
   {
     id: "open_pr",
@@ -47,7 +47,7 @@ export const buildWorkspaceActions = (runtime: WorkspaceActionRuntime): Readonly
     paletteKeywords: ["pr", "pull", "request", "browser", "view", "github"],
     disabled: (ws): boolean => !runtime.hasOpenPr(ws),
     disabledReason: (): string => "No open pull request for this workspace",
-    perform: (ws): void => runtime.openMergeRequest(ws),
+    perform: (ws): void => runtime.openPullRequest(ws),
   },
   // Right-click menu injects "Open in..." submenu here (after open_pr)
   // via `injectAfter` in menu.tsx. The palette sub-page emits its

@@ -71,7 +71,7 @@ const NotificationToastItem = memo(function NotificationToastItem({
  */
 export const NotificationToasts = (): ReactElement => {
   const notifications = useAtomValue(notificationsAtom);
-  const { projectID, taskID } = useImbueParams();
+  const { taskID } = useImbueParams();
   const [toastStates, setToastStates] = useState<Array<NotificationToastState>>([]);
   const notificationIdsRef = useRef<Set<string>>(new Set());
 
@@ -84,11 +84,8 @@ export const NotificationToasts = (): ReactElement => {
     if (newNotifications.length > 0) {
       const newToastStates = newNotifications
         .filter((notification) => {
-          // Discard notifications not relevant to the current project/task.
-          return (
-            (!notification.projectId || notification.projectId === projectID) &&
-            (!notification.taskId || notification.taskId === taskID)
-          );
+          // Discard notifications not relevant to the current task.
+          return !notification.taskId || notification.taskId === taskID;
         })
         .map((notification) => ({
           notification,
@@ -99,7 +96,7 @@ export const NotificationToasts = (): ReactElement => {
 
       newNotifications.forEach((n) => processedNotificationIds.add(n.objectId));
     }
-  }, [projectID, taskID, notifications]);
+  }, [taskID, notifications]);
 
   // Remove by objectId (the stable identity) rather than list index so the
   // callback stays referentially stable across renders.

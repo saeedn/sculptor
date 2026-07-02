@@ -94,7 +94,7 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
   // stable even if the user later resizes the window. We do NOT write these
   // defaults to zoneSizesAtom — that caused downstream re-renders that
   // destabilised other tests (e.g. clipboard/toast flows). The atom only
-  // holds values the user has explicitly dragged to.
+  // holds values the user has explicitly resized to via a resize handle.
   const [initialGroupSize, setInitialGroupSize] = useState<{ width: number; height: number } | null>(null);
   useLayoutEffect(() => {
     if (initialGroupSize !== null) return;
@@ -136,7 +136,7 @@ export const DockingLayout = ({ centerContent }: DockingLayoutProps): ReactEleme
   }, [panelGroupWidth, isLeftVisible, isRightVisible, isExpanded, setZoneVisibility]);
 
   // Refs keep the latest values accessible from within the resize-handle
-  // callbacks without re-creating them on every pixel of drag.
+  // callbacks without re-creating them on every resize step.
   const sizesRef = useRef(zoneSizes);
   sizesRef.current = zoneSizes;
   const defaultSideWidthRef = useRef(defaultSideWidthPx);

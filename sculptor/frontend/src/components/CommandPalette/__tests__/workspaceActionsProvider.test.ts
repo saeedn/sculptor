@@ -59,7 +59,6 @@ const makeCommandRuntime = (): CommandRuntime => {
     navigate: { toHome: noop, toSettings: noop, toAddWorkspace: noop, toWorkspace: vi.fn(), toAgent: vi.fn() },
     ui: {
       toggleHelpDialog: noop,
-      toggleDevPanel: noop,
       togglePanel: noop,
       setTheme: noop,
       nextWorkspaceTab: noop,
@@ -70,7 +69,6 @@ const makeCommandRuntime = (): CommandRuntime => {
       clearActiveTerminal: noop,
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },
-    electron: { isAvailable: false, reloadWindow: noop },
   };
 };
 
@@ -89,8 +87,8 @@ const makeActionRuntime = (overrides: ActionRuntimeOverrides = {}): WorkspaceAct
   beginDelete: vi.fn(),
   canCloseOthers: vi.fn(() => true),
   commitChanges: vi.fn(),
-  createMergeRequest: vi.fn(),
-  openMergeRequest: vi.fn(),
+  createPullRequest: vi.fn(),
+  openPullRequest: vi.fn(),
   openInApp: vi.fn(),
   hasUncommittedChanges: vi.fn(() => overrides.hasUncommittedChanges ?? false),
   hasOpenPr: vi.fn(() => overrides.hasOpenPr ?? false),

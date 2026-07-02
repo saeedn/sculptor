@@ -139,9 +139,9 @@ export type WorkspaceActionRuntime = {
   /** Send the user's commit prompt to chat for the active agent. */
   commitChanges: (workspace: Workspace) => void;
   /** Send the PR-creation prompt to chat (with target branch hint). */
-  createMergeRequest: (workspace: Workspace) => void;
+  createPullRequest: (workspace: Workspace) => void;
   /** Open the existing PR's web URL in a new tab. */
-  openMergeRequest: (workspace: Workspace) => void;
+  openPullRequest: (workspace: Workspace) => void;
   /** Reveal the workspace's repo path in the chosen external app. */
   openInApp: (workspace: Workspace, app: ExternalApp) => void;
 

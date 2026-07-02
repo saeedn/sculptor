@@ -12,9 +12,7 @@ type ResizeHandleProps = {
   onResize: (nextSizePx: number) => void;
   /** 1 = moving pointer positive on axis grows the panel; -1 = shrinks it. */
   direction?: 1 | -1;
-  className?: string;
   ariaLabel?: string;
-  "data-testid"?: string;
 };
 
 // Keyboard resize steps by 10% of the parent container on each arrow press —
@@ -26,9 +24,7 @@ export const ResizeHandle = ({
   getSize,
   onResize,
   direction = 1,
-  className,
   ariaLabel,
-  "data-testid": dataTestId,
 }: ResizeHandleProps): ReactElement => {
   const [isDragging, setIsDragging] = useState(false);
   // Holds the teardown for the active drag (if any) so the unmount effect can
@@ -88,20 +84,16 @@ export const ResizeHandle = ({
     [axis, direction, getSize, onResize],
   );
 
-  const baseClass = axis === "x" ? styles.horizontalResizeHandle : styles.verticalResizeHandle;
-  const combinedClassName = className ? `${baseClass} ${className}` : baseClass;
-
   return (
     <div
       role="separator"
       aria-orientation={axis === "x" ? "vertical" : "horizontal"}
       aria-label={ariaLabel}
       tabIndex={0}
-      className={combinedClassName}
+      className={axis === "x" ? styles.horizontalResizeHandle : styles.verticalResizeHandle}
       onPointerDown={handlePointerDown}
       onKeyDown={handleKeyDown}
       data-resize-handle-active={isDragging ? "" : undefined}
-      data-testid={dataTestId}
     />
   );
 };

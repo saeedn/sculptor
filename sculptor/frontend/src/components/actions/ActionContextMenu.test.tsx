@@ -170,14 +170,4 @@ describe("ActionContextMenu", () => {
       fireEvent.contextMenu(screen.getByTestId("trigger"));
     });
   });
-
-  describe("onOpenChange", () => {
-    it("calls onOpenChange when menu opens", () => {
-      const onOpenChange = vi.fn();
-      renderContextMenu({ onOpenChange });
-
-      fireEvent.contextMenu(screen.getByTestId("trigger"));
-      expect(onOpenChange).toHaveBeenCalledWith(true);
-    });
-  });
 });

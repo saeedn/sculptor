@@ -34,7 +34,6 @@ const makeRuntime = (): CommandRuntime => {
     },
     ui: {
       toggleHelpDialog: noop,
-      toggleDevPanel: noop,
       togglePanel: noop,
       setTheme: noop,
       nextWorkspaceTab: noop,
@@ -45,7 +44,6 @@ const makeRuntime = (): CommandRuntime => {
       clearActiveTerminal: noop,
     },
     config: { updateField: vi.fn().mockResolvedValue(undefined) },
-    electron: { isAvailable: false, reloadWindow: noop },
   };
 };
 

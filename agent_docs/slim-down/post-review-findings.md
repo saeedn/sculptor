@@ -200,6 +200,27 @@ owner.
   `RightSidebar.tsx:12`): production-dead; load-bearing only in
   `DockingLayout.test.tsx:112`. Switch the test locator, then drop.
 
+### Implementation verification (2026-07-02)
+
+Sections 1-3 were implemented across commits bfe39a9f1a..b6ed5304ec.
+Gates at HEAD: `just format`, `just check`, and all four `just test-unit`
+suites green. Full integration suite (RUN_ALL=1, frontend + regression):
+**412 collected == 412 executed; 400 passed, 5 skipped, 1 xfailed, 6
+failed**. All 6 failures were re-run in isolation and against the
+pre-change commit aa4612ac8e:
+
+- 4 passed on the isolation re-run (load flakes under -n8).
+- `test_workspace_scoped_changes.py::test_changes_tab_shows_diffs_from_all_agents`
+  flakes ~50% solo at BOTH HEAD and aa4612ac8e (an add-agent double-fire
+  race: 3 AGENT_TABs where 2 are expected) — pre-existing; upstream #165
+  fixes this class.
+- `test_workspace_close_vs_delete.py::test_cmd_shift_w_deletes_active_workspace`
+  failed 1-of-2 solo at HEAD, 0-of-5 at aa4612ac8e; its signature (Radix
+  delete-confirmation dialog detaching the confirm button mid-click) is the
+  known dialog-animation race family, and nothing in the diff touches that
+  dialog. Attributed to pre-existing flake; keep an eye on it. Upstream
+  #169/#181 harden adjacent surfaces.
+
 ## 4. Further cuts (owner decisions — NOT yet approved)
 
 **Should-cut by the spec's own logic:**

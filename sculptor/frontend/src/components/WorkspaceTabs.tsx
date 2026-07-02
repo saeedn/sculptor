@@ -49,8 +49,6 @@ import { WorkspacePeekOverlay } from "~/pages/workspace/components/WorkspacePeek
 
 import styles from "./WorkspaceTabs.module.scss";
 
-const ICON_SIZE = 14;
-
 // Derive the active tab id from the live URL hash (e.g. "#/ws/<id>/agent/<id>").
 // cycleTab reads this at keypress time rather than a closed-over route value: the
 // keydown listener re-registers only after React commits, while navigate() updates
@@ -79,7 +77,13 @@ export const WorkspaceTabs = (): ReactElement => {
   const keybindingsMap = useAtomValue(keybindingsMapAtom);
   const openNewWorkspaceTabIds = useAtomValue(openNewWorkspaceTabIdsAtom);
   const openNewWorkspaceTab = useSetAtom(openNewWorkspaceTabAtom);
-  const { isAddWorkspaceRoute, addWorkspaceDraftId, isHomeRoute, isSettingsRoute } = useImbueLocation();
+  const {
+    isAddWorkspaceRoute,
+    addWorkspaceDraftId,
+    isHomeRoute,
+    isSettingsRoute,
+    agentId: focusedAgentId,
+  } = useImbueLocation();
 
   const { handleClose, handleCloseOthers, handleCloseAll, navigateToNextTab } = useWorkspaceTabActions();
 
@@ -112,11 +116,11 @@ export const WorkspaceTabs = (): ReactElement => {
 
     for (const workspace of workspaces ?? []) {
       const workspaceTasks = activeTasks.filter((task) => task.workspaceId === workspace.objectId);
-      statusMap.set(workspace.objectId, computeWorkspaceDotStatus(workspaceTasks));
+      statusMap.set(workspace.objectId, computeWorkspaceDotStatus(workspaceTasks, focusedAgentId));
     }
 
     return statusMap;
-  }, [workspaces, tasks]);
+  }, [workspaces, tasks, focusedAgentId]);
 
   const handleRenameCommit = useCallback(
     async (workspaceId: string, newName: string): Promise<void> => {
@@ -204,13 +208,7 @@ export const WorkspaceTabs = (): ReactElement => {
         }
       }
     },
-    [
-      effectiveOpenTabIds,
-      handleWorkspaceClick,
-      navigateToAddWorkspace,
-      navigateToHome,
-      navigateToGlobalSettings,
-    ],
+    [effectiveOpenTabIds, handleWorkspaceClick, navigateToAddWorkspace, navigateToHome, navigateToGlobalSettings],
   );
 
   const goToNextTab = useCallback((): void => cycleTab(1), [cycleTab]);

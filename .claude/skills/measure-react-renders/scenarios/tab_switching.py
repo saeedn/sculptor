@@ -23,36 +23,48 @@ TARGET_COMPONENTS = [
     "ZoneContent",
     "ZoneContentInner",
     "DiffSplitContainer",
-    "DiffSplitContainerInner",
-    "AlphaChatInterface",
-    "AlphaChatInterfaceInner",
-    "ChatInput",
+    "ChatPanelContent",
+    "AgentTerminalPanel",
     "WorkspaceBanner",
     "WorkspaceTabs",
     "TopBar",
 ]
 
 
-def _create_second_task(page, base_url):
-    """Create a second task via the UI or API and return its task_id."""
+def _create_second_workspace(page, base_url):
+    """Create a second workspace + terminal agent via the API.
+
+    Returns {"workspaceId": ..., "agentId": ...} or None on failure.
+    """
     # Use fetch() inside the page to call the API directly
     result = page.evaluate("""async () => {
         const projectsRes = await fetch('/api/v1/projects');
         const projects = await projectsRes.json();
         const projectId = projects[0]?.objectId;
         if (!projectId) return null;
-        const taskRes = await fetch(`/api/v1/projects/${projectId}/tasks`, {
+        const branchRes = await fetch(`/api/v1/projects/${projectId}/current_branch`);
+        const sourceBranch = (await branchRes.json())?.currentBranch;
+        if (!sourceBranch) return null;
+        const wsRes = await fetch('/api/v1/workspaces', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({
-                prompt: 'Say goodbye briefly',
-                interface: 'API',
-                model: 'CLAUDE-4-SONNET',
-                mode: 'IN_PLACE'
+                projectId,
+                sourceBranch,
+                requestedBranchName: `perf-tab-switching-${Date.now()}`,
+                description: 'Tab switching perf scenario'
             })
         });
-        const task = await taskRes.json();
-        return { workspaceId: task.workspaceId, taskId: task.id };
+        if (!wsRes.ok) return null;
+        const workspace = await wsRes.json();
+        const agentRes = await fetch(`/api/v1/workspaces/${workspace.objectId}/agents`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ agentType: 'terminal' })
+        });
+        if (!agentRes.ok) return null;
+        const agent = await agentRes.json();
+        return { workspaceId: workspace.objectId, agentId: agent.id };
     }""")
     return result
 
@@ -62,10 +74,10 @@ def setup(page, base_url, workspace_id, task_id):
     page.wait_for_load_state("networkidle")
     time.sleep(5)
 
-    # Create a second task so we have two tabs to switch between
-    second = _create_second_task(page, base_url)
+    # Create a second workspace so we have two tabs to switch between
+    second = _create_second_workspace(page, base_url)
     if second:
-        page.goto(f"{base_url}/#/ws/{second['workspaceId']}/agent/{second['taskId']}")
+        page.goto(f"{base_url}/#/ws/{second['workspaceId']}/agent/{second['agentId']}")
         page.wait_for_load_state("networkidle")
         time.sleep(3)
         # Navigate back to the first workspace
@@ -75,17 +87,16 @@ def setup(page, base_url, workspace_id, task_id):
 
 
 def action(page):
-    # Find workspace tab buttons in the WorkspaceTabs area
-    # Try several selectors since the tab bar implementation may vary
-    tabs = page.locator('[data-testid="workspace-tab"]').all()
+    # Find workspace tab buttons in the tab bar. SortableTab renders each
+    # workspace tab with data-testid="WORKSPACE_TAB" (ElementIds.WORKSPACE_TAB).
+    tabs = page.locator('[data-testid="WORKSPACE_TAB"]').all()
 
     if len(tabs) < 2:
         # Fall back to any tab-like elements in the top bar
         tabs = page.locator('[role="tab"]').all()
 
     if len(tabs) < 2:
-        # Try clicking the "+" new workspace button path indirectly — just navigate
-        # directly via URL to simulate a tab switch
+        # Last resort: navigate directly via URL to simulate a tab switch
         result = page.evaluate("""async () => {
             const res = await fetch('/api/v1/projects');
             const projects = await res.json();

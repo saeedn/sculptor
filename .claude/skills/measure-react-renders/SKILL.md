@@ -26,8 +26,14 @@ If the user provides one, use it. Otherwise write a Python file exporting:
 - `setup(page, base_url, workspace_id, task_id)` — navigate + wait
 - `action(page)` — perform the action to measure
 
-Component names must be **unminified** source names (e.g. `AlphaChatInterfaceInner`
-if the export is memo-wrapped, `AlphaChatInterface` if not).
+Component names must be **unminified** source names (e.g. `ZoneContentInner`
+if the export is memo-wrapped, `ZoneContent` if not).
+
+Bundled scenarios (in `scenarios/`):
+
+- `panel_resize.py` — keyboard-resize the panel dividers
+- `panel_toggle.py` — open/close a side panel via its sidebar icon
+- `tab_switching.py` — click between two workspace tabs
 
 See `scenarios/panel_resize.py` for an example.
 
@@ -54,13 +60,20 @@ prints a comparison table.
 git worktree remove /tmp/sculptor_baseline
 ```
 
+The measurement run creates disposable `perf-measure-*` branches in both
+repos (workspace creation is worktree-based); delete them afterwards:
+
+```bash
+git branch --list 'perf-*' | xargs -r git branch -D
+```
+
 ## Scenario example
 
 ```python
 import time
 
 DESCRIPTION = "Panel resize render cascade"
-TARGET_COMPONENTS = ["AlphaChatInterface", "DiffSplitContainer", "ZoneContent"]
+TARGET_COMPONENTS = ["AgentTerminalPanel", "DiffSplitContainer", "ZoneContent"]
 
 def setup(page, base_url, workspace_id, task_id):
     page.goto(f"{base_url}/#/ws/{workspace_id}/agent/{task_id}")

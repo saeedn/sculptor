@@ -121,7 +121,7 @@ def story_iframe_url(story_id: str, theme: str = "light") -> str:
     Build the iframe URL for a story.
 
     story_id format: "{kebab-title}--{kebab-variant}"
-    e.g., "custom-askuserquestion--single-question"
+    e.g., "custom-workspacebanner--create-pr"
          "radix-button--default"
     """
     return f"{STORYBOOK_URL}/iframe.html?id={story_id}&globals=theme:{theme}&viewMode=story"
@@ -132,10 +132,10 @@ def main() -> None:
         context = browser.new_context(viewport={"width": 1400, "height": 900})
         page = context.new_page()
 
-        page.goto(story_iframe_url("custom-askuserquestion--single-question", theme="dark"))
+        page.goto(story_iframe_url("custom-workspacebanner--create-pr", theme="dark"))
         page.wait_for_load_state("networkidle")
         time.sleep(1)
-        page.screenshot(path=f"{SCREENSHOTS_DIR}/askuserquestion_dark.png")
+        page.screenshot(path=f"{SCREENSHOTS_DIR}/workspacebanner_dark.png")
 
         browser.close()
 
@@ -185,10 +185,10 @@ hyphens separate the story title from the variant name.
 
 | Story file title | Export name | Story ID |
 |---|---|---|
-| `Custom/AskUserQuestion` | `SingleQuestion` | `custom-askuserquestion--single-question` |
-| `Custom/AskUserQuestion` | `MultiSelect` | `custom-askuserquestion--multi-select` |
-| `Custom/AskUserQuestion` | `MultipleQuestions` | `custom-askuserquestion--multiple-questions` |
-| `Custom/AskUserQuestion` | `NoDismiss` | `custom-askuserquestion--no-dismiss` |
+| `Custom/WorkspaceBanner` | `CreatePr` | `custom-workspacebanner--create-pr` |
+| `Custom/WorkspaceBanner` | `OpenPr` | `custom-workspacebanner--open-pr` |
+| `Custom/DiffFileHeader` | `Wide` | `custom-difffileheader--wide` |
+| `Custom/DiffFileHeader` | `VeryNarrow` | `custom-difffileheader--very-narrow` |
 | `Custom/Panels/DockingLayout` | `Default` | `custom-panels-dockinglayout--default` |
 | `Custom/Tabs/TabBar` | `Default` | `custom-tabs-tabbar--default` |
 | `Radix/Button` | `Default` | `radix-button--default` |
@@ -214,11 +214,11 @@ for story_id in sorted(data['entries'].keys()):
 
 ```python
 VARIANTS = [
-    "custom-askuserquestion--single-question",
-    "custom-askuserquestion--multi-select",
-    "custom-askuserquestion--multiple-questions",
-    "custom-askuserquestion--minimal",
-    "custom-askuserquestion--no-dismiss",
+    "custom-difffileheader--wide",
+    "custom-difffileheader--medium",
+    "custom-difffileheader--narrow",
+    "custom-difffileheader--very-narrow",
+    "custom-difffileheader--short-path",
 ]
 
 for variant in VARIANTS:
@@ -233,7 +233,7 @@ for variant in VARIANTS:
 ### Clip to just the component (no surrounding padding)
 
 ```python
-page.goto(story_iframe_url("custom-askuserquestion--single-question"))
+page.goto(story_iframe_url("custom-workspacebanner--create-pr"))
 page.wait_for_load_state("networkidle")
 # Find the story root element and clip to its bounding box
 element = page.locator("#storybook-root").first

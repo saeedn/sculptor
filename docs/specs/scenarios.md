@@ -21,7 +21,7 @@ behavior**.
 
 | Prefix | Area |
 |--------|------|
-| `SHELL` | App shell: tabs, top bar, window controls, zen/focus mode, version, status banners |
+| `SHELL` | App shell: tabs, top bar, window controls, version, status banners |
 | `ROUTE` | Routing, redirects, error/404 pages, startup |
 | `HELP` | Keyboard-shortcuts (Help) dialog |
 | `HOME` | Home page / recent-workspaces list |
@@ -29,11 +29,10 @@ behavior**.
 | `ADDWS` | Add-workspace page (create workspace form) |
 | `ADDREPO` | Add-repository flow, dialogs, and path autocomplete |
 | `WS` | Workspace shell (banner, PR button, agent tabs, terminal agent, peek, layout) |
-| `PANEL` | Workspace side panels (files, changes, history, diff, terminal, skills, actions) |
+| `PANEL` | Workspace side panels (files, changes, history, diff, terminal, actions) |
 | `CMDP` | Command palette |
 | `SET` | Settings page |
 | `ACT` | Actions feature components |
-| `SKILL` | Skills UI components |
 | `DEV` | Dev/debug panels and markdown links |
 
 ---
@@ -181,27 +180,7 @@ behavior**.
   - When: the user hovers a top-bar button.
   - Then: a tooltip shows the button name and its keyboard shortcut.
 
-## Zen & focus modes
-
-- **SHELL-028 — Enter zen mode**
-  - Given: the user is on a workspace page.
-  - When: the user presses `Cmd+Shift+\`.
-  - Then: the top bar and side panels hide, leaving only the agent pane; a draggable title bar is shown.
-
-- **SHELL-029 — Exit zen mode via floating button**
-  - Given: zen mode is active.
-  - When: the user moves the mouse to the top-left hot zone.
-  - Then: an "Exit zen mode" button appears; clicking it restores the normal layout.
-
-- **SHELL-030 — Tab cycling works in zen mode**
-  - Given: zen mode is active.
-  - When: the user presses `Cmd+[` / `Cmd+]`.
-  - Then: the active tab changes even though the top bar remains hidden.
-
-- **SHELL-031 — Toggle focus mode**
-  - Given: the user is on a workspace page.
-  - When: the user presses `Cmd+\`.
-  - Then: all side panels collapse and the agent pane expands; pressing again restores the panels.
+## Panel toggles
 
 - **SHELL-032 — Toggle individual panels via keyboard**
   - Given: the user is on a workspace page.
@@ -218,7 +197,7 @@ behavior**.
 ## Version indicator
 
 - **SHELL-034 — Version number shown**
-  - Given: the user is on a non-workspace page (and not in zen mode).
+  - Given: the user is on a non-workspace page.
   - When: the page renders.
   - Then: the version number is visible in the bottom-right corner.
 
@@ -373,7 +352,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **HOME-010 — Workspace row contents**
   - Given: a workspace exists.
   - When: the row is shown.
-  - Then: it shows a status dot, the workspace name, the branch name (monospace), a PR/MR button if a branch exists, the project name (revealed on hover), a relative last-activity time, and a delete button (revealed on hover).
+  - Then: it shows a status dot, the workspace name, the branch name (monospace), a PR button if a branch exists, the project name (revealed on hover), a relative last-activity time, and a delete button (revealed on hover).
 
 - **HOME-011 — Row hover/focus styling**
   - Given: a workspace row.
@@ -420,10 +399,10 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - When: the user clicks Delete (or presses Enter).
   - Then: the dialog closes and the row disappears from the list immediately.
 
-- **HOME-020 — PR/MR button states on a row**
+- **HOME-020 — PR button states on a row**
   - Given: a workspace row with a branch.
   - When: the PR status is known.
-  - Then: the button reflects the state: a spinner + "Checking PR…" while loading; "Create PR"/"Create MR" when none exists; "PR #N"/"MR !N" with pipeline & review status dots when open; a merged/closed badge when merged/closed; an "Assign PR" option when a PR targets a different branch; and an error button (warning/info icon) on failure.
+  - Then: the button reflects the state: a spinner + "Checking PR…" while loading; "Create PR" when none exists; "PR #N" with pipeline & review status dots when open; a merged/closed badge when merged/closed; an "Assign PR" option when a PR targets a different branch; and an error button (warning/info icon) on failure.
   - (See WS-PR scenarios for full PR-button behavior; rows reuse the same component.)
 
 ---
@@ -648,16 +627,16 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 # WS — Workspace shell (banner, PR, agent tabs, terminal agent, peek, layout)
 
-## PR / MR button
+## PR button
 
-- **WS-022 — Checking PR/MR status**
+- **WS-022 — Checking PR status**
   - Given: a workspace with a branch.
   - When: PR status is loading.
-  - Then: a spinner with "Checking PR..." / "Checking MR..." is shown.
+  - Then: a spinner with "Checking PR..." is shown.
 
-- **WS-023 — Create PR/MR**
+- **WS-023 — Create PR**
   - Given: no PR exists for the branch.
-  - When: the user clicks "Create PR"/"Create MR".
+  - When: the user clicks "Create PR".
   - Then: a default PR-creation prompt (including the target branch) is sent to the agent.
 
 - **WS-024 — Edit PR prompt before creating**
@@ -666,14 +645,14 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - Then: a dialog opens to edit the prompt; Save updates it and closes.
 
 - **WS-025 — Open PR display**
-  - Given: an open PR/MR exists.
+  - Given: an open PR exists.
   - When: viewing the button.
-  - Then: it shows "PR #N"/"MR !N" with pipeline and review status dots.
+  - Then: it shows "PR #N" with pipeline and review status dots.
 
 - **WS-026 — Open PR in browser**
   - Given: an open PR button is shown.
   - When: the user clicks the PR number.
-  - Then: the PR/MR opens in the browser.
+  - Then: the PR opens in the browser.
 
 - **WS-027 — PR detail dropdown**
   - Given: an open PR button is shown.
@@ -698,7 +677,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **WS-031 — Assign PR (target mismatch)**
   - Given: a PR exists for a different target than the workspace's.
   - When: viewing the button.
-  - Then: an "Assign PR"/"Assign MR" button is shown; opening it offers "Create PR → {target}" and "switch target to {target}".
+  - Then: an "Assign PR" button is shown; opening it offers "Create PR → {target}" and "switch target to {target}".
 
 - **WS-032 — PR error states**
   - Given: PR status checking failed.
@@ -723,11 +702,6 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - Then: a dropdown offers Open folder, Copy relative path, Copy path, and Open in installed apps (VS Code, etc.), each performing its labeled action; the chosen app is remembered.
 
 ## Banner & diff summary
-
-- **WS-037 — Banner visibility**
-  - Given: the user is/ is not in zen mode.
-  - When: viewing the workspace.
-  - Then: the banner with repo/branch/PR info is shown normally and hidden in zen mode.
 
 - **WS-038 — Banner progressive collapse**
   - Given: the viewport narrows.
@@ -813,7 +787,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - **WS-061 — Peek popover on hover**
   - Given: workspace tabs are shown.
   - When: the user hovers a workspace tab for a moment.
-  - Then: a peek popover appears showing status, agent list, PR/MR info, branch, and diff stats.
+  - Then: a peek popover appears showing status, agent list, PR info, branch, and diff stats.
 
 - **WS-062 — Smooth peek transitions**
   - Given: a peek popover is open.
@@ -833,9 +807,9 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 ## Bottom bar & layout
 
 - **WS-065 — Panel toggle buttons**
-  - Given: not in zen mode.
+  - Given: the user is on a workspace page.
   - When: viewing the bottom bar.
-  - Then: toggle buttons for the left, bottom, and right panels and a focus-mode button are shown.
+  - Then: toggle buttons for the left, bottom, and right panels are shown.
 
 - **WS-066 — Toggle a panel from the bottom bar**
   - Given: a panel has content.
@@ -1048,33 +1022,6 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - When: the panel mounts.
   - Then: a "Starting terminal..." message is shown.
 
-## Skills panel
-
-- **PANEL-041 — Skill type sections**
-  - Given: skills loaded.
-  - When: the panel renders.
-  - Then: skills are grouped by type ("Custom Skills", Sculptor, Built-in) with collapsible headers.
-
-- **PANEL-042 — Skill hover popover**
-  - Given: a skill chip.
-  - When: the user hovers it.
-  - Then: a popover shows the description; hovering another chip swaps content instantly; leaving closes it after a short delay.
-
-- **PANEL-044 — Open skill in Sculptor**
-  - Given: a custom/sculptor skill popover.
-  - When: the user clicks "open in Sculptor".
-  - Then: a file-view tab opens showing the skill file (built-in skills have no such option).
-
-- **PANEL-045 — Skills search & filter**
-  - Given: the skills panel.
-  - When: the user opens search and types, navigates with arrows, or filters by type.
-  - Then: the list filters in real time, the selection moves and auto-scrolls, Escape closes search, and the type-filter popover toggles which types are shown (active filters highlight the icon).
-
-- **PANEL-046 — Skills empty / loading / error / unavailable**
-  - Given: skills are loading / failed / none exist / unsupported.
-  - When: the panel renders.
-  - Then: "Loading…" / an error / "No skills found" / "Skills unavailable" is shown.
-
 ## Actions panel
 
 - **PANEL-047 — Action groups**
@@ -1214,10 +1161,10 @@ The home page and the Add Workspace page share the recent-workspaces list and it
   - When: the user runs "Toggle theme" or opens "Switch theme…" and picks Light/Dark/System.
   - Then: the theme flips or is set accordingly.
 
-- **CMDP-019 — Layout & panel commands**
+- **CMDP-019 — Panel commands**
   - Given: the palette is open on a workspace.
-  - When: the user opens "Toggle layout…" / "Toggle panel visibility…" and runs toggle-left/right/bottom-panel, focus mode, zen mode, or a specific panel toggle.
-  - Then: the corresponding panel/mode toggles (panel toggles keep the palette open; focus/zen close it).
+  - When: the user opens "Toggle panel visibility…" and runs a panel toggle (Files, Actions, Terminal, …).
+  - Then: the corresponding panel visibly toggles and the palette closes.
 
 - **CMDP-021 — Terminal & help commands**
   - Given: the palette is open.
@@ -1238,8 +1185,8 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 - **CMDP-024 — Workspace actions sub-page**
   - Given: a workspace.
-  - When: the user opens "Workspace actions…" and runs Commit changes / Create PR (or MR) / Open PR / Rename / Close / Close others / Close all / Delete.
-  - Then: each performs its action (Commit disabled without changes; Open PR disabled without an open PR; Delete and others as labeled), and the label reflects PR vs MR by provider.
+  - When: the user opens "Workspace actions…" and runs Commit changes / Create PR / Open PR / Rename / Close / Close others / Close all / Delete.
+  - Then: each performs its action (Commit disabled without changes; Open PR disabled without an open PR; Delete and others as labeled).
 
 - **CMDP-025 — Open-in sub-page**
   - Given: external apps are available.
@@ -1434,25 +1381,6 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 
 ---
 
-# SKILL — Skills UI components
-
-- **SKILL-001 — Skill chip**
-  - Given: a skill chip.
-  - When: viewing it (or focusing it with the keyboard).
-  - Then: it shows `/skill-name`; an "Open in Sculptor" button appears for custom/sculptor skills (built-in skills have none); disabled chips are not interactive; the keyboard-target chip is highlighted.
-
-- **SKILL-002 — Skill hover content**
-  - Given: a skill chip.
-  - When: the user hovers/focuses it.
-  - Then: a popover shows the type badge (built-in/Sculptor/custom), the skill id, and description; hovering another chip in the group swaps content instantly; scrolling suppresses flapping.
-
-- **SKILL-003 — Skills search navigation**
-  - Given: the skills search input (placeholder "Search skills…").
-  - When: the user types, arrows, or clears.
-  - Then: the list filters in real time, arrows move the selection, Escape/clear closes search.
-
----
-
 # DEV — Dev/debug panels & markdown-diff anchors
 
 - **DEV-001 — TanStack devtools panel modes**
@@ -1482,7 +1410,7 @@ The home page and the Add Workspace page share the recent-workspaces list and it
 - Some behaviors are gated by capabilities and only appear when enabled: the CI babysitter
   and the dev/devtools panels. Tests should set the relevant state (or assert the gated UI
   is absent when off).
-- The home-page rows and the workspace banner reuse the same PR/MR button component, so
+- The home-page rows and the workspace banner reuse the same PR button component, so
   the WS-PR scenarios (WS-022…WS-032) also describe the home-row PR behavior (HOME-020).
 - Status dots (running / waiting / error / ready / read / unread, plus the two-dot mixed
   state) use one shared component across tab strips, home rows, agent tabs, peek popovers,

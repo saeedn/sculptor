@@ -32,24 +32,23 @@ Integration tests considered:
 
 | Area | Complete | Partial | Missing | Total |
 |------|---------:|--------:|--------:|------:|
-| SHELL | 17 | 10 | 16 | 43 |
+| SHELL | 12 | 10 | 17 | 39 |
 | ROUTE | 1 | 1 | 3 | 5 |
 | HELP | 0 | 2 | 1 | 3 |
 | HOME | 2 | 4 | 14 | 20 |
 | ADDWS | 7 | 11 | 3 | 21 |
 | ADDREPO | 1 | 5 | 2 | 8 |
 | ONB | 1 | 7 | 3 | 11 |
-| WS | 13 | 11 | 16 | 40 |
-| PANEL | 15 | 17 | 14 | 46 |
+| WS | 11 | 10 | 18 | 39 |
+| PANEL | 15 | 16 | 10 | 41 |
 | CMDP | 4 | 8 | 18 | 30 |
 | SET | 4 | 9 | 7 | 20 |
 | DEV | 0 | 1 | 3 | 4 |
-| SKILL | 0 | 0 | 3 | 3 |
-| ACT | 2 | 3 | 1 | 6 |
-| **Total** | **67** | **89** | **104** | **260** |
+| ACT | 2 | 2 | 2 | 6 |
+| **Total** | **60** | **86** | **101** | **247** |
 
-**Under the integration-only standard, 26% of scenarios are completely covered, 34% partially, and
-40% not at all.** (Counts are derived directly from the two sections below.)
+**Under the integration-only standard, 24% of scenarios are completely covered, 35% partially, and
+41% not at all.** (Counts are derived directly from the two sections below.)
 
 The per-scenario detail is split into two sections: **Coverage gaps — Partial & Missing** (every
 scenario needing work, with the test to add) and **Complete coverage** (every scenario already fully
@@ -78,8 +77,9 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 | SHELL-019 | Partial | test_restarts.py::test_tasks_persist_on_restart; test_restart_mru.py::test_restart_restores_active_workspace_and_agent | Open 3+ tabs in a specific order with a known active one, restart, assert same tabs/order/active tab. |
 | SHELL-026 | Partial | test_keybindings.py::test_help_dialog_reflects_customized_bindings (opens via Cmd+/, not the Help button) | Click the top-bar Help (?) button and assert the keyboard-shortcuts dialog opens. |
 | SHELL-027 | Missing | — | Hover a top-bar button and assert a tooltip showing the button name plus its keyboard shortcut. |
+| SHELL-032 | Missing | — | Press Cmd+Alt+Left / Cmd+Alt+Down / Cmd+Alt+Right; assert the left/bottom/right panel toggles hidden/visible respectively. |
 | SHELL-033 | Partial | test_regression_terminal_theme_toggle.py::test_terminal_theme_updates_on_toggle (presses Cmd+Shift+D; asserts xterm colors, not the app-level theme) | Press Cmd+Shift+D and assert the app-level light/dark theme flips without a reload. |
-| SHELL-034 | Missing | — | Assert the version number is visible bottom-right on a non-workspace page, and hidden in zen mode. |
+| SHELL-034 | Missing | — | Assert the version number is visible bottom-right on a non-workspace page. |
 | SHELL-035 | Missing | — | Click the version number (or bug icon); assert the popover opens showing version, git SHA, and the diagnostics fields: platform, uptime, active agents, disk, paths, install info. |
 | SHELL-041 | Partial | test_tanstack_devtools_panel.py::test_tanstack_devtools_panel_mounts_with_content (TanStack Devtools only) | Toggle "React Grab" and "TanStack event log" from the version popover and assert each dev tool appears/disappears. |
 | SHELL-042 | Missing | — | Make the backend unresponsive and assert the yellow bottom banner reads "Backend not responding. Please try restarting the app." |
@@ -118,7 +118,7 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 | HOME-017 | Missing | — | Assert "Delete workspace?" title, warning naming the workspace, Cancel, and a red default-focused Delete button. |
 | HOME-018 | Missing | — | Open dialog, click Cancel / press Escape; assert dialog closes and row remains. |
 | HOME-019 | Missing | — | Open dialog from a home row, click Delete; assert dialog closes and row disappears. (test_optimistic_deletion.py covers the tab menu, not the home-row dialog.) |
-| HOME-020 | Partial | test_backend_pr_polling.py::test_home_page_shows_pr_badge; ::test_multiple_workspaces_independent_pr_status | Add home-row assertions for "Checking PR…", "Create PR"/"Create MR", merged/closed badge, "Assign PR", error button. |
+| HOME-020 | Partial | test_backend_pr_polling.py::test_home_page_shows_pr_badge; ::test_multiple_workspaces_independent_pr_status | Add home-row assertions for "Checking PR…", "Create PR", merged/closed badge, "Assign PR", error button. |
 | ADDWS-001 | Partial | test_add_workspace_page.py (asserts form/submit button) | Delay project fetch; assert the centered spinner before the form. |
 | ADDWS-002 | Partial | test_multi_repo.py::test_mru_project_updates_after_creating_workspace | Add the no-MRU case (first project pre-selected). |
 | ADDWS-003 | Missing | — | Assert placeholder "Untitled workspace (optional)" and autofocus on initial load. |
@@ -141,7 +141,7 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 | ADDREPO-006 | Partial | test_path_autocomplete_keyboard.py::test_autocomplete_shows_submit_hint; test_path_tilde_display.py::test_path_autocomplete_shows_tilde_for_home_directory | Assert the debounce spinner before results and the "No matching directories" message when empty. |
 | ADDREPO-008 | Partial | test_path_autocomplete_keyboard.py::test_autocomplete_shows_submit_hint; ::test_cmd_enter_submits_path | Assert all three footer hints verbatim ("Esc: close", "↵: open", "{Meta}↵: add") and the Enter-with-dropdown-closed submit path. |
 
-### ONB / SKILL / ACT
+### ONB / ACT
 
 | Scenario | Status | Existing integration test(s) | Integration tests to add |
 |----------|--------|------------------------------|--------------------------|
@@ -155,29 +155,26 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 | ONB-035 | Partial | test_onboarding.py::test_full_onboarding_flow (asserts the claude + git status rows) | Assert the "Check your tools" heading, the explanatory line stating Sculptor only checks (never installs) tools, and the green-check "{name} found on your PATH" wording per found tool. |
 | ONB-036 | Partial | test_missing_claude_binary.py::test_missing_claude_binary_shows_friendly_error (asserts the missing-claude message and that Continue stays enabled) | Assert the missing tool's red icon and the "{name} not found on your PATH" wording, plus the "How to install {name}" link and the absence of an install button. |
 | ONB-037 | Partial | test_onboarding.py::test_full_onboarding_flow (Continue advances to the Add-Repo step); test_missing_claude_binary.py::test_missing_claude_binary_shows_friendly_error (Continue enabled while a tool is missing) | With a required tool missing, click Continue and assert it still advances (non-blocking); also cover the branch that goes straight into the app when a repo already exists. |
-| SKILL-001 | Missing | — | Assert a skill chip shows `/skill-name`, exposes an "Open in Sculptor" button for custom/sculptor skills (none for built-in), renders disabled chips as non-interactive, and highlights the keyboard-target chip. |
-| SKILL-002 | Missing | — | Hover skill chip A then chip B; assert the popover shows the type badge, skill id, and description, swaps content instantly between chips, and suppresses flapping while scrolling. |
-| SKILL-003 | Missing | — | Drive the skills search input ("Search skills…"); assert real-time filtering, arrow-key selection movement, and Escape/clear closing search. |
-| ACT-002 | Partial | test_custom_actions.py::test_builtin_chips (built-in group exposes no delete) | Right-click a regular action chip; assert "Queue message" (run-only), "Edit action", "Move to group…" (current disabled), red "Delete action". |
+| ACT-002 | Missing | — | Right-click a regular action chip; assert "Queue message" (run-only), "Edit action", "Move to group…" (current disabled), red "Delete action". |
 | ACT-003 | Partial | test_custom_actions.py::test_create_action_from_settings; ::test_edit_action_from_settings | Assert Save disabled until Name+Prompt non-empty, and `Cmd+Enter` submits when valid. |
-| ACT-005 | Partial | test_custom_actions.py::test_create_group_from_settings; ::test_builtin_chips | Add inline rename (Enter/blur confirm, Escape cancel, no collapse-toggle) and header-click collapse/expand (chevron + count badge). |
+| ACT-005 | Partial | test_custom_actions.py::test_create_group_from_settings | Add inline rename (Enter/blur confirm, Escape cancel, no collapse-toggle) and header-click collapse/expand (chevron + count badge). |
 | ACT-006 | Missing | — | Drag-simulation: drop indicators before/after, drop into group moves action, drop outside removes; built-ins not draggable. |
 
 ### WS
 
 | Scenario | Status | Existing integration test(s) | Integration tests to add |
 |----------|--------|------------------------------|--------------------------|
-| WS-022 | Missing | — | While PR status loads, assert spinner with "Checking PR…"/"Checking MR…". |
+| WS-022 | Missing | — | While PR status loads, assert spinner with "Checking PR…". |
 | WS-023 | Partial | test_pr_button_errors.py::test_github_happy_paths (Create PR visible) | Click Create PR; assert the default PR-creation prompt (incl. target branch) is sent to the agent. |
 | WS-024 | Missing | — | Open Create-PR chevron, click "Edit prompt…", edit and Save; assert prompt updated and dialog closes. |
 | WS-025 | Partial | test_pr_button_errors.py::test_github_happy_paths ("PR #42") | Assert pipeline and review status dots render on the open-PR button. |
-| WS-026 | Missing | — | Click the PR number; assert PR/MR opens in browser (intercept window.open / browser-open RPC). |
+| WS-026 | Missing | — | Click the PR number; assert the PR opens in browser (intercept window.open / browser-open RPC). |
 | WS-027 | Missing | — | Open chevron popover; assert title/link, checks/pipeline status, approvals with reviewer names, unresolved comments. |
 | WS-029 | Partial | test_backend_pr_polling.py::test_closed_not_merged_pr_shows_closed_state | Add the merged-PR case: merge icon + "merged" text; clicking opens browser. |
 | WS-030 | Missing | — | Hover pipeline/review dots; assert tooltip text ("Pipeline running/passed/failed/No pipeline", "Approved/Review pending/No reviewers"). |
-| WS-031 | Missing | — | PR with different target shows "Assign PR"/"Assign MR"; opening offers "Create PR → {target}" and "switch target to {target}". |
-| WS-032 | Partial | test_pr_button_errors.py::test_github_cli_error_variants; ::test_gitlab_cli_error_variants | Assert warning-triangle vs info icon distinction and the remediation-command copy icon turning to a checkmark briefly. |
-| WS-033 | Partial | test_target_branch.py::test_switching_to_all_scope_shows_target_branch_diff; test_pr_management.py::test_banner_hides_pr_ui_for_non_gitlab_origin | Click the selector; assert the dropdown lists remote branches; select one; assert target updates. |
+| WS-031 | Missing | — | PR with different target shows "Assign PR"; opening offers "Create PR → {target}" and "switch target to {target}". |
+| WS-032 | Partial | test_pr_button_errors.py::test_github_cli_error_variants | Assert warning-triangle vs info icon distinction and the remediation-command copy icon turning to a checkmark briefly. |
+| WS-033 | Partial | test_target_branch.py::test_switching_to_all_scope_shows_target_branch_diff; test_pr_management.py::test_banner_shows_target_branch_selector_for_non_github_origin | Click the selector; assert the dropdown lists remote branches; select one; assert target updates. |
 | WS-034 | Missing | — | Target differs from PR target → warning color; hover "PR #N targets {branch}"; selecting matching branch updates target. |
 | WS-035 | Missing | — | Click repo segment; assert menu (Open folder, Copy path, Copy relative path, Open in installed apps); each action fires; chosen app remembered. |
 | WS-038 | Partial | test_workspace_banner_overflow.py::test_collapsed_banner_has_no_inert_overflow_menu | Assert collapse priority order at successive widths: PR button → diff summary → repo segment. |
@@ -186,11 +183,12 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 | WS-043 | Missing | — | Hover agent status dot; assert tooltip shows status label + time-since-activity/creation. |
 | WS-046 | Partial | test_agent_tab_context_menu.py::test_agent_context_menu_rename | Add double-click-to-rename + Enter; add Escape-cancels-rename. |
 | WS-050 | Missing | — | Drag an agent tab to a new position; assert the tab order updates. |
-| WS-061 | Partial | test_workspace_peek.py::test_workspace_peek_popover_idle_state; ::test_workspace_peek_popover_waiting_state; ::test_peek_popover_shows_diff_stats | Assert a single popover surfaces status, agent list, PR/MR info, branch, and diff stats together. |
+| WS-061 | Partial | test_workspace_peek.py::test_workspace_peek_popover_idle_state; ::test_workspace_peek_popover_waiting_state; ::test_peek_popover_shows_diff_stats | Assert a single popover surfaces status, agent list, PR info, branch, and diff stats together. |
 | WS-062 | Partial | test_workspace_peek.py::test_workspace_peek_popover_hover_mechanics; test_regression_workspace_peek_stuck_on_close.py::test_workspace_peek_dismissed_on_middle_click_close | Assert content swaps instantly within grace period and close-after-delay on leaving all tabs. |
 | WS-063 | Missing | — | Workspace with >5 agents shows only 5 + "+N more agents" button that reveals the rest. |
 | WS-064 | Missing | — | Click peek agent row/header closes popover and opens workspace/agent; click branch copies it with "Copied!". |
-| WS-065 | Partial | test_side_toggle.py::test_right_side_toggle_hides_and_shows_panels; test_zen_mode.py::test_focus_mode_hides_panels_but_keeps_chrome | Assert left, bottom, right toggle buttons + focus-mode button all present (and hidden in zen mode). |
+| WS-065 | Missing | — | Assert the left, bottom, and right panel toggle buttons are all present in the bottom bar. |
+| WS-066 | Missing | — | Click a panel's toggle button; assert the panel hides/shows and the button's active state updates. |
 | WS-067 | Missing | — | Empty panel toggle is disabled, shows "Panel is empty" tooltip, does nothing on click. |
 | WS-068 | Missing | — | Hover a panel toggle; assert tooltip shows the panel name and its keybinding. |
 | WS-069 | Missing | — | Drag the diff-panel divider; assert it resizes, dragging past the threshold collapses the diff panel, and the expand control maximizes the diff while collapsing the agent pane (and vice-versa). |
@@ -219,13 +217,8 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 | PANEL-030 | Partial | test_file_browser.py::test_in_file_search_bar; ::test_in_file_search_works_in_file_view | Assert the "X of Y" counter, Enter/Shift+Enter (or arrows) navigation, Escape closing. |
 | PANEL-036 | Partial | test_terminal_agent_basic.py::test_terminal_agent_basic; test_registered_terminal_agent.py (tab data-dot-status read/unread) | Produce output in a non-active tab; assert a pulsing unread dot appears, then clears after switching to it. |
 | PANEL-037 | Missing | — (test_terminal.py references "Starting terminal…" only incidentally in an .or_(), not as a deterministic assertion) | Assert the "Starting terminal…" message renders while a terminal is starting. |
-| PANEL-041 | Missing | — | Assert skills grouped into Custom/Sculptor/Built-in collapsible headers with a count badge when collapsed. |
-| PANEL-042 | Missing | — | Hover a skill chip → description popover; hover another → swaps; mouse-leave closes after delay. |
-| PANEL-044 | Missing | — | Open a custom/sculptor skill popover, click "open in Sculptor"; assert a file-view tab opens; built-in skills lack the option. |
-| PANEL-045 | Missing | — | Drive the skills panel search: assert real-time filtering, arrow-key selection that auto-scrolls, Escape closing search, and the type-filter popover toggling which types are shown (active filters highlight the icon). |
-| PANEL-046 | Missing | — | Assert Loading / error / "No skills found" / "Skills unavailable" states and chips disabled while the agent is running. |
-| PANEL-047 | Partial | test_custom_actions.py::test_builtin_chips (Sculptor group first; no delete on builtin) | Assert collapsible group headers with count badges when collapsed and ungrouped actions at the bottom. |
-| PANEL-048 | Partial | test_custom_actions.py::test_draft_action_drafts_prompt_into_terminal_pty; ::test_builtin_chips | Assert an auto-submit action sends immediately and chips are disabled while the agent runs. |
+| PANEL-047 | Missing | — | Assert collapsible group headers with count badges when collapsed and ungrouped actions at the bottom. |
+| PANEL-048 | Partial | test_custom_actions.py::test_draft_action_drafts_prompt_into_terminal_pty | Assert an auto-submit action sends immediately and chips are disabled while the agent runs. |
 | PANEL-049 | Missing | — | Agent running, action chip context menu → "Queue message"; assert prompt queued (not auto-submitted). |
 | PANEL-051 | Partial | test_custom_actions.py::test_create_group_from_settings; ::test_delete_group_deletes_actions_from_settings; ::test_delete_group_deletes_actions_from_panel | Assert inline group rename (Enter/blur confirms) and Escape-cancel on group create. |
 | PANEL-052 | Missing | — | Drag an action/group → drop indicator + order updates; move action between groups; built-in items not draggable. |
@@ -235,7 +228,7 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 
 | Scenario | Status | Existing integration test(s) | Integration tests to add |
 |----------|--------|------------------------------|--------------------------|
-| CMDP-001 | Partial | test_command_palette.py::test_open_command_palette_via_topbar_button; ::test_open_command_palette_via_keyboard_shortcut (palette visible + input focused only) | Assert group headers render in spec order (Workspaces → Navigation → Theme & Layout → Chat → Terminal → Help) with the first row selected on open. |
+| CMDP-001 | Partial | test_command_palette.py::test_open_command_palette_via_topbar_button; ::test_open_command_palette_via_keyboard_shortcut (palette visible + input focused only) | Assert group headers render in spec order (Workspaces → Navigation → Theme & Layout → Terminal → Help) with the first row selected on open. |
 | CMDP-002 | Missing | — | Press Cmd+P; assert the palette opens on the "Go to workspace" sub-page (breadcrumb + "Find a workspace…" placeholder). |
 | CMDP-003 | Missing | — | Open via Cmd+K, press Cmd+K again; assert the palette closes and no command ran. |
 | CMDP-005 | Partial | test_command_palette.py::test_command_palette_filters_on_input (empty-state element only) | Assert the exact `No matches for '{query}'` copy including the typed query string. |
@@ -249,7 +242,7 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 | CMDP-016 | Missing | — | Run an async command; assert the row shows a spinner and the palette refuses to close until it completes. |
 | CMDP-017 | Partial | test_command_palette.py::test_command_palette_navigates_to_settings; ::test_command_palette_creates_new_agent | Add Open home navigates home, New workspace opens add-workspace, and assert New agent disabled/hidden off a workspace. |
 | CMDP-018 | Partial | test_command_palette.py::test_command_palette_keep_open_command (runs theme.toggle but does NOT assert the appearance changed); ::test_command_palette_subpage_push_pop | Assert running a theme command actually changes the applied appearance. |
-| CMDP-019 | Missing | — | On a workspace, run panel/mode toggles; assert the panel/mode visibly toggled (focus/zen close palette; zone toggles keep it open). |
+| CMDP-019 | Missing | — | On a workspace, open "Toggle panel visibility…" and run a panel toggle; assert the panel visibly toggled and the palette closed. |
 | CMDP-021 | Missing | — | Add Clear terminal clears the active terminal; Show keyboard shortcuts opens the dialog; terminal command hidden without a terminal panel. |
 | CMDP-022 | Missing | — | With 2+ workspaces, open "Go to workspace…"; assert status dots + current disabled; select another to navigate. |
 | CMDP-023 | Missing | — | With 2+ tabs, run Next/Previous workspace tab; assert the active tab changes. |
@@ -279,7 +272,7 @@ Every scenario that is **not** Complete, grouped by area. **Missing** = no integ
 | SET-025 | Missing | — (test_ci_babysitter.py configures via API, not the Settings UI) | Toggle babysitter, retry-cap 1–10 validation, edit pipeline-failed & merge-conflict prompts (+reset), dependent fields disable when off, save toast. |
 | SET-026 | Missing | — | Split-ratio 20–80%, tab-close behavior, line-wrapping, default diff view, commit prompt (+reset) — each with save toast. |
 | SET-027 | Partial | test_settings_integration.py::test_env_vars_section_shows_setup_instructions; ::test_env_vars_override_toggle_saves_setting; ::test_env_vars_loaded_names_shows_no_vars_without_env_file; test_project_env_vars.py::test_env_var_names_shown_in_settings | Cover the refresh button and the global-vs-repo-specific grouping of the loaded list. |
-| SET-031 | Partial | test_custom_actions.py::test_create_action_from_settings; ::test_edit_action_from_settings; ::test_delete_action_from_settings; ::test_create_group_from_settings; ::test_delete_group_deletes_actions_from_settings; ::test_builtin_chips | Cover Export ("sculptor-actions.json" download, disabled-when-empty) and Import (file picker, validate+merge+count toast). |
+| SET-031 | Partial | test_custom_actions.py::test_create_action_from_settings; ::test_edit_action_from_settings; ::test_delete_action_from_settings; ::test_create_group_from_settings; ::test_delete_group_deletes_actions_from_settings | Cover Export ("sculptor-actions.json" download, disabled-when-empty) and Import (file picker, validate+merge+count toast). |
 | SET-032 | Partial | test_custom_actions.py::test_create_action_from_settings; ::test_edit_action_from_settings | Assert Save disabled until valid, Cmd+Enter submits, and the Auto-submit toggle behavior within the dialog. |
 | SET-033 | Partial | test_custom_actions.py::test_create_group_from_settings; ::test_delete_group_deletes_actions_from_settings | Assert drag-to-reorder and inline group rename + success toast. |
 | DEV-001 | Partial | test_tanstack_devtools_panel.py::test_tanstack_devtools_panel_mounts_with_content (panel mounts only) | Cover header Dock/Float/Close controls, floating drag + resize within viewport, docked resize-from-top-edge + pushes content up, and closing hides it. |
@@ -309,11 +302,6 @@ Every scenario an integration test fully covers — it performs the user action 
 | SHELL-023 | test_closed_workspaces_dropdown.py::test_open_all_reopens_all_closed_workspaces |
 | SHELL-024 | test_closed_workspaces_dropdown.py::test_delete_workspace_from_dropdown |
 | SHELL-025 | test_command_palette.py::test_open_command_palette_via_topbar_button |
-| SHELL-028 | test_zen_mode.py::test_zen_mode_hides_chrome_and_panels |
-| SHELL-029 | test_zen_mode.py::test_exit_zen_mode_button_works |
-| SHELL-030 | test_zen_mode.py::test_workspace_tab_navigation_works_in_zen_mode |
-| SHELL-031 | test_zen_mode.py::test_focus_mode_hides_panels_but_keeps_chrome |
-| SHELL-032 | test_zen_mode.py::test_panel_toggle_in_zen_mode_persists_on_exit |
 | ROUTE-001 | test_restart_mru.py::test_restart_restores_active_workspace_and_agent; ::test_restart_with_no_mru_lands_on_new |
 
 ### HOME / ADDWS / ADDREPO
@@ -336,7 +324,7 @@ Every scenario an integration test fully covers — it performs the user action 
 | Scenario | Existing integration test(s) |
 |----------|------------------------------|
 | ONB-030 | test_onboarding.py::test_full_onboarding_flow |
-| ACT-001 | test_custom_actions.py::test_draft_action_drafts_prompt_into_terminal_pty; ::test_builtin_chips; ::test_create_action_from_panel |
+| ACT-001 | test_custom_actions.py::test_draft_action_drafts_prompt_into_terminal_pty; ::test_create_action_from_panel |
 | ACT-004 | test_custom_actions.py::test_delete_action_from_settings; ::test_delete_group_deletes_actions_from_settings; ::test_delete_group_deletes_actions_from_panel |
 
 ### WS
@@ -344,7 +332,6 @@ Every scenario an integration test fully covers — it performs the user action 
 | Scenario | Existing integration test(s) |
 |----------|------------------------------|
 | WS-028 | test_ci_babysitter.py::test_scenario_4_pause_toggle_prevents_prompt |
-| WS-037 | test_zen_mode.py::test_zen_mode_hides_chrome_and_panels; ::test_focus_mode_hides_panels_but_keeps_chrome |
 | WS-040 | test_workspace_banner.py::test_banner_shows_diff_stats; ::test_banner_click_navigates_to_changes_all |
 | WS-041 | test_multi_agent_workspace.py::test_multiple_agent_tabs_shown_for_shared_workspace; ::test_single_agent_shows_one_agent_tab |
 | WS-044 | test_multi_agent_workspace.py::test_create_second_agent_in_existing_workspace |
@@ -354,7 +341,6 @@ Every scenario an integration test fully covers — it performs the user action 
 | WS-049 | test_mark_unread.py::test_mark_adjacent_tab_unread |
 | WS-051 | test_terminal_agent_basic.py::test_terminal_agent_basic |
 | WS-052 | test_terminal_agent_basic.py::test_terminal_agent_basic (switch away/back, scrollback restored); test_terminal_tab_enhancements.py::test_terminal_compact_layout_no_heading |
-| WS-066 | test_side_toggle.py::test_right_side_toggle_hides_and_shows_panels; ::test_bottom_toggle_hides_and_shows_terminal |
 | WS-074 | test_workspace_setup_command.py::test_setup_config_prompt_deep_links_to_focused_textarea; test_regression_setup_command_backfill.py; test_regression_setup_command_rerun.py::test_setup_rerun_button_runs_command_again |
 
 ### PANEL
@@ -375,7 +361,7 @@ Every scenario an integration test fully covers — it performs the user action 
 | PANEL-031 | test_file_open_diff_modes.py::test_browse_tab_opens_file_view; test_sculpt_ui_open_file.py::test_mode_file_opens_file_view_tab; test_open_in_viewer.py::test_open_created_file_in_diff_viewer |
 | PANEL-034 | test_terminal.py::test_add_terminal_tab_creates_new_session; ::test_close_terminal_tab_switches_to_neighbor; ::test_terminal_tab_reuses_lowest_available_number; test_terminal_tab_enhancements.py::test_terminal_tab_double_click_rename; ::test_terminal_context_menu_has_close_all_and_rename |
 | PANEL-035 | test_terminal.py::test_opt_left_moves_cursor_back_by_word; ::test_ctrl_c_cancels_input; ::test_ctrl_d_shows_process_exited_message; test_terminal_agent_basic.py::test_terminal_agent_basic |
-| PANEL-050 | test_custom_actions.py::test_create_action_from_panel; ::test_edit_action_from_settings; ::test_delete_action_from_settings; ::test_builtin_chips |
+| PANEL-050 | test_custom_actions.py::test_create_action_from_panel; ::test_edit_action_from_settings; ::test_delete_action_from_settings |
 
 ### CMDP
 

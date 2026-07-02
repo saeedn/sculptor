@@ -7,7 +7,7 @@ When fixing bugs, all fixes MUST have an integration (e2e) test using Playwright
 
 **Purely visual bugs MUST NOT have automated tests.** Verify those with before/after screenshots instead. In particular, you MUST NOT write integration tests whose only assertions read layout properties (CSS dimensions, line-clamp, clipping, `page.evaluate()` reads of computed style, etc.) — those tests assert rendering, not behaviour, and the right evidence is a screenshot. See `docs/development/review/integration_tests.md#no_layout_only_tests`.
 
-**Bugs whose behaviour depends on real Claude (e.g. agent stdin/stdout protocol, Claude binary behaviour, subagent runtime) MUST be verified against real Claude** — `fake_claude` cannot faithfully model these. Use `/auto-qa-changes` (which runs real Claude by default) for the after-fix verification. `fake_claude` remains the correct standin when the bug is about Sculptor's own UI and does not depend on Claude's actual responses.
+**Bugs whose behaviour depends on real Claude (e.g. the Claude CLI's terminal behaviour, its lifecycle hooks, subagent runtime) MUST be verified against real Claude** — the fake terminal agent cannot faithfully model these. Use `/auto-qa-changes` (which runs the real `claude` CLI) for the after-fix verification. The fake terminal agent (`sculptor/sculptor/testing/fake_terminal_agent.py`) remains the correct standin when the bug is about Sculptor's own UI and does not depend on the agent tool's actual behaviour.
 
 **"Impossible" means exactly one of these:**
 - The buggy code path is not reachable from any UI surface (e.g. it is internal-only, a CLI-only entrypoint, or a background job with no UI trigger).

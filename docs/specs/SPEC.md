@@ -258,7 +258,7 @@ in your repo right away and you can push them yourself. Each open workspace is a
 Inside a workspace, a header **banner** shows where you are: the repo, the workspace's branch (which
 you can copy), a one-glance **diff summary**, and the workspace's **target branch** — what its changes
 are diffed against, with a selector to change it and a warning if a PR's target wouldn't match. (The
-target branch applies to every repo; the PR/MR surface built on it appears only for GitHub or GitLab
+target branch applies to every repo; the PR surface built on it appears only for GitHub
 repos → §7.6.) The banner collapses progressively as space tightens.
 
 If the project defines a **setup command**, it runs when the workspace is created; its progress and
@@ -380,7 +380,7 @@ just that file to its last committed state after you confirm.
 When you're satisfied, the **Commit** button at the top of the Changes tab, above the file list — labeled with the
 pending count, e.g. "Commit 2 changes," and disabled when there's nothing to commit — asks the agent
 to write a message and make the commit on the workspace branch. Committing does not push; the commit
-stays on the branch until you push it or open a PR/MR. Clicking the button does a **quick commit**
+stays on the branch until you push it or open a PR. Clicking the button does a **quick commit**
 with the default prompt; right-clicking it opens a dialog to **edit and save the commit-message
 prompt**, which then steers how messages are written on subsequent commits.
 
@@ -394,18 +394,17 @@ shows where the workspace's history forks from its starting point.
 
 ### 7.6 Pull Requests
 
-The pull-request surface described here appears **only when the workspace's repo has a GitHub or
-GitLab `origin`**; for any other repo there is no PR/MR control — though the target-branch selector still appears — and you
+The pull-request surface described here appears **only when the workspace's repo has a GitHub
+`origin`**; for any other repo there is no PR control — though the target-branch selector still appears — and you
 push the branch yourself. Given such a repo, once you've committed work on a workspace branch you can
-open a **pull request** (on GitHub) or **merge request** (on GitLab) straight from the workspace's
-top bar — Sculptor stays provider-neutral, so the control reads "Create PR" or "Create MR" to match
-your repo. Clicking it pushes the branch and
+open a **pull request** straight from the workspace's
+top bar via the **"Create PR"** control. Clicking it pushes the branch and
 asks the agent to open the request against the workspace's target branch. If you'd rather adjust how
 that's done first, the button's chevron menu offers **Edit prompt...**, which opens a dialog to revise
-the PR/MR-creation prompt before you create anything. While Sculptor is looking up status, the button
-shows a spinner with "Checking PR..."/"Checking MR...".
+the PR-creation prompt before you create anything. While Sculptor is looking up status, the button
+shows a spinner with "Checking PR...".
 
-Once a request exists, the button displays "PR #N"/"MR !N" alongside small status dots for its
+Once a request exists, the button displays "PR #N" alongside small status dots for its
 **pipeline/CI** and **review** state; hovering the dots explains them ("Pipeline running/passed/
 failed," "Approved/Review pending," and so on). Clicking the number opens the request in your browser.
 The chevron opens a **detail dropdown** with the title and link, checks/pipeline status, approvals and
@@ -415,7 +414,7 @@ and the status text updates as you toggle it.
 
 When the request is **merged** or **closed**, the button switches to a merge icon reading "PR #N
 merged"/"closed," and clicking it still opens the request in the browser. If a request already exists
-but targets a different branch than the workspace does, the button becomes **Assign PR/MR**, offering
+but targets a different branch than the workspace does, the button becomes **Assign PR**, offering
 to create a fresh request against the workspace's target or to switch the workspace's target to match
 the existing request. The target-branch selector itself flags the mismatch in a warning color, with a
 hover hint like "PR #N targets {branch} — retarget?". (A failing CI check itself just shows a red
@@ -451,18 +450,10 @@ terminal is driven by a coding tool rather than by you (→ §7.3, §7.4 Agents)
 A **skill** is a reusable agent capability you invoke as a **Claude Code slash command** — you type
 `/skill-name` directly into a terminal agent (the agent is Claude Code), and the skill runs as a full
 agent with its own tools, so it can read your codebase, spawn parallel subagents, and adapt to your
-repo. Sculptor surfaces three kinds: the **built-in** skills Claude Code ships with, the **Sculptor**
-plugin skills (the workflow set below, plus the base `sculptor` plugin's
+repo. Three kinds are available to an agent: the **built-in** skills Claude Code ships with, the
+**Sculptor** plugin skills (the workflow set below, plus the base `sculptor` plugin's
 `sculpt-cli`), and any **custom** skills you've installed under your home or repo `.claude/`
 directory.
-
-Sculptor also includes a **skill library** panel — a reference surface for browsing what's available
-rather than an input. It lists every skill grouped by type under collapsible headers, with its own
-search box that filters as you type, arrow-key navigation, and a type filter to narrow which kinds
-are shown. Hovering a skill opens a popover with its description; moving to another skill swaps the
-content instantly. A custom or Sculptor skill carries an **Open in Sculptor** control that opens the
-skill's file in a viewer tab so you can read its definition. The panel has clear loading, empty, and
-error states. To actually run a skill you type its slash command into the agent's terminal.
 
 The flagship bundled skills form the **engineering workflow** (the `sculptor-workflow` plugin): a
 pipeline that takes a feature from idea to shipped code in focused stages — **spec → mock → architect
@@ -487,8 +478,8 @@ pull request if the repo allows it.
 ### 7.9 Command Palette & Navigation
 
 Sculptor is organized into **tabs** along the top: a **Home** tab, a **Settings** tab, and a tab for
-each open workspace. You switch tabs by clicking, cycle through them with keyboard shortcuts (these
-keep working even in zen mode), drag to reorder them, and close them with the tab's minimize button, a middle-click,
+each open workspace. You switch tabs by clicking, cycle through them with keyboard shortcuts, drag
+to reorder them, and close them with the tab's minimize button, a middle-click,
 or a keyboard shortcut. Workspace tab labels truncate when long and carry a small **status dot**
 reflecting the agent's state; double-clicking a tab renames the workspace inline, and right-clicking
 opens a context menu to rename it, delete it, or close others/all. When too many tabs are open they overflow into a horizontal
@@ -506,13 +497,10 @@ and agents, show or hide panels, open Settings or Help, and toggle the theme. Co
 that don't apply right now are greyed out with a reason ("Only one agent in this workspace", "No
 uncommitted changes"), and rows show their keyboard shortcut where one exists.
 
-The **bottom bar** carries toggle buttons for the left, bottom, and right side panels plus a
-focus-mode button. Clicking a toggle shows or hides that panel and updates its active state; a panel
+The **bottom bar** carries toggle buttons for the left, bottom, and right side panels. Clicking a
+toggle shows or hides that panel and updates its active state; a panel
 with no content is disabled with a "Panel is empty" tooltip; and hovering any toggle shows its name
-and keybinding. **Focus mode** (Cmd+\) collapses all side panels so the agent expands, and toggles
-back. **Zen mode** (Cmd+Shift+\) goes further, hiding the top bar and side panels entirely to leave
-just the agent with a draggable title bar; an "Exit zen mode" button appears when you move to the
-top-left corner. The app's **version number** sits in the bottom-right — in the workspace bottom bar
+and keybinding. The app's **version number** sits in the bottom-right — in the workspace bottom bar
 and in the corner of the non-workspace pages; clicking it opens a popover showing the version and git
 SHA, read-only **diagnostics** (platform, uptime, active agents, disk, paths, install info), and
 toggles for the in-app developer tools.
@@ -650,7 +638,7 @@ settings are all saved on your own machine and survive restarts.
 
 Sculptor is **local-first and single-user**: it runs on your machine for you, and your code stays
 there. There is **no telemetry, analytics, or crash reporting** — nothing about your usage is
-collected or sent anywhere. The only outbound traffic is the work you ask for: GitHub or GitLab for
+collected or sent anywhere. The only outbound traffic is the work you ask for: GitHub for
 pull-request status, and the Anthropic API reached through your own `claude` CLI. Credentials and keys
 the app needs are handled locally on your behalf, and the boundary stays the same one described in
 §9.1 — your code and secrets stay on your machine unless you explicitly send something out.
@@ -697,7 +685,7 @@ segregate tests by **launch mode** — e.g. `electron`, `electron_custom_command
 the environment it requires.
 
 #### 10.4 Scenarios-as-tests methodology
-This spec, the exhaustive **`scenarios.md`** (≈446 Given/When/Then behaviors), and
+This spec, the exhaustive **`scenarios.md`** (≈250 Given/When/Then behaviors), and
 **`scenario_coverage.md`** (which maps each scenario to the integration test covering it) together
 form the **English-level acceptance layer**: the spec is the source of truth, the scenarios are
 concrete acceptance checks against it, and the coverage report measures how well the product is
@@ -787,5 +775,3 @@ used throughout:
 - **Skill** — a Claude Code slash command, typed into a terminal agent, that runs as its own agent.
 - **Registered terminal agent** — an agent type defined by a TOML registration that launches a
   specific coding-tool command (e.g. "Claude CLI"); see §7.3.
-- **Zen / Focus mode** — view modes that hide panels (and, for zen, the top bar) to maximize the
-  workspace.

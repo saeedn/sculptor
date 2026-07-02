@@ -53,10 +53,10 @@ pointers to their spec/scenario home.
 | REQ-FUNC-005 | Terminal agents: plain **Terminal** (bare shell) and **registered** terminal agents (e.g. "Claude CLI"), driven in a PTY | §7.3 | `WS` | Core |
 | REQ-FUNC-006 | Multiple agents per workspace: tabs, status dots, create/rename/reorder/delete, peek | §7.4 | `WS` | Core |
 | REQ-FUNC-007 | Changes: Browse/Changes/Commits, diff view, scope picker, discard, commit | §7.5 | `PANEL` | Core |
-| REQ-FUNC-008 | Pull/Merge requests: create, status dots, detail dropdown, retarget, CI babysitter toggle | §7.6 | `WS` | Core |
+| REQ-FUNC-008 | Pull requests (GitHub): create, status dots, detail dropdown, retarget, CI babysitter toggle | §7.6 | `WS` | Core |
 | REQ-FUNC-009 | Built-in workspace terminal(s) | §7.7 | `PANEL` | Standard |
-| REQ-FUNC-010 | Skills & workflows: searchable library panel, `sculptor-workflow` pipeline, `fix-bug`, `setup-repo` (run as Claude Code skills inside a terminal agent) | §7.8 | `SKILL`, `CMDP` | Standard |
-| REQ-FUNC-011 | Command palette & navigation: tabs, Cmd+K / Cmd+P, bottom bar, focus/zen mode, version popover | §7.9 | `SHELL`, `CMDP`, `HELP` | Core |
+| REQ-FUNC-010 | Skills & workflows: the `sculptor-workflow` pipeline, `fix-bug`, `setup-repo` (invoked as Claude Code slash commands inside a terminal agent) | §7.8 | (terminal-level; no dedicated UI surface) | Standard |
+| REQ-FUNC-011 | Command palette & navigation: tabs, Cmd+K / Cmd+P, bottom bar, version popover | §7.9 | `SHELL`, `CMDP`, `HELP` | Core |
 | REQ-FUNC-012 | Settings (the 8 sections: General/Appearance, Keybindings, Repositories, Git, CI, File Browser, Environment Variables, Actions) | §7.10 | `SET` | Core |
 | REQ-FUNC-013 | Actions; path autocomplete in the add-repo path field | §7.11 | `ACT` | Optional |
 | REQ-FUNC-015 | `sculpt` CLI: full command surface, `--json`, env-var defaults, cross-surface visibility | §8 | (CLI-level, see §5.4) | Standard |
@@ -185,9 +185,9 @@ packaging Sculptor):
 - **REQ-COMPAT-021 [Unspecified].** **Git** is required and is **PATH-resolved with no
   minimum-version check** (`shutil.which("git")`; no version gate found). The minimum supported git
   version is undefined (worktree support is the relevant capability). → OPEN-6 (§7).
-- **REQ-COMPAT-023 (MUST, conditional).** The PR/MR surface requires the matching provider CLI —
-  **`gh`** (GitHub) or **`glab`** (GitLab) — present and authenticated; absence/non-auth degrades to a
-  documented error state, never a crash (§5.1, `SPEC.md` §7.6).
+- **REQ-COMPAT-023 (MUST, conditional).** The PR surface requires the **GitHub CLI (`gh`)** present
+  and authenticated; absence/non-auth degrades to a documented error state, never a crash (§5.1,
+  `SPEC.md` §7.6).
 
 ---
 
@@ -203,7 +203,7 @@ makes durability and upgrade-survival guarantees (§9.5) that rest directly on t
   `SCULPTOR_FOLDER` env var; the workspaces path is separately overridable via
   `SCULPTOR_WORKSPACES_FOLDER` (`sculptor/sculptor/utils/build.py`).
 - **REQ-DATA-002 (MUST).** Within it: `internal/database.db` (SQLite), `internal/config.toml`
-  (settings), `internal/logs/`, `internal/uploads/`, `internal/artifacts/`, `internal/sculpt-bin/`,
+  (settings), `internal/logs/`, `internal/artifacts/`, `internal/sculpt-bin/`,
   and `workspaces/` (`sculptor/sculptor/utils/build.py`, `get_internal_folder` /
   `get_workspaces_folder`; `sculptor/sculptor/config/settings.py`). Startup bootstraps the
   `internal/` and `workspaces/` subdirectories idempotently
@@ -222,7 +222,7 @@ makes durability and upgrade-survival guarantees (§9.5) that rest directly on t
 ### 4.2 Durability & upgrade survival
 
 - **REQ-DATA-010 (MUST).** Settings, the database (projects/workspaces/agent history/messages),
-  workspace directories, logs, and uploads survive an in-place app upgrade (covered by
+  workspace directories, and logs survive an in-place app upgrade (covered by
   `test_migration.py`; `SPEC.md` §9.5).
 - **REQ-DATA-011 (MUST).** Alembic migrations run automatically at startup, upgrading the DB to head;
   a detected **downgrade** (DB newer than app) fails with a clear, actionable error rather than
@@ -263,18 +263,19 @@ rules behind them.
 ### 5.1 Git host providers
 
 - **REQ-INT-001 (MUST).** The provider is detected from the `origin` remote hostname (parsing SSH and
-  HTTP(S) forms): hostname containing **"github"** → GitHub via **`gh`**; containing **"gitlab"** →
-  GitLab via **`glab`**. Any other host has **no** PR/MR surface and no target-branch concept
-  (`SPEC.md` §7.6; `sculptor/sculptor/web/pr_polling_service.py`).
-- **REQ-INT-002 (MUST).** Operations performed via the provider CLI: **list** requests for a branch,
-  **view** a request's status-check/pipeline rollup, **reviews/approvals**, and **unresolved
-  comments/discussions**; **push** the branch and **open** a request; poll status thereafter. (GitHub:
-  `gh pr list/view`; GitLab: `glab mr list/view` + `glab api …/approvals` and `…/discussions`.)
+  HTTP(S) forms): hostname containing **"github"** → GitHub via **`gh`**. Any other host has **no**
+  PR surface (the target-branch selector still appears)
+  (`SPEC.md` §7.6; `sculptor/sculptor/web/pr_polling_service.py`, `_is_github_url`).
+- **REQ-INT-002 (MUST).** Operations performed via **`gh`**: **list** the branch's pull request and
+  **view** its status-check rollup, **reviews/approvals**, and **unresolved review comments** — all
+  fetched in a single `gh`-backed GraphQL query per branch
+  (`sculptor/sculptor/web/pr_status.py`); **push** the branch and **open** a request; poll status
+  thereafter.
 - **REQ-INT-003 (MUST).** The failure taxonomy is classified and surfaced distinctly (not collapsed
   into "error"): the CLI status classifier yields **not_authenticated**, **no_access**,
   **rate_limited** (→ 60 s host cooldown), **network_error** (permanent), and **transient** (retried
-  once); a missing provider binary is surfaced separately as a **cli_missing** error category on the
-  PR/MR status (`sculptor/sculptor/web/cli_status_utils.py`, `pr_polling_service.py`). Each maps to the actionable
+  once); a missing `gh` binary is surfaced separately as a **cli_missing** error category on the
+  PR status (`sculptor/sculptor/web/cli_status_utils.py`, `pr_polling_service.py`). Each maps to the actionable
   warning/info button states in `SPEC.md` §7.6.
 
 ### 5.2 Terminal-agent process
@@ -327,7 +328,7 @@ rules behind them.
 ## 6. Security, privacy & telemetry (→ SPEC §9.1, §9.6)
 
 - **REQ-SEC-001 (MUST).** **Trust boundary.** An agent works only inside its isolated worktree
-  workspace copy and MAY run real shell commands there; **nothing is pushed to a remote and no PR/MR
+  workspace copy and MAY run real shell commands there; **nothing is pushed to a remote and no PR
   is opened without an explicit user action** (`SPEC.md` §9.1). This boundary holds for both the GUI
   and `sculpt`.
 - **REQ-SEC-002 (MUST).** **Local-first, single-user.** Code and secrets stay on the user's machine;
@@ -341,7 +342,7 @@ rules behind them.
   `SPEC.md` §11.2, not the product runtime.)_
 - **REQ-SEC-004 (MUST).** **No telemetry, analytics, crash reporting, session replay, or diagnostics
   upload exists** — there is no Sentry, PostHog, "Report a problem" flow, or in-app diagnostics
-  export. The only outbound network calls the product makes are to the **git host** (`gh`/`glab` PR
+  export. The only outbound network calls the product makes are to the **git host** (`gh` PR
   status, REQ-INT-001/002) and to the **Anthropic API**, the latter only via the user's `claude`
   (`SPEC.md` §9.6).
 

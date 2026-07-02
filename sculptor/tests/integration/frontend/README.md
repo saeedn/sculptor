@@ -23,7 +23,7 @@ def get_start_button(self) -> Locator:
 ```
 
 The custom classes exist to:
-- Group related functionality (e.g., all task starter operations in one place)
+- Group related functionality (e.g., all agent-tab-bar operations in one place)
 - Prevent raw `get_by_test_id()` calls in test code
 - Provide a semantic interface for complex components
 
@@ -56,10 +56,10 @@ The `expect()` pattern is the standard way to handle assertions and waiting:
 
 ```python
 # Always use expect
-expect(tasks).to_have_count(1)
-expect(chat_input).to_have_text("")
-expect(user_messages.nth(0)).to_have_text("Hello")
-expect(last_message).to_contain_text(signal_word)
+expect(agent_tabs).to_have_count(1)
+expect(workspace_name_input).to_have_value("")
+expect(terminal_tab).to_have_attribute("data-dot-status", "running")
+expect(changes_tree.get_tree_rows().filter(has_text="hello.txt")).to_be_visible()
 ```
 
 Avoid using Python's `assert` statements or manual wait loops unless there's an exceptional reason. Both `PlaywrightIntegrationTestElement` and `PlaywrightIntegrationTestPage` inherit from Playwright's classes, so all Playwright methods work seamlessly.
@@ -74,11 +74,11 @@ Avoid using Python's `assert` statements or manual wait loops unless there's an 
 **Important**: Always access elements through the POM hierarchy. Never use raw `get_by_test_id()` calls in test code - if you need access to an element that doesn't have a getter, add a method to the parent POM class (or create it):
 ```python
 # Correct approach
-task_starter = sculptor_instance_.get_task_starter()
-task_starter.get_task_input().type("Hello")
+add_workspace_page = PlaywrightAddWorkspacePage(page=sculptor_instance_.page)
+add_workspace_page.get_workspace_name_input().fill("My Workspace")
 
 # Avoid direct access
-sculptor_instance_.page.get_by_test_id("TASK_INPUT").type("Hello")  # Don't do this
+sculptor_instance_.page.get_by_test_id("WORKSPACE_NAME_INPUT").fill("My Workspace")  # Don't do this
 ```
 
 ### User Story Decorator
@@ -98,11 +98,11 @@ def test_artifact_panel_diff_tab_basic(sculptor_instance_: SculptorInstance) -> 
 ### Reference Patterns
 
 You can see examples of different testing scenarios:
-- `test_homepage_task_list.py::test_initial_load` - Verifies the home page starts with no tasks
-- `test_task_page_chatting.py::test_starting_text` - Tests that task text appears in chat after navigation
-- `test_task_page_chatting.py::test_send_multiple_messages` - Tests sending multiple messages in a conversation
-- `test_homepage_system_prompt.py::test_system_prompt_from_home_page` - Tests system prompt modification and its effect on responses
-- `test_settings_integration.py` - Tests that don't require the agent (no snapshot needed)
+- `test_home_page.py::test_empty_state_shown_for_new_user` - Verifies the home page starts with no workspaces
+- `test_fake_terminal_agent_harness.py::test_fake_terminal_agent_drives_diff_and_tab_dot` - The canonical fake terminal-agent test: drives the agent through the side-effecting DSL and asserts the diff viewer and tab dot react
+- `test_multi_agent_workspace.py::test_create_second_agent_in_existing_workspace` - Tests adding agents to a workspace via the agent tab bar
+- `test_restarts.py::test_chats_persist_on_restart` - Uses `sculptor_instance_factory_` to assert state survives a backend restart
+- `test_keybindings.py` - Settings-page tests that don't require an agent
 
 ## Important Implementation Details
 
@@ -111,23 +111,23 @@ You can see examples of different testing scenarios:
 Playwright locators are lazy - they don't search the DOM until you interact with them. This means you can create locators once and reuse them throughout your test:
 
 ```python
-tasks = task_list.get_tasks()  # Creates locator, doesn't search yet
-expect(tasks).to_have_count(0)  # First DOM search
-# ... user creates a task ...
-expect(tasks).to_have_count(1)  # Same locator, fresh search
+agent_tabs = agent_tab_bar.get_agent_tabs()  # Creates locator, doesn't search yet
+expect(agent_tabs).to_have_count(1)  # First DOM search
+# ... user adds a second agent ...
+expect(agent_tabs).to_have_count(2)  # Same locator, fresh search
 ```
 
 ### Elements Outside Their Parent
 
 Some elements (dropdowns, dialogs, modals) render at the page level, not within their parent component:
 ```python
-# Note: using task.page instead of task
-delete_menu_item = task.page.get_by_test_id(ElementIDs.DELETE_MENU_ITEM)
+# Note: using the page, not the tab locator — the context menu renders in a portal
+delete_menu_item = page.get_by_test_id(ElementIDs.TAB_CONTEXT_MENU_DELETE)
 ```
 
 ## When to Extend the POM
 
-Consider adding new element classes when you encounter major page components with multiple child elements (like the chat panel or task starter). For simple elements, returning raw Locators is fine.
+Consider adding new element classes when you encounter major page components with multiple child elements (like the agent tab bar or the file browser). For simple elements, returning raw Locators is fine.
 
 Add new methods to page or element classes when you need to access an element that doesn't have a getter method.
 
@@ -153,7 +153,7 @@ The Justfile contains the default flags for integration testing as part of the `
 Here are some example test commands:
 ```bash
 # Run a specific test with browser visible
-just test-integration "sculptor/tests/integration/frontend/test_task_page_chatting.py::test_send_multiple_messages" "--headed"
+just test-integration "sculptor/tests/integration/frontend/test_fake_terminal_agent_harness.py::test_fake_terminal_agent_drives_diff_and_tab_dot" "--headed"
 
 # Run all tests with no parallelism (default behavior)
 just test-integration

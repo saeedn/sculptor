@@ -544,6 +544,7 @@ _patch-electron-app-name label:
 [group("dev")]
 frontend:
     #!/usr/bin/env bash
+    {{ nvm_use }}
     just _patch-electron-app-name "Sculptor (from source)"
     cd "{{justfile_directory()}}/sculptor/frontend"
     env SCULPTOR_ICON_LABEL="src" \

@@ -18,6 +18,7 @@ from sculptor.primitives.ids import WorkspaceID
 from sculptor.web.derived import CodingAgentTaskView
 from sculptor.web.derived import TaskStatus
 from sculptor.web.derived import create_initial_task_view
+from sculptor.web.derived import is_agent_busy_or_waiting
 
 
 def _make_task_view(task: Task) -> CodingAgentTaskView:
@@ -125,3 +126,37 @@ def test_terminal_status_outcome_short_circuit_beats_signals() -> None:
     view.add_message(_env_acquired())
     view.add_message(_signal(TerminalStatusSignal.BUSY))
     assert view.status == TaskStatus.ERROR
+
+
+def test_is_agent_busy_or_waiting_true_for_working_agent() -> None:
+    """The CI babysitter's all-idle gate blocks on the agent status the UI shows:
+    a busy terminal agent is WORKING, so the predicate is True (busy).
+
+    (Upstream exercised this with a mid-turn chat agent; this fork has no chat
+    agent, so a terminal BUSY signal stands in for the WORKING status.)"""
+    task = _make_terminal_task()
+    messages = [_env_acquired(), _signal(TerminalStatusSignal.BUSY)]
+    view = _make_task_view(task)
+    for message in messages:
+        view.add_message(message)
+    assert view.status == TaskStatus.RUNNING
+    assert is_agent_busy_or_waiting(task, messages) is True
+
+
+def test_is_agent_busy_or_waiting_true_for_waiting_agent() -> None:
+    """Yellow/waiting (an agent blocked on the user) counts as occupied — the
+    babysitter must not inject while a question or plan approval is pending."""
+    task = _make_terminal_task()
+    messages = [_env_acquired(), _signal(TerminalStatusSignal.WAITING)]
+    view = _make_task_view(task)
+    for message in messages:
+        view.add_message(message)
+    assert view.status == TaskStatus.WAITING
+    assert is_agent_busy_or_waiting(task, messages) is True
+
+
+def test_is_agent_busy_or_waiting_false_for_idle_agent() -> None:
+    """Just the run-start anchor → READY/IDLE, with no settings or streaming view,
+    so the predicate is False and the babysitter may act."""
+    task = _make_terminal_task(outcome=TaskState.RUNNING)
+    assert is_agent_busy_or_waiting(task, [_env_acquired()]) is False

@@ -19,7 +19,7 @@ owner.
 
 ## 1. Actual bugs
 
-- [ ] **1.1 `sculpt agent list --workspace/--project` silently lists agents
+- [x] **1.1 `sculpt agent list --workspace/--project` silently lists agents
   from ALL workspaces.** The CLI still sends a `scope=` query param
   (`tools/sculpt/sculpt/ws_client.py:43-59`) that the server no longer
   implements (batch-9c removed the server side; FastAPI silently ignores the
@@ -29,20 +29,20 @@ owner.
   (`ScopeMalformedError`/`ScopeForbiddenError`/`ScopeNotFoundError`,
   `_wrap_invalid_status`, the catch blocks in
   `commands/agent.py:190-195,439-445,463-468`).
-- [ ] **1.2 Toast variants render unstyled.** `components/Toast.tsx:13-19`
+- [x] **1.2 Toast variants render unstyled.** `components/Toast.tsx:13-19`
   uses uppercase values (`"SUCCESS"`/`"ERROR"`/`"WARNING"`) while
   `Toast.module.scss:48/57/66` keys are lowercase, so `styles[type]` at
   `Toast.tsx:60` is undefined for all three (only `errorProminent` aligned).
   ~25 call sites affected; reachable live via `NotificationToasts.tsx:16-19`.
   (Upstream #142 contains the same fix.)
-- [ ] **1.3 Expand mode can blank the workspace given pre-slim
+- [x] **1.3 Expand mode can blank the workspace given pre-slim
   localStorage.** `DockingLayout.tsx:47-52` hardcodes right/bottom hidden
   when expanded; zone reconciliation (`PanelRegistryProvider.tsx:74-79`)
   only resets zones not in `ZONE_IDS`, so a drag-era persisted assignment
   like `files: "top-right"` (localStorage is NOT covered by the fresh-start
   guard) makes expand hide every panel until Escape. Fix: reconcile any
   persisted zone assignment that differs from the fixed default.
-- [ ] **1.4 Minor nits:** `ws_client.py:87` lists removed `"CANCELLED"` as a
+- [x] **1.4 Minor nits:** `ws_client.py:87` lists removed `"CANCELLED"` as a
   terminal task status; `PrStatusInfo.error_provider`
   (`web/data_types.py:84`, written `pr_status.py:45`,
   `pr_polling_service.py:706`) and `PrStatusInfo.mismatched_pr_web_url`
@@ -51,14 +51,14 @@ owner.
 
 ## 2. Completeness gaps (stale references to removed features)
 
-- [ ] **2.1 Custom-backend-command test/dev cluster** (Electron no longer
+- [x] **2.1 Custom-backend-command test/dev cluster** (Electron no longer
   implements the mechanism): `justfile:585-606` `frontend-custom` recipe;
   `electron-custom-command` launch mode in `sculptor/conftest.py:77-138`;
   `testing/resources.py:481-530` `_create_custom_command_instance`;
   `testing/electron_frontend.py:57,113-114` env var;
   `sculptor/pytest.ini:14` `electron_custom_command` marker (zero tests use
   it). Delete the cluster.
-- [ ] **2.2 Packaged-launch-mode harness is CI-decapitated**:
+- [x] **2.2 Packaged-launch-mode harness is CI-decapitated**:
   `testing/packaged_electron_frontend.py`, `packaged_backend_frontend.py`,
   `packaged_utils.py`, the `--packaged-binary-path` option +
   `packaged-electron`/`packaged-backend` conftest branches
@@ -67,10 +67,10 @@ owner.
   release pipeline that ran them was deleted. (`@release`-marked tests
   still run in the normal suite — keep the tests, drop the packaged
   plumbing.)
-- [ ] **2.3 `justfile check-reserved-plugin-names`** (justfile:354-379,
+- [x] **2.3 `justfile check-reserved-plugin-names`** (justfile:354-379,
   wired into `just check`) guards plugin dirs that no longer exist —
   permanently a no-op. Delete.
-- [ ] **2.4 docs/specs document removed features as current**: GitLab/MR as
+- [x] **2.4 docs/specs document removed features as current**: GitLab/MR as
   a live provider (`docs/specs/requirements.md:189,266-272,344`,
   `SPEC.md:261,398-408,653`,
   `scenarios.md:376,423-426,651-701,816,1241-1242,1485`,
@@ -80,7 +80,7 @@ owner.
   `scenario_coverage.md` citing deleted `test_zen_mode.py` /
   `test_side_toggle.py`); `requirements.md:206,225` still requires
   `internal/uploads/`.
-- [ ] **2.5 Test-infra docs + bundled skills teach the removed FakeClaude /
+- [x] **2.5 Test-infra docs + bundled skills teach the removed FakeClaude /
   rich-chat harness**: `docs/development/review/integration_tests.md`
   (fake_claude commands, `FakeClaudePause`, `ALPHA_CHAT_VIEW`,
   `electron_custom_command`/`test_image_upload.py`, release-pipeline
@@ -94,7 +94,7 @@ owner.
   `.claude/skills/storybook-screenshot/SKILL.md:124-236` (deleted
   stories); `.claude/skills/auto-qa-changes/SKILL.md:594` (`CHAT_INPUT`).
   Rewrite against the fake registered terminal agent harness.
-- [ ] **2.6 Stale comments**: `web/pr_status.py:160` ("an MR");
+- [x] **2.6 Stale comments**: `web/pr_status.py:160` ("an MR");
   `ci_babysitter_service/coordinator.py:262` ("an PR" typo);
   `foundation/subprocess_utils.py:728-731` (message_conversion /
   fake_claude MCP references); `git_repo_service/default_implementation.py:226`
@@ -109,26 +109,26 @@ owner.
 
 ### Backend (provably dead)
 
-- [ ] **3.1 `UserSettings` subsystem husk**: zero-data-field model
+- [x] **3.1 `UserSettings` subsystem husk**: zero-data-field model
   (`database/models.py:29-33`), DB table, `get_user_settings` /
   `get_or_create_user_settings` (`data_model_service/data_types.py:162-165`,
   `sql_implementation.py:198-223`), auth threading (`web/auth.py:48,85-88`),
   stream arms (`streams.py:460-462`, `sql_implementation.py:805,867-872`),
   `UserUpdate.user_settings` (`derived.py:346`; zero FE/CLI reads),
   `UserSettingsID`. Regen after.
-- [ ] **3.2 `SculptorSettings` stream arm unreachable**: no producer ever
+- [x] **3.2 `SculptorSettings` stream arm unreachable**: no producer ever
   enqueues one. `web/data_types.py:512` union, `streams.py:395-396,467-469`.
-- [ ] **3.3 `AgentCrashed` chain has no producer**:
+- [x] **3.3 `AgentCrashed` chain has no producer**:
   `interfaces/agents/errors.py:8` (raised only by its own test), the
   unreachable `case AgentCrashed()` arm
   (`runner_support.py:109-114`), `AgentCrashedRunnerMessage`
   (`interfaces/agents/agent.py:52-60` + union tag :103; persisted union →
   frozen-schema bump), `errors_test.py`.
-- [ ] **3.4 `UserSession.user_email` + `ANONYMOUS_USER_EMAIL` + EmailStr
+- [x] **3.4 `UserSession.user_email` + `ANONYMOUS_USER_EMAIL` + EmailStr
   plumbing**: `web/auth.py:38,49,81,89`; `database/automanaged.py:57`
   EmailStr column mapping; `sql_implementation.py:563` isinstance branch.
   Then drop the `email-validator` dep.
-- [ ] **3.5 Dead test infra**: `sculptor/conftest.py:154` `database_url_`,
+- [x] **3.5 Dead test infra**: `sculptor/conftest.py:154` `database_url_`,
   `:160` `port_manager_`; duplicate `sculptor_launch_mode` fixtures
   (`tests/integration/frontend/conftest.py:7`,
   `tests/integration/real_claude/conftest.py:34`);
@@ -147,11 +147,11 @@ owner.
   (`test_terminal_tab_enhancements.py:104` + `elements/terminal.py:374`);
   empty `tests/acceptance/` + `tests/benchmark/` scaffolds + the
   `just benchmark` recipe that collects nothing.
-- [ ] **3.6 Unused Python deps**: `python-multipart` (main), `pillow` (dev),
+- [x] **3.6 Unused Python deps**: `python-multipart` (main), `pillow` (dev),
   `ty` (+ `[tool.ty.*]` config), `pyyaml` (runtime dep whose only consumer
   is the justfile `check-yaml` one-liner → move to dev), duplicate
   `filelock` declaration (keep main, drop dev dup).
-- [ ] **3.7 Backend likely-dead (judgment, approved)**:
+- [x] **3.7 Backend likely-dead (judgment, approved)**:
   `Notification.project_id` (never written non-None; FE read trivially
   always-true) + no-producer `user_reference=None` broadcast semantics;
   `NotificationImportance` single-value enum (persisted column; FE switches
@@ -171,32 +171,32 @@ owner.
 
 ### Frontend (provably dead)
 
-- [ ] **3.8 Unused npm deps**: `react-markdown`, `remark-gfm` (orphaned by
+- [x] **3.8 Unused npm deps**: `react-markdown`, `remark-gfm` (orphaned by
   35833a237d), `highlight.js`, `@dnd-kit/utilities`, `@floating-ui/dom`;
   likely also `playwright` (npm devDep; all Playwright use is Python),
   `@vitest/coverage-v8` (no --coverage invocation), `@radix-ui/colors`
   (comment-only references — the "depcheck false positive" keep looks
   wrong; verify then drop).
-- [ ] **3.9 Orphaned `.markdownBody` SCSS block**
+- [x] **3.9 Orphaned `.markdownBody` SCSS block**
   (`ReadOnlyPreview.module.scss:19-70`, consumer deleted by 35833a237d).
-- [ ] **3.10 Dead FE runtime bits**: `isZoneVisibleAtom`
+- [x] **3.10 Dead FE runtime bits**: `isZoneVisibleAtom`
   (`components/panels/atoms.ts:115-117`); command-palette `runtime.electron`
   slice + `runtime.ui.toggleDevPanel` (`runtime.ts:35,73-76`,
   `useCommandRuntime.ts:17-24,97,112,134,145,165` + 6 test fixtures);
   `PanelContextMenu.tsx` (renders only a label, zero items; unread `zoneId`
   prop); `.storybook/vitest.setup.ts` (no consumer).
-- [ ] **3.11 Dead ElementIDs** (+ POM accessors, + regen): `TASK_INPUT`,
+- [x] **3.11 Dead ElementIDs** (+ POM accessors, + regen): `TASK_INPUT`,
   `AGENT_TYPE_MENU_ITEM_CLAUDE`, `TERMINAL_HEADING`,
   `COMMAND_PALETTE_FOOTER` (negative assertion `CommandPalette.test.tsx:653`
   trivially true).
-- [ ] **3.12 Dead props** (declared, no caller passes): `TabBarProps.maxTabWidth`
+- [x] **3.12 Dead props** (declared, no caller passes): `TabBarProps.maxTabWidth`
   / `.className` (types.ts:32,37); `ResizeHandleProps.className` /
   `data-testid` (ResizeHandle.tsx:15,17); `PanelHeaderProps.afterTitle`;
   `PierreDiffViewProps.className`; `BranchSelectorCore`
   `specialBranchFilter`/`contentTestId`/`height`;
   `ActionContextMenu.onOpenChange`; `Code.isUnderlined`/`.isClickable`;
   `HotkeyChip.disabled` (+ its dead branches 122,133,140,173,184).
-- [ ] **3.13 `data-droppable-id`** (`LeftSidebar.tsx:12`,
+- [x] **3.13 `data-droppable-id`** (`LeftSidebar.tsx:12`,
   `RightSidebar.tsx:12`): production-dead; load-bearing only in
   `DockingLayout.test.tsx:112`. Switch the test locator, then drop.
 

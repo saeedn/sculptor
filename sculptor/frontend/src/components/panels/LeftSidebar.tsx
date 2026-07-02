@@ -8,8 +8,11 @@ import type { PanelId, ZoneId } from "~/components/panels/types.ts";
 
 import styles from "./Sidebar.module.scss";
 
+// `data-sidebar-zone-id` (not `data-zone-id`) — that attribute locates zone
+// *content* (ZoneContent, keyboard-shortcut focus in hooks.ts) and the icon
+// strip must not shadow it in querySelector order.
 const SidebarZone = ({ zoneId, panelIds }: { zoneId: ZoneId; panelIds: ReadonlyArray<PanelId> }): ReactElement => (
-  <div data-zone-id={zoneId}>
+  <div data-sidebar-zone-id={zoneId}>
     {panelIds.map((panelId) => (
       <SidebarIcon key={panelId} panelId={panelId} />
     ))}

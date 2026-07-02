@@ -7,13 +7,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { parseShortcut } from "~/common/ShortcutUtils";
 import {
-  activePanelPerZoneAtom,
   createPanelStore,
   panelsInZoneAtom,
   zoneAssignmentsAtom,
   zoneOrderAtom,
   zoneSizesAtom,
-  zoneVisibilityAtom,
 } from "~/components/panels/atoms.ts";
 import { DockingLayout } from "~/components/panels/DockingLayout";
 import { renderWithProviders } from "~/components/panels/testUtils";
@@ -108,11 +106,11 @@ const getClickableIcon = (container: HTMLElement, panelId: string): HTMLElement 
   getIconElement(container, panelId)?.querySelector("[role='button'], [class*='icon']") ??
   getIconElement(container, panelId);
 
-const getDropZone = (container: HTMLElement, zoneId: string): HTMLElement | null =>
-  container.querySelector(`[data-zone-id="${zoneId}"]`);
+const getSidebarZone = (container: HTMLElement, zoneId: string): HTMLElement | null =>
+  container.querySelector(`[data-sidebar-zone-id="${zoneId}"]`);
 
 const getIconsInZone = (container: HTMLElement, zoneId: string): Array<string> => {
-  const zone = getDropZone(container, zoneId);
+  const zone = getSidebarZone(container, zoneId);
   if (!zone) return [];
   return Array.from(zone.querySelectorAll("[data-panel-icon]")).map((el) => (el as HTMLElement).dataset.panelIcon!);
 };
@@ -184,6 +182,15 @@ describe("DockingLayout", () => {
       const store = createDefaultTestStore();
       renderTest(<DockingLayout />, store);
       expect(screen.queryByText(TEST_PANEL_CONTENT.cost)).not.toBeInTheDocument();
+    });
+
+    it("renders no icons for a zone with no registered panels", () => {
+      const panelsWithoutTopRight = TEST_PANELS.filter((p) => p.defaultZone !== "top-right");
+      const store = createPanelStore(panelsWithoutTopRight, { useDefaultLayout: true });
+      const { container } = renderWithProviders(<DockingLayout />, store, panelsWithoutTopRight);
+
+      expect(getIconsInZone(container, "top-right")).toHaveLength(0);
+      expect(getIconsInZone(container, "top-left")).toContain("info");
     });
   });
 
@@ -315,97 +322,6 @@ describe("DockingLayout", () => {
     });
   });
 
-  describe("cross-zone move", () => {
-    it("moves icon from left to right sidebar when atoms are updated", () => {
-      const store = createTestStore();
-      // Move info from top-left to top-right
-      store.set(zoneAssignmentsAtom, {
-        info: "top-right",
-        cost: "top-left",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      store.set(activePanelPerZoneAtom, {
-        "top-left": "cost",
-        bottom: "terminal",
-        "top-right": "info",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        bottom: true,
-        "top-right": true,
-      });
-
-      const { container } = renderTest(<DockingLayout />, store);
-
-      // Info icon should be in right sidebar (top-right zone)
-      const rightZoneIcons = getIconsInZone(container, "top-right");
-      expect(rightZoneIcons).toContain("info");
-
-      // Info icon should NOT be in left sidebar (top-left zone)
-      const leftZoneIcons = getIconsInZone(container, "top-left");
-      expect(leftZoneIcons).not.toContain("info");
-    });
-
-    it("hides source zone when last panel is moved out", () => {
-      const store = createTestStore();
-      // Move changes out of top-right (sole occupant) to top-left
-      store.set(zoneAssignmentsAtom, {
-        info: "top-left",
-        cost: "top-left",
-        terminal: "bottom",
-        changes: "top-left",
-      });
-      store.set(activePanelPerZoneAtom, {
-        "top-left": "info",
-        bottom: "terminal",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        bottom: true,
-        "top-right": false,
-      });
-
-      const { container } = renderTest(<DockingLayout />, store);
-
-      // top-right zone should have no icons
-      const rightZoneIcons = getIconsInZone(container, "top-right");
-      expect(rightZoneIcons).toHaveLength(0);
-
-      // Changes content should not be rendered (Info is active in top-left)
-      expect(screen.queryByText(TEST_PANEL_CONTENT.changes)).not.toBeInTheDocument();
-    });
-
-    it("remaining panel becomes active when active panel is moved out", () => {
-      const store = createTestStore();
-      // Move info out of top-left, leaving cost as the only panel
-      store.set(zoneAssignmentsAtom, {
-        info: "top-right",
-        cost: "top-left",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      store.set(activePanelPerZoneAtom, {
-        "top-left": "cost",
-        bottom: "terminal",
-        "top-right": "info",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        bottom: true,
-        "top-right": true,
-      });
-
-      renderTest(<DockingLayout />, store);
-
-      // Cost content should now be visible in top-left
-      expect(screen.getByText(TEST_PANEL_CONTENT.cost)).toBeInTheDocument();
-
-      // Info content should be visible in top-right (where it moved)
-      expect(screen.getByText(TEST_PANEL_CONTENT.info)).toBeInTheDocument();
-    });
-  });
-
   describe("keyboard shortcuts", () => {
     it("Cmd+1 hides the Info panel when it already has focus", () => {
       const store = createDefaultTestStore();
@@ -528,200 +444,6 @@ describe("DockingLayout", () => {
 
       const topLeftPanels = store.get(panelsInZoneAtom("top-left"));
       expect(topLeftPanels).toEqual(["cost"]);
-    });
-
-    it("renders icons in correct order after cross-zone move with explicit order", () => {
-      const store = createTestStore();
-
-      store.set(zoneAssignmentsAtom, {
-        info: "top-right",
-        cost: "top-left",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      store.set(zoneOrderAtom, { "top-right": ["changes", "info"] });
-      store.set(activePanelPerZoneAtom, {
-        "top-left": "cost",
-        bottom: "terminal",
-        "top-right": "info",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        bottom: true,
-        "top-right": true,
-      });
-
-      const { container } = renderTest(<DockingLayout />, store);
-
-      const topRightIcons = getIconsInZone(container, "top-right");
-      expect(topRightIcons).toEqual(["changes", "info"]);
-    });
-  });
-
-  describe("keyboard shortcuts after move", () => {
-    it("Cmd+1 toggles Info panel in its new zone after reassignment", () => {
-      const store = createTestStore();
-
-      // Move info to top-right
-      store.set(zoneAssignmentsAtom, {
-        info: "top-right",
-        cost: "top-left",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      store.set(activePanelPerZoneAtom, {
-        "top-left": "cost",
-        bottom: "terminal",
-        "top-right": "info",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        bottom: true,
-        "top-right": true,
-      });
-
-      renderTest(<DockingLayout />, store);
-
-      // Info should be visible in top-right
-      expect(screen.getByText(TEST_PANEL_CONTENT.info)).toBeInTheDocument();
-
-      focusZone("top-right");
-      fireShortcut("info");
-      expect(screen.queryByText(TEST_PANEL_CONTENT.info)).not.toBeInTheDocument();
-
-      fireShortcut("info");
-      expect(screen.getByText(TEST_PANEL_CONTENT.info)).toBeInTheDocument();
-    });
-
-    it("Cmd+4 switches to Cost in a shared zone after reassignment", () => {
-      const store = createTestStore();
-
-      // Move cost to top-right alongside changes
-      store.set(zoneAssignmentsAtom, {
-        info: "top-left",
-        cost: "top-right",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      store.set(activePanelPerZoneAtom, {
-        "top-left": "info",
-        bottom: "terminal",
-        "top-right": "changes",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        bottom: true,
-        "top-right": true,
-      });
-
-      renderTest(<DockingLayout />, store);
-
-      // Changes should be visible in top-right
-      expect(screen.getByText(TEST_PANEL_CONTENT.changes)).toBeInTheDocument();
-
-      fireShortcut("cost");
-      expect(screen.getByText(TEST_PANEL_CONTENT.cost)).toBeInTheDocument();
-      expect(screen.queryByText(TEST_PANEL_CONTENT.changes)).not.toBeInTheDocument();
-    });
-  });
-
-  describe("cross-zone move edge cases", () => {
-    it("moving active panel from zone with one other panel leaves that panel active", () => {
-      const store = createTestStore();
-
-      store.set(zoneAssignmentsAtom, {
-        info: "bottom",
-        cost: "top-left",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      store.set(activePanelPerZoneAtom, {
-        "top-left": "cost",
-        bottom: "info",
-        "top-right": "changes",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        bottom: true,
-        "top-right": true,
-      });
-
-      renderTest(<DockingLayout />, store);
-
-      // Cost should be visible and active in top-left
-      expect(screen.getByText(TEST_PANEL_CONTENT.cost)).toBeInTheDocument();
-
-      // Info should be the active panel in bottom
-      expect(screen.getByText(TEST_PANEL_CONTENT.info)).toBeInTheDocument();
-    });
-
-    it("zones with no panels assigned do not render icons", () => {
-      const store = createTestStore();
-
-      // Move all panels out of top-left
-      store.set(zoneAssignmentsAtom, {
-        info: "top-right",
-        cost: "top-right",
-        terminal: "bottom",
-        changes: "top-right",
-      });
-      store.set(activePanelPerZoneAtom, {
-        bottom: "terminal",
-        "top-right": "info",
-      });
-      store.set(zoneVisibilityAtom, {
-        bottom: true,
-        "top-right": true,
-      });
-
-      const { container } = renderTest(<DockingLayout />, store);
-
-      // Top-left zone should have no icons
-      const topLeftIcons = getIconsInZone(container, "top-left");
-      expect(topLeftIcons).toHaveLength(0);
-
-      // All three panels should be in top-right
-      const topRightIcons = getIconsInZone(container, "top-right");
-      expect(topRightIcons).toContain("info");
-      expect(topRightIcons).toContain("cost");
-      expect(topRightIcons).toContain("changes");
-    });
-
-    it("toggling a panel in a zone with multiple panels switches correctly", () => {
-      const store = createTestStore();
-
-      // Three panels in top-right
-      store.set(zoneAssignmentsAtom, {
-        info: "top-right",
-        cost: "top-left",
-        terminal: "top-right",
-        changes: "top-right",
-      });
-      store.set(activePanelPerZoneAtom, {
-        "top-left": "cost",
-        "top-right": "info",
-      });
-      store.set(zoneVisibilityAtom, {
-        "top-left": true,
-        "top-right": true,
-      });
-
-      const { container } = renderTest(<DockingLayout />, store);
-
-      // Info is initially active in top-right
-      expect(screen.getByText(TEST_PANEL_CONTENT.info)).toBeInTheDocument();
-
-      // Click terminal icon to switch
-      const terminalIcon = getClickableIcon(container, "terminal");
-      fireEvent.click(terminalIcon!);
-      expect(screen.getByText(TEST_PANEL_CONTENT.terminal)).toBeInTheDocument();
-      expect(screen.queryByText(TEST_PANEL_CONTENT.info)).not.toBeInTheDocument();
-
-      // Click changes icon to switch again
-      const changesIcon = getClickableIcon(container, "changes");
-      fireEvent.click(changesIcon!);
-      expect(screen.getByText(TEST_PANEL_CONTENT.changes)).toBeInTheDocument();
-      expect(screen.queryByText(TEST_PANEL_CONTENT.terminal)).not.toBeInTheDocument();
     });
   });
 

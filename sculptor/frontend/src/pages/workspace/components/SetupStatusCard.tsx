@@ -202,9 +202,9 @@ export const SetupStatusCard = ({ workspaceId }: SetupStatusCardProps): ReactEle
 
   const handleEdit = useCallback((): void => {
     if (project?.objectId) {
-      openSettings("repositories", project.objectId);
+      openSettings("REPOSITORIES", project.objectId);
     } else {
-      openSettings("repositories");
+      openSettings("REPOSITORIES");
     }
   }, [project?.objectId, openSettings]);
 

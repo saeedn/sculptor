@@ -72,14 +72,14 @@ jobs:
     name: Integration tests (shard ${{ matrix.group }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
     # Per-shard ceiling (kill-switch, not the expected duration). Each shard runs
-    # ~1/4 of the suite plus the cold Playwright/browser install.
+    # ~1/6 of the suite plus the cold Playwright/browser install.
     timeout-minutes: 30
     strategy:
       # Run every shard to completion even if one fails — we want all results,
       # and one shard's failure should not mask another's.
       fail-fast: false
       matrix:
-        group: [1, 2, 3, 4]
+        group: [1, 2, 3, 4, 5, 6]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-sculptor
@@ -97,11 +97,11 @@ jobs:
         # pytest-playwright. --with-deps also installs the required system libs.
         run: uv run --project sculptor playwright install --with-deps chromium
 
-      - name: Run integration tests (shard ${{ matrix.group }}/4)
+      - name: Run integration tests (shard ${{ matrix.group }}/6)
         # GitHub sets CI=true automatically, which activates the justfile's CI
         # path (full suite, no stop-on-first-failure, compact output). pytest-split
-        # selects this shard's slice (balanced by .test_durations); xdist then
-        # parallelizes it across workers.
+        # selects this shard's slice (balanced by the committed durations file);
+        # xdist then parallelizes it across workers.
         env:
           JUST_VERBOSE: "1"
-        run: just test-integration "sculptor/tests/integration/" "--splits 4 --group ${{ matrix.group }} --durations-path .test_durations"
+        run: just test-integration "sculptor/tests/integration/" "--splits 6 --group ${{ matrix.group }} --durations-path .github/workflows/.test_durations"

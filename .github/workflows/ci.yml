@@ -65,24 +65,42 @@ jobs:
           if-no-files-found: ignore
 
   test-integration:
-    name: Integration tests
+    # Sharded across parallel runners to keep wall-clock down: the full suite is
+    # ~30 min on one runner, so pytest-split fans it into N groups that run
+    # concurrently (each ~1/N of the tests). Shards run their own frontend build,
+    # but since they run in parallel that adds no wall-clock, only (free) compute.
+    name: Integration tests (shard ${{ matrix.group }}/${{ strategy.job-total }})
     runs-on: ubuntu-latest
-    # Local run measured ~17 min (404 passed / 5 skipped). This ceiling is a
-    # kill-switch, not the expected duration: extra headroom covers slower CI
-    # hardware, the cold Playwright/browser install, and flaky-retry slack.
-    timeout-minutes: 60
+    # Per-shard ceiling (kill-switch, not the expected duration). Each shard runs
+    # ~1/4 of the suite plus the cold Playwright/browser install.
+    timeout-minutes: 30
+    strategy:
+      # Run every shard to completion even if one fails — we want all results,
+      # and one shard's failure should not mask another's.
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-sculptor
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          # Playwright's bundled browser is pinned via the playwright version in
+          # sculptor/pyproject.toml; re-download only when that file changes.
+          key: playwright-${{ runner.os }}-${{ hashFiles('sculptor/pyproject.toml') }}
 
       - name: Install Playwright Chromium
         # The frontend integration tests drive a headless Chromium via
         # pytest-playwright. --with-deps also installs the required system libs.
         run: uv run --project sculptor playwright install --with-deps chromium
 
-      - name: Run integration tests
+      - name: Run integration tests (shard ${{ matrix.group }}/4)
         # GitHub sets CI=true automatically, which activates the justfile's CI
-        # path: run the full suite (no stop-on-first-failure) with compact output.
+        # path (full suite, no stop-on-first-failure, compact output). pytest-split
+        # selects this shard's slice; xdist then parallelizes it across workers.
         env:
           JUST_VERBOSE: "1"
-        run: just test-integration
+        run: just test-integration "sculptor/tests/integration/" "--splits 4 --group ${{ matrix.group }}"

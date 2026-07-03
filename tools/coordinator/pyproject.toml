@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "coordinator"
+version = "0.1.0"
+description = "Deterministic build coordinator that executes implementation plans with Claude Code workers"
+license = { text = "MIT" }
+dependencies = [
+    "psutil>=7.0.0",
+    "pydantic>=2.11.4",
+    "pyyaml>=6.0",
+    "textual>=1.0",
+    "typer>=0.26.7",
+]
+requires-python = ">=3.14"
+
+[project.optional-dependencies]
+packaging = [
+    "pyinstaller>=6.15.0",
+]
+
+[project.scripts]
+coordinator = "coordinator.main:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]

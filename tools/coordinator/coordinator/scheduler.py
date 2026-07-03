@@ -79,13 +79,22 @@ class IllegalTransition(Exception):
     pass
 
 
+AttemptStatus = Literal["completed", "exited-without-stop", "waiting", "timeout", "killed"]
+
+
 @dataclass(frozen=True)
 class AttemptResult:
     ok: bool
+    status: AttemptStatus | None = None
     error: str | None = None
     commit: str | None = None
     pid: int | None = None
     session_id: str | None = None
+    transcript_path: str | None = None
+    last_assistant_message: str | None = None
+    signals: tuple[str, ...] = ()
+    exit_code: int | None = None
+    bytes_drained: int | None = None
 
 
 @dataclass(frozen=True)

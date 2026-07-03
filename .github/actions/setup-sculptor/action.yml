@@ -20,6 +20,15 @@ runs:
         git show-ref --verify --quiet refs/heads/main \
           || git fetch --depth=1 origin +refs/heads/main:refs/heads/main
 
+    # Some backend flows (git init, initial commit) create commits using the
+    # *global* git identity — every dev machine has one, but runners don't, so
+    # those commits fail with "empty ident name". Set a placeholder identity.
+    - name: Configure a global git identity for backend-created commits
+      shell: bash
+      run: |
+        git config --global user.name "Sculptor CI"
+        git config --global user.email "ci@sculptor.invalid"
+
     - name: Install just
       uses: extractions/setup-just@v3
 

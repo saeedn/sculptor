@@ -34,3 +34,9 @@ where = ["."]
 
 [tool.setuptools.package-data]
 coordinator = ["data/workers/*.yaml", "data/append_signal.py", "data/implement_task.md"]
+
+[tool.pytest.ini_options]
+markers = [
+    "real_claude: opt-in smoke tests against real Claude (excluded by default; needs COORDINATOR_REAL_SMOKE=1)",
+]
+addopts = "-m 'not real_claude'"

@@ -1,11 +1,13 @@
 """Shared fake-worker fixtures: scripted sys.executable workers, not Claude."""
 
+import json
 import subprocess
 import sys
 from pathlib import Path
 from typing import Literal
 
 from coordinator.registrations import WorkerRegistration
+from coordinator.statedir import sanitize_node_id
 
 # Shared prologue for fake workers: argv[1] is the attempt dir; emit()
 # appends hook-shaped events to this attempt's signals.jsonl.
@@ -101,6 +103,96 @@ with open("dirty_" + node + ".txt", "w") as f:
 emit("Stop", {"session_id": "fake-sess"})
 """
 )
+
+
+# Scenario-driven fake worker: argv is [attempt_dir, scenario_dir]. The
+# scenario file for this attempt is <scenario_dir>/<node>_<attempt>.json
+# (node = the attempt dir's parent, i.e. the sanitized node id). A missing
+# scenario file crashes with exit 3 and no signals — resume tests rely on
+# this to prove a completed task is never re-run. The scenario is an
+# ordered action list:
+#   {"actions": [{"signal": "SessionStart"},
+#                {"write": {"path": "a.txt", "content": "x"}},
+#                {"commit": "message"},
+#                {"signal": "Stop"},
+#                {"sleep": 30}],
+#    "exit_code": 0}
+# "waiting" emits a PreToolUse/AskUserQuestion signal.
+SCENARIO_WORKER = """\
+import json, pathlib, subprocess, sys, time
+attempt_dir = pathlib.Path(sys.argv[1])
+scenario_dir = pathlib.Path(sys.argv[2])
+node = attempt_dir.parent.name
+attempt = attempt_dir.name
+signals = attempt_dir / "signals.jsonl"
+def emit(event, payload=None):
+    with open(signals, "a") as f:
+        f.write(json.dumps({"event": event, "ts": time.time(), "payload": payload}) + "\\n")
+scenario_path = scenario_dir / (node + "_" + attempt + ".json")
+if not scenario_path.exists():
+    sys.exit(3)
+scenario = json.loads(scenario_path.read_text())
+session = "fake-" + node + "-" + attempt
+for action in scenario.get("actions", []):
+    if "signal" in action:
+        name = action["signal"]
+        if name == "waiting":
+            emit("PreToolUse", {"tool_name": "AskUserQuestion", "session_id": session})
+        else:
+            payload = {"session_id": session, "transcript_path": "/tmp/" + session + ".jsonl"}
+            if name == "Stop":
+                payload["last_assistant_message"] = "SUCCESS: " + node
+            emit(name, payload)
+    elif "write" in action:
+        pathlib.Path(action["write"]["path"]).write_text(action["write"]["content"])
+    elif "commit" in action:
+        subprocess.run(["git", "add", "-A"], check=True)
+        subprocess.run(["git", "commit", "-q", "-m", action["commit"]], check=True)
+    elif "sleep" in action:
+        time.sleep(action["sleep"])
+sys.exit(scenario.get("exit_code", 0))
+"""
+
+
+def write_scenario(
+    scenario_dir: Path, node_id: str, attempt_index: int, actions: list[dict], exit_code: int = 0
+) -> None:
+    scenario_dir.mkdir(parents=True, exist_ok=True)
+    scenario_path = scenario_dir / f"{sanitize_node_id(node_id)}_{attempt_index}.json"
+    scenario_path.write_text(json.dumps({"actions": actions, "exit_code": exit_code}))
+
+
+def pass_actions(node_id: str) -> list[dict]:
+    """The standard well-behaved task: write a file, commit, Stop."""
+    return [
+        {"signal": "SessionStart"},
+        {"write": {"path": f"file_{sanitize_node_id(node_id)}.txt", "content": f"content from {node_id}\n"}},
+        {"commit": f"fake commit for {node_id}"},
+        {"signal": "Stop"},
+    ]
+
+
+def make_scenario_registration(
+    script: Path, scenario_dir: Path, mode: Literal["print", "interactive"] = "print"
+) -> WorkerRegistration:
+    return WorkerRegistration(
+        name="fake-scenario",
+        display_name="Scenario-driven fake worker",
+        mode=mode,
+        command=[sys.executable, str(script), "{attempt_dir}", str(scenario_dir), "{prompt}"],
+    )
+
+
+def write_scenario_registration_yaml(
+    directory: Path, name: str, script: Path, scenario_dir: Path, mode: str = "print"
+) -> None:
+    directory.mkdir(parents=True, exist_ok=True)
+    command_lines = "\n".join(
+        f'  - "{element}"' for element in (sys.executable, str(script), "{attempt_dir}", str(scenario_dir), "{prompt}")
+    )
+    (directory / f"{name}.yaml").write_text(
+        f"display_name: Scenario fake {name}\nmode: {mode}\ncommand:\n{command_lines}\n"
+    )
 
 
 def make_registration(

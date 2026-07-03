@@ -995,6 +995,10 @@ unmount-dmg:
 
 [doc("""Uses electron forge to create an installable package (DMG) for MacOS (arm64).
 
+Builds an UNSIGNED DMG by default, so it works with no Apple credentials and can be
+installed locally. Set SIGN=1 to produce a signed, notarized build instead (needs the
+Developer ID certificate and notarization key).
+
 You do NOT need to run `just app` before this, but might need to run `just refresh`.""")]
 [group("build")]
 [macos]
@@ -1002,103 +1006,22 @@ package-desktop-installer:
     #! /usr/bin/env bash
     just unmount-dmg
     {{ nvm_use }}
+    # electron-forge (forge.config.ts) signs and notarizes unless SKIP_NOTARIZE_AND_SIGN
+    # is set. Default to skipping so a plain `just pkg` needs no Apple credentials; opt
+    # back in with SIGN=1.
+    if [ -z "${SIGN:-}" ]; then
+      export SKIP_NOTARIZE_AND_SIGN=1
+    fi
     cd "{{justfile_directory()}}/sculptor/frontend"
     npm run electron:make
     mkdir -p "{{justfile_directory()}}/dist"
     cp -r out/make/zip "{{justfile_directory()}}/dist"
     cp out/make/Sculptor.dmg "{{justfile_directory()}}/dist"
     cp out/make/Sculptor.dmg "{{justfile_directory()}}/dist/Sculptor-`uv run --project sculptor builder version | head -n 1 | cut -f2 -d" "`.dmg"
-    bash "{{justfile_directory()}}/sculptor/builder/validate_sculptor_dmg.sh" "{{justfile_directory()}}/dist/Sculptor.dmg" arm64
-
-
-[doc("""Build an unsigned dev DMG that can be installed alongside production Sculptor.
-
-Syncs frontend/package.json to the .dev version from pyproject.toml so app.getVersion()
-contains "-dev." (the convention that routes userData and the sculptor-data folder to
-~/.dev-sculptor instead of ~/.sculptor — that split is what lets the dev build run
-concurrently with a production install, since Electron's SingletonLock lives under
-userData).
-
-The version bump is reverted on exit (even on build failure) so package.json stays clean.
-After this completes, run `just install-dev` to install + launch.""")]
-[group("build")]
-[macos]
-pkg-dev:
-    #! /usr/bin/env bash
-    set -e
-    ROOT="{{justfile_directory()}}"
-    cd "$ROOT/sculptor"
-    uv run --project sculptor builder sync-frontend-version
-    trap '(cd "$ROOT/sculptor" && uv run --project sculptor builder sync-frontend-version --reverse)' EXIT
-    {{ nvm_use }}
-    cd "$ROOT/sculptor/frontend"
-    SKIP_NOTARIZE_AND_SIGN=1 npm run electron:make
-    mkdir -p "$ROOT/dist"
-    cp out/make/Sculptor.dmg "$ROOT/dist"
-    echo "Built: $ROOT/dist/Sculptor.dmg"
-
-[doc("""Install the dev DMG built by `just pkg-dev` to /Applications/Sculptor Dev.app.
-
-If a dev instance was already running, kills it and relaunches the new build so
-the colleague picks up their update. If dev wasn't running, just installs and
-exits — no auto-launch, since a fresh install probably shouldn't take over the
-foreground unprompted.""")]
-[group("build")]
-[macos]
-install-dev:
-    #! /usr/bin/env bash
-    set -e
-    DMG="{{justfile_directory()}}/dist/Sculptor.dmg"
-    DEST="/Applications/Sculptor Dev.app"
-    if [ ! -f "$DMG" ]; then
-        echo "Error: $DMG not found. Run 'just pkg-dev' first." >&2
-        exit 1
-    fi
-    # Track whether dev was already running. If yes, kill it now so the copy
-    # doesn't clobber a live bundle, and relaunch at the end so the user picks
-    # up the new build. If no, leave the launch decision to the user.
-    WAS_RUNNING=0
-    if pkill -f "/Applications/Sculptor Dev.app/Contents/MacOS/"; then
-        WAS_RUNNING=1
-        # Wait for the process tree to actually exit — the dev Electron's
-        # before-quit handler can take up to ~30s if its backend child needs
-        # SIGKILL. Launching `open -n` while the old SingletonLock is still
-        # held makes the new instance silently exit on startup.
-        for _ in $(seq 1 60); do
-            pgrep -f "/Applications/Sculptor Dev.app/Contents/MacOS/" >/dev/null || break
-            sleep 1
-        done
-    fi
-    MOUNT=$(hdiutil attach -nobrowse -readonly "$DMG" | tail -n 1 | awk '{ for (i=3; i<=NF; i++) printf "%s%s", $i, (i<NF?OFS:ORS) }')
-    trap 'hdiutil detach "$MOUNT" >/dev/null 2>&1 || true' EXIT
-    SRC="$MOUNT/Sculptor.app"
-    if [ ! -d "$SRC" ]; then
-        echo "Error: $SRC not found in mounted DMG" >&2
-        exit 1
-    fi
-    rm -rf "$DEST"
-    cp -R "$SRC" "$DEST"
-    # Unsigned build — strip quarantine so Gatekeeper doesn't refuse to launch.
-    xattr -dr com.apple.quarantine "$DEST" || true
-    echo "Installed: $DEST"
-    if [ "$WAS_RUNNING" -eq 1 ]; then
-        # Scrub Sculptor override env vars before launching. If the caller's
-        # shell has any of these set (e.g. from a recent `just tmux-dev` or
-        # integration test run), they leak into the GUI app via `open` and
-        # quietly redirect the dev install at the wrong backend port /
-        # userData / data folder. Most visible symptom: dev's renderer hits
-        # prod's backend with dev's session token and bounces with
-        # "Invalid or missing session token".
-        env -u SCULPTOR_API_PORT \
-            -u SCULPTOR_FRONTEND_PORT \
-            -u SCULPTOR_SESSION_TOKEN \
-            -u SCULPTOR_USER_DATA_DIR \
-            -u SCULPTOR_FOLDER \
-            -u SCULPTOR_FRONTEND_DIR \
-            -u START_BACKEND_IN_DEV \
-            open -n "$DEST"
-    else
-        echo "Launch with: open -n \"$DEST\""
+    # The validator checks notarization, signature, and hardened runtime, which only a
+    # signed build has. Run it only when we actually signed.
+    if [ -n "${SIGN:-}" ]; then
+      bash "{{justfile_directory()}}/sculptor/builder/validate_sculptor_dmg.sh" "{{justfile_directory()}}/dist/Sculptor.dmg" arm64
     fi
 
 

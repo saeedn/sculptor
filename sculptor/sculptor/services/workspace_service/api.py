@@ -4,6 +4,14 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Iterator
 from typing import Literal
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from queue import Queue
+
+    # Imported only for type-checking: web.data_types imports this module, so a
+    # runtime import here would cycle.
+    from sculptor.web.data_types import StreamingUpdateSourceTypes
 
 from sculptor.database.models import Project
 from sculptor.database.models import Workspace
@@ -125,6 +133,20 @@ class WorkspaceService(Service, ABC):
     These are simple database lookups that should use transaction.get_workspace()
     and transaction.get_workspaces() directly.
     """
+
+    @abstractmethod
+    def add_observer(self, queue: "Queue[StreamingUpdateSourceTypes]") -> None:
+        """Subscribe a queue to per-workspace git state (current branch, target branches).
+
+        Backfills current state immediately, then pushes updates as the branch
+        scan detects them. A single process-global scanner serves all observers,
+        so websocket streams subscribe here rather than each starting their own
+        per-workspace pollers. Per-connection scope filtering is the caller's job.
+        """
+
+    @abstractmethod
+    def remove_observer(self, queue: "Queue[StreamingUpdateSourceTypes]") -> None:
+        """Unsubscribe a queue previously passed to ``add_observer``."""
 
     # Workspace Operations
 

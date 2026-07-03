@@ -48,7 +48,6 @@ from sculptor.web.derived import WorkspaceBranchInfo
 from sculptor.web.derived import WorkspaceTargetBranchesInfo
 from sculptor.web.derived import create_initial_task_view
 from sculptor.web.pr_polling_service import PrPollingService
-from sculptor.web.repo_polling_manager import manage_workspace_branch_polling
 from sculptor.web.ui_actions import add_subscriber as add_ui_action_subscriber
 from sculptor.web.ui_actions import remove_subscriber as remove_ui_action_subscriber
 
@@ -231,6 +230,13 @@ def stream_everything(
         if register_pr_observer:
             assert pr_polling_service is not None
             pr_polling_service.add_observer(updates_queue_loosely_typed)
+        # Subscribe to WorkspaceService's per-workspace git state (current branch,
+        # target branches). A single process-global scanner serves all observers,
+        # replacing the old per-connection branch pollers. add_observer backfills
+        # current state into the queue, so it is drained into the initial dump
+        # below and the PR-polling coupling in _notify_pr_polling_service sees it
+        # just as it did with the old poller.
+        services.workspace_service.add_observer(updates_queue_loosely_typed)
         add_ui_action_subscriber(updates_queue_loosely_typed.put_nowait)
         try:
             with ExitStack() as stack:
@@ -239,13 +245,6 @@ def stream_everything(
                         user_reference=user_session.user_reference,
                         organization_reference=user_session.organization_reference,
                         queue=updates_queue_loosely_typed,
-                    )
-                )
-                workspace_branch_manager = stack.enter_context(
-                    manage_workspace_branch_polling(
-                        services=services,
-                        queue=updates_queue_loosely_typed,
-                        concurrency_group=concurrency_group,
                     )
                 )
                 # Initialize state tracking
@@ -274,9 +273,8 @@ def stream_everything(
                 # We yield the initial state before starting the background watchers to minimize time to first message for the frontend
                 yield initial_update
 
-                # Start background watchers after emitting the initial state
-                workspace_branch_manager.initialize()
-                workspace_branch_manager.update_pollers_based_on_stream(initial_data)
+                # The process-global branch scanner (subscribed via add_observer
+                # above) is already running; no per-connection watcher to start.
                 _notify_pr_polling_service(pr_polling_service, initial_data, pr_poll_last_branch)
 
                 # Now continuously yield incremental updates
@@ -286,7 +284,6 @@ def stream_everything(
                         shutdown_event=combined_event,
                         is_blocking_allowed=True,
                     )
-                    workspace_branch_manager.update_pollers_based_on_stream(new_data)
                     _notify_pr_polling_service(pr_polling_service, new_data, pr_poll_last_branch)
 
                     if len(new_data) == 0:
@@ -305,6 +302,7 @@ def stream_everything(
                 setup_runner.remove_output_observer(setup_output_observer)
             if pr_polling_service is not None:
                 pr_polling_service.remove_observer(updates_queue_loosely_typed)
+            services.workspace_service.remove_observer(updates_queue_loosely_typed)
             remove_ui_action_subscriber(updates_queue_loosely_typed.put_nowait)
 
 

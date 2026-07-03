@@ -442,7 +442,8 @@ Create:
 - `tools/coordinator/tests/` — unit tests (see Testing Strategy).
 - `samples/terminal_agents/coordinator/coordinator.toml` — Sculptor
   registration sample (launch + resume commands,
-  `accepts_automated_prompts = true`).
+  `accepts_automated_prompts = false` — launch args carry everything;
+  nothing types into the Textual app's terminal).
 - `sculptor/sculptor-workflow/skills/_shared/qa-ritual.md` — the
   deduplicated Q&A-ritual reference (REQ-SKILL-4).
 - `.sculptor/workers/` — this repo's checked-in worker registrations.

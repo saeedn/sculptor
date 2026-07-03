@@ -230,6 +230,7 @@ def launch_attempt(
     poll_interval: float = 0.5,
     kill_grace_seconds: float = 10.0,
     on_signal: SignalCallback | None = None,
+    on_spawn: Callable[[int], None] | None = None,
 ) -> AttemptResult:
     """Run one prepared attempt to a verdict; always reaps the process."""
     argv, registration_env = render(
@@ -283,6 +284,9 @@ def launch_attempt(
             daemon=True,
         )
         drain_thread.start()
+
+    if on_spawn is not None:
+        on_spawn(proc.pid)
 
     status: AttemptStatus | None = None
     deadline = time.monotonic() + timeout_seconds

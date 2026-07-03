@@ -30,10 +30,8 @@ from coordinator.dag import Node
 from coordinator.dag import TASK_NODE
 from coordinator.dag import runnable
 from coordinator.journal import AttemptStarted
-from coordinator.journal import CommitRecorded
 from coordinator.journal import ControlIntent
 from coordinator.journal import Event
-from coordinator.journal import GateResult
 from coordinator.journal import IntentsConsumed
 from coordinator.journal import Journal
 from coordinator.journal import RunPaused
@@ -135,6 +133,7 @@ class Scheduler:
         executor: Executor,
         reaper: Reaper,
         clock: Callable[[], float] = time.time,
+        on_transition: Callable[[str, str, str, str | None], None] | None = None,
     ) -> None:
         self.plan_dir = plan_dir
         self.manifest = manifest
@@ -143,6 +142,7 @@ class Scheduler:
         self.executor = executor
         self.reaper = reaper
         self.clock = clock
+        self.on_transition = on_transition
         self.states: dict[str, NodeState] = {node_id: NodeState.PENDING for node_id in graph.nodes}
         self.attempt_counts: dict[str, int] = {node_id: 0 for node_id in graph.nodes}
         self._paused = False
@@ -160,9 +160,10 @@ class Scheduler:
         executor: Executor,
         reaper: Reaper,
         clock: Callable[[], float] = time.time,
+        on_transition: Callable[[str, str, str, str | None], None] | None = None,
     ) -> "Scheduler":
         """Resume from the journal: restore states, discard mid-flight attempts, reap PIDs."""
-        scheduler = cls(plan_dir, manifest, graph, journal, executor, reaper, clock)
+        scheduler = cls(plan_dir, manifest, graph, journal, executor, reaper, clock, on_transition)
         scheduler._resumed = True
         snapshot = Snapshot.from_events(replay(journal.path))
         scheduler._intents_position = snapshot.intents_consumed
@@ -197,6 +198,8 @@ class Scheduler:
             )
         )
         self.states[node_id] = new_state
+        if self.on_transition is not None:
+            self.on_transition(node_id, old_state.value, new_state.value, reason)
 
     def run(self) -> RunStatus:
         """Execute until a stop condition; returns the final run status."""
@@ -262,22 +265,13 @@ class Scheduler:
             )
         )
         result = self.executor.run_attempt(node, attempt_index, seed_context=None)
-        if result.commit is not None:
-            self.journal.append(CommitRecorded(ts=self.clock(), node_id=node.node_id, commit=result.commit))
         if not result.ok:
             self.on_attempt_failure(node, attempt_index, result)
             return
         self.transition(node.node_id, NodeState.GATE_CHECKING, reason="attempt-finished")
+        # Gate/commit journaling (gate-started/gate-result/commit-recorded)
+        # is the executor's job — it knows the per-gate detail.
         outcome = self.executor.run_gates(node, result)
-        self.journal.append(
-            GateResult(
-                ts=self.clock(),
-                node_id=node.node_id,
-                gate=outcome.gate,
-                passed=outcome.passed,
-                findings=outcome.findings,
-            )
-        )
         if outcome.waiting_human:
             self.transition(node.node_id, NodeState.WAITING_HUMAN, reason=f"gate {outcome.gate} requires approval")
         elif outcome.passed:

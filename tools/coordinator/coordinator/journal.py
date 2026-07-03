@@ -251,14 +251,26 @@ class Snapshot(BaseModel):
         elif isinstance(event, TaskStateChanged):
             self._node(event.node_id).state = event.new_state
         elif isinstance(event, AttemptStarted):
-            self._node(event.node_id).attempts.append(
-                AttemptRecord(
-                    attempt_index=event.attempt_index,
-                    worker_registration=event.worker_registration,
-                    pid=event.pid,
-                    attempt_dir=event.attempt_dir,
+            node = self._node(event.node_id)
+            for attempt in node.attempts:
+                # The scheduler journals the attempt write-ahead (pid
+                # unknown); the executor re-journals it post-spawn with
+                # the real pid. Merge rather than duplicate.
+                if attempt.attempt_index == event.attempt_index:
+                    if event.pid is not None:
+                        attempt.pid = event.pid
+                    attempt.worker_registration = event.worker_registration
+                    attempt.attempt_dir = event.attempt_dir
+                    break
+            else:
+                node.attempts.append(
+                    AttemptRecord(
+                        attempt_index=event.attempt_index,
+                        worker_registration=event.worker_registration,
+                        pid=event.pid,
+                        attempt_dir=event.attempt_dir,
+                    )
                 )
-            )
         elif isinstance(event, SignalObserved):
             node = self._node(event.node_id)
             for attempt in node.attempts:

@@ -1,0 +1,221 @@
+"""The real Executor: attempt prep + launcher + gates, bound for the scheduler.
+
+Owns the execution-detail journaling the scheduler deliberately does
+not do: the post-spawn ``attempt-started`` (real pid, merged into the
+scheduler's write-ahead record by the snapshot), every
+``signal-observed``, ``gate-started``/``gate-result``, and
+``commit-recorded``.
+
+Also enforces the dirty-tree discipline between tasks: a surprise diff
+(the user edited mid-run) pauses the run with a clear report instead of
+folding user edits into a task's commit.
+"""
+
+import time
+from collections.abc import Callable
+from pathlib import Path
+
+from coordinator.attempt import PreparedAttempt
+from coordinator.attempt import prepare_attempt
+from coordinator.dag import Node
+from coordinator.dag import PHASE_REVIEW_NODE
+from coordinator.gates import GATE_MECHANICAL
+from coordinator.gates import GATE_PHASE_REVIEW
+from coordinator.gates import commits_since
+from coordinator.gates import head_commit
+from coordinator.gates import is_tree_clean
+from coordinator.gates import porcelain_status
+from coordinator.gates import run_mechanical_gate
+from coordinator.journal import AttemptStarted
+from coordinator.journal import CommitRecorded
+from coordinator.journal import GateResult
+from coordinator.journal import GateStarted
+from coordinator.journal import Journal
+from coordinator.journal import RunPaused
+from coordinator.journal import SignalObserved
+from coordinator.launcher import launch_attempt
+from coordinator.manifest import PlanManifest
+from coordinator.registrations import WorkerRegistration
+from coordinator.registrations import resolve_worker
+from coordinator.scheduler import AttemptResult
+from coordinator.scheduler import GateOutcome
+from coordinator.trust import ensure_trusted
+
+_LIFECYCLE_FINDINGS = {
+    "exited-without-stop": "worker process exited without a Stop signal",
+    "waiting": "worker went waiting for user input (AskUserQuestion or idle prompt)",
+    "timeout": "worker attempt timed out",
+    "killed": "worker attempt was killed",
+}
+
+
+class RunPausedError(Exception):
+    """Raised to stop the run after a run-paused event was journaled."""
+
+
+class PlanExecutor:
+    """Executes attempts and gates for one plan run."""
+
+    def __init__(
+        self,
+        plan_dir: Path,
+        manifest: PlanManifest,
+        registrations: dict[str, WorkerRegistration],
+        journal: Journal,
+        cwd: Path,
+        *,
+        timeout_seconds: float = 1800.0,
+        poll_interval: float = 0.5,
+        kill_grace_seconds: float = 10.0,
+        trust_home: Path | None = None,
+        clock: Callable[[], float] = time.time,
+    ) -> None:
+        self.plan_dir = plan_dir
+        self.manifest = manifest
+        self.registrations = registrations
+        self.journal = journal
+        self.cwd = cwd
+        self.timeout_seconds = timeout_seconds
+        self.poll_interval = poll_interval
+        self.kill_grace_seconds = kill_grace_seconds
+        self.trust_home = trust_home
+        self.clock = clock
+        self._prepared: dict[str, tuple[int, PreparedAttempt, str]] = {}
+
+    def run_attempt(self, node: Node, attempt_index: int, seed_context: str | None) -> AttemptResult:
+        if node.kind == PHASE_REVIEW_NODE:
+            # Phase reviews run no worker yet; the gate auto-passes below.
+            return AttemptResult(ok=True, status="completed")
+        if not is_tree_clean(self.cwd):
+            status = porcelain_status(self.cwd)
+            self.journal.append(
+                RunPaused(
+                    ts=self.clock(),
+                    reason="dirty-tree",
+                    resume_hint="the working tree changed outside a task; commit or stash the edits, then resume",
+                )
+            )
+            raise RunPausedError(f"working tree dirty before task {node.node_id}:\n{status}")
+
+        assert node.task is not None
+        worker_name = resolve_worker(self.manifest, node.task, self.registrations)
+        registration = self.registrations[worker_name]
+        process_doc_path = (
+            self.plan_dir / self.manifest.defaults.process_doc
+            if self.manifest.defaults.process_doc is not None
+            else None
+        )
+        prepared = prepare_attempt(
+            plan_dir=self.plan_dir,
+            node=node,
+            attempt_index=attempt_index,
+            task_file=self.plan_dir / node.task.file,
+            process_doc_path=process_doc_path,
+            seed_context=seed_context,
+        )
+        if registration.mode == "interactive":
+            ensure_trusted(self.cwd, home=self.trust_home)
+        base_commit = head_commit(self.cwd)
+        self._prepared[node.node_id] = (attempt_index, prepared, base_commit)
+
+        def on_spawn(pid: int) -> None:
+            self.journal.append(
+                AttemptStarted(
+                    ts=self.clock(),
+                    node_id=node.node_id,
+                    attempt_index=attempt_index,
+                    worker_registration=worker_name,
+                    pid=pid,
+                    attempt_dir=str(prepared.attempt_dir),
+                )
+            )
+
+        def on_signal(event: dict) -> None:
+            payload = event.get("payload")
+            payload = payload if isinstance(payload, dict) else {}
+            self.journal.append(
+                SignalObserved(
+                    ts=self.clock(),
+                    node_id=node.node_id,
+                    attempt_index=attempt_index,
+                    event=event.get("event", "unknown"),
+                    session_id=payload.get("session_id"),
+                    transcript_path=payload.get("transcript_path"),
+                )
+            )
+
+        return launch_attempt(
+            registration,
+            prepared,
+            self.cwd,
+            timeout_seconds=self.timeout_seconds,
+            poll_interval=self.poll_interval,
+            kill_grace_seconds=self.kill_grace_seconds,
+            on_signal=on_signal,
+            on_spawn=on_spawn,
+        )
+
+    def run_gates(self, node: Node, result: AttemptResult) -> GateOutcome:
+        if node.kind == PHASE_REVIEW_NODE:
+            outcome = GateOutcome(gate=GATE_PHASE_REVIEW, passed=True, findings="not yet implemented")
+            self._journal_gate(node, outcome)
+            return outcome
+
+        if result.status != "completed":
+            findings = _LIFECYCLE_FINDINGS.get(str(result.status), f"worker attempt ended with {result.status}")
+            outcome = GateOutcome(gate=GATE_MECHANICAL, passed=False, findings=findings)
+            self._journal_gate(node, outcome)
+            return outcome
+
+        assert node.task is not None
+        attempt_index, prepared, base_commit = self._prepared[node.node_id]
+        gate_names = node.task.gates if node.task.gates is not None else [GATE_MECHANICAL]
+        for gate_name in gate_names:
+            if gate_name == GATE_MECHANICAL:
+                self.journal.append(GateStarted(ts=self.clock(), node_id=node.node_id, gate=GATE_MECHANICAL))
+                outcome = run_mechanical_gate(
+                    self.cwd,
+                    node,
+                    prepared.attempt_dir,
+                    self.manifest.defaults.verification,
+                    expect_commit=not node.task.no_change,
+                    base_commit=base_commit,
+                )
+                self.journal.append(
+                    GateResult(
+                        ts=self.clock(),
+                        node_id=node.node_id,
+                        gate=GATE_MECHANICAL,
+                        passed=outcome.passed,
+                        findings=outcome.findings,
+                    )
+                )
+                if not outcome.passed:
+                    return outcome
+            else:
+                # Agentic/human per-task gates arrive later; journal the
+                # skip loudly rather than silently passing.
+                self.journal.append(
+                    GateResult(
+                        ts=self.clock(),
+                        node_id=node.node_id,
+                        gate=gate_name,
+                        passed=True,
+                        findings=f"gate {gate_name!r} not implemented yet; skipped",
+                    )
+                )
+        for commit in commits_since(self.cwd, base_commit):
+            self.journal.append(CommitRecorded(ts=self.clock(), node_id=node.node_id, commit=commit))
+        return GateOutcome(gate=GATE_MECHANICAL, passed=True)
+
+    def _journal_gate(self, node: Node, outcome: GateOutcome) -> None:
+        self.journal.append(GateStarted(ts=self.clock(), node_id=node.node_id, gate=outcome.gate))
+        self.journal.append(
+            GateResult(
+                ts=self.clock(),
+                node_id=node.node_id,
+                gate=outcome.gate,
+                passed=outcome.passed,
+                findings=outcome.findings,
+            )
+        )

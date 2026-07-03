@@ -14,75 +14,13 @@ from coordinator.launcher import SignalReader
 from coordinator.launcher import launch_attempt
 from coordinator.launcher import reap_recorded_pid
 from coordinator.launcher import scrub_env
-from coordinator.registrations import WorkerRegistration
-
-# Shared prologue for fake workers: argv[1] is the attempt dir; emit()
-# appends hook-shaped events to this attempt's signals.jsonl.
-FAKE_PROLOGUE = """\
-import json, os, pathlib, signal, sys, time
-attempt_dir = pathlib.Path(sys.argv[1])
-signals = attempt_dir / "signals.jsonl"
-def emit(event, payload=None):
-    with open(signals, "a") as f:
-        f.write(json.dumps({"event": event, "ts": time.time(), "payload": payload}) + "\\n")
-"""
-
-STOP_THEN_SLEEP = (
-    FAKE_PROLOGUE
-    + """
-emit("SessionStart", {"session_id": "fake-sess", "transcript_path": "/tmp/fake-transcript.jsonl"})
-print("fake worker output")
-sys.stdout.flush()
-emit("Stop", {"session_id": "fake-sess", "last_assistant_message": "SUCCESS: did the thing"})
-time.sleep(60)
-"""
-)
-
-EXIT_WITHOUT_STOP = (
-    FAKE_PROLOGUE
-    + """
-emit("SessionStart", {"session_id": "fake-sess"})
-sys.exit(0)
-"""
-)
-
-ASK_QUESTION_THEN_SLEEP = (
-    FAKE_PROLOGUE
-    + """
-emit("SessionStart", {"session_id": "fake-sess"})
-emit("PreToolUse", {"tool_name": "AskUserQuestion", "session_id": "fake-sess"})
-time.sleep(60)
-"""
-)
-
-IGNORE_SIGTERM = (
-    FAKE_PROLOGUE
-    + """
-signal.signal(signal.SIGTERM, signal.SIG_IGN)
-emit("Stop", {"session_id": "fake-sess"})
-time.sleep(60)
-"""
-)
-
-ECHO_ENV = (
-    FAKE_PROLOGUE
-    + """
-keys = ["SCULPT_API_PORT", "SCULPTOR_FOLDER", "CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "AI_AGENT", "EXTRA_VAR"]
-emit("Stop", {"session_id": "fake-sess", "env": {k: os.environ.get(k) for k in keys}})
-"""
-)
-
-SLEEP_FOREVER = FAKE_PROLOGUE + "\ntime.sleep(60)\n"
-
-
-def make_registration(script: Path, mode: Literal["print", "interactive"], env: dict | None = None):
-    return WorkerRegistration(
-        name="fake",
-        display_name="Fake worker",
-        mode=mode,
-        command=[sys.executable, str(script), "{attempt_dir}", "{prompt}"],
-        env=env or {},
-    )
+from tests.fakes import ASK_QUESTION_THEN_SLEEP
+from tests.fakes import ECHO_ENV
+from tests.fakes import EXIT_WITHOUT_STOP
+from tests.fakes import IGNORE_SIGTERM
+from tests.fakes import SLEEP_FOREVER
+from tests.fakes import STOP_THEN_SLEEP
+from tests.fakes import make_registration
 
 
 def prepare(tmp_path: Path):

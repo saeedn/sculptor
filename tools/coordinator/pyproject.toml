@@ -33,4 +33,4 @@ dev = [
 where = ["."]
 
 [tool.setuptools.package-data]
-coordinator = ["data/workers/*.yaml"]
+coordinator = ["data/workers/*.yaml", "data/append_signal.py", "data/implement_task.md"]

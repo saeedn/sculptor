@@ -1,0 +1,55 @@
+name: Set up Sculptor toolchain
+description: >
+  Install just and uv (with Python 3.14) and warm the caches the justfile needs.
+  Node is intentionally NOT installed here: the justfile drives Node through nvm
+  (the `nvm_use` snippet), and GitHub's Ubuntu runners ship nvm, so the first
+  recipe that needs Node runs `nvm install 24.17.0` on its own. We just cache the
+  result so it is not re-downloaded on every run.
+
+runs:
+  using: composite
+  steps:
+    # Several tests create git worktrees branched from `main` (the workspace
+    # service's base ref). GitHub's default checkout is a detached-HEAD checkout
+    # of the PR merge commit, so no local `main` ref exists and those worktree
+    # creations fail with "invalid reference: main". Create the ref when missing
+    # (on a push to main it already exists, so this is a no-op there).
+    - name: Ensure a local `main` ref for worktree-based tests
+      shell: bash
+      run: |
+        git show-ref --verify --quiet refs/heads/main \
+          || git fetch --depth=1 origin +refs/heads/main:refs/heads/main
+
+    # Some backend flows (git init, initial commit) create commits using the
+    # *global* git identity — every dev machine has one, but runners don't, so
+    # those commits fail with "empty ident name". Set a placeholder identity.
+    - name: Configure a global git identity for backend-created commits
+      shell: bash
+      run: |
+        git config --global user.name "Sculptor CI"
+        git config --global user.email "ci@sculptor.invalid"
+
+    - name: Install just
+      uses: extractions/setup-just@v3
+
+    - name: Install uv + Python 3.14
+      uses: astral-sh/setup-uv@v6
+      with:
+        # Matches .python-version / requires-python (>=3.14,<3.15).
+        python-version: "3.14"
+        enable-cache: true
+
+    - name: Cache nvm Node install
+      uses: actions/cache@v4
+      with:
+        path: ~/.nvm/versions/node
+        # .nvmrc pins the Node version; only re-download when it changes.
+        key: nvm-node-${{ runner.os }}-${{ hashFiles('sculptor/frontend/.nvmrc') }}
+
+    - name: Cache npm download cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.npm
+        key: npm-${{ runner.os }}-${{ hashFiles('sculptor/frontend/package-lock.json') }}
+        restore-keys: |
+          npm-${{ runner.os }}-

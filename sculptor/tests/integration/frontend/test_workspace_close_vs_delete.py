@@ -75,6 +75,11 @@ def test_cmd_w_closes_workspace_tab(
     workspace_tabs = layout.get_workspace_tabs()
     expect(workspace_tabs).to_have_count(2)
 
+    # Move focus off the agent terminal before the shortcut. On Linux, Cmd+W maps
+    # to Ctrl+W, which a focused xterm captures (writing it to the PTY and calling
+    # stopImmediatePropagation) before the app-level close handler can see it.
+    workspace_tabs.nth(1).click()
+
     mod_key = get_playwright_modifier_key()
     page.keyboard.press(f"{mod_key}+w")
 

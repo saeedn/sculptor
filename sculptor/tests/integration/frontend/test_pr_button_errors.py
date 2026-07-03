@@ -81,11 +81,34 @@ def _expand_details_and_verify(task_page: PlaywrightTaskPage, expected_substring
 
 
 def _set_path_without_cli(factory: SculptorInstanceFactory, tmp_path: Path) -> None:
-    """Set PATH to exclude the real gh CLI while keeping python and git available."""
+    """Make the GitHub CLI (``gh``) unresolvable for the spawned instance while
+    leaving everything else on PATH — crucially ``git`` — intact.
+
+    We can't just drop PATH *directories* that contain ``gh``: on CI ``gh`` shares
+    ``/usr/bin`` with ``git``, so removing the directory strips git too and the
+    backend can't run any git commands (the failure this replaced). Collapsing all
+    of PATH into one symlink dir also breaks tools that resolve siblings relative
+    to their real location (e.g. the dev venv's python escapes its venv). Instead,
+    replace only the gh-containing directories with a sanitized symlink copy that
+    omits ``gh``, and keep every other directory as-is.
+    """
     cli_names = {"gh"}
-    current_path = os.environ.get("PATH", "")
-    filtered_dirs = [d for d in current_path.split(":") if not any((Path(d) / name).exists() for name in cli_names)]
-    factory._delegate.environment["PATH"] = ":".join(filtered_dirs)
+    new_dirs: list[str] = []
+    for index, directory in enumerate(os.environ.get("PATH", "").split(":")):
+        source_dir = Path(directory)
+        if not source_dir.is_dir():
+            continue
+        if not any((source_dir / name).exists() for name in cli_names):
+            new_dirs.append(str(source_dir))
+            continue
+        sanitized = tmp_path / f"path_without_cli_{index}"
+        sanitized.mkdir(parents=True, exist_ok=True)
+        for entry in source_dir.iterdir():
+            if entry.name in cli_names or (sanitized / entry.name).is_symlink():
+                continue
+            (sanitized / entry.name).symlink_to(entry)
+        new_dirs.append(str(sanitized))
+    factory._delegate.environment["PATH"] = ":".join(new_dirs)
 
 
 def _cleanup_workspaces(instance: SculptorInstance) -> None:

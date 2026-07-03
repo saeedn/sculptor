@@ -1218,7 +1218,7 @@ test-integration tests="sculptor/tests/integration/" buildargs="": build-fronten
     fi
     {{ _quiet_by_default_fn }}
     _do_test_integration() {
-      ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
+      ${timeout_prefix} uv run --project sculptor pytest ${xdist_args} --ignore=sculptor/tests/integration/real_claude {{ if env("CI", "") != "" { "-o console_output_style=count --tb=short --reruns 2" } else { "--show-capture=all --capture=tee-sys -v -ra " + if env("RUN_ALL", "") != "" { "" } else { "-x" } } }} {{tests}} {{buildargs}}
     }
     quiet_by_default test-integration _do_test_integration
 

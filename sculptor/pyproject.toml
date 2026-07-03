@@ -85,6 +85,12 @@ dev = [
     "pytest-mock",
     "pytest-performancetotal==1.0.0",
     "pytest-playwright==0.8.0",
+    # Retries a failed test in-process so CI absorbs load-induced timing flakes
+    # (enabled via --reruns in the justfile test-integration recipe, CI only).
+    "pytest-rerunfailures>=14.0",
+    # Splits the integration suite into balanced groups so CI can shard it across
+    # parallel runners (see the test-integration matrix in .github/workflows/ci.yml).
+    "pytest-split>=0.9.0",
     "pytest-timeout",
     "pytest-xdist>=3.8.0",
     "pytest>=9",

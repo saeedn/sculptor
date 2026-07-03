@@ -1,0 +1,106 @@
+name: CI
+
+# Run on every PR targeting main, and on pushes to main itself so the base
+# branch stays green and the caches created here are available to PR runs.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# If new commits are pushed to a PR while CI is still running, cancel the older
+# run instead of letting both finish. Saves runner time and gives faster feedback.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint · typecheck · ratchets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-sculptor
+
+      - name: Cache ratchets binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/ratchets
+          # Bump the version suffix when ratchets_version changes in the justfile.
+          key: ratchets-${{ runner.os }}-0.4.0
+
+      - name: Install ratchets
+        # On a cache hit the binary is restored to ~/.cargo/bin (already on PATH),
+        # but cargo's install ledger is not — so `cargo install` would fail with
+        # "binary already exists". Skip the install when ratchets is already present.
+        run: command -v ratchets >/dev/null && echo "ratchets present (restored from cache)" || just install-ratchets
+
+      - name: Run checks
+        env:
+          JUST_VERBOSE: "1"
+        run: just check
+
+  test-unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-sculptor
+
+      - name: Run unit tests
+        env:
+          JUST_VERBOSE: "1"
+        run: just test-unit junitxml=true
+
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-junit
+          path: |
+            sculptor/pytest_junit.xml
+            sculpt_junit.xml
+          if-no-files-found: ignore
+
+  test-integration:
+    # Sharded across parallel runners to keep wall-clock down: the full suite is
+    # ~30 min on one runner, so pytest-split fans it into N groups that run
+    # concurrently (each ~1/N of the tests). Shards run their own frontend build,
+    # but since they run in parallel that adds no wall-clock, only (free) compute.
+    name: Integration tests (shard ${{ matrix.group }}/${{ strategy.job-total }})
+    runs-on: ubuntu-latest
+    # Per-shard ceiling (kill-switch, not the expected duration). Each shard runs
+    # ~1/4 of the suite plus the cold Playwright/browser install.
+    timeout-minutes: 30
+    strategy:
+      # Run every shard to completion even if one fails — we want all results,
+      # and one shard's failure should not mask another's.
+      fail-fast: false
+      matrix:
+        group: [1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-sculptor
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          # Playwright's bundled browser is pinned via the playwright version in
+          # sculptor/pyproject.toml; re-download only when that file changes.
+          key: playwright-${{ runner.os }}-${{ hashFiles('sculptor/pyproject.toml') }}
+
+      - name: Install Playwright Chromium
+        # The frontend integration tests drive a headless Chromium via
+        # pytest-playwright. --with-deps also installs the required system libs.
+        run: uv run --project sculptor playwright install --with-deps chromium
+
+      - name: Run integration tests (shard ${{ matrix.group }}/4)
+        # GitHub sets CI=true automatically, which activates the justfile's CI
+        # path (full suite, no stop-on-first-failure, compact output). pytest-split
+        # selects this shard's slice; xdist then parallelizes it across workers.
+        env:
+          JUST_VERBOSE: "1"
+        run: just test-integration "sculptor/tests/integration/" "--splits 4 --group ${{ matrix.group }}"

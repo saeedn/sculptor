@@ -113,6 +113,18 @@ class RunPaused(BaseModel):
     resume_hint: str | None = None
 
 
+class IntentsConsumed(BaseModel):
+    """Marks every control intent before journal position ``position`` as consumed.
+
+    Appended by the scheduler before it acts on a batch of intents, so a
+    replay never re-applies them.
+    """
+
+    type: Literal["intents-consumed"] = "intents-consumed"
+    ts: float = Field(default_factory=time.time)
+    position: int
+
+
 Event = Annotated[
     RunStarted
     | TaskStateChanged
@@ -122,7 +134,8 @@ Event = Annotated[
     | GateResult
     | CommitRecorded
     | ControlIntent
-    | RunPaused,
+    | RunPaused
+    | IntentsConsumed,
     Field(discriminator="type"),
 ]
 
@@ -211,6 +224,8 @@ class Snapshot(BaseModel):
     journal_line_count: int = 0
     nodes: dict[str, NodeSnapshot] = {}
     intents: list[ControlIntent] = []
+    # Journal position up to which control intents are consumed.
+    intents_consumed: int = 0
 
     @classmethod
     def from_events(cls, events: Iterable[Event]) -> "Snapshot":
@@ -276,6 +291,8 @@ class Snapshot(BaseModel):
             self.run_status = "paused"
             self.pause_reason = event.reason
             self.resume_hint = event.resume_hint
+        elif isinstance(event, IntentsConsumed):
+            self.intents_consumed = max(self.intents_consumed, event.position)
 
 
 def save_snapshot(snapshot: Snapshot, plan_dir: Path) -> None:

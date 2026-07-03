@@ -6,18 +6,24 @@ hook-shaped signals real workers produce and makes real git commits.
 
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
+import psutil
 import yaml
+from typer.testing import CliRunner
 
 from coordinator.journal import AttemptStarted
 from coordinator.journal import CommitRecorded
+from coordinator.journal import ControlIntent
 from coordinator.journal import GateResult
+from coordinator.journal import Journal
 from coordinator.journal import RunPaused
 from coordinator.journal import TaskStateChanged
 from coordinator.journal import load_snapshot
 from coordinator.journal import replay
+from coordinator.main import app as cli_app
 from coordinator.run import execute_plan
 from coordinator.statedir import journal_path
 from tests.fakes import SCENARIO_WORKER
@@ -387,16 +393,94 @@ def test_rate_limited_attempt_pauses_without_burning_budget(tmp_path: Path) -> N
     assert load_snapshot(plan_dir).nodes["a"].state == "passed"
 
 
-def test_human_phase_review_still_skips(tmp_path: Path) -> None:
+def test_human_phase_review_waits_and_approves(tmp_path: Path) -> None:
     phases = [{"id": 1, "name": "P1", "review": "human", "tasks": [task_entry("1.1")]}]
     repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
     write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
-    assert run_plan(plan_dir, repo) == "completed"
+    assert run_plan(plan_dir, repo) == "waiting-human"
+    snapshot = load_snapshot(plan_dir)
+    assert snapshot.nodes["phase-review:1"].state == "waiting-human"
+    # The phase diff was written for presentation.
+    diff = (plan_dir / "_state" / "attempts" / "phase-review_1" / "0" / "human_review.patch").read_text()
+    assert "file_1.1.txt" in diff
+    # Approve via the CLI escape hatch, then resume.
+    result = CliRunner().invoke(cli_app, ["intent", str(plan_dir), "approve", "phase-review:1"])
+    assert result.exit_code == 0
+    assert run_plan(plan_dir, repo, resume=True) == "completed"
     gate_results = [
         e for e in replay(journal_path(plan_dir)) if isinstance(e, GateResult) and e.node_id == "phase-review:1"
     ]
-    assert gate_results[-1].findings is not None
-    assert "not implemented yet" in gate_results[-1].findings
+    assert gate_results[-1].gate == "human"
+    assert gate_results[-1].passed is True
+    assert gate_results[-1].findings == "approved by user"
+
+
+def test_human_gated_task_blocks_then_approves(tmp_path: Path) -> None:
+    phases = [
+        {
+            "id": 1,
+            "name": "P1",
+            "review": "none",
+            "tasks": [task_entry("a", gates=["mechanical", "human"]), task_entry("b", ["a"])],
+        }
+    ]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "a", 0, pass_actions("a"))
+    write_scenario(scenario_dir, "b", 0, pass_actions("b"))
+    assert run_plan(plan_dir, repo) == "waiting-human"
+    snapshot = load_snapshot(plan_dir)
+    assert snapshot.nodes["a"].state == "waiting-human"
+    # Commits were recorded before the human wait, and the task diff is
+    # presented from the implementer's attempt dir.
+    assert snapshot.nodes["a"].commits
+    diff = (plan_dir / "_state" / "attempts" / "a" / "0" / "human_review.patch").read_text()
+    assert "file_a.txt" in diff
+    result = CliRunner().invoke(cli_app, ["intent", str(plan_dir), "approve", "a"])
+    assert result.exit_code == 0
+    assert run_plan(plan_dir, repo, resume=True) == "completed"
+    assert load_snapshot(plan_dir).nodes["b"].state == "passed"
+
+
+def test_intent_cli_validates(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
+    _, plan_dir, _ = make_plan(tmp_path, phases)
+    runner = CliRunner()
+    assert runner.invoke(cli_app, ["intent", str(plan_dir), "bogus"]).exit_code == 1
+    assert runner.invoke(cli_app, ["intent", str(plan_dir), "retry"]).exit_code == 1
+    assert runner.invoke(cli_app, ["intent", str(plan_dir), "retry", "no-such-node"]).exit_code == 1
+    assert runner.invoke(cli_app, ["intent", str(plan_dir), "pause"]).exit_code == 0
+
+
+def test_abort_kills_in_flight_worker(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "a", 0, [{"signal": "SessionStart"}, {"sleep": 60}])
+
+    result_holder: dict = {}
+    thread = threading.Thread(target=lambda: result_holder.update(status=run_plan(plan_dir, repo)), daemon=True)
+    thread.start()
+
+    def worker_pid() -> int | None:
+        if not journal_path(plan_dir).is_file():
+            return None
+        for event in replay(journal_path(plan_dir)):
+            if isinstance(event, AttemptStarted) and event.pid is not None:
+                return event.pid
+        return None
+
+    deadline = time.monotonic() + 20
+    pid = None
+    while time.monotonic() < deadline and pid is None:
+        pid = worker_pid()
+        time.sleep(0.05)
+    assert pid is not None
+    assert psutil.pid_exists(pid)
+    Journal(journal_path(plan_dir)).append(ControlIntent(intent="abort"))
+    thread.join(timeout=20)
+    assert not thread.is_alive()
+    assert result_holder["status"] == "aborted"
+    assert not psutil.pid_exists(pid)
+    assert load_snapshot(plan_dir).nodes["a"].state == "failed"
 
 
 RESUME_DRIVER = """\

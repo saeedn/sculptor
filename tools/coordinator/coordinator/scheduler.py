@@ -33,6 +33,7 @@ from coordinator.dag import runnable
 from coordinator.journal import AttemptStarted
 from coordinator.journal import ControlIntent
 from coordinator.journal import Event
+from coordinator.journal import GateResult
 from coordinator.journal import IntentsConsumed
 from coordinator.journal import Journal
 from coordinator.journal import RunPaused
@@ -384,6 +385,11 @@ class Scheduler:
         self.transition(node.node_id, NodeState.PENDING, reason=reason)
 
     def on_attempt_failure(self, node: Node, attempt_index: int, result: AttemptResult) -> None:
+        if result.status == "killed":
+            # An aborted attempt never retries; the abort intent itself is
+            # processed at the top of the next loop iteration.
+            self.transition(node.node_id, NodeState.FAILED, reason="aborted")
+            return
         rate_limit = classify_attempt(result, attempt_dir(self.plan_dir, node.node_id, attempt_index))
         if rate_limit is not None:
             self._pause_for_rate_limit(node, attempt_index, rate_limit.resume_hint)
@@ -495,6 +501,15 @@ class Scheduler:
                 )
         elif intent.intent == "approve":
             if intent.node_id is not None and self.states.get(intent.node_id) == NodeState.WAITING_HUMAN:
+                self.journal.append(
+                    GateResult(
+                        ts=self.clock(),
+                        node_id=intent.node_id,
+                        gate="human",
+                        passed=True,
+                        findings="approved by user",
+                    )
+                )
                 self.transition(intent.node_id, NodeState.PASSED, reason="approve-intent")
 
     def _fail_in_flight_nodes(self, reason: str) -> None:

@@ -234,6 +234,7 @@ def launch_attempt(
     kill_grace_seconds: float = 10.0,
     on_signal: SignalCallback | None = None,
     on_spawn: Callable[[int], None] | None = None,
+    should_abort: Callable[[], bool] | None = None,
 ) -> AttemptResult:
     """Run one prepared attempt to a verdict; always reaps the process."""
     argv, registration_env = render(
@@ -316,6 +317,9 @@ def launch_attempt(
             break
         if time.monotonic() >= deadline:
             status = "timeout"
+            break
+        if should_abort is not None and should_abort():
+            status = "killed"
             break
         time.sleep(poll_interval)
 

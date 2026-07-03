@@ -20,13 +20,22 @@ from textual.widgets import Static
 from coordinator.dag import Graph
 from coordinator.dag import build_graph
 from coordinator.dag import topological_order
+from coordinator.journal import ControlIntent
+from coordinator.journal import ControlIntentName
+from coordinator.journal import Journal
 from coordinator.journal import Snapshot
+from coordinator.journal import complete_line_count
 from coordinator.journal import load_snapshot
 from coordinator.manifest import PlanManifest
 from coordinator.manifest import load_manifest
 from coordinator.run import RunStatus
 from coordinator.run import start_run_in_thread
 from coordinator.statedir import journal_path
+from coordinator.statedir import state_dir
+from coordinator.tui.drilldown import ConfirmScreen
+from coordinator.tui.drilldown import NodeDetailScreen
+from coordinator.tui.drilldown import TextScreen
+from coordinator.tui.drilldown import tail_text
 from coordinator.tui.widgets import TABLE_COLUMNS
 from coordinator.tui.widgets import activity_cell
 from coordinator.tui.widgets import attempts_cell
@@ -81,7 +90,17 @@ class CoordinatorApp(App):
         height: 1fr;
     }
     """
-    BINDINGS = [("q", "quit_if_idle", "Quit (when idle)")]
+    BINDINGS = [
+        ("q", "quit_if_idle", "Quit (when idle)"),
+        ("p", "pause", "Pause"),
+        ("r", "resume", "Resume"),
+        ("t", "retry_selected", "Retry task"),
+        ("s", "skip_selected", "Skip task"),
+        ("a", "approve_selected", "Approve"),
+        ("A", "abort_run", "Abort run"),
+        ("f", "show_failure_report", "Failure report"),
+        ("enter", "open_details", "Details"),
+    ]
 
     def __init__(
         self,
@@ -104,6 +123,9 @@ class CoordinatorApp(App):
         self._run_thread: threading.Thread | None = None
         self._last_snapshot: Snapshot | None = None
         self.status_text = ""
+        # (label, journal position when appended): shown as "requested"
+        # until the scheduler's consumed position passes them.
+        self._requested_intents: list[tuple[str, int]] = []
 
     def compose(self) -> ComposeResult:
         yield Static(id="status")
@@ -174,8 +196,92 @@ class CoordinatorApp(App):
             parts.append(f"state: {self.final_status}")
         if self.run_error is not None:
             parts.append(f"RUN CRASHED: {self.run_error}")
+        consumed = snapshot.intents_consumed if snapshot is not None else 0
+        pending = [label for label, position in self._requested_intents if position >= consumed]
+        if pending:
+            parts.append(f"requested: {', '.join(pending)}")
         self.status_text = "  •  ".join(parts)
         status.update(self.status_text)
+
+    # -- Controls: every control APPENDS a control-intent to the journal;
+    # the TUI never mutates scheduler state directly (REQ-UX-4). The
+    # scheduler picks intents up at the top of its loop, so run-level
+    # pause latency is one node step.
+
+    def _append_intent(self, intent: ControlIntentName, node_id: str | None = None) -> None:
+        position = complete_line_count(journal_path(self.plan_dir))
+        Journal(journal_path(self.plan_dir)).append(ControlIntent(intent=intent, node_id=node_id))
+        label = intent if node_id is None else f"{intent} {node_id}"
+        self._requested_intents.append((label, position))
+        self.notify(f"{label} requested")
+        self._update_status_bar()
+
+    def _selected_node_id(self) -> str | None:
+        table = self.query_one(DataTable)
+        if table.row_count == 0 or table.cursor_row is None:
+            return None
+        row_key, _ = table.coordinate_to_cell_key(table.cursor_coordinate)
+        return str(row_key.value)
+
+    def _node_state(self, node_id: str) -> str:
+        if self._last_snapshot is not None and node_id in self._last_snapshot.nodes:
+            return self._last_snapshot.nodes[node_id].state
+        return "pending"
+
+    def action_pause(self) -> None:
+        self._append_intent("pause")
+
+    def action_resume(self) -> None:
+        self._append_intent("resume")
+
+    def action_retry_selected(self) -> None:
+        node_id = self._selected_node_id()
+        if node_id is not None:
+            self._append_intent("retry", node_id)
+
+    def action_skip_selected(self) -> None:
+        node_id = self._selected_node_id()
+        if node_id is None:
+            return
+
+        def on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self._append_intent("skip", node_id)
+
+        self.push_screen(ConfirmScreen(f"Skip node {node_id}? Dependents will run as if it passed."), on_confirm)
+
+    def action_approve_selected(self) -> None:
+        node_id = self._selected_node_id()
+        if node_id is None:
+            return
+        if self._node_state(node_id) != "waiting-human":
+            self.notify(f"{node_id} is not waiting for approval", severity="warning")
+            return
+        self._append_intent("approve", node_id)
+
+    def action_abort_run(self) -> None:
+        def on_confirm(confirmed: bool | None) -> None:
+            if confirmed:
+                self._append_intent("abort")
+
+        self.push_screen(ConfirmScreen("Abort the run? The in-flight worker will be killed."), on_confirm)
+
+    def action_open_details(self) -> None:
+        node_id = self._selected_node_id()
+        if node_id is None:
+            return
+        node_snapshot = self._last_snapshot.nodes.get(node_id) if self._last_snapshot is not None else None
+        self.push_screen(NodeDetailScreen(node_id, self._node_state(node_id), node_snapshot, self._append_intent))
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.action_open_details()
+
+    def action_show_failure_report(self) -> None:
+        report_path = state_dir(self.plan_dir) / "failure_report.md"
+        if not report_path.is_file():
+            self.notify("no failure report for this run", severity="warning")
+            return
+        self.push_screen(TextScreen("failure report", tail_text(report_path)))
 
     def action_quit_if_idle(self) -> None:
         if self._run_thread is not None and self._run_thread.is_alive():

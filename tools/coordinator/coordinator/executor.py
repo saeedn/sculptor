@@ -20,6 +20,7 @@ from coordinator.attempt import prepare_attempt
 from coordinator.dag import Node
 from coordinator.dag import PHASE_REVIEW_NODE
 from coordinator.gates import GATE_AGENTIC
+from coordinator.gates import GATE_HUMAN
 from coordinator.gates import GATE_MECHANICAL
 from coordinator.gates import GATE_PHASE_REVIEW
 from coordinator.gates import commits_since
@@ -29,11 +30,13 @@ from coordinator.gates import porcelain_status
 from coordinator.gates import run_mechanical_gate
 from coordinator.journal import AttemptStarted
 from coordinator.journal import CommitRecorded
+from coordinator.journal import ControlIntent
 from coordinator.journal import GateResult
 from coordinator.journal import GateStarted
 from coordinator.journal import Journal
 from coordinator.journal import RunPaused
 from coordinator.journal import SignalObserved
+from coordinator.journal import complete_line_count
 from coordinator.journal import replay
 from coordinator.launcher import launch_attempt
 from coordinator.manifest import PlanManifest
@@ -47,6 +50,7 @@ from coordinator.review import parse_verdict
 from coordinator.review import prepare_review_attempt
 from coordinator.scheduler import AttemptResult
 from coordinator.scheduler import GateOutcome
+from coordinator.statedir import attempt_dir
 from coordinator.trust import ensure_trusted
 
 _LIFECYCLE_FINDINGS = {
@@ -89,6 +93,16 @@ class PlanExecutor:
         self.trust_home = trust_home
         self.clock = clock
         self._prepared: dict[str, tuple[int, PreparedAttempt | None, str]] = {}
+        # Abort intents appended after this run started kill the in-flight
+        # worker via the launcher's poll loop (never os.kill from a UI).
+        self._journal_position_at_start = complete_line_count(journal.path)
+
+    def _abort_requested(self) -> bool:
+        events = list(replay(self.journal.path))
+        return any(
+            isinstance(event, ControlIntent) and event.intent == "abort"
+            for event in events[self._journal_position_at_start :]
+        )
 
     def run_attempt(
         self,
@@ -169,29 +183,44 @@ class PlanExecutor:
             kill_grace_seconds=self.kill_grace_seconds,
             on_signal=on_signal,
             on_spawn=on_spawn,
+            should_abort=self._abort_requested,
+        )
+
+    def _phase_commits(self, node: Node) -> list[str]:
+        assert node.phase is not None
+        phase_task_ids = {task.id for task in node.phase.tasks}
+        return [
+            event.commit
+            for event in replay(self.journal.path)
+            if isinstance(event, CommitRecorded) and event.node_id in phase_task_ids
+        ]
+
+    def _wait_for_human(self, node: Node, attempt_directory: Path, commits: list[str]) -> GateOutcome:
+        """Write the scope diff for presentation and hand the node to a human."""
+        attempt_directory.mkdir(parents=True, exist_ok=True)
+        diff_path = attempt_directory / "human_review.patch"
+        diff_path.write_text(build_review_diff(self.cwd, commits))
+        self.journal.append(GateStarted(ts=self.clock(), node_id=node.node_id, gate=GATE_HUMAN))
+        return GateOutcome(
+            gate=GATE_HUMAN,
+            passed=False,
+            waiting_human=True,
+            findings=f"waiting for human approval; diff: {diff_path}",
         )
 
     def run_gates(self, node: Node, result: AttemptResult) -> GateOutcome:
         if node.kind == PHASE_REVIEW_NODE:
-            if node.review == "human":
-                # The human gate arrives with the TUI controls; skip loudly.
-                outcome = GateOutcome(
-                    gate=GATE_PHASE_REVIEW, passed=True, findings="human phase review not implemented yet; skipped"
-                )
-                self._journal_gate(node, outcome)
-                return outcome
-            assert node.phase is not None
             attempt_index, _, _ = self._prepared[node.node_id]
-            phase_task_ids = {task.id for task in node.phase.tasks}
-            commits = [
-                event.commit
-                for event in replay(self.journal.path)
-                if isinstance(event, CommitRecorded) and event.node_id in phase_task_ids
-            ]
+            if node.review == "human":
+                return self._wait_for_human(
+                    node,
+                    attempt_dir(self.plan_dir, node.node_id, attempt_index),
+                    self._phase_commits(node),
+                )
             return self._run_agentic(
                 node,
-                scope_tasks=list(node.phase.tasks),
-                commits=commits,
+                scope_tasks=list(node.phase.tasks) if node.phase is not None else [],
+                commits=self._phase_commits(node),
                 review_node_id=node.node_id,
                 attempt_index=attempt_index,
                 gate_kind=GATE_PHASE_REVIEW,
@@ -207,6 +236,9 @@ class PlanExecutor:
         attempt_index, prepared, base_commit = self._prepared[node.node_id]
         assert prepared is not None
         gate_names = node.task.gates if node.task.gates is not None else [GATE_MECHANICAL]
+        # The human gate runs LAST, after every automated gate passed.
+        human_requested = GATE_HUMAN in gate_names
+        gate_names = [name for name in gate_names if name != GATE_HUMAN]
         for gate_name in gate_names:
             if gate_name == GATE_MECHANICAL:
                 self.journal.append(GateStarted(ts=self.clock(), node_id=node.node_id, gate=GATE_MECHANICAL))
@@ -241,8 +273,8 @@ class PlanExecutor:
                 if not outcome.passed:
                     return outcome
             else:
-                # The human per-task gate arrives with the TUI controls;
-                # journal the skip loudly rather than silently passing.
+                # Unknown gate name (manifest validation should prevent
+                # this); journal the skip loudly rather than silently passing.
                 self.journal.append(
                     GateResult(
                         ts=self.clock(),
@@ -252,8 +284,13 @@ class PlanExecutor:
                         findings=f"gate {gate_name!r} not implemented yet; skipped",
                     )
                 )
-        for commit in commits_since(self.cwd, base_commit):
+        # Record the task's commits before any human wait — the work is
+        # already in git either way.
+        commits = commits_since(self.cwd, base_commit)
+        for commit in commits:
             self.journal.append(CommitRecorded(ts=self.clock(), node_id=node.node_id, commit=commit))
+        if human_requested:
+            return self._wait_for_human(node, prepared.attempt_dir, commits)
         return GateOutcome(gate=GATE_MECHANICAL, passed=True)
 
     def _run_agentic(

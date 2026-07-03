@@ -1,12 +1,22 @@
 import sys
 from pathlib import Path
+from typing import get_args
 
 import typer
 
+from coordinator.dag import build_graph
+from coordinator.journal import ControlIntent
+from coordinator.journal import ControlIntentName
+from coordinator.journal import Journal
 from coordinator.journal import load_snapshot
 from coordinator.manifest import ManifestError
+from coordinator.manifest import load_manifest
 from coordinator.run import RunError
 from coordinator.run import execute_plan
+from coordinator.statedir import ensure_state_dir
+from coordinator.statedir import journal_path
+
+_NODE_INTENTS = ("retry", "skip", "approve")
 
 app = typer.Typer(
     name="coordinator",
@@ -77,6 +87,43 @@ def resume(run_id: str = typer.Argument(..., help="ID of the run to resume.")) -
     """Resume a previously interrupted run."""
     typer.echo("not yet implemented", err=True)
     raise typer.Exit(1)
+
+
+@app.command()
+def intent(
+    plan_dir: Path = typer.Argument(..., help="Path to the plan directory containing plan.yaml."),
+    intent_name: str = typer.Argument(..., metavar="INTENT", help="pause | resume | retry | skip | approve | abort"),
+    node_id: str | None = typer.Argument(None, help="Node id (required for retry/skip/approve)."),
+) -> None:
+    """Append a control intent to the run's journal (works without the TUI).
+
+    A running coordinator picks it up on its next loop iteration; a
+    paused or killed run picks it up on its next start.
+    """
+    if not plan_dir.is_dir():
+        typer.echo(f"Error: plan directory does not exist: {plan_dir}", err=True)
+        raise typer.Exit(1)
+    allowed = get_args(ControlIntentName)
+    if intent_name not in allowed:
+        typer.echo(f"Error: unknown intent {intent_name!r}; allowed: {', '.join(allowed)}", err=True)
+        raise typer.Exit(1)
+    if intent_name in _NODE_INTENTS and node_id is None:
+        typer.echo(f"Error: intent {intent_name!r} requires a node id", err=True)
+        raise typer.Exit(1)
+    if node_id is not None:
+        try:
+            graph = build_graph(load_manifest(plan_dir))
+        except ManifestError as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(1)
+        if node_id not in graph.nodes:
+            typer.echo(f"Error: unknown node {node_id!r}; known: {', '.join(graph.nodes)}", err=True)
+            raise typer.Exit(1)
+    ensure_state_dir(plan_dir)
+    # pyrefly: ignore [bad-argument-type]  (intent_name is validated against the Literal above)
+    Journal(journal_path(plan_dir)).append(ControlIntent(intent=intent_name, node_id=node_id))
+    target = f" for node {node_id}" if node_id is not None else ""
+    typer.echo(f"appended {intent_name} intent{target}")
 
 
 @app.command()

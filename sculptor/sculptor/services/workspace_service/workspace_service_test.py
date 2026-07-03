@@ -865,8 +865,8 @@ def test_delete_worktree_workspace_stops_terminals_before_removing_worktree(
 
 def test_concurrent_setup_creates_single_environment(
     test_service_collection: CompleteServiceCollection,
-    test_project: Project,
     test_root_concurrency_group: ConcurrencyGroup,
+    tmp_path: Path,
 ) -> None:
     """Two concurrent agent_environment_context calls for the same workspace
     should result in a single environment being created, not two.
@@ -874,10 +874,17 @@ def test_concurrent_setup_creates_single_environment(
     This verifies the per-workspace lock prevents the data race where both
     threads see environment_id=None and each creates a separate environment.
     """
+    # Back the workspace with an isolated repo under tmp_path. Creating the
+    # workspace runs ``git worktree add`` and mints a branch; keeping that in a
+    # throwaway repo (rather than the shared ``test_project``, which resolves to
+    # the user's real Sculptor checkout) keeps both out of the real repo.
+    repo = _create_isolated_git_repo(tmp_path / "repo", test_root_concurrency_group)
+    project = _init_and_activate_project(test_service_collection, repo)
+
     # Create a workspace without an environment yet
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
         workspace = test_service_collection.workspace_service.create_workspace(
-            project=test_project,
+            project=project,
             source_branch="main",
             requested_branch_name=f"ws/concurrent-{uuid4().hex[:8]}",
             description="Concurrent test workspace",
@@ -895,7 +902,7 @@ def test_concurrent_setup_creates_single_environment(
                 # Synchronize both threads to maximize race window
                 barrier.wait(timeout=5)
                 with test_service_collection.workspace_service.agent_environment_context(
-                    project=test_project,
+                    project=project,
                     workspace_id=workspace_id,
                     task_id=TaskID(),
                     concurrency_group=concurrency_group,
@@ -905,25 +912,31 @@ def test_concurrent_setup_creates_single_environment(
         except Exception as e:
             errors.append(e)
 
-    thread1 = threading.Thread(target=setup_environment, args=(0,))
-    thread2 = threading.Thread(target=setup_environment, args=(1,))
-    thread1.start()
-    thread2.start()
-    thread1.join(timeout=30)
-    thread2.join(timeout=30)
+    try:
+        thread1 = threading.Thread(target=setup_environment, args=(0,))
+        thread2 = threading.Thread(target=setup_environment, args=(1,))
+        thread1.start()
+        thread2.start()
+        thread1.join(timeout=30)
+        thread2.join(timeout=30)
 
-    assert not errors, f"Threads raised errors: {errors}"
-    assert len(environment_ids) == 2
-    # Both threads should have gotten the same environment (same workspace path)
-    assert environment_ids[0] == environment_ids[1], (
-        f"Expected same environment for both tasks, got {environment_ids[0]} and {environment_ids[1]}"
-    )
+        assert not errors, f"Threads raised errors: {errors}"
+        assert len(environment_ids) == 2
+        # Both threads should have gotten the same environment (same workspace path)
+        assert environment_ids[0] == environment_ids[1], (
+            f"Expected same environment for both tasks, got {environment_ids[0]} and {environment_ids[1]}"
+        )
 
-    # Verify the workspace has a single environment_id in the database
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        final_workspace = transaction.get_workspace(workspace_id)
-    assert final_workspace is not None
-    assert final_workspace.environment_id is not None
+        # Verify the workspace has a single environment_id in the database
+        with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
+            final_workspace = transaction.get_workspace(workspace_id)
+        assert final_workspace is not None
+        assert final_workspace.environment_id is not None
+    finally:
+        # Tear down the workspace so its worktree and branch are removed rather
+        # than accumulating across runs.
+        with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
+            test_service_collection.workspace_service.delete_workspace(workspace_id, transaction)
 
 
 # Target branch diff

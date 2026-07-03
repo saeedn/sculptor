@@ -14,6 +14,9 @@ Full schema (version 1):
     defaults:
       worker: claude-print           # worker registration name
       escalation_worker: claude-print-opus   # optional
+      reviewer: claude-print-opus    # optional; worker used by agentic
+                                     # review gates (defaults to the
+                                     # node's worker)
       attempts: 2                    # base attempts before escalation; >= 1
       verification:                  # commands run by the mechanical gate
         - just format
@@ -77,6 +80,7 @@ def _coerce_scalar_to_str(value: Any) -> Any:
 class ManifestDefaults(BaseModel):
     worker: str
     escalation_worker: str | None = None
+    reviewer: str | None = None
     attempts: int = 2
     verification: list[str]
     process_doc: str | None = None

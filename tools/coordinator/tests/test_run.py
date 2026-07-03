@@ -41,7 +41,7 @@ phases:
 """
 
 
-def make_plan_repo(tmp_path: Path, worker_script_body: str, review: str = "agentic") -> tuple[Path, Path]:
+def make_plan_repo(tmp_path: Path, worker_script_body: str, review: str = "none") -> tuple[Path, Path]:
     """A git repo containing a two-task plan and a repo-level fake-worker registration."""
     repo = make_git_repo(tmp_path / "repo")
     script = tmp_path / "fake_worker.py"
@@ -80,9 +80,8 @@ def test_two_task_plan_passes(tmp_path: Path) -> None:
     events = list(replay(journal_path(plan_dir)))
     assert isinstance(events[0], RunStarted)
     attempt_events = [e for e in events if isinstance(e, AttemptStarted)]
-    # Scheduler write-ahead + executor post-spawn (with pid) for each task,
-    # plus the scheduler's record for the phase-review node.
-    assert {e.node_id for e in attempt_events} == {"1.1", "1.2", "phase-review:1"}
+    # Scheduler write-ahead + executor post-spawn (with pid) per task.
+    assert {e.node_id for e in attempt_events} == {"1.1", "1.2"}
     assert any(e.pid is not None for e in attempt_events if e.node_id == "1.1")
     signal_events = [e for e in events if isinstance(e, SignalObserved)]
     assert {e.event for e in signal_events} >= {"SessionStart", "Stop"}
@@ -93,10 +92,9 @@ def test_two_task_plan_passes(tmp_path: Path) -> None:
     assert {(e.node_id, e.gate, e.passed) for e in gate_results} >= {
         ("1.1", "mechanical", True),
         ("1.2", "mechanical", True),
-        ("phase-review:1", "phase-review", True),
     }
     passed = [e for e in events if isinstance(e, TaskStateChanged) and e.new_state == "passed"]
-    assert {e.node_id for e in passed} == {"1.1", "1.2", "phase-review:1"}
+    assert {e.node_id for e in passed} == {"1.1", "1.2"}
     assert any("1.1: pending -> running" in m for m in messages)
 
 

@@ -101,6 +101,9 @@ class GateOutcome:
     passed: bool
     waiting_human: bool = False
     findings: str | None = None
+    # Parsed reviewer findings (review.Finding objects) when the agentic
+    # gate ran; the retry ladder formats these into the retry context.
+    findings_list: tuple[object, ...] = ()
 
 
 class Executor(Protocol):

@@ -83,6 +83,10 @@ def task_entry(task_id: str, deps: list[str] | None = None, **extra) -> dict:
     return {"id": task_id, "file": f"{task_id.replace('.', '_')}.md", "deps": deps or [], **extra}
 
 
+def passing_review_actions() -> list[dict]:
+    return [{"signal": "SessionStart"}, {"verdict": {"pass": True, "findings": []}}, {"signal": "Stop"}]
+
+
 def test_all_pass_three_tasks_two_phases(tmp_path: Path) -> None:
     phases = [
         {"id": 1, "name": "P1", "review": "agentic", "tasks": [task_entry("1.1"), task_entry("1.2", ["1.1"])]},
@@ -91,6 +95,8 @@ def test_all_pass_three_tasks_two_phases(tmp_path: Path) -> None:
     repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
     for node_id in ("1.1", "1.2", "2.1"):
         write_scenario(scenario_dir, node_id, 0, pass_actions(node_id))
+    # The phase-boundary agentic review runs a real (fake) reviewer.
+    write_scenario(scenario_dir, "phase-review:1", 0, passing_review_actions())
     assert run_plan(plan_dir, repo) == "completed"
     messages = git_log_messages(repo)
     # Deps honored: commits land in dependency order.
@@ -173,6 +179,101 @@ def test_interactive_mode_all_pass(tmp_path: Path) -> None:
     # injected (fake) home, never the real one.
     assert (plan_dir / "_state" / "attempts" / "a" / "0" / "pty_output.raw").exists()
     assert str(repo.resolve()) in (trust_home / ".claude.json").read_text()
+
+
+def test_phase_review_failing_verdict_fails_node(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "agentic", "tasks": [task_entry("1.1")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
+    write_scenario(
+        scenario_dir,
+        "phase-review:1",
+        0,
+        [
+            {"signal": "SessionStart"},
+            {
+                "verdict": {
+                    "pass": False,
+                    "findings": [
+                        {"task_id": "1.1", "severity": "blocker", "summary": "wrong output", "detail": "off by one"}
+                    ],
+                }
+            },
+            {"signal": "Stop"},
+        ],
+    )
+    assert run_plan(plan_dir, repo) == "failed"
+    snapshot = load_snapshot(plan_dir)
+    assert snapshot.nodes["phase-review:1"].state == "failed"
+    gate_results = [
+        e for e in replay(journal_path(plan_dir)) if isinstance(e, GateResult) and e.node_id == "phase-review:1"
+    ]
+    assert gate_results[-1].passed is False
+    assert gate_results[-1].findings is not None
+    assert "wrong output" in gate_results[-1].findings
+    assert "off by one" in gate_results[-1].findings
+
+
+def test_per_task_agentic_gate_passes(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("1.1", gates=["mechanical", "agentic"])]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
+    write_scenario(scenario_dir, "1.1.review", 0, passing_review_actions())
+    assert run_plan(plan_dir, repo) == "completed"
+    gate_results = [e for e in replay(journal_path(plan_dir)) if isinstance(e, GateResult) and e.node_id == "1.1"]
+    assert {(e.gate, e.passed) for e in gate_results} == {("mechanical", True), ("agentic", True)}
+
+
+def test_reviewer_without_verdict_fails_closed(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "agentic", "tasks": [task_entry("1.1")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
+    # Reviewer stops cleanly but never writes verdict.json.
+    write_scenario(scenario_dir, "phase-review:1", 0, [{"signal": "SessionStart"}, {"signal": "Stop"}])
+    assert run_plan(plan_dir, repo) == "failed"
+    gate_results = [
+        e for e in replay(journal_path(plan_dir)) if isinstance(e, GateResult) and e.node_id == "phase-review:1"
+    ]
+    assert gate_results[-1].passed is False
+    assert gate_results[-1].findings is not None
+    assert "no valid verdict" in gate_results[-1].findings
+
+
+def test_reviewer_that_commits_voids_the_review(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "agentic", "tasks": [task_entry("1.1")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
+    write_scenario(
+        scenario_dir,
+        "phase-review:1",
+        0,
+        [
+            {"signal": "SessionStart"},
+            {"write": {"path": "reviewer_sneaky.txt", "content": "x"}},
+            {"commit": "reviewer should not commit"},
+            {"verdict": {"pass": True, "findings": []}},
+            {"signal": "Stop"},
+        ],
+    )
+    assert run_plan(plan_dir, repo) == "failed"
+    gate_results = [
+        e for e in replay(journal_path(plan_dir)) if isinstance(e, GateResult) and e.node_id == "phase-review:1"
+    ]
+    assert gate_results[-1].passed is False
+    assert gate_results[-1].findings is not None
+    assert "reviewer modified the repository" in gate_results[-1].findings
+
+
+def test_human_phase_review_still_skips(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "human", "tasks": [task_entry("1.1")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
+    assert run_plan(plan_dir, repo) == "completed"
+    gate_results = [
+        e for e in replay(journal_path(plan_dir)) if isinstance(e, GateResult) and e.node_id == "phase-review:1"
+    ]
+    assert gate_results[-1].findings is not None
+    assert "not implemented yet" in gate_results[-1].findings
 
 
 RESUME_DRIVER = """\

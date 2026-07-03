@@ -163,7 +163,10 @@ def _terminate_child(proc: subprocess.Popen, kill_grace_seconds: float) -> None:
         return
     try:
         os.killpg(proc.pid, signal.SIGTERM)
-    except ProcessLookupError:
+    except (ProcessLookupError, PermissionError):
+        # ProcessLookupError: the group is gone. PermissionError: macOS
+        # raises EPERM when the child exited between poll() and killpg
+        # (a zombie group). Either way there is nothing left to signal.
         proc.wait()
         return
     try:
@@ -171,7 +174,7 @@ def _terminate_child(proc: subprocess.Popen, kill_grace_seconds: float) -> None:
     except subprocess.TimeoutExpired:
         try:
             os.killpg(proc.pid, signal.SIGKILL)
-        except ProcessLookupError:
+        except (ProcessLookupError, PermissionError):
             pass
         proc.wait()
 

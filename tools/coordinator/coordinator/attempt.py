@@ -66,8 +66,18 @@ def _hooks_settings(helper: Path, signals_path: Path) -> dict:
     return {"skipDangerousModePermissionPrompt": True, "hooks": hooks}
 
 
-def _builtin_data_text(filename: str) -> str:
+def builtin_data_text(filename: str) -> str:
     return (resources.files("coordinator") / "data" / filename).read_text()
+
+
+def write_hooks_fragment(directory: Path) -> tuple[Path, Path]:
+    """Write hooks.json + the copied signal helper; returns (hooks_file, signals_path)."""
+    helper = directory / "append_signal.py"
+    helper.write_text(builtin_data_text("append_signal.py"))
+    signals_path = directory / "signals.jsonl"
+    hooks_file = directory / "hooks.json"
+    hooks_file.write_text(json.dumps(_hooks_settings(helper.resolve(), signals_path.resolve()), indent=2) + "\n")
+    return hooks_file, signals_path
 
 
 def prepare_attempt(
@@ -82,18 +92,13 @@ def prepare_attempt(
     directory = attempt_dir(plan_dir, node.node_id, attempt_index)
     directory.mkdir(parents=True, exist_ok=True)
 
-    helper = directory / "append_signal.py"
-    helper.write_text(_builtin_data_text("append_signal.py"))
-
-    signals_path = directory / "signals.jsonl"
-    hooks_file = directory / "hooks.json"
-    hooks_file.write_text(json.dumps(_hooks_settings(helper.resolve(), signals_path.resolve()), indent=2) + "\n")
+    hooks_file, signals_path = write_hooks_fragment(directory)
 
     process_doc = directory / "process.md"
     if process_doc_path is not None:
         process_doc.write_text(process_doc_path.read_text())
     else:
-        process_doc.write_text(_builtin_data_text("implement_task.md"))
+        process_doc.write_text(builtin_data_text("implement_task.md"))
 
     context_file: Path | None = None
     if seed_context is not None:

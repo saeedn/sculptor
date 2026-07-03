@@ -19,6 +19,7 @@ from coordinator.attempt import PreparedAttempt
 from coordinator.attempt import prepare_attempt
 from coordinator.dag import Node
 from coordinator.dag import PHASE_REVIEW_NODE
+from coordinator.gates import GATE_AGENTIC
 from coordinator.gates import GATE_MECHANICAL
 from coordinator.gates import GATE_PHASE_REVIEW
 from coordinator.gates import commits_since
@@ -33,10 +34,17 @@ from coordinator.journal import GateStarted
 from coordinator.journal import Journal
 from coordinator.journal import RunPaused
 from coordinator.journal import SignalObserved
+from coordinator.journal import replay
 from coordinator.launcher import launch_attempt
 from coordinator.manifest import PlanManifest
+from coordinator.manifest import TaskSpec
 from coordinator.registrations import WorkerRegistration
 from coordinator.registrations import resolve_worker
+from coordinator.review import VerdictError
+from coordinator.review import build_review_diff
+from coordinator.review import format_findings
+from coordinator.review import parse_verdict
+from coordinator.review import prepare_review_attempt
 from coordinator.scheduler import AttemptResult
 from coordinator.scheduler import GateOutcome
 from coordinator.trust import ensure_trusted
@@ -80,11 +88,13 @@ class PlanExecutor:
         self.kill_grace_seconds = kill_grace_seconds
         self.trust_home = trust_home
         self.clock = clock
-        self._prepared: dict[str, tuple[int, PreparedAttempt, str]] = {}
+        self._prepared: dict[str, tuple[int, PreparedAttempt | None, str]] = {}
 
     def run_attempt(self, node: Node, attempt_index: int, seed_context: str | None) -> AttemptResult:
         if node.kind == PHASE_REVIEW_NODE:
-            # Phase reviews run no worker yet; the gate auto-passes below.
+            # Phase reviews run no implementer worker; the reviewer runs
+            # in run_gates. Remember the attempt index for its dir.
+            self._prepared[node.node_id] = (attempt_index, None, head_commit(self.cwd))
             return AttemptResult(ok=True, status="completed")
         if not is_tree_clean(self.cwd):
             status = porcelain_status(self.cwd)
@@ -157,9 +167,29 @@ class PlanExecutor:
 
     def run_gates(self, node: Node, result: AttemptResult) -> GateOutcome:
         if node.kind == PHASE_REVIEW_NODE:
-            outcome = GateOutcome(gate=GATE_PHASE_REVIEW, passed=True, findings="not yet implemented")
-            self._journal_gate(node, outcome)
-            return outcome
+            if node.review == "human":
+                # The human gate arrives with the TUI controls; skip loudly.
+                outcome = GateOutcome(
+                    gate=GATE_PHASE_REVIEW, passed=True, findings="human phase review not implemented yet; skipped"
+                )
+                self._journal_gate(node, outcome)
+                return outcome
+            assert node.phase is not None
+            attempt_index, _, _ = self._prepared[node.node_id]
+            phase_task_ids = {task.id for task in node.phase.tasks}
+            commits = [
+                event.commit
+                for event in replay(self.journal.path)
+                if isinstance(event, CommitRecorded) and event.node_id in phase_task_ids
+            ]
+            return self._run_agentic(
+                node,
+                scope_tasks=list(node.phase.tasks),
+                commits=commits,
+                review_node_id=node.node_id,
+                attempt_index=attempt_index,
+                gate_kind=GATE_PHASE_REVIEW,
+            )
 
         if result.status != "completed":
             findings = _LIFECYCLE_FINDINGS.get(str(result.status), f"worker attempt ended with {result.status}")
@@ -169,6 +199,7 @@ class PlanExecutor:
 
         assert node.task is not None
         attempt_index, prepared, base_commit = self._prepared[node.node_id]
+        assert prepared is not None
         gate_names = node.task.gates if node.task.gates is not None else [GATE_MECHANICAL]
         for gate_name in gate_names:
             if gate_name == GATE_MECHANICAL:
@@ -192,9 +223,20 @@ class PlanExecutor:
                 )
                 if not outcome.passed:
                     return outcome
+            elif gate_name == GATE_AGENTIC:
+                outcome = self._run_agentic(
+                    node,
+                    scope_tasks=[node.task],
+                    commits=commits_since(self.cwd, base_commit),
+                    review_node_id=f"{node.node_id}.review",
+                    attempt_index=attempt_index,
+                    gate_kind=GATE_AGENTIC,
+                )
+                if not outcome.passed:
+                    return outcome
             else:
-                # Agentic/human per-task gates arrive later; journal the
-                # skip loudly rather than silently passing.
+                # The human per-task gate arrives with the TUI controls;
+                # journal the skip loudly rather than silently passing.
                 self.journal.append(
                     GateResult(
                         ts=self.clock(),
@@ -207,6 +249,101 @@ class PlanExecutor:
         for commit in commits_since(self.cwd, base_commit):
             self.journal.append(CommitRecorded(ts=self.clock(), node_id=node.node_id, commit=commit))
         return GateOutcome(gate=GATE_MECHANICAL, passed=True)
+
+    def _run_agentic(
+        self,
+        node: Node,
+        scope_tasks: list[TaskSpec],
+        commits: list[str],
+        review_node_id: str,
+        attempt_index: int,
+        gate_kind: str,
+    ) -> GateOutcome:
+        """Launch a fresh reviewer worker and gate on its verdict (fail-closed)."""
+        self.journal.append(GateStarted(ts=self.clock(), node_id=node.node_id, gate=gate_kind))
+        reviewer_name = self.manifest.defaults.reviewer
+        if reviewer_name is None:
+            task_worker = node.task.worker if node.task is not None else None
+            reviewer_name = task_worker or self.manifest.defaults.worker
+        registration = self.registrations[reviewer_name]
+
+        task_files = [self.plan_dir / task.file for task in scope_tasks]
+        diff_text = build_review_diff(self.cwd, commits)
+        review = prepare_review_attempt(self.plan_dir, review_node_id, attempt_index, task_files, diff_text)
+        if registration.mode == "interactive":
+            ensure_trusted(self.cwd, home=self.trust_home)
+        head_before = head_commit(self.cwd)
+
+        def on_spawn(pid: int) -> None:
+            self.journal.append(
+                AttemptStarted(
+                    ts=self.clock(),
+                    node_id=review_node_id,
+                    attempt_index=attempt_index,
+                    worker_registration=reviewer_name,
+                    pid=pid,
+                    attempt_dir=str(review.prepared.attempt_dir),
+                )
+            )
+
+        def on_signal(event: dict) -> None:
+            payload = event.get("payload")
+            payload = payload if isinstance(payload, dict) else {}
+            self.journal.append(
+                SignalObserved(
+                    ts=self.clock(),
+                    node_id=review_node_id,
+                    attempt_index=attempt_index,
+                    event=event.get("event", "unknown"),
+                    session_id=payload.get("session_id"),
+                    transcript_path=payload.get("transcript_path"),
+                )
+            )
+
+        result = launch_attempt(
+            registration,
+            review.prepared,
+            self.cwd,
+            timeout_seconds=self.timeout_seconds,
+            poll_interval=self.poll_interval,
+            kill_grace_seconds=self.kill_grace_seconds,
+            on_signal=on_signal,
+            on_spawn=on_spawn,
+        )
+
+        if head_commit(self.cwd) != head_before:
+            outcome = GateOutcome(
+                gate=gate_kind, passed=False, findings="reviewer modified the repository (HEAD moved); review is void"
+            )
+        elif result.status != "completed":
+            outcome = GateOutcome(gate=gate_kind, passed=False, findings=f"reviewer attempt {result.status}")
+        else:
+            try:
+                verdict = parse_verdict(review.verdict_path)
+            except VerdictError as e:
+                # Fail CLOSED: a reviewer that rambles without writing a
+                # valid verdict must not pass the gate.
+                outcome = GateOutcome(
+                    gate=gate_kind, passed=False, findings=f"reviewer produced no valid verdict: {e}"
+                )
+            else:
+                findings_text = f"{format_findings(verdict)}\nverdict: {review.verdict_path}"
+                outcome = GateOutcome(
+                    gate=gate_kind,
+                    passed=not verdict.blocks(),
+                    findings=findings_text,
+                    findings_list=tuple(verdict.findings),
+                )
+        self.journal.append(
+            GateResult(
+                ts=self.clock(),
+                node_id=node.node_id,
+                gate=gate_kind,
+                passed=outcome.passed,
+                findings=outcome.findings,
+            )
+        )
+        return outcome
 
     def _journal_gate(self, node: Node, outcome: GateOutcome) -> None:
         self.journal.append(GateStarted(ts=self.clock(), node_id=node.node_id, gate=outcome.gate))

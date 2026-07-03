@@ -45,6 +45,9 @@ def _validate_workers(manifest: PlanManifest, registrations: dict[str, WorkerReg
     escalation = manifest.defaults.escalation_worker
     if escalation is not None and escalation not in registrations:
         problems.append(f"defaults.escalation_worker: unknown worker registration {escalation!r}")
+    reviewer = manifest.defaults.reviewer
+    if reviewer is not None and reviewer not in registrations:
+        problems.append(f"defaults.reviewer: unknown worker registration {reviewer!r}")
     if problems:
         raise ManifestError(problems)
 

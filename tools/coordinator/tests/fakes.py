@@ -114,10 +114,12 @@ emit("Stop", {"session_id": "fake-sess"})
 #   {"actions": [{"signal": "SessionStart"},
 #                {"write": {"path": "a.txt", "content": "x"}},
 #                {"commit": "message"},
+#                {"verdict": {"pass": true, "findings": []}},
 #                {"signal": "Stop"},
 #                {"sleep": 30}],
 #    "exit_code": 0}
-# "waiting" emits a PreToolUse/AskUserQuestion signal.
+# "waiting" emits a PreToolUse/AskUserQuestion signal; "verdict" writes
+# the given JSON to <attempt_dir>/verdict.json (reviewer scenarios).
 SCENARIO_WORKER = """\
 import json, pathlib, subprocess, sys, time
 attempt_dir = pathlib.Path(sys.argv[1])
@@ -148,6 +150,8 @@ for action in scenario.get("actions", []):
     elif "commit" in action:
         subprocess.run(["git", "add", "-A"], check=True)
         subprocess.run(["git", "commit", "-q", "-m", action["commit"]], check=True)
+    elif "verdict" in action:
+        (attempt_dir / "verdict.json").write_text(json.dumps(action["verdict"]))
     elif "sleep" in action:
         time.sleep(action["sleep"])
 sys.exit(scenario.get("exit_code", 0))

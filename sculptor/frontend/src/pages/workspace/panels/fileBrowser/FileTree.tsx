@@ -5,6 +5,7 @@ import { memo, type ReactElement } from "react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import { ElementIds } from "~/api";
+import { VerticalOverlayScrollbar } from "~/components/VerticalOverlayScrollbar.tsx";
 import { openFileViewTabAtom } from "~/pages/workspace/components/diffPanel/atoms.ts";
 
 import { expandFoldersAtom, fileBrowserStateAtomFamily, toggleFolderAtom } from "./atoms.ts";
@@ -313,6 +314,7 @@ export const FileTree = ({ workspaceId, viewMode, searchMatchingPaths }: FileTre
           );
         })}
       </div>
+      <VerticalOverlayScrollbar scrollRef={scrollContainerRef} thumbTestId={ElementIds.FILE_BROWSER_SCROLLBAR_THUMB} />
     </div>
   );
 };

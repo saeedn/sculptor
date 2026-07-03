@@ -65,7 +65,7 @@ export const useImbueNavigate = (): ImbueNavigationFunctions => {
     ),
     navigateToRepoSetupCommand: useCallback(
       (projectId: string): void => {
-        navigate(`/settings?section=repositories&focusRepo=${encodeURIComponent(projectId)}`);
+        navigate(`/settings?section=REPOSITORIES&focusRepo=${encodeURIComponent(projectId)}`);
       },
       [navigate],
     ),

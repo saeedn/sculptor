@@ -46,8 +46,19 @@ class PlaywrightAddWorkspacePage(PlaywrightProjectLayoutPage):
     def get_branch_name_collision_error(self) -> Locator:
         return self.get_by_test_id(ElementIDs.BRANCH_NAME_COLLISION_ERROR)
 
+    def get_branch_name_invalid_error(self) -> Locator:
+        return self.get_by_test_id(ElementIDs.BRANCH_NAME_INVALID_ERROR)
+
     def get_branch_selector(self) -> Locator:
         return self.get_by_test_id(ElementIDs.BRANCH_SELECTOR)
+
+    def open_branch_selector(self) -> None:
+        """Open the source-branch dropdown so its options are rendered."""
+        self.get_branch_selector().click()
+
+    def get_branch_options(self) -> Locator:
+        """All branch options rendered in the (open) source-branch dropdown."""
+        return self.get_by_test_id(ElementIDs.BRANCH_OPTION)
 
     def select_branch(self, branch_name: str) -> None:
         self.get_branch_selector().click()

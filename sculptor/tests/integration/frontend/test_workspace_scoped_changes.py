@@ -72,7 +72,9 @@ def test_uncommitted_tab_shows_changes_from_all_agents(
     )
 
     _add_second_fake_terminal_agent(page, agents_dir)
-    expect(agent_tab_bar.get_agent_tabs()).to_have_count(2)
+    # 3 tabs: the workspace's terminal first agent (from start_fake_terminal_agent)
+    # plus the two fake agents that write the files.
+    expect(agent_tab_bar.get_agent_tabs()).to_have_count(3)
     send_fake_agent_command_and_wait(
         agents_dir,
         write_file("file_from_agent2.py", "def created_by_agent2():\n    return 'agent2'\n"),
@@ -124,7 +126,9 @@ def test_changes_tab_shows_diffs_from_all_agents(
     )
 
     _add_second_fake_terminal_agent(page, agents_dir)
-    expect(agent_tab_bar.get_agent_tabs()).to_have_count(2)
+    # 3 tabs: the workspace's terminal first agent (from start_fake_terminal_agent)
+    # plus the two fake agents that write the files.
+    expect(agent_tab_bar.get_agent_tabs()).to_have_count(3)
     send_fake_agent_command_and_wait(
         agents_dir,
         write_file("review_file2.py", "def from_agent2():\n    return 2\n"),
@@ -186,7 +190,9 @@ def test_uncommitted_tab_updates_when_other_agent_modifies_files(
     expect(changes_tree.get_tree_rows().filter(has_text="file_b.py")).to_have_count(0)
 
     _add_second_fake_terminal_agent(page, agents_dir)
-    expect(agent_tab_bar.get_agent_tabs()).to_have_count(2)
+    # 3 tabs: the workspace's terminal first agent (from start_fake_terminal_agent)
+    # plus the two fake agents that write the files.
+    expect(agent_tab_bar.get_agent_tabs()).to_have_count(3)
     send_fake_agent_command_and_wait(
         agents_dir,
         write_file("file_b.py", "b = 2\n"),

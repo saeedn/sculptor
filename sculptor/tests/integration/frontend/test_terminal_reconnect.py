@@ -36,7 +36,7 @@ def test_terminal_reconnects_after_socket_drop(
     """
     page = sculptor_instance_.page
 
-    start_task_and_wait_for_ready(sculptor_page=page, prompt="Hello")
+    start_task_and_wait_for_ready(sculptor_page=page)
     open_terminal_and_wait(page)
     terminal_socket_capture.wait_for_connection()
 

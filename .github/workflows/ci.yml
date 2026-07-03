@@ -31,8 +31,10 @@ jobs:
           key: ratchets-${{ runner.os }}-0.4.0
 
       - name: Install ratchets
-        # No-op (fast) when the cached binary is already present at the pinned version.
-        run: just install-ratchets
+        # On a cache hit the binary is restored to ~/.cargo/bin (already on PATH),
+        # but cargo's install ledger is not — so `cargo install` would fail with
+        # "binary already exists". Skip the install when ratchets is already present.
+        run: command -v ratchets >/dev/null && echo "ratchets present (restored from cache)" || just install-ratchets
 
       - name: Run checks
         env:

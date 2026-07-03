@@ -609,10 +609,19 @@ def test_delete_workspace_removes_environment_directory(
     The environment directory is deleted on a background thread scheduled by a
     post-commit callback (SCU-1374), so the request thread is not blocked on the
     rmtree.  This test verifies the full lifecycle: create workspace -> create
-    environment -> delete workspace -> directory eventually gone.
+    environment -> delete workspace -> directory removed.
+
+    We wait for the teardown to actually *complete* (via a recording environment
+    manager that signals once ``delete_environment`` — which performs the rmtree —
+    returns) rather than polling the filesystem against a fixed wall-clock
+    deadline.  The latter is flaky: under heavy parallel load the background
+    teardown thread can be starved past the deadline even though it later succeeds.
     """
+    workspace_service = test_service_collection.workspace_service
+    assert isinstance(workspace_service, DefaultWorkspaceService)
+
     with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        workspace = test_service_collection.workspace_service.create_workspace(
+        workspace = workspace_service.create_workspace(
             project=test_project,
             source_branch="main",
             requested_branch_name=f"ws/env-deletion-{uuid4().hex[:8]}",
@@ -623,7 +632,7 @@ def test_delete_workspace_removes_environment_directory(
 
     # Create the environment via agent_environment_context
     with test_root_concurrency_group.make_concurrency_group("env_test") as concurrency_group:
-        with test_service_collection.workspace_service.agent_environment_context(
+        with workspace_service.agent_environment_context(
             project=test_project,
             workspace_id=workspace_id,
             task_id=TaskID(),
@@ -640,15 +649,22 @@ def test_delete_workspace_removes_environment_directory(
     env_path = Path(workspace_with_env.environment_id)
     assert env_path.exists(), f"Environment directory should exist at {env_path}"
 
-    # Delete the workspace (a post-commit callback schedules the directory
-    # removal on a background thread)
-    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
-        test_service_collection.workspace_service.delete_workspace(workspace_id, transaction)
+    # Swap in a manager that signals when the (offloaded) teardown finishes, so
+    # we can wait for the real completion instead of racing a wall-clock deadline.
+    existing_manager = workspace_service.environment_manager
+    assert isinstance(existing_manager, DefaultEnvironmentManager)
+    recording_manager = _ThreadRecordingEnvironmentManager(
+        data_model_service=existing_manager.data_model_service,
+    )
+    workspace_service.environment_manager = recording_manager
 
-    # The directory is removed asynchronously, so poll until it is gone.
-    deadline = time.monotonic() + 10.0
-    while env_path.exists() and time.monotonic() < deadline:
-        time.sleep(0.05)
+    # Delete the workspace (a post-commit callback schedules the directory
+    # removal on a background thread).
+    with test_service_collection.data_model_service.open_transaction(request_id=RequestID()) as transaction:
+        workspace_service.delete_workspace(workspace_id, transaction)
+
+    # Once the teardown signals done, delete_environment's rmtree has run.
+    assert recording_manager._teardown_done.wait(timeout=30.0), "environment teardown never ran"
     assert not env_path.exists(), f"Environment directory should be deleted at {env_path}"
 
 

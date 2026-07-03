@@ -1,0 +1,86 @@
+name: CI
+
+# Run on every PR targeting main, and on pushes to main itself so the base
+# branch stays green and the caches created here are available to PR runs.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+# If new commits are pushed to a PR while CI is still running, cancel the older
+# run instead of letting both finish. Saves runner time and gives faster feedback.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint · typecheck · ratchets
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-sculptor
+
+      - name: Cache ratchets binary
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/ratchets
+          # Bump the version suffix when ratchets_version changes in the justfile.
+          key: ratchets-${{ runner.os }}-0.4.0
+
+      - name: Install ratchets
+        # No-op (fast) when the cached binary is already present at the pinned version.
+        run: just install-ratchets
+
+      - name: Run checks
+        env:
+          JUST_VERBOSE: "1"
+        run: just check
+
+  test-unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-sculptor
+
+      - name: Run unit tests
+        env:
+          JUST_VERBOSE: "1"
+        run: just test-unit junitxml=true
+
+      - name: Upload JUnit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-junit
+          path: |
+            sculptor/pytest_junit.xml
+            sculpt_junit.xml
+          if-no-files-found: ignore
+
+  test-integration:
+    name: Integration tests
+    runs-on: ubuntu-latest
+    # Local run measured ~17 min (404 passed / 5 skipped). This ceiling is a
+    # kill-switch, not the expected duration: extra headroom covers slower CI
+    # hardware, the cold Playwright/browser install, and flaky-retry slack.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-sculptor
+
+      - name: Install Playwright Chromium
+        # The frontend integration tests drive a headless Chromium via
+        # pytest-playwright. --with-deps also installs the required system libs.
+        run: uv run --project sculptor playwright install --with-deps chromium
+
+      - name: Run integration tests
+        # GitHub sets CI=true automatically, which activates the justfile's CI
+        # path: run the full suite (no stop-on-first-failure) with compact output.
+        env:
+          JUST_VERBOSE: "1"
+        run: just test-integration

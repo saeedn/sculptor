@@ -1,0 +1,35 @@
+name: Set up Sculptor toolchain
+description: >
+  Install just and uv (with Python 3.14) and warm the caches the justfile needs.
+  Node is intentionally NOT installed here: the justfile drives Node through nvm
+  (the `nvm_use` snippet), and GitHub's Ubuntu runners ship nvm, so the first
+  recipe that needs Node runs `nvm install 24.17.0` on its own. We just cache the
+  result so it is not re-downloaded on every run.
+
+runs:
+  using: composite
+  steps:
+    - name: Install just
+      uses: extractions/setup-just@v3
+
+    - name: Install uv + Python 3.14
+      uses: astral-sh/setup-uv@v6
+      with:
+        # Matches .python-version / requires-python (>=3.14,<3.15).
+        python-version: "3.14"
+        enable-cache: true
+
+    - name: Cache nvm Node install
+      uses: actions/cache@v4
+      with:
+        path: ~/.nvm/versions/node
+        # .nvmrc pins the Node version; only re-download when it changes.
+        key: nvm-node-${{ runner.os }}-${{ hashFiles('sculptor/frontend/.nvmrc') }}
+
+    - name: Cache npm download cache
+      uses: actions/cache@v4
+      with:
+        path: ~/.npm
+        key: npm-${{ runner.os }}-${{ hashFiles('sculptor/frontend/package-lock.json') }}
+        restore-keys: |
+          npm-${{ runner.os }}-

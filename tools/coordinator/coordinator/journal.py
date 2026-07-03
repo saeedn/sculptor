@@ -14,6 +14,7 @@ share these models rather than scattering string-typed event names.
 import json
 import os
 import sys
+import tempfile
 import time
 from collections.abc import Iterable
 from collections.abc import Iterator
@@ -194,6 +195,7 @@ class AttemptRecord(BaseModel):
     session_id: str | None = None
     transcript_path: str | None = None
     signals: list[str] = []
+    last_signal_ts: float | None = None
 
 
 class GateRecord(BaseModel):
@@ -276,6 +278,7 @@ class Snapshot(BaseModel):
             for attempt in node.attempts:
                 if attempt.attempt_index == event.attempt_index:
                     attempt.signals.append(event.event)
+                    attempt.last_signal_ts = event.ts
                     if event.session_id is not None:
                         attempt.session_id = event.session_id
                     if event.transcript_path is not None:
@@ -308,7 +311,17 @@ class Snapshot(BaseModel):
 
 
 def save_snapshot(snapshot: Snapshot, plan_dir: Path) -> None:
-    snapshot_path(plan_dir).write_text(snapshot.model_dump_json(indent=2) + "\n")
+    # Atomic replace: the TUI re-reads this file on a timer and must
+    # never see a half-written snapshot.
+    target = snapshot_path(plan_dir)
+    fd, temp_path = tempfile.mkstemp(dir=target.parent, prefix=".state.json.")
+    try:
+        with os.fdopen(fd, "w") as f:
+            f.write(snapshot.model_dump_json(indent=2) + "\n")
+        os.replace(temp_path, target)
+    except BaseException:
+        os.unlink(temp_path)
+        raise
 
 
 def load_snapshot(plan_dir: Path) -> Snapshot:

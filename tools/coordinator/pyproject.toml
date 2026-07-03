@@ -27,6 +27,7 @@ coordinator = "coordinator.main:app"
 [dependency-groups]
 dev = [
     "pytest>=8.0.0",
+    "pytest-asyncio>=1.0.0",
 ]
 
 [tool.setuptools.packages.find]
@@ -40,3 +41,4 @@ markers = [
     "real_claude: opt-in smoke tests against real Claude (excluded by default; needs COORDINATOR_REAL_SMOKE=1)",
 ]
 addopts = "-m 'not real_claude'"
+asyncio_mode = "auto"

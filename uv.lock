@@ -223,6 +223,7 @@ packaging = [
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pytest-asyncio" },
 ]
 
 [package.metadata]
@@ -237,7 +238,10 @@ requires-dist = [
 provides-extras = ["packaging"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0.0" }]
+dev = [
+    { name = "pytest", specifier = ">=8.0.0" },
+    { name = "pytest-asyncio", specifier = ">=1.0.0" },
+]
 
 [[package]]
 name = "decorator"

@@ -1,3 +1,4 @@
+import sys
 from pathlib import Path
 
 import typer
@@ -39,19 +40,35 @@ def run(
     no_tui: bool = typer.Option(
         False,
         "--no-tui",
-        help="Plain-text progress instead of the TUI. (The TUI is not implemented yet; output is always plain.)",
+        help="Plain-text progress instead of the live dashboard (implied when stdout is not a tty).",
     ),
 ) -> None:
-    """Execute a plan from the beginning."""
+    """Execute a plan, showing a live dashboard (the default on a tty)."""
     if not plan_dir.is_dir():
         typer.echo(f"Error: plan directory does not exist: {plan_dir}", err=True)
         raise typer.Exit(1)
+    if no_tui or not sys.stdout.isatty():
+        try:
+            status = execute_plan(plan_dir, progress=typer.echo)
+        except (ManifestError, RunError) as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(1)
+        if status != "completed":
+            raise typer.Exit(1)
+        return
+    # Lazy import: the plain path must never pay Textual's startup cost.
+    from coordinator.tui.app import CoordinatorApp
+
     try:
-        status = execute_plan(plan_dir, progress=typer.echo)
-    except (ManifestError, RunError) as e:
+        dashboard = CoordinatorApp(plan_dir)
+    except ManifestError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
-    if status != "completed":
+    dashboard.run()
+    if dashboard.run_error is not None:
+        typer.echo(f"Error: {dashboard.run_error}", err=True)
+        raise typer.Exit(1)
+    if dashboard.final_status != "completed":
         raise typer.Exit(1)
 
 

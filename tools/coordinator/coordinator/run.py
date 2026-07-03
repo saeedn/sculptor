@@ -4,6 +4,7 @@ Deliberately free of any TUI imports — the plain-text progress path
 must never pay Textual's startup cost (phase 6 layers the TUI on top).
 """
 
+import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -120,3 +121,29 @@ def execute_plan(
     if progress is not None:
         progress(f"run finished: {status}")
     return status
+
+
+def start_run_in_thread(
+    plan_dir: Path,
+    on_done: Callable[[RunStatus | None, BaseException | None], None],
+    **kwargs,
+) -> threading.Thread:
+    """Run :func:`execute_plan` in a background thread (the TUI's run mode).
+
+    The journal/snapshot files are the only communication channel with
+    the caller; ``on_done`` (called from the thread) reports the final
+    status or the exception — a crashed run must surface, never die
+    silently.
+    """
+
+    def target() -> None:
+        try:
+            status = execute_plan(plan_dir, **kwargs)
+        except BaseException as e:
+            on_done(None, e)
+            return
+        on_done(status, None)
+
+    thread = threading.Thread(target=target, daemon=True, name="coordinator-run")
+    thread.start()
+    return thread

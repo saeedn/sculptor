@@ -105,3 +105,19 @@ jobs:
         env:
           JUST_VERBOSE: "1"
         run: just test-integration "sculptor/tests/integration/" "--splits 6 --group ${{ matrix.group }} --durations-path .github/workflows/.test_durations"
+
+  # Single aggregation check that passes only if every integration shard passed.
+  # Branch protection requires THIS check ("Integration tests") rather than each
+  # "shard N/6" context, so the shard count can change without updating the ruleset.
+  integration-tests:
+    name: Integration tests
+    needs: test-integration
+    # Run even if a shard failed, so this gate can report that failure.
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require all integration shards to pass
+        run: |
+          result="${{ needs.test-integration.result }}"
+          echo "test-integration matrix result: ${result}"
+          [ "${result}" = "success" ] || exit 1

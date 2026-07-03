@@ -9,6 +9,17 @@ description: >
 runs:
   using: composite
   steps:
+    # Several tests create git worktrees branched from `main` (the workspace
+    # service's base ref). GitHub's default checkout is a detached-HEAD checkout
+    # of the PR merge commit, so no local `main` ref exists and those worktree
+    # creations fail with "invalid reference: main". Create the ref when missing
+    # (on a push to main it already exists, so this is a no-op there).
+    - name: Ensure a local `main` ref for worktree-based tests
+      shell: bash
+      run: |
+        git show-ref --verify --quiet refs/heads/main \
+          || git fetch --depth=1 origin +refs/heads/main:refs/heads/main
+
     - name: Install just
       uses: extractions/setup-just@v3
 

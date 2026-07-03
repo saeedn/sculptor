@@ -27,6 +27,7 @@ from typing import Protocol
 
 from coordinator.dag import Graph
 from coordinator.dag import Node
+from coordinator.dag import PHASE_REVIEW_NODE
 from coordinator.dag import TASK_NODE
 from coordinator.dag import runnable
 from coordinator.journal import AttemptStarted
@@ -36,15 +37,24 @@ from coordinator.journal import IntentsConsumed
 from coordinator.journal import Journal
 from coordinator.journal import RunPaused
 from coordinator.journal import RunStarted
+from coordinator.journal import SignalObserved
 from coordinator.journal import Snapshot
 from coordinator.journal import TaskStateChanged
 from coordinator.journal import replay
 from coordinator.journal import save_snapshot
+from coordinator.ladder import AttemptRecordLite
+from coordinator.ladder import Exhausted
+from coordinator.ladder import FailureRecord
+from coordinator.ladder import attempt_plan
+from coordinator.ladder import format_seed_context
+from coordinator.ladder import next_attempt
 from coordinator.manifest import ManifestError
 from coordinator.manifest import PlanManifest
+from coordinator.ratelimit import classify_attempt
 from coordinator.statedir import attempt_dir
 from coordinator.statedir import ensure_state_dir
 from coordinator.statedir import new_run_id
+from coordinator.statedir import state_dir
 from coordinator.statedir import write_run_id
 
 
@@ -68,9 +78,16 @@ _LEGAL_TRANSITIONS: dict[NodeState, frozenset[NodeState]] = {
     ),
     NodeState.WAITING_HUMAN: frozenset({NodeState.PASSED, NodeState.PENDING, NodeState.SKIPPED}),
     NodeState.FAILED: frozenset({NodeState.PENDING, NodeState.SKIPPED}),
-    NodeState.PASSED: frozenset(),
+    # PASSED -> PENDING is the phase-review reopen path.
+    NodeState.PASSED: frozenset({NodeState.PENDING}),
     NodeState.SKIPPED: frozenset(),
 }
+
+# Pause reasons that survive a coordinator restart: these need an
+# explicit resume intent. Everything else (rate-limit, dirty-tree,
+# failed) is cleared by re-invoking the coordinator — re-running IS the
+# human's decision to continue.
+_STICKY_PAUSE_REASONS = frozenset({"pause-intent", "aborted"})
 
 
 class IllegalTransition(Exception):
@@ -107,7 +124,13 @@ class GateOutcome:
 
 
 class Executor(Protocol):
-    def run_attempt(self, node: Node, attempt_index: int, seed_context: str | None) -> AttemptResult: ...
+    def run_attempt(
+        self,
+        node: Node,
+        attempt_index: int,
+        seed_context: str | None,
+        registration_override: str | None = None,
+    ) -> AttemptResult: ...
 
     def run_gates(self, node: Node, result: AttemptResult) -> GateOutcome: ...
 
@@ -152,6 +175,12 @@ class Scheduler:
         self._aborted = False
         self._resumed = False
         self._intents_position = 0
+        self._attempt_records: dict[str, list[AttemptRecordLite]] = {node_id: [] for node_id in graph.nodes}
+        self._failures: dict[str, list[FailureRecord]] = {node_id: [] for node_id in graph.nodes}
+        self._seed_context: dict[str, str] = {}
+        self._registration_override: dict[str, str] = {}
+        self._last_results: dict[str, AttemptResult] = {}
+        self._phase_review_failures: dict[str, int] = {node_id: 0 for node_id in graph.nodes}
 
     @classmethod
     def load(
@@ -170,12 +199,39 @@ class Scheduler:
         scheduler._resumed = True
         snapshot = Snapshot.from_events(replay(journal.path))
         scheduler._intents_position = snapshot.intents_consumed
-        scheduler._paused = snapshot.run_status == "paused"
+        scheduler._paused = snapshot.run_status == "paused" and snapshot.pause_reason in _STICKY_PAUSE_REASONS
         for node_id, node_snapshot in snapshot.nodes.items():
             if node_id not in scheduler.states:
                 continue
             scheduler.states[node_id] = NodeState(node_snapshot.state)
             scheduler.attempt_counts[node_id] = len(node_snapshot.attempts)
+            scheduler._attempt_records[node_id] = [
+                AttemptRecordLite(
+                    attempt_index=attempt.attempt_index,
+                    registration=attempt.worker_registration,
+                    rate_limited="rate-limited" in attempt.signals,
+                )
+                for attempt in node_snapshot.attempts
+            ]
+            # Rebuild failure history from journaled gate findings so a
+            # resumed retry still gets seeded context (attempt indexes
+            # are approximate — the full logs live in the attempt dirs).
+            scheduler._failures[node_id] = [
+                FailureRecord(
+                    attempt_index=index,
+                    registration=None,
+                    status=None,
+                    findings=gate.findings,
+                    last_assistant_message=None,
+                )
+                for index, gate in enumerate(node_snapshot.gates)
+                if gate.passed is False
+            ]
+            scheduler._phase_review_failures[node_id] = sum(
+                1 for gate in node_snapshot.gates if gate.gate == "phase-review" and gate.passed is False
+            )
+            if scheduler._failures[node_id] and scheduler.states[node_id] == NodeState.PENDING:
+                scheduler._seed_context[node_id] = format_seed_context(scheduler._failures[node_id])
         for node_id, state in scheduler.states.items():
             if state in (NodeState.RUNNING, NodeState.GATE_CHECKING):
                 node_snapshot = snapshot.nodes.get(node_id)
@@ -237,6 +293,11 @@ class Scheduler:
                 if any(state == NodeState.WAITING_HUMAN for state in self.states.values()):
                     return "waiting-human"
                 if any(state == NodeState.FAILED for state in self.states.values()):
+                    report_path = self._write_failure_report()
+                    self.journal.append(
+                        RunPaused(ts=self.clock(), reason="failed", resume_hint=f"failure report: {report_path}")
+                    )
+                    print(f"run failed — see the failure report: {report_path}")
                     return "failed"
                 return "completed"
             self._execute_node(self.graph.nodes[ready[0]])
@@ -258,16 +319,25 @@ class Scheduler:
         self.transition(node.node_id, NodeState.RUNNING, reason="start")
         attempt_index = self.attempt_counts[node.node_id]
         self.attempt_counts[node.node_id] += 1
+        seed_context = self._seed_context.pop(node.node_id, None)
+        registration_override = self._registration_override.pop(node.node_id, None)
+        worker_name = registration_override or self._worker_for(node)
+        self._attempt_records[node.node_id].append(
+            AttemptRecordLite(attempt_index=attempt_index, registration=worker_name)
+        )
         self.journal.append(
             AttemptStarted(
                 ts=self.clock(),
                 node_id=node.node_id,
                 attempt_index=attempt_index,
-                worker_registration=self._worker_for(node),
+                worker_registration=worker_name,
                 attempt_dir=str(attempt_dir(self.plan_dir, node.node_id, attempt_index)),
             )
         )
-        result = self.executor.run_attempt(node, attempt_index, seed_context=None)
+        result = self.executor.run_attempt(
+            node, attempt_index, seed_context=seed_context, registration_override=registration_override
+        )
+        self._last_results[node.node_id] = result
         if not result.ok:
             self.on_attempt_failure(node, attempt_index, result)
             return
@@ -282,13 +352,104 @@ class Scheduler:
         else:
             self.on_gate_failure(node, attempt_index, outcome)
 
+    def _pause_for_rate_limit(self, node: Node, attempt_index: int, resume_hint: str | None) -> None:
+        """A rate-limited attempt burns no budget: mark it, revert, pause."""
+        records = self._attempt_records[node.node_id]
+        if records and records[-1].attempt_index == attempt_index:
+            records[-1].rate_limited = True
+        self.journal.append(
+            SignalObserved(ts=self.clock(), node_id=node.node_id, attempt_index=attempt_index, event="rate-limited")
+        )
+        self.transition(node.node_id, NodeState.PENDING, reason="rate-limited")
+        self.journal.append(
+            RunPaused(
+                ts=self.clock(),
+                reason="rate-limit",
+                resume_hint=resume_hint or "rate limited; re-run the coordinator when the limit resets",
+            )
+        )
+        self._paused = True
+
+    def _schedule_next_rung(self, node: Node, reason_findings: str | None) -> None:
+        """Ladder arithmetic after a non-rate-limited failure."""
+        budget = attempt_plan(node.task, self.manifest.defaults)
+        decision = next_attempt(self._attempt_records[node.node_id], budget)
+        if isinstance(decision, Exhausted):
+            self.transition(node.node_id, NodeState.FAILED, reason=reason_findings or "attempts exhausted")
+            return
+        self._seed_context[node.node_id] = format_seed_context(self._failures[node.node_id])
+        if decision.registration_override is not None:
+            self._registration_override[node.node_id] = decision.registration_override
+        reason = "escalate" if decision.escalated else "retry"
+        self.transition(node.node_id, NodeState.PENDING, reason=reason)
+
     def on_attempt_failure(self, node: Node, attempt_index: int, result: AttemptResult) -> None:
-        """Seam for the retry/escalation ladder; for now an attempt failure is final."""
-        self.transition(node.node_id, NodeState.FAILED, reason=result.error or "attempt-failed")
+        rate_limit = classify_attempt(result, attempt_dir(self.plan_dir, node.node_id, attempt_index))
+        if rate_limit is not None:
+            self._pause_for_rate_limit(node, attempt_index, rate_limit.resume_hint)
+            return
+        self._failures[node.node_id].append(
+            FailureRecord(
+                attempt_index=attempt_index,
+                registration=self._attempt_records[node.node_id][-1].registration,
+                status=result.status,
+                findings=result.error,
+                last_assistant_message=result.last_assistant_message,
+            )
+        )
+        self._schedule_next_rung(node, result.error or "attempt-failed")
 
     def on_gate_failure(self, node: Node, attempt_index: int, outcome: GateOutcome) -> None:
-        """Seam for the retry/escalation ladder; for now a failed gate is final."""
-        self.transition(node.node_id, NodeState.FAILED, reason=outcome.findings or f"gate {outcome.gate} failed")
+        result = self._last_results.get(node.node_id)
+        if result is not None:
+            rate_limit = classify_attempt(result, attempt_dir(self.plan_dir, node.node_id, attempt_index))
+            if rate_limit is not None:
+                self._pause_for_rate_limit(node, attempt_index, rate_limit.resume_hint)
+                return
+        if node.kind == PHASE_REVIEW_NODE:
+            self._on_phase_review_failure(node, outcome)
+            return
+        self._failures[node.node_id].append(
+            FailureRecord(
+                attempt_index=attempt_index,
+                registration=self._attempt_records[node.node_id][-1].registration,
+                status=result.status if result is not None else None,
+                findings=outcome.findings,
+                last_assistant_message=result.last_assistant_message if result is not None else None,
+            )
+        )
+        self._schedule_next_rung(node, outcome.findings or f"gate {outcome.gate} failed")
+
+    def _on_phase_review_failure(self, node: Node, outcome: GateOutcome) -> None:
+        """Re-open the offending tasks; a second review failure needs a human."""
+        self._phase_review_failures[node.node_id] += 1
+        if self._phase_review_failures[node.node_id] >= 2:
+            self.transition(
+                node.node_id, NodeState.WAITING_HUMAN, reason="phase review failed twice; needs a human decision"
+            )
+            return
+        reopened = False
+        for finding in outcome.findings_list:
+            task_id = getattr(finding, "task_id", None)
+            if task_id is None or self.states.get(task_id) != NodeState.PASSED:
+                continue
+            self._failures[task_id].append(
+                FailureRecord(
+                    attempt_index=self.attempt_counts[task_id] - 1,
+                    registration=None,
+                    status=None,
+                    findings=f"phase review finding: {getattr(finding, 'summary', '')}: "
+                    f"{getattr(finding, 'detail', '')}",
+                    last_assistant_message=None,
+                )
+            )
+            self._seed_context[task_id] = format_seed_context(self._failures[task_id])
+            self.transition(task_id, NodeState.PENDING, reason="phase-review-reopen")
+            reopened = True
+        # The review node re-runs after the reopened tasks pass again (or
+        # immediately, when no finding named a task).
+        reason = "phase-review-retry" if reopened else "phase-review-retry (no task attributed)"
+        self.transition(node.node_id, NodeState.PENDING, reason=reason)
 
     def _worker_for(self, node: Node) -> str:
         if node.kind == TASK_NODE and node.task is not None and node.task.worker is not None:
@@ -349,6 +510,41 @@ class Scheduler:
         ]
         if problems:
             raise ManifestError(problems)
+
+    def _write_failure_report(self) -> Path:
+        """The consolidated failure report; lives in _state/ (never committed)."""
+        snapshot = Snapshot.from_events(replay(self.journal.path))
+        lines = ["# Coordinator failure report", ""]
+        for node_id, state in self.states.items():
+            if state != NodeState.FAILED:
+                continue
+            node = self.graph.nodes[node_id]
+            source = node.task.file if node.task is not None else "(phase review)"
+            lines.append(f"## Node {node_id} — {source}")
+            lines.append("")
+            node_snapshot = snapshot.nodes.get(node_id)
+            if node_snapshot is not None:
+                lines.append("| attempt | worker | session id | attempt dir |")
+                lines.append("|---|---|---|---|")
+                for attempt in node_snapshot.attempts:
+                    lines.append(
+                        f"| {attempt.attempt_index} | {attempt.worker_registration} "
+                        f"| {attempt.session_id or '-'} | {attempt.attempt_dir} |"
+                    )
+                lines.append("")
+                failed_gates = [gate for gate in node_snapshot.gates if gate.passed is False]
+                if failed_gates:
+                    lines.append("Gate findings:")
+                    for gate in failed_gates:
+                        lines.append(f"- [{gate.gate}] {gate.findings or '(no findings)'}")
+                    lines.append("")
+                session_ids = [a.session_id for a in node_snapshot.attempts if a.session_id]
+                if session_ids:
+                    lines.append(f"Diagnose an attempt with: `claude --resume {session_ids[-1]}`")
+                    lines.append("")
+        report_path = state_dir(self.plan_dir) / "failure_report.md"
+        report_path.write_text("\n".join(lines) + "\n")
+        return report_path
 
     def _save_snapshot(self) -> None:
         save_snapshot(Snapshot.from_events(replay(self.journal.path)), self.plan_dir)

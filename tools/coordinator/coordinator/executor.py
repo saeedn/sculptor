@@ -90,7 +90,13 @@ class PlanExecutor:
         self.clock = clock
         self._prepared: dict[str, tuple[int, PreparedAttempt | None, str]] = {}
 
-    def run_attempt(self, node: Node, attempt_index: int, seed_context: str | None) -> AttemptResult:
+    def run_attempt(
+        self,
+        node: Node,
+        attempt_index: int,
+        seed_context: str | None,
+        registration_override: str | None = None,
+    ) -> AttemptResult:
         if node.kind == PHASE_REVIEW_NODE:
             # Phase reviews run no implementer worker; the reviewer runs
             # in run_gates. Remember the attempt index for its dir.
@@ -108,7 +114,7 @@ class PlanExecutor:
             raise RunPausedError(f"working tree dirty before task {node.node_id}:\n{status}")
 
         assert node.task is not None
-        worker_name = resolve_worker(self.manifest, node.task, self.registrations)
+        worker_name = registration_override or resolve_worker(self.manifest, node.task, self.registrations)
         registration = self.registrations[worker_name]
         process_doc_path = (
             self.plan_dir / self.manifest.defaults.process_doc

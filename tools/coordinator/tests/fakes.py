@@ -127,6 +127,7 @@ scenario_dir = pathlib.Path(sys.argv[2])
 node = attempt_dir.parent.name
 attempt = attempt_dir.name
 signals = attempt_dir / "signals.jsonl"
+transcript = attempt_dir / "transcript.jsonl"
 def emit(event, payload=None):
     with open(signals, "a") as f:
         f.write(json.dumps({"event": event, "ts": time.time(), "payload": payload}) + "\\n")
@@ -141,7 +142,7 @@ for action in scenario.get("actions", []):
         if name == "waiting":
             emit("PreToolUse", {"tool_name": "AskUserQuestion", "session_id": session})
         else:
-            payload = {"session_id": session, "transcript_path": "/tmp/" + session + ".jsonl"}
+            payload = {"session_id": session, "transcript_path": str(transcript)}
             if name == "Stop":
                 payload["last_assistant_message"] = "SUCCESS: " + node
             emit(name, payload)
@@ -152,6 +153,8 @@ for action in scenario.get("actions", []):
         subprocess.run(["git", "commit", "-q", "-m", action["commit"]], check=True)
     elif "verdict" in action:
         (attempt_dir / "verdict.json").write_text(json.dumps(action["verdict"]))
+    elif "transcript" in action:
+        transcript.write_text(action["transcript"])
     elif "sleep" in action:
         time.sleep(action["sleep"])
 sys.exit(scenario.get("exit_code", 0))

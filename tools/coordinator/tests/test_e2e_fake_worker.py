@@ -11,8 +11,10 @@ from pathlib import Path
 
 import yaml
 
+from coordinator.journal import AttemptStarted
 from coordinator.journal import CommitRecorded
 from coordinator.journal import GateResult
+from coordinator.journal import RunPaused
 from coordinator.journal import TaskStateChanged
 from coordinator.journal import load_snapshot
 from coordinator.journal import replay
@@ -30,6 +32,7 @@ def make_plan(
     phases: list[dict],
     verification: list[str] | None = None,
     mode: str = "print",
+    defaults_extra: dict | None = None,
 ) -> tuple[Path, Path, Path]:
     """A git repo containing a plan wired to the scenario fake worker.
 
@@ -40,7 +43,9 @@ def make_plan(
     scenario_dir.mkdir(exist_ok=True)
     script = tmp_path / "scenario_worker.py"
     script.write_text(SCENARIO_WORKER)
-    write_scenario_registration_yaml(repo / ".sculptor" / "workers", "fake-scenario", script, scenario_dir, mode)
+    workers_dir = repo / ".sculptor" / "workers"
+    write_scenario_registration_yaml(workers_dir, "fake-scenario", script, scenario_dir, mode)
+    write_scenario_registration_yaml(workers_dir, "fake-escalation", script, scenario_dir, mode)
     plan_dir = repo / "plan"
     plan_dir.mkdir()
     manifest = {
@@ -48,6 +53,7 @@ def make_plan(
         "defaults": {
             "worker": "fake-scenario",
             "verification": verification if verification is not None else ["true"],
+            **(defaults_extra or {}),
         },
         "phases": phases,
     }
@@ -181,37 +187,65 @@ def test_interactive_mode_all_pass(tmp_path: Path) -> None:
     assert str(repo.resolve()) in (trust_home / ".claude.json").read_text()
 
 
-def test_phase_review_failing_verdict_fails_node(tmp_path: Path) -> None:
+def failing_review_actions(task_id: str | None) -> list[dict]:
+    return [
+        {"signal": "SessionStart"},
+        {
+            "verdict": {
+                "pass": False,
+                "findings": [
+                    {"task_id": task_id, "severity": "blocker", "summary": "wrong output", "detail": "off by one"}
+                ],
+            }
+        },
+        {"signal": "Stop"},
+    ]
+
+
+def test_phase_review_reopen_then_pass(tmp_path: Path) -> None:
     phases = [{"id": 1, "name": "P1", "review": "agentic", "tasks": [task_entry("1.1")]}]
     repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
     write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
+    # The reopened task re-runs (its file already exists; recommit a fix).
     write_scenario(
         scenario_dir,
-        "phase-review:1",
-        0,
+        "1.1",
+        1,
         [
             {"signal": "SessionStart"},
-            {
-                "verdict": {
-                    "pass": False,
-                    "findings": [
-                        {"task_id": "1.1", "severity": "blocker", "summary": "wrong output", "detail": "off by one"}
-                    ],
-                }
-            },
+            {"write": {"path": "file_1.1.txt", "content": "fixed content\n"}},
+            {"commit": "fix for review findings"},
             {"signal": "Stop"},
         ],
     )
-    assert run_plan(plan_dir, repo) == "failed"
-    snapshot = load_snapshot(plan_dir)
-    assert snapshot.nodes["phase-review:1"].state == "failed"
-    gate_results = [
-        e for e in replay(journal_path(plan_dir)) if isinstance(e, GateResult) and e.node_id == "phase-review:1"
+    write_scenario(scenario_dir, "phase-review:1", 0, failing_review_actions("1.1"))
+    write_scenario(scenario_dir, "phase-review:1", 1, passing_review_actions())
+    assert run_plan(plan_dir, repo) == "completed"
+    events = list(replay(journal_path(plan_dir)))
+    reopens = [
+        e
+        for e in events
+        if isinstance(e, TaskStateChanged) and e.node_id == "1.1" and e.reason == "phase-review-reopen"
     ]
-    assert gate_results[-1].passed is False
-    assert gate_results[-1].findings is not None
-    assert "wrong output" in gate_results[-1].findings
-    assert "off by one" in gate_results[-1].findings
+    assert len(reopens) == 1
+    # The reopened attempt was seeded with the review findings.
+    context = plan_dir / "_state" / "attempts" / "1.1" / "1" / "context.md"
+    assert "wrong output" in context.read_text()
+    snapshot = load_snapshot(plan_dir)
+    assert snapshot.nodes["1.1"].state == "passed"
+    assert snapshot.nodes["phase-review:1"].state == "passed"
+
+
+def test_phase_review_fails_twice_waits_for_human(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "agentic", "tasks": [task_entry("1.1")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
+    # Findings with no task attribution: the review itself retries, then
+    # the second failure escalates to a human.
+    write_scenario(scenario_dir, "phase-review:1", 0, failing_review_actions(None))
+    write_scenario(scenario_dir, "phase-review:1", 1, failing_review_actions(None))
+    assert run_plan(plan_dir, repo) == "waiting-human"
+    assert load_snapshot(plan_dir).nodes["phase-review:1"].state == "waiting-human"
 
 
 def test_per_task_agentic_gate_passes(tmp_path: Path) -> None:
@@ -228,15 +262,16 @@ def test_reviewer_without_verdict_fails_closed(tmp_path: Path) -> None:
     phases = [{"id": 1, "name": "P1", "review": "agentic", "tasks": [task_entry("1.1")]}]
     repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
     write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
-    # Reviewer stops cleanly but never writes verdict.json.
+    # Reviewer stops cleanly but never writes verdict.json; the retried
+    # review (no attempt-1 scenario) crashes, so a human is needed.
     write_scenario(scenario_dir, "phase-review:1", 0, [{"signal": "SessionStart"}, {"signal": "Stop"}])
-    assert run_plan(plan_dir, repo) == "failed"
+    assert run_plan(plan_dir, repo) == "waiting-human"
     gate_results = [
         e for e in replay(journal_path(plan_dir)) if isinstance(e, GateResult) and e.node_id == "phase-review:1"
     ]
-    assert gate_results[-1].passed is False
-    assert gate_results[-1].findings is not None
-    assert "no valid verdict" in gate_results[-1].findings
+    assert gate_results[0].passed is False
+    assert gate_results[0].findings is not None
+    assert "no valid verdict" in gate_results[0].findings
 
 
 def test_reviewer_that_commits_voids_the_review(tmp_path: Path) -> None:
@@ -255,13 +290,101 @@ def test_reviewer_that_commits_voids_the_review(tmp_path: Path) -> None:
             {"signal": "Stop"},
         ],
     )
-    assert run_plan(plan_dir, repo) == "failed"
+    assert run_plan(plan_dir, repo) == "waiting-human"
     gate_results = [
         e for e in replay(journal_path(plan_dir)) if isinstance(e, GateResult) and e.node_id == "phase-review:1"
     ]
-    assert gate_results[-1].passed is False
-    assert gate_results[-1].findings is not None
-    assert "reviewer modified the repository" in gate_results[-1].findings
+    assert gate_results[0].passed is False
+    assert gate_results[0].findings is not None
+    assert "reviewer modified the repository" in gate_results[0].findings
+
+
+def stop_without_commit_actions() -> list[dict]:
+    return [{"signal": "SessionStart"}, {"signal": "Stop"}]
+
+
+def test_retry_after_gate_failure_succeeds(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "a", 0, stop_without_commit_actions())
+    write_scenario(scenario_dir, "a", 1, pass_actions("a"))
+    assert run_plan(plan_dir, repo) == "completed"
+    events = list(replay(journal_path(plan_dir)))
+    retries = [e for e in events if isinstance(e, TaskStateChanged) and e.reason == "retry"]
+    assert len(retries) == 1
+    # The retry attempt was seeded with the prior gate findings.
+    context = plan_dir / "_state" / "attempts" / "a" / "1" / "context.md"
+    assert "produced no commit" in context.read_text()
+    assert load_snapshot(plan_dir).nodes["a"].state == "passed"
+
+
+def test_escalation_uses_escalation_registration_with_full_history(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
+    repo, plan_dir, scenario_dir = make_plan(
+        tmp_path, phases, defaults_extra={"escalation_worker": "fake-escalation", "attempts": 2}
+    )
+    write_scenario(scenario_dir, "a", 0, stop_without_commit_actions())
+    write_scenario(scenario_dir, "a", 1, stop_without_commit_actions())
+    write_scenario(scenario_dir, "a", 2, pass_actions("a"))
+    assert run_plan(plan_dir, repo) == "completed"
+    events = list(replay(journal_path(plan_dir)))
+    attempt_2 = [e for e in events if isinstance(e, AttemptStarted) and e.node_id == "a" and e.attempt_index == 2]
+    assert all(e.worker_registration == "fake-escalation" for e in attempt_2)
+    assert attempt_2
+    escalations = [e for e in events if isinstance(e, TaskStateChanged) and e.reason == "escalate"]
+    assert len(escalations) == 1
+    # The escalated attempt sees ALL prior attempts' failure context.
+    context = (plan_dir / "_state" / "attempts" / "a" / "2" / "context.md").read_text()
+    assert "Attempt 0" in context
+    assert "Attempt 1" in context
+
+
+def test_exhausted_ladder_fails_with_report(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a"), task_entry("c")]}]
+    repo, plan_dir, scenario_dir = make_plan(
+        tmp_path, phases, defaults_extra={"escalation_worker": "fake-escalation", "attempts": 2}
+    )
+    for attempt in (0, 1, 2):
+        write_scenario(scenario_dir, "a", attempt, stop_without_commit_actions())
+    write_scenario(scenario_dir, "c", 0, pass_actions("c"))
+    assert run_plan(plan_dir, repo) == "failed"
+    snapshot = load_snapshot(plan_dir)
+    assert snapshot.nodes["a"].state == "failed"
+    assert snapshot.nodes["c"].state == "passed"
+    report = (plan_dir / "_state" / "failure_report.md").read_text()
+    assert "## Node a" in report
+    assert "fake-a-" in report
+    assert "claude --resume" in report
+    assert "fake-escalation" in report
+
+
+def test_rate_limited_attempt_pauses_without_burning_budget(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
+    # attempts=1: if the rate-limited attempt burned budget, the retry
+    # after resume would already be exhausted.
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases, defaults_extra={"attempts": 1})
+    write_scenario(
+        scenario_dir,
+        "a",
+        0,
+        [
+            {"transcript": "Error: You've reached your usage limit. resets at 2026-07-03T18:00:00Z\n"},
+            {"signal": "SessionStart"},
+        ],
+    )
+    write_scenario(scenario_dir, "a", 1, pass_actions("a"))
+    assert run_plan(plan_dir, repo) == "paused"
+    events = list(replay(journal_path(plan_dir)))
+    paused = [e for e in events if isinstance(e, RunPaused)]
+    assert paused[-1].reason == "rate-limit"
+    assert paused[-1].resume_hint is not None
+    assert "resets at" in paused[-1].resume_hint
+    snapshot = load_snapshot(plan_dir)
+    assert snapshot.nodes["a"].state == "pending"
+    assert "rate-limited" in snapshot.nodes["a"].attempts[0].signals
+    # Re-running the coordinator continues and completes.
+    assert run_plan(plan_dir, repo, resume=True) == "completed"
+    assert load_snapshot(plan_dir).nodes["a"].state == "passed"
 
 
 def test_human_phase_review_still_skips(tmp_path: Path) -> None:

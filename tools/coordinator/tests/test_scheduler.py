@@ -39,7 +39,13 @@ class FakeExecutor:
         self.gates = gates or {}
         self.calls: list[str] = []
 
-    def run_attempt(self, node: Node, attempt_index: int, seed_context: str | None) -> AttemptResult:
+    def run_attempt(
+        self,
+        node: Node,
+        attempt_index: int,
+        seed_context: str | None,
+        registration_override: str | None = None,
+    ) -> AttemptResult:
         self.calls.append(f"attempt:{node.node_id}:{attempt_index}")
         queue = self.attempts.get(node.node_id)
         if queue:
@@ -55,9 +61,11 @@ class FakeExecutor:
 
 
 def make_manifest(tasks: list[TaskSpec]) -> PlanManifest:
+    # attempts=1: these tests exercise the state machine, not the retry
+    # ladder — one failure is final (the ladder has its own tests).
     return PlanManifest(
         version=1,
-        defaults=ManifestDefaults(worker="w", verification=[]),
+        defaults=ManifestDefaults(worker="w", verification=[], attempts=1),
         phases=[PhaseSpec(id=1, name="P", review="none", tasks=tasks)],
     )
 

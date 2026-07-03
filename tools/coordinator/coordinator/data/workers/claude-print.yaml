@@ -1,0 +1,9 @@
+display_name: Claude (print mode)
+mode: print
+command:
+  - claude
+  - -p
+  - --dangerously-skip-permissions
+  - --settings
+  - "{settings_file}"
+  - "{prompt}"

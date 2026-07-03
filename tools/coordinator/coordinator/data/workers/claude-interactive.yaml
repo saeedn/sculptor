@@ -1,0 +1,8 @@
+display_name: Claude (interactive)
+mode: interactive
+command:
+  - claude
+  - --dangerously-skip-permissions
+  - --settings
+  - "{settings_file}"
+  - "{prompt}"

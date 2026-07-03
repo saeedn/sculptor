@@ -1,0 +1,10 @@
+display_name: Claude Opus (interactive)
+mode: interactive
+command:
+  - claude
+  - --dangerously-skip-permissions
+  - --model
+  - opus
+  - --settings
+  - "{settings_file}"
+  - "{prompt}"

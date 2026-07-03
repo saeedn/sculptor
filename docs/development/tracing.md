@@ -85,8 +85,8 @@ It is greenlet-safe (no signals, no C-stack walk — the reason the old
 The tracing described here is the *in-process* route. For **sampled CPU
 profiles, flamegraphs, or native (C) frames** of a live backend, use `py-spy`
 instead. It cannot attach to a notarized build until that build's
-`sculptor_backend` is re-signed with `get-task-allow`; local **dev builds
-(`just pkg-dev`) ship the sidecar already signed** for attach (see
+`sculptor_backend` is re-signed with `get-task-allow`; local **unsigned builds
+(`just pkg` without `SIGN=1`) ship the sidecar already signed** for attach (see
 `sculptor/frontend/config/entitlements.dev.plist`). Use `py-spy dump`/`top` —
 **avoid `py-spy record`**, whose suspend-based continuous sampling heavily blocks
 the backend (for CPU-over-time, prefer the viztracer trace above). The full

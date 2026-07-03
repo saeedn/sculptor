@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!--
-  Entitlements for UNSIGNED LOCAL DEV builds only (`just pkg-dev`, which sets
-  SKIP_NOTARIZE_AND_SIGN=1). Identical to entitlements.mac.plist plus the two
+  Entitlements for UNSIGNED LOCAL builds only (`just pkg` without SIGN=1, which
+  sets SKIP_NOTARIZE_AND_SIGN=1). Identical to entitlements.mac.plist plus the two
   task-attach keys below, so a profiler/debugger (py-spy, lldb) can attach to
   the running `sculptor_backend` without anyone having to re-sign it by hand.
 

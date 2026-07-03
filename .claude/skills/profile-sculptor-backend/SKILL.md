@@ -59,7 +59,7 @@ ps -o command= -p "$BACKEND_PID" | grep -oE -- '--port [0-9]+' | awk '{print $2}
 ```
 
 Derive the bundle executable from the running pid rather than assuming a path
-(it differs between `Sculptor.app` and `Sculptor Dev.app`); typically
+(a build may be installed at a non-default location); typically
 `/Applications/Sculptor.app/Contents/Resources/sculptor_backend/sculptor_backend`.
 
 ## Step 1 — Is Route A available on this build? (probe)
@@ -152,8 +152,8 @@ codesign -d --entitlements - "$BACKEND_BIN" 2>&1 | grep -q get-task-allow \
   && echo "already attachable — skip B3/B4" || echo "re-sign needed (B3)"
 ```
 
-If it already has `get-task-allow`, skip to **B5**. **Dev builds (`Sculptor
-Dev.app`, from `just pkg-dev`) ship the sidecar already signed with
+If it already has `get-task-allow`, skip to **B5**. **Unsigned local builds (from
+`just pkg` without `SIGN=1`) ship the sidecar already signed with
 `get-task-allow`** (see `forge.config.ts` `postPackage` + `entitlements.dev.plist`),
 so this check passes and no re-sign is needed — only the notarized production
 app requires B3.

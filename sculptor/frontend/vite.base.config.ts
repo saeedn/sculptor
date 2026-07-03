@@ -3,12 +3,11 @@
 // env loading, and the plugin pipeline — so each entry config only declares the
 // handful of knobs that genuinely differ:
 //
-//   - vite.web.config.ts      (web / OpenHost):  API_URL_BASE "" (same-origin),
-//                                                 a type-generation plugin
-//   - vite.electron.config.ts (Electron renderer): API_URL_BASE undefined
-//                                                 (preload injects the port),
-//                                                 outDir .vite/build/renderer,
-//                                                 HMR gated under pytest
+//   - vite.web.config.ts      (browser-mode integration-test harness build,
+//                              served statically by the backend):
+//                              a type-generation plugin
+//   - vite.electron.config.ts (Electron renderer): outDir .vite/build/renderer,
+//                              HMR gated under pytest
 //
 // Each entry config passes its own `root` (the frontend dir) so path resolution
 // here never depends on how Vite bundles this module.
@@ -105,21 +104,6 @@ export const sharedOptimizeDeps: { include: Array<string> } = {
 };
 
 /**
- * The `API_URL_BASE` `define`. `apiUrlBaseExpr` differs per target, so each
- * entry config supplies it:
- *   - web:      apiUrlBaseExpr = JSON.stringify(SCULPTOR_API_BASE_URL || "")
- *               (same-origin).
- *   - renderer: apiUrlBaseExpr = "undefined" (the preload injects
- *               window.sculptor.backendPort).
- *
- * `apiUrlBaseExpr` is the raw substitution text (a Vite `define` value), not a
- * value to be JSON-encoded again.
- */
-export const sharedDefine = (opts: { apiUrlBaseExpr: string }): Record<string, string> => ({
-  API_URL_BASE: opts.apiUrlBaseExpr,
-});
-
-/**
  * Target-specific knobs for {@link defineFrontendConfig}. Everything else — the
  * dev/prod branch, the proxy, env loading, and the shared
  * plugins/resolve/css/define — is identical across builds and lives in the
@@ -130,8 +114,6 @@ export interface FrontendConfigOptions {
   root: string;
   /** Dev-server port used when SCULPTOR_FRONTEND_PORT is unset (5174 web, 5173 renderer). */
   defaultFrontendPort: number;
-  /** Raw `API_URL_BASE` define expression, derived from the loaded env. */
-  apiUrlBase: (env: Record<string, string>) => string;
   /**
    * Asset base. Defaults to "/" (absolute): both builds are served from an
    * origin root — the backend for web, the `sculptor://app` scheme (and the
@@ -189,9 +171,6 @@ export function defineFrontendConfig(opts: FrontendConfigOptions): UserConfigExp
       root: opts.root,
       base: opts.base ?? "/",
       optimizeDeps: sharedOptimizeDeps,
-      define: sharedDefine({
-        apiUrlBaseExpr: opts.apiUrlBase(env),
-      }),
       build: { sourcemap: true, ...opts.build },
       clearScreen: false,
       envPrefix: "SCULPTOR_",

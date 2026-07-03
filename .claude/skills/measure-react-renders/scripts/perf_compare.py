@@ -105,7 +105,7 @@ def start_backend(repo_dir, port, data_dir):
     log = open(Path(data_dir) / "backend.log", "w")
     return subprocess.Popen(
         ["uv", "run", "--project", str(Path(repo_dir) / "sculptor"),
-         "python", "-m", "sculptor.cli.main", "--no-open-browser", repo_dir],
+         "python", "-m", "sculptor.cli.main", repo_dir],
         env=env,
         stdout=log,
         stderr=log,

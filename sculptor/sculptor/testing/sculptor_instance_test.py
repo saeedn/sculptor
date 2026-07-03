@@ -13,7 +13,7 @@ from sculptor.testing.sculptor_instance import _teardown_timeout_seconds
 
 def test_teardown_timeout_default_when_trace_to_absent() -> None:
     """No tracing — the historical 10s budget is enough for a normal shutdown."""
-    args = ("python", "-m", "sculptor.cli.main", "--no-open-browser", "--port=12345")
+    args = ("python", "-m", "sculptor.cli.main", "--port=12345")
     assert _teardown_timeout_seconds(args) == 10
 
 

@@ -359,22 +359,19 @@ register_on_startup(on_startup)
 
 ## Cors section. This should be the only place the backend process cares about SCULPTOR_FRONTEND_PORT
 frontend_port = os.environ.get("SCULPTOR_FRONTEND_PORT", 5173)
-frontend_host = os.environ.get("SCULPTOR_FRONTEND_HOST", None)
 api_port = os.environ.get("SCULPTOR_API_PORT", 5050)
 
 is_integration_testing = os.environ.get("TESTING__INTEGRATION_ENABLED", "false").lower() == "true"
 
 
-# Add CORS middleware to allow requests from file:// origins and localhost
+# Add CORS middleware to allow requests from the dev server and the packaged renderer
 APP.add_middleware(
     CORSMiddleware,
     allow_origins=[
         f"http://localhost:{frontend_port}",  # Vite dev server
         f"http://127.0.0.1:{frontend_port}",  # Vite dev server
-        f"http://localhost:{api_port}",  # Direct web backend access, this usually doesnt need cors
-        f"http://127.0.0.1:{api_port}",  # Direct web backend access, this usually doesnt need cors
-        *([f"http://{frontend_host}:{frontend_port}"] if frontend_host is not None else []),
-        "null",  # file:// URLs report origin as "null"
+        f"http://localhost:{api_port}",  # Browser-harness page served by the backend itself
+        f"http://127.0.0.1:{api_port}",  # Browser-harness page served by the backend itself
         "sculptor://app",  # packaged renderer served from the custom app protocol
     ],
     # If we are running for an integration test, we need to allow any port so that our clients can port-hop.
@@ -3097,7 +3094,9 @@ APP.include_router(router)
 APP.add_middleware(SessionTokenMiddleware, settings_factory=get_settings)
 
 
-# TODO (PROD-2161): either we can remove this or leave it for debugging, it might fail depending on what we change with the build process
+# Sculptor is a desktop-only application; this static-serving route exists for
+# the browser-mode integration harness, which loads the frontend from the
+# backend origin in headless Chromium (see `just test-integration`).
 # To avoid conflicts with the API routes, we write this route last. This route
 # must be loaded _after_ APP.include_router, which performs delayed routing.
 @APP.get("/{filename:path}")

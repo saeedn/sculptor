@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-import { baseUrl } from "../../../apiClient.ts";
+import { wsBaseUrl } from "../../../apiClient.ts";
 import { getSessionToken, SESSION_TOKEN_HEADER_NAME } from "../../Auth.ts";
 import { traceMark } from "../../tracing.ts";
 
@@ -53,10 +53,8 @@ export function useWebsocket<T>({
 
     const connect = (): void => {
       try {
-        // Convert HTTP URL to WebSocket URL
-        const urlObj = new URL(url, baseUrl || window.location.origin);
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        urlObj.protocol = protocol;
+        // Resolve the path against the backend's WebSocket origin.
+        const urlObj = new URL(url, wsBaseUrl);
 
         // Add /ws suffix if it's a stream endpoint
         if (urlObj.pathname.endsWith("/stream")) {

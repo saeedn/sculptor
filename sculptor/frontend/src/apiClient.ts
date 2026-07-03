@@ -106,20 +106,38 @@ export const makeAPIRequest = async (input: RequestInfo | URL, init: RequestInit
   }
 };
 
-export let baseUrl: string;
+/**
+ * API requests are always same-origin relative; the page's origin decides the
+ * transport. In the packaged app the renderer lives on sculptor://app, so
+ * /api/* requests are proxied to the backend by the Electron main process over
+ * Node's HTTP stack (see registerAppProtocolHandler in electron/main.ts) —
+ * which sidesteps Chromium's six-connections-per-host limit on the backend
+ * origin. In plain development the Vite dev server proxies /api to the
+ * backend, and in the browser-mode integration harness the backend serves the
+ * page itself.
+ */
+export const baseUrl = "";
+
+/**
+ * Absolute ws(s):// origin for WebSocket connections, resolved once by
+ * configureClient. WebSockets cannot ride the custom sculptor:// scheme and
+ * have their own (much higher) per-host connection budget, so they connect
+ * straight to the backend rather than through the main-process proxy.
+ */
+export let wsBaseUrl: string;
 
 /**
  * Configures the API client with custom fetch and interceptors
  *
  * This function:
- * 1. Sets up the base URL and custom fetch implementation
+ * 1. Resolves the WebSocket base URL and custom fetch implementation
  * 2. Adds a request interceptor to handle meta options for tracking
  */
 export const configureClient = async (): Promise<void> => {
-  if (API_URL_BASE !== undefined) {
-    baseUrl = API_URL_BASE;
-  } else if (window.sculptor) {
-    baseUrl = `http://localhost:${await window.sculptor.getBackendPort()}`;
+  if (window.sculptor) {
+    wsBaseUrl = `ws://localhost:${await window.sculptor.getBackendPort()}`;
+  } else {
+    wsBaseUrl = window.location.origin.replace(/^http/, "ws");
   }
 
   client.setConfig({

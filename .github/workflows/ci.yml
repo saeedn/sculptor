@@ -1,11 +1,10 @@
 name: CI
 
-# Run on every PR targeting main, and on pushes to main itself so the base
-# branch stays green and the caches created here are available to PR runs.
+# Run only on PRs targeting main. Merges are already gated by the PR's required
+# checks, so re-running the whole suite on the post-merge push to main would be
+# redundant.
 on:
   pull_request:
-    branches: [main]
-  push:
     branches: [main]
 
 # If new commits are pushed to a PR while CI is still running, cancel the older

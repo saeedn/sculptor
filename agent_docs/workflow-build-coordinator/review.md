@@ -523,6 +523,35 @@ hostnames, or user paths (scanned mechanically and read); the
   poisoning, process leaks) were all fixed with regression tests; see
   the Resolution log above.
 
+## Post-review field test (nested dev instance)
+
+A live run through a `just start` dev instance surfaced one incident:
+the Coordinator tab appeared stuck on node 1.1 "running" although the
+worker had committed and written its `Stop`. Investigation (journal,
+file mtimes, process table, backend logs, terminal buffer) showed two
+compounding causes, both now fixed in `a5554cf3`:
+
+- **The observing coordinator died mid-run** (~100s in) without
+  cleanup; its worker — correctly isolated in its own process session —
+  finished 7 minutes later, unobserved. The likely trigger: Textual's
+  built-in priority Ctrl+C binding quits the app immediately,
+  bypassing the TUI's quit-when-idle guard. Ctrl+C now routes through
+  the same guard as `q`.
+- **A relaunched `coordinator run` in the same tab hit the
+  stale-state guard** (correctly — that's the CRITICAL fix working)
+  and its dashboard rendered the last snapshot: 1.1 eternally
+  "running". Separately, resume would have *discarded* the completed
+  attempt and re-run the task, which would then fail the
+  produced-no-commit gate. Resume now records each attempt's base
+  commit in the journal and inspects the attempt dir's
+  `signals.jsonl`: an attempt that reached `Stop` re-enters at its
+  gates (`resume-gates`) instead of being redone. Old journals without
+  a base commit keep the discard behavior.
+
+Also fixed from the same evidence: the status bar redrew every 0.5s
+tick even when unchanged, flooding the tab's PTY stream (~1MB of
+identical repaints observed in the terminal buffer).
+
 ## Overall Assessment
 
 This is a strong, well-tested implementation of increment 1. Every

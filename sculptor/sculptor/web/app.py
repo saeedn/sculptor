@@ -1281,17 +1281,24 @@ _MAX_LAUNCH_ARGS = 32
 _MAX_LAUNCH_ARG_LENGTH = 1024
 
 
+def _launch_args_422(message: str) -> HTTPException:
+    # Manual 422s use the same list-of-dicts shape as FastAPI's automatic
+    # validation errors so the generated sculpt client can parse them.
+    return HTTPException(
+        status_code=422,
+        detail=[{"loc": ["body", "launch_args"], "msg": message, "type": "value_error"}],
+    )
+
+
 def _validate_launch_args(launch_args: list[str]) -> None:
     """Conservative belt-and-suspenders on top of render-time shell quoting."""
     if len(launch_args) > _MAX_LAUNCH_ARGS:
-        raise HTTPException(status_code=422, detail=f"at most {_MAX_LAUNCH_ARGS} launch args are allowed")
+        raise _launch_args_422(f"at most {_MAX_LAUNCH_ARGS} launch args are allowed")
     for arg in launch_args:
         if len(arg) > _MAX_LAUNCH_ARG_LENGTH:
-            raise HTTPException(
-                status_code=422, detail=f"launch args must be at most {_MAX_LAUNCH_ARG_LENGTH} characters each"
-            )
+            raise _launch_args_422(f"launch args must be at most {_MAX_LAUNCH_ARG_LENGTH} characters each")
         if not arg.isprintable():
-            raise HTTPException(status_code=422, detail="launch args must be printable (no control characters)")
+            raise _launch_args_422("launch args must be printable (no control characters)")
 
 
 def _agent_config_for_request(
@@ -1306,7 +1313,7 @@ def _agent_config_for_request(
     """
     if agent_type == AgentTypeName.TERMINAL:
         if launch_args:
-            raise HTTPException(status_code=422, detail="plain terminal agents do not accept launch args")
+            raise _launch_args_422("plain terminal agents do not accept launch args")
         return TerminalAgentConfig()
     if agent_type == AgentTypeName.REGISTERED:
         if registration_id is None:
@@ -1320,11 +1327,11 @@ def _agent_config_for_request(
             )
         if launch_args:
             if ARGS_PLACEHOLDER not in registration.launch_command:
-                detail = (
+                message = (
                     f"registration '{registration_id}' does not accept launch args"
                     + f" ({ARGS_PLACEHOLDER} not in launch_command)"
                 )
-                raise HTTPException(status_code=422, detail=detail)
+                raise _launch_args_422(message)
             _validate_launch_args(launch_args)
         # Stamped at creation so the task stays self-describing even if the
         # registration file later changes.

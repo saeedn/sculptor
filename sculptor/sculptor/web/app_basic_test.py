@@ -555,7 +555,11 @@ def test_agent_config_for_request_rejects_args_without_placeholder(monkeypatch: 
     with pytest.raises(HTTPException) as exc_info:
         _agent_config_for_request(AgentTypeName.REGISTERED, "claude-code", ["run"])
     assert exc_info.value.status_code == 422
-    assert "does not accept launch args" in exc_info.value.detail
+    # Manual 422s use the list-of-dicts validation format (see
+    # test_manual_422_responses_use_validation_error_list_format).
+    detail = exc_info.value.detail
+    assert isinstance(detail, list)
+    assert "does not accept launch args" in detail[0]["msg"]
 
 
 def test_agent_config_for_request_rejects_args_for_plain_terminal() -> None:

@@ -246,6 +246,78 @@ class TestAgentCreateHarness:
         assert "registrationId" not in body
 
     @respx.mock
+    def test_create_with_launch_args_sends_them_in_order(self, runner: CliRunner) -> None:
+        _mock_session()
+        _mock_workspaces("ws_test123")
+        _mock_registrations(_CLAUDE_CLI_REGISTRATION)
+        route = respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
+            return_value=Response(200, json=_task_response_dict())
+        )
+
+        result = runner.invoke(
+            app,
+            [
+                "agent",
+                "create",
+                "-w",
+                "ws_test123",
+                "--harness",
+                "Claude CLI",
+                "--launch-arg",
+                "run",
+                "--launch-arg",
+                "agent_docs/my plan",
+            ],
+        )
+
+        assert result.exit_code == 0
+        body = json.loads(route.calls.last.request.content)
+        assert body["launchArgs"] == ["run", "agent_docs/my plan"]
+
+    @respx.mock
+    def test_create_without_launch_args_omits_the_field(self, runner: CliRunner) -> None:
+        _mock_session()
+        _mock_workspaces("ws_test123")
+        route = respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
+            return_value=Response(200, json=_task_response_dict())
+        )
+
+        result = runner.invoke(app, ["agent", "create", "-w", "ws_test123"])
+
+        assert result.exit_code == 0
+        body = json.loads(route.calls.last.request.content)
+        assert "launchArgs" not in body
+
+    @respx.mock
+    def test_create_launch_args_422_detail_is_readable(self, runner: CliRunner) -> None:
+        _mock_session()
+        _mock_workspaces("ws_test123")
+        _mock_registrations(_CLAUDE_CLI_REGISTRATION)
+        respx.post("http://localhost:5050/api/v1/workspaces/ws_test123/agents").mock(
+            return_value=Response(
+                422,
+                json={
+                    "detail": [
+                        {
+                            "loc": ["body", "launch_args"],
+                            "msg": "registration 'claude-code' does not accept launch args"
+                            " ({args} not in launch_command)",
+                            "type": "value_error",
+                        }
+                    ]
+                },
+            )
+        )
+
+        result = runner.invoke(
+            app,
+            ["agent", "create", "-w", "ws_test123", "--harness", "Claude CLI", "--launch-arg", "run"],
+        )
+
+        assert result.exit_code == 1
+        assert "does not accept launch args" in result.stderr
+
+    @respx.mock
     def test_create_with_invalid_harness_errors_and_lists_valid_options(self, runner: CliRunner) -> None:
         _mock_session()
         _mock_workspaces("ws_test123")

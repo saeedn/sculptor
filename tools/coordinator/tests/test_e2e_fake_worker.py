@@ -27,6 +27,7 @@ from coordinator.journal import load_snapshot
 from coordinator.journal import replay
 from coordinator.main import app as cli_app
 from coordinator.run import execute_plan
+from coordinator.statedir import attempt_dir
 from coordinator.statedir import journal_path
 from coordinator.statedir import read_run_id
 from tests.fakes import SCENARIO_WORKER
@@ -404,7 +405,7 @@ def test_human_phase_review_waits_and_approves(tmp_path: Path) -> None:
     snapshot = load_snapshot(plan_dir)
     assert snapshot.nodes["phase-review:1"].state == "waiting-human"
     # The phase diff was written for presentation.
-    diff = (plan_dir / "_state" / "attempts" / "phase-review_1" / "0" / "human_review.patch").read_text()
+    diff = (attempt_dir(plan_dir, "phase-review:1", 0) / "human_review.patch").read_text()
     assert "file_1.1.txt" in diff
     # Approve via the CLI escape hatch, then resume.
     result = CliRunner().invoke(cli_app, ["intent", str(plan_dir), "approve", "phase-review:1"])
@@ -611,8 +612,15 @@ def test_resume_after_kill_skips_completed_tasks(tmp_path: Path, monkeypatch) ->
         stderr=subprocess.DEVNULL,
     )
     try:
-        # Kill only once t2 is provably mid-flight (t1 fully passed).
-        wait_for_journal(plan_dir, lambda text: '"type":"attempt-started"' in text and '"node_id":"t2"' in text)
+        # Kill only once t2 is provably mid-flight (t1 fully passed):
+        # both markers must be on ONE line — matching them anywhere in
+        # the journal is satisfiable before t2's attempt-started lands.
+        wait_for_journal(
+            plan_dir,
+            lambda text: any(
+                '"type":"attempt-started"' in line and '"node_id":"t2"' in line for line in text.splitlines()
+            ),
+        )
         coordinator.kill()
     finally:
         coordinator.wait(timeout=10)

@@ -73,8 +73,9 @@ def test_exit_without_stop_fails(tmp_path: Path, mode: Literal["print", "interac
     assert result.session_id == "fake-sess"
 
 
-def test_waiting_signal_fails_attempt(tmp_path: Path) -> None:
-    _, result = launch(tmp_path, ASK_QUESTION_THEN_SLEEP, "print")
+@pytest.mark.parametrize("mode", ["print", "interactive"])
+def test_waiting_signal_fails_attempt(tmp_path: Path, mode: Literal["print", "interactive"]) -> None:
+    _, result = launch(tmp_path, ASK_QUESTION_THEN_SLEEP, mode)
     assert result.status == "waiting"
     assert not result.ok
     assert result.pid is not None
@@ -142,8 +143,9 @@ def test_sigterm_immune_worker_gets_sigkilled(tmp_path: Path) -> None:
     assert result.exit_code == -9
 
 
-def test_timeout(tmp_path: Path) -> None:
-    _, result = launch(tmp_path, SLEEP_FOREVER, "print", timeout_seconds=0.5)
+@pytest.mark.parametrize("mode", ["print", "interactive"])
+def test_timeout(tmp_path: Path, mode: Literal["print", "interactive"]) -> None:
+    _, result = launch(tmp_path, SLEEP_FOREVER, mode, timeout_seconds=0.5)
     assert result.status == "timeout"
     assert not result.ok
     assert result.pid is not None

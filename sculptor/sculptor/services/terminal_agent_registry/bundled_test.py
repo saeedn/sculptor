@@ -7,7 +7,7 @@ import pytest
 
 from sculptor.services.terminal_agent_registry import bundled as bundled_module
 from sculptor.services.terminal_agent_registry import registry as registry_module
-from sculptor.services.terminal_agent_registry.bundled import get_bundled_claude_code_dir
+from sculptor.services.terminal_agent_registry.bundled import get_bundled_sample_dir
 from sculptor.services.terminal_agent_registry.bundled import install_bundled_registrations
 from sculptor.services.terminal_agent_registry.registry import load_registrations
 
@@ -22,7 +22,7 @@ def sculptor_folder(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
 
 def test_bundled_sample_dir_resolves_from_source_checkout() -> None:
-    source_dir = get_bundled_claude_code_dir()
+    source_dir = get_bundled_sample_dir("claude-code")
     assert source_dir is not None
     assert (source_dir / "claude-code.toml").is_file()
     assert (source_dir / "claude-code-hooks.json").is_file()
@@ -41,7 +41,7 @@ def test_fresh_install_writes_files_and_loads(sculptor_folder: Path) -> None:
     # Files are copied verbatim: the {terminal_agents_directory} placeholder is
     # resolved at command-render time, not rewritten at install, so the
     # installed TOML matches the shipped sample byte-for-byte.
-    sample_dir = get_bundled_claude_code_dir()
+    sample_dir = get_bundled_sample_dir("claude-code")
     assert sample_dir is not None
     assert toml_path.read_text() == (sample_dir / "claude-code.toml").read_text()
     data = tomllib.loads(toml_path.read_text())
@@ -146,7 +146,7 @@ def test_editing_one_managed_file_does_not_block_refreshing_the_other(
 
     install_bundled_registrations()
 
-    sample_dir = get_bundled_claude_code_dir()
+    sample_dir = get_bundled_sample_dir("claude-code")
     assert sample_dir is not None
     # The hooks file upgraded even though the TOML was edited; the edit stuck.
     assert hooks_path.read_text() == (sample_dir / "claude-code-hooks.json").read_text()

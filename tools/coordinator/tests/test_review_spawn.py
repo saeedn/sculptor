@@ -142,13 +142,16 @@ def test_handoff_send_failure_retries_then_falls_back(tmp_path: Path) -> None:
         env=sculptor_env(bin_dir),
         out=printed.append,
         sleep=sleeps.append,
-        send_retry_window_seconds=0.0,
-        send_retry_interval_seconds=0.0,
+        send_retry_window_seconds=0.5,
+        send_retry_interval_seconds=0.05,
     )
     assert agent_id is None
     assert any("Could not spawn the Review agent" in line for line in printed)
     sends = [line for line in log_path.read_text().splitlines() if line.startswith("agent send")]
-    assert len(sends) >= 1
+    # The send actually retried (and slept between attempts) before
+    # falling back — a single send would mean the retry loop is gone.
+    assert len(sends) >= 2
+    assert sleeps and all(interval == 0.05 for interval in sleeps)
 
 
 @pytest.mark.parametrize("missing", ["SCULPT_AGENT_ID", "SCULPT_WORKSPACE_ID"])

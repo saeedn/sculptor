@@ -1,5 +1,6 @@
 """Node detail screens: attempt history, transcripts, and human approval."""
 
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -22,9 +23,12 @@ def tail_text(path: Path, max_lines: int = _TAIL_LINES, max_bytes: int = _DIFF_T
     """The tail of a possibly-large file — never load multi-MB files whole."""
     if not path.is_file():
         return f"(file not found: {path})"
-    data = path.read_bytes()
-    truncated = len(data) > max_bytes
-    text = data[-max_bytes:].decode(errors="replace")
+    with open(path, "rb") as f:
+        size = f.seek(0, os.SEEK_END)
+        truncated = size > max_bytes
+        f.seek(max(0, size - max_bytes))
+        data = f.read()
+    text = data.decode(errors="replace")
     lines = text.splitlines()
     if len(lines) > max_lines:
         lines = lines[-max_lines:]

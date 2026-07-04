@@ -36,6 +36,9 @@ VERDICT_FILENAME = "verdict.json"
 DIFF_FILENAME = "review_diff.patch"
 MAX_DIFF_BYTES = 512 * 1024
 _TRUNCATION_NOTICE = "\n\n[diff truncated here — it exceeded the size cap; judge what is visible]\n"
+# git's canonical empty-tree object id — the diff base when a scope
+# starts at the repository's root commit (which has no parent).
+_EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 
 class VerdictError(Exception):
@@ -89,6 +92,16 @@ def build_review_diff(cwd: Path, commits: list[str], max_bytes: int = MAX_DIFF_B
     if not commits:
         return "(no commits recorded in the review scope)\n"
     base = f"{commits[0]}^"
+    has_parent = (
+        subprocess.run(
+            ["git", "-C", str(cwd), "rev-parse", "--verify", "--quiet", base], capture_output=True
+        ).returncode
+        == 0
+    )
+    if not has_parent:
+        # The first in-scope commit is the repository's root commit;
+        # diff against git's well-known empty tree instead.
+        base = _EMPTY_TREE_HASH
     tip = commits[-1]
     diff = subprocess.run(
         ["git", "-C", str(cwd), "diff", base, tip], capture_output=True, text=True, check=True

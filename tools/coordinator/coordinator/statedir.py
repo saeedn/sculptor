@@ -6,6 +6,7 @@ self-writes a ``.gitignore`` containing ``*`` so run state never
 pollutes the repo.
 """
 
+import hashlib
 import re
 import secrets
 import time
@@ -42,7 +43,13 @@ def ensure_state_dir(plan_dir: Path) -> Path:
 
 
 def sanitize_node_id(node_id: str) -> str:
-    return _UNSAFE_NODE_ID_CHARS.sub("_", node_id)
+    sanitized = _UNSAFE_NODE_ID_CHARS.sub("_", node_id)
+    if sanitized == node_id:
+        return node_id
+    # Distinct ids must never share an attempt dir ("a:b" vs "a_b"), so
+    # substitution appends a short digest of the original id.
+    digest = hashlib.sha256(node_id.encode()).hexdigest()[:8]
+    return f"{sanitized}-{digest}"
 
 
 def attempt_dir(plan_dir: Path, node_id: str, attempt_index: int) -> Path:

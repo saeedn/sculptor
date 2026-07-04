@@ -27,6 +27,7 @@ from coordinator.gates import commits_since
 from coordinator.gates import head_commit
 from coordinator.gates import is_tree_clean
 from coordinator.gates import porcelain_status
+from coordinator.gates import restore_clean_tree
 from coordinator.gates import run_mechanical_gate
 from coordinator.journal import AttemptStarted
 from coordinator.journal import CommitRecorded
@@ -359,6 +360,16 @@ class PlanExecutor:
         if head_commit(self.cwd) != head_before:
             outcome = GateOutcome(
                 gate=gate_kind, passed=False, findings="reviewer modified the repository (HEAD moved); review is void"
+            )
+        elif not is_tree_clean(self.cwd):
+            # The tree was clean when the reviewer started, so this is the
+            # reviewer's doing. Restore it — otherwise the dirt would later
+            # pause the run blamed on "the user edited mid-run".
+            restore_clean_tree(self.cwd)
+            outcome = GateOutcome(
+                gate=gate_kind,
+                passed=False,
+                findings="reviewer left uncommitted changes in the working tree (now restored); review is void",
             )
         elif result.status != "completed":
             rate_limit = classify_attempt(result, review.prepared.attempt_dir)

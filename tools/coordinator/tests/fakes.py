@@ -245,6 +245,10 @@ def make_git_repo(path: Path) -> Path:
     subprocess.run(["git", "init", "-q", str(path)], check=True)
     subprocess.run(["git", "-C", str(path), "config", "user.email", "fake@example.com"], check=True)
     subprocess.run(["git", "-C", str(path), "config", "user.name", "Fake Worker"], check=True)
+    # Neutralize global git config that would break scripted commits
+    # (commit signing prompts, user-level hooks).
+    subprocess.run(["git", "-C", str(path), "config", "commit.gpgsign", "false"], check=True)
+    subprocess.run(["git", "-C", str(path), "config", "core.hooksPath", "/dev/null"], check=True)
     (path / "README.md").write_text("test repo\n")
     subprocess.run(["git", "-C", str(path), "add", "-A"], check=True)
     subprocess.run(["git", "-C", str(path), "commit", "-q", "-m", "initial"], check=True)

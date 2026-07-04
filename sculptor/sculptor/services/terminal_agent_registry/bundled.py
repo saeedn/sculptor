@@ -108,11 +108,6 @@ def get_bundled_sample_dir(name: str) -> Path | None:
     return None
 
 
-def get_bundled_claude_code_dir() -> Path | None:
-    """Back-compat wrapper for the claude-code sample dir."""
-    return get_bundled_sample_dir("claude-code")
-
-
 def install_bundled_registrations() -> None:
     """Copy each bundled registration into the registrations dir, once.
 

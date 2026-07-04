@@ -186,12 +186,18 @@ def test_gitignore_hides_state_from_git(tmp_path: Path) -> None:
 
 def test_attempt_dir_sanitizes_node_id(tmp_path: Path) -> None:
     path = attempt_dir(tmp_path, "phase-review:1", 2)
-    assert path == tmp_path / "_state" / "attempts" / "phase-review_1" / "2"
+    assert path.parent.name.startswith("phase-review_1-")
+    assert path.name == "2"
+    assert path.parent.parent == tmp_path / "_state" / "attempts"
 
 
 def test_sanitize_node_id() -> None:
     assert sanitize_node_id("1.2") == "1.2"
-    assert sanitize_node_id("a/b c:d") == "a_b_c_d"
+    sanitized = sanitize_node_id("a/b c:d")
+    assert sanitized.startswith("a_b_c_d-")
+    # Distinct unsafe ids never collide onto one attempt dir.
+    assert sanitize_node_id("a:b") != sanitize_node_id("a_b")
+    assert sanitize_node_id("a:b") == sanitize_node_id("a:b")
 
 
 def test_new_run_id_charset() -> None:

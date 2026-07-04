@@ -63,6 +63,12 @@ def is_tree_clean(cwd: Path) -> bool:
     return porcelain_status(cwd) == ""
 
 
+def restore_clean_tree(cwd: Path) -> None:
+    """Discard all uncommitted changes, tracked and untracked."""
+    _git(cwd, "checkout", "--", ".")
+    _git(cwd, "clean", "-fd")
+
+
 def commits_since(cwd: Path, base: str) -> list[str]:
     """Commit hashes after ``base`` up to HEAD, oldest first."""
     return _git(cwd, "rev-list", "--reverse", f"{base}..HEAD").split()

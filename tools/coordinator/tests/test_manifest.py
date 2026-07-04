@@ -215,3 +215,26 @@ def test_all_problems_collected(tmp_path: Path) -> None:
     plan_dir = write_plan(tmp_path, manifest_text, [])
     error = load_expecting_error(plan_dir)
     assert len(error.problems) == 3
+
+
+def _manifest_with_process_doc(process_doc: str) -> str:
+    return EXAMPLE_MANIFEST.replace("  attempts: 2\n", f"  attempts: 2\n  process_doc: {process_doc}\n")
+
+
+def test_process_doc_must_stay_inside_the_plan_folder(tmp_path: Path) -> None:
+    plan_dir = tmp_path / "plan"
+    plan_dir.mkdir()
+    write_plan(
+        plan_dir, _manifest_with_process_doc("../outside.md"), ["01_01_scaffold.md", "01_02_manifest_parser.md"]
+    )
+    (tmp_path / "outside.md").write_text("# outside\n")
+    with pytest.raises(ManifestError, match="escapes the plan folder"):
+        load_manifest(plan_dir)
+
+
+def test_missing_process_doc_rejected(tmp_path: Path) -> None:
+    plan_dir = write_plan(
+        tmp_path, _manifest_with_process_doc("no_such_process.md"), ["01_01_scaffold.md", "01_02_manifest_parser.md"]
+    )
+    with pytest.raises(ManifestError, match="does not exist"):
+        load_manifest(plan_dir)

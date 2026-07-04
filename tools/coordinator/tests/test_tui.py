@@ -92,8 +92,12 @@ async def test_refresh_picks_up_appended_events(tmp_path: Path) -> None:
         table = app.query_one(DataTable)
         assert str(table.get_cell("1.1", "state")) == "running"
         journal.append(TaskStateChanged(node_id="1.1", old_state="running", new_state="passed"))
-        # Let the 0.5s refresh interval fire.
-        await pilot.pause(0.8)
+        # Poll until the 0.5s refresh interval picks the event up — a
+        # fixed pause flakes under CI load.
+        for _ in range(50):
+            if str(table.get_cell("1.1", "state")) == "passed":
+                break
+            await pilot.pause(0.1)
         assert str(table.get_cell("1.1", "state")) == "passed"
 
 

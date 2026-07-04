@@ -155,12 +155,27 @@ def _validate_task_file(task: TaskSpec, plan_dir: Path, problems: list[str]) -> 
         problems.append(f"task {task.id}: file {task.file!r} does not exist in {plan_dir}")
 
 
+def _validate_process_doc(process_doc: str, plan_dir: Path, problems: list[str]) -> None:
+    doc_path = Path(process_doc)
+    if doc_path.is_absolute():
+        problems.append(f"defaults.process_doc: must be relative to the plan folder, got {process_doc!r}")
+        return
+    resolved = (plan_dir / doc_path).resolve()
+    if not resolved.is_relative_to(plan_dir.resolve()):
+        problems.append(f"defaults.process_doc: {process_doc!r} escapes the plan folder")
+        return
+    if not resolved.is_file():
+        problems.append(f"defaults.process_doc: {process_doc!r} does not exist in {plan_dir}")
+
+
 def _validate_manifest(manifest: PlanManifest, plan_dir: Path) -> list[str]:
     problems: list[str] = []
     if manifest.version != 1:
         problems.append(f"version: must be 1, got {manifest.version}")
     if manifest.defaults.attempts < 1:
         problems.append(f"defaults.attempts: must be >= 1, got {manifest.defaults.attempts}")
+    if manifest.defaults.process_doc is not None:
+        _validate_process_doc(manifest.defaults.process_doc, plan_dir, problems)
 
     all_task_ids: set[str] = set()
     seen_duplicates: set[str] = set()

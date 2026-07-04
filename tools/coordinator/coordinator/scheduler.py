@@ -237,11 +237,15 @@ class Scheduler:
                 scheduler._seed_context[node_id] = format_seed_context(scheduler._failures[node_id])
         for node_id, state in scheduler.states.items():
             if state in (NodeState.RUNNING, NodeState.GATE_CHECKING):
-                node_snapshot = snapshot.nodes.get(node_id)
-                if node_snapshot is not None and node_snapshot.attempts:
-                    pid = node_snapshot.attempts[-1].pid
-                    if pid is not None:
-                        reaper(pid)
+                # Reap the implementer AND any per-task reviewer that was
+                # mid-flight — reviewer attempts journal under
+                # "<node_id>.review", which has no scheduler state of its own.
+                for snapshot_id in (node_id, f"{node_id}.review"):
+                    node_snapshot = snapshot.nodes.get(snapshot_id)
+                    if node_snapshot is not None and node_snapshot.attempts:
+                        pid = node_snapshot.attempts[-1].pid
+                        if pid is not None:
+                            reaper(pid)
                 scheduler.transition(node_id, NodeState.PENDING, reason="resume-discard")
         return scheduler
 

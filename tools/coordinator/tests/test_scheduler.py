@@ -245,6 +245,25 @@ def test_resume_discards_mid_flight_attempt_and_reaps(tmp_path: Path) -> None:
     assert "attempt:a:1" not in executor.calls
 
 
+def test_resume_reaps_mid_flight_reviewer_too(tmp_path: Path) -> None:
+    manifest = make_manifest([task("a")])
+    ensure_state_dir(tmp_path)
+    journal = Journal(journal_path(tmp_path))
+    # Killed during "a"'s agentic gate: the implementer had finished but
+    # the reviewer (journaled under "a.review") was still alive.
+    journal.append(RunStarted(run_id="run-old", plan_dir=str(tmp_path), manifest_hash="h"))
+    journal.append(TaskStateChanged(node_id="a", old_state="pending", new_state="running"))
+    journal.append(AttemptStarted(node_id="a", attempt_index=0, worker_registration="w", pid=11, attempt_dir="/a/0"))
+    journal.append(TaskStateChanged(node_id="a", old_state="running", new_state="gate-checking"))
+    journal.append(
+        AttemptStarted(node_id="a.review", attempt_index=0, worker_registration="w", pid=99, attempt_dir="/a.review/0")
+    )
+    reaped: list[int] = []
+    scheduler = make_scheduler(tmp_path, manifest, FakeExecutor(), reaped=reaped, resume=True)
+    assert sorted(reaped) == [11, 99]
+    assert scheduler.states["a"] == NodeState.PENDING
+
+
 def test_illegal_transition_raises(tmp_path: Path) -> None:
     manifest = make_manifest([task("a")])
     scheduler = make_scheduler(tmp_path, manifest, FakeExecutor())

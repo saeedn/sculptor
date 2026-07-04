@@ -5,25 +5,18 @@ against `spec.md`, `architecture.md`, and `plan/00_overview.md`.
 
 ## Summary
 
-- **The implementation meets the spec.** Every increment-1 requirement is
-  Covered except two Partials sharing one root cause: the escalation
-  worker is configurable plan-wide but not overridable per task
-  (REQ-GATE-4 / REQ-FAIL-4, promised by both spec and architecture).
-- **The full verification suite passes**: `just check` (lint, types,
-  ratchets, hygiene) and `just test-unit` (backend 763, foundation 124,
-  sculpt 203, coordinator 205, frontend) are all green.
-- **Top things to address before heavy use** (all verified against the
-  code, none blocks a demo): (1) CRITICAL — `coordinator run` on a plan
-  with existing `_state/` reuses attempt dirs and consumes the previous
-  run's `signals.jsonl` from offset 0, so fresh workers are killed at
-  spawn yet reported completed; (2) HIGH — a crash-truncated journal
-  line poisons the journal on the next append, making the run
-  permanently unresumable; (3) HIGH — reviewer worker PIDs (journaled
-  under `<node>.review`) are never reaped on resume, orphaning live
-  `claude` processes.
-- Style-wise the new package systematically uses `@dataclass` where the
-  backend style guide mandates pydantic models, and code comments carry
-  `REQ-*`/increment references the comments policy forbids.
+- **The implementation meets the spec**, and after the fix pass every
+  requirement in scope is Covered — including the two former Partials
+  (per-task escalation override, REQ-GATE-4 / REQ-FAIL-4, added in
+  `b2ff9c7a`).
+- **All findings below have been fixed and committed** (resolution log
+  at the top of *Code Review Findings*), except three consciously
+  declined LOWs with rationale. The full verification suite is green
+  after every fix commit: `just check` plus `just test-unit` (backend,
+  foundation, sculpt, coordinator — now 225 tests — and frontend).
+- The original top risks — the CRITICAL stale-state rerun hazard, the
+  journal-poisoning crash path, the launcher resource leaks, and the
+  orphaned reviewer processes — are all closed with regression tests.
 
 ## Requirements Coverage
 
@@ -56,11 +49,11 @@ against `spec.md`, `architecture.md`, and `plan/00_overview.md`.
 | REQ-GATE-1 | Covered | `gates.py:58-101` — verification commands + commit-required (honors `no_change`) |
 | REQ-GATE-2 | Covered | `review.py` + `executor.py:296-389`; phase-boundary default (`manifest.py:119`, `dag.py:65-70`); fail-closed verdicts |
 | REQ-GATE-3 | Covered | `executor.py:198-209` + `scheduler.py:504-515`; TUI approval — see waiting-state UX finding |
-| REQ-GATE-4 | **Partial** | per-task `gates`/`attempts` yes (`manifest.py:99-100`); **escalation worker is not per-task** — `escalation_worker` exists only in `ManifestDefaults` (`manifest.py:86`) |
+| REQ-GATE-4 | Covered | per-task `gates`/`attempts` (`manifest.py:99-100`); per-task `escalation_worker` added in `b2ff9c7a` |
 | REQ-FAIL-1 | Covered | `scheduler.py:376-429`, `ladder.py:59-102` (seeded retries, bounded budget) |
 | REQ-FAIL-2 | Covered | `ladder.py:66-73` — escalated rung with full failure history; defaults 2 base + 1 escalated |
 | REQ-FAIL-3 | Covered | independent branches continue (`dag.py:123-141`); consolidated failure report + waiting signal (`scheduler.py:531-564`, `run.py:176-177`) |
-| REQ-FAIL-4 | **Partial** | attempts + escalation model configurable plan-wide, attempts overridable per task; **escalation model not overridable per task** (same root cause as REQ-GATE-4) |
+| REQ-FAIL-4 | Covered | attempts + escalation model configurable plan-wide and overridable per task (per-task `escalation_worker` added in `b2ff9c7a`) |
 | REQ-UX-1 | Covered | `tui/app.py:135-182`, `tui/widgets.py` — task table with states, attempts, worker, activity |
 | REQ-UX-2 | Covered | `tui/drilldown.py:71-163` — gates, attempt history, session ids, transcript tail |
 | REQ-UX-3 | Covered | `tui/app.py:93-103,231-267` — pause/resume/retry/skip/approve/abort |
@@ -152,6 +145,57 @@ table shows each task's worker registration. Tested by
   architecture as a manual smoke test. Justified. No xfail anywhere.
 
 ## Code Review Findings
+
+### Resolution log
+
+Every finding below was addressed after the review, one verified fix
+commit per group, each gated on `just format` / `just check` /
+`just test-unit`:
+
+- `18cf7de2` — **Resolved** the CRITICAL stale-state rerun hazard
+  (`coordinator run` now refuses a plan with existing run state) +
+  regression test.
+- `b85bb5e4` — **Resolved** the HIGH journal poisoning: a
+  crash-truncated final line is discarded before the next append.
+- `d43e27d5` — **Resolved** the HIGH launcher leaks (try/finally
+  cleanup on every path, PTY fds closed on failed spawn, drain-thread
+  close race avoided) and the post-kill `Stop` verdict flip.
+- `bf6de4a6` — **Resolved** the HIGH orphaned reviewers: resume reaps
+  `<node>.review` PIDs too.
+- `e3f8984b` — **Resolved** gate subprocess hardening: stdin closed,
+  verification timeout, git timeouts, `GitError` carrying stderr.
+- `b2ff9c7a` — **Resolved** the intent-consumption race, sticky
+  pause-then-resume, stale aborts on resume, seedless manual retries,
+  budget burned by discarded attempts, rate-limit false positives
+  (error surfaces only) and unclassified reviewer rate limits, abort
+  latency during reviews, duplicate Review handoff on resume, the
+  scheduler `print`, the TUI's silent stopped state, and the two
+  Partial requirements (per-task `escalation_worker`).
+- `2f6c941a` — **Resolved** the LOWs (root-commit review diff,
+  reviewer-dirtied tree voided+restored, attempt-dir collision digest,
+  `process_doc` containment, `tail_text` seek) and the test-quality
+  items (XDG isolation, TUI polling, kill-window predicate, git
+  signing/hooks isolation, real retry assertions, PTY kill-path
+  parametrization, bundled wrapper deletion).
+- `960715c2` — **Resolved** the style categories: dataclasses →
+  pydantic, `raise ... from`, REQ-/increment/spike comment cleanup,
+  exhaustive fold chains, `TrustError`/`_HandoffError`, executor
+  callback dedup, naming (`is_ok`, `finished_gates`,
+  `should_start_run`), typed `Finding` findings list, loguru for
+  diagnostics.
+
+**Declined with rationale** (recorded, not fixed): the
+`reap_recorded_pid` cmdline guard (three layered guards already exist;
+a name check would couple the reaper to registration internals for a
+low-probability recycled-PID case); the `mkstemp` fd guard
+(`os.fdopen` with a constant valid mode cannot realistically raise);
+the untyped `**kwargs` passthrough into `execute_plan` (an explicit
+re-declaration of nine keyword parameters in two places trades one
+LOW for a drift hazard). Known coverage seam, unchanged by design:
+the hooks-fragment ↔ real-Claude contract is exercised only by the
+opt-in smoke test.
+
+### Original findings (as reviewed, before the fix pass)
 
 Output of `/code-review-checklist` over `origin/main...HEAD` (all
 CRITICAL/HIGH findings and the flagged MEDIUMs were re-verified against
@@ -473,15 +517,11 @@ hostnames, or user paths (scanned mechanically and read); the
 
 - The change accomplishes the stated goal: increment 1 of the
   workflow-build-coordinator spec is fully delivered, replacing `/build`
-  outright, with only the per-task escalation override missing.
-- Address before merging: (1) the CRITICAL stale-state rerun hazard in
-  `run.py` — a one-check fix; (2) the journal partial-line poisoning in
-  `journal.py:161-166`; (3) worker/reviewer process leaks
-  (`launcher.py` observe-loop try/finally, reviewer-PID reap).
-- Nothing else should block: the remaining correctness MEDIUMs are
-  operational-robustness issues in failure paths, and the style items
-  (dataclasses, exception chaining, REQ-comments) are mechanical
-  cleanups.
+  outright. (The one gap found — the per-task escalation override — was
+  closed in the fix pass, `b2ff9c7a`.)
+- The blocking items identified here (stale-state rerun, journal
+  poisoning, process leaks) were all fixed with regression tests; see
+  the Resolution log above.
 
 ## Overall Assessment
 
@@ -494,16 +534,17 @@ never-rerun proofs. The Sculptor-side `{args}` plumbing is small,
 layered, and defensively validated, and the skill rework (manifest
 emission, `/build` deletion, Q&A dedup) landed coherently.
 
-The biggest risk is **state-lifecycle robustness around edges the happy
-path never hits**: rerunning a plan that already has state (CRITICAL),
-resuming after a crash that truncated the journal (HIGH), and process
-leaks when the observe loop throws or a reviewer is mid-flight at crash
-time (HIGH). All are localized fixes in `run.py`, `journal.py`,
-`launcher.py`, and `scheduler.py`. Until they land, treat re-runs of
-previously-started plans with suspicion and prefer `coordinator resume`.
+The biggest risk at review time was **state-lifecycle robustness around
+edges the happy path never hits**: rerunning a plan that already has
+state (CRITICAL), resuming after a crash that truncated the journal
+(HIGH), and process leaks when the observe loop throws or a reviewer is
+mid-flight at crash time (HIGH). All of those — and every other finding
+except three consciously declined LOWs — were fixed and committed in
+the post-review pass (`18cf7de2` through `960715c2`, see the Resolution
+log), each gated on the full verification suite. The coordinator test
+count grew from 205 to 225 in the process.
 
-Recommended follow-ups, in order: the four CRITICAL/HIGH fixes; the
-per-task escalation override (closes the two Partial requirements); the
-XDG test-isolation fixture; then the mechanical style sweep
-(dataclasses → pydantic, `raise ... from`, REQ-/increment comment
-cleanup) — ideally before increment 2 builds on this package.
+Remaining follow-ups are increment-2 scope, not defects: the
+interactive-node pipeline, the finalize-signal contract, and worktree
+parallelism, plus the known opt-in-only coverage of the real-Claude
+hooks contract.

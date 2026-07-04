@@ -104,6 +104,18 @@ def test_two_task_plan_passes(tmp_path: Path) -> None:
     assert any("1.1: pending -> running" in m for m in messages)
 
 
+def test_fresh_run_over_existing_state_refused(tmp_path: Path) -> None:
+    repo, plan_dir = make_plan_repo(tmp_path, COMMIT_THEN_STOP)
+    assert run_plan(plan_dir, repo) == "completed"
+    journal_size = journal_path(plan_dir).stat().st_size
+    with pytest.raises(RunError) as exc_info:
+        run_plan(plan_dir, repo)
+    assert "already has state" in str(exc_info.value)
+    assert "coordinator resume run-" in str(exc_info.value)
+    # Refused before touching the existing journal.
+    assert journal_path(plan_dir).stat().st_size == journal_size
+
+
 def test_dirty_tree_at_start_refused(tmp_path: Path) -> None:
     repo, plan_dir = make_plan_repo(tmp_path, COMMIT_THEN_STOP)
     (repo / "uncommitted.txt").write_text("dirt\n")

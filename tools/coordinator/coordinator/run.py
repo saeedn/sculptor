@@ -42,6 +42,7 @@ from coordinator.statedir import ensure_state_dir
 from coordinator.statedir import journal_path
 from coordinator.statedir import new_run_id
 from coordinator.statedir import read_run_id
+from coordinator.statedir import state_dir
 
 # Directory names never descended into when scanning for plans: VCS and
 # dependency trees, plus _state (fake-worker attempt dirs can contain
@@ -111,6 +112,18 @@ def execute_plan(
     _validate_workers(manifest, registrations)
     graph = build_graph(manifest)
 
+    if not resume:
+        # A fresh run over existing state would reuse attempt dirs — the
+        # stale signals.jsonl files would satisfy the new workers' Stop
+        # detection instantly — and interleave two runs in one journal.
+        existing_journal = journal_path(plan_dir)
+        if existing_journal.is_file() and existing_journal.stat().st_size > 0:
+            run_id_hint = read_run_id(plan_dir) or "<run-id>"
+            raise RunError(
+                f"refusing to start: {plan_dir} already has state from a previous run. "
+                + f"Resume it with `coordinator resume {run_id_hint}`, "
+                + f"or delete {state_dir(plan_dir)} to start over."
+            )
     if not resume and not is_tree_clean(cwd):
         raise RunError(
             f"refusing to start: the working tree at {cwd} is dirty. "

@@ -552,6 +552,13 @@ Also fixed from the same evidence: the status bar redrew every 0.5s
 tick even when unchanged, flooding the tab's PTY stream (~1MB of
 identical repaints observed in the terminal buffer).
 
+The recovery itself surfaced one more UX trap, fixed in `ba2d82c7`:
+tab restarts re-issue the launch command (`coordinator run
+<plan-dir>`), and the stale-state refusal left an idle dashboard that
+read as a stuck run. `coordinator run` over existing state now
+auto-resumes the recorded run (the same safe path as `coordinator
+resume`) with a notice, so tab restarts self-heal.
+
 ## Overall Assessment
 
 This is a strong, well-tested implementation of increment 1. Every

@@ -14,3 +14,4 @@ def _no_ambient_sculpt_signaling(monkeypatch: pytest.MonkeyPatch) -> None:
     a fake sculpt binary.
     """
     monkeypatch.delenv("SCULPT_AGENT_ID", raising=False)
+    monkeypatch.delenv("SCULPT_WORKSPACE_ID", raising=False)

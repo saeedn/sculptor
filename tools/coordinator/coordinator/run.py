@@ -20,6 +20,7 @@ from coordinator.gates import porcelain_status
 from coordinator.journal import CommitRecorded
 from coordinator.journal import Event
 from coordinator.journal import Journal
+from coordinator.journal import ReviewHandoff
 from coordinator.journal import Snapshot
 from coordinator.journal import load_snapshot
 from coordinator.journal import replay
@@ -31,6 +32,8 @@ from coordinator.manifest import load_manifest
 from coordinator.registrations import WorkerRegistration
 from coordinator.registrations import load_registrations
 from coordinator.registrations import resolve_worker
+from coordinator.review_spawn import handoff_review
+from coordinator.scheduler import NodeState
 from coordinator.scheduler import RunStatus
 from coordinator.scheduler import Scheduler
 from coordinator.sculpt_signals import Signaler
@@ -111,7 +114,7 @@ def execute_plan(
     if not resume and not is_tree_clean(cwd):
         raise RunError(
             f"refusing to start: the working tree at {cwd} is dirty. "
-            f"Commit or stash these changes first:\n{porcelain_status(cwd)}"
+            + f"Commit or stash these changes first:\n{porcelain_status(cwd)}"
         )
 
     ensure_state_dir(plan_dir)
@@ -164,6 +167,12 @@ def execute_plan(
         if progress is not None:
             progress(f"run paused: {e}")
         return "paused"
+    if status == "completed" and all(state == NodeState.PASSED for state in scheduler.states.values()):
+        # Fully successful (nothing skipped or failed): hand the feature
+        # to the Review agent. Never fatal to the completed run.
+        agent_id = handoff_review(plan_dir, manifest, out=progress if progress is not None else print)
+        journal.append(ReviewHandoff(ts=clock(), agent_id=agent_id))
+        save_snapshot(Snapshot.from_events(replay(journal.path)), plan_dir)
     if status in _WAITING_STATUSES:
         signaler.waiting()
     else:

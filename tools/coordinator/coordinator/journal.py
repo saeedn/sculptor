@@ -126,6 +126,14 @@ class IntentsConsumed(BaseModel):
     position: int
 
 
+class ReviewHandoff(BaseModel):
+    """The end-of-run Review handoff: spawned agent id, or None for the printed fallback."""
+
+    type: Literal["review-handoff"] = "review-handoff"
+    ts: float = Field(default_factory=time.time)
+    agent_id: str | None = None
+
+
 Event = Annotated[
     RunStarted
     | TaskStateChanged
@@ -136,7 +144,8 @@ Event = Annotated[
     | CommitRecorded
     | ControlIntent
     | RunPaused
-    | IntentsConsumed,
+    | IntentsConsumed
+    | ReviewHandoff,
     Field(discriminator="type"),
 ]
 
@@ -228,6 +237,9 @@ class Snapshot(BaseModel):
     intents: list[ControlIntent] = []
     # Journal position up to which control intents are consumed.
     intents_consumed: int = 0
+    # Agent id spawned by the Review handoff (None until it happens, and
+    # for the printed fallback).
+    review_agent_id: str | None = None
 
     @classmethod
     def from_events(cls, events: Iterable[Event]) -> "Snapshot":
@@ -308,6 +320,8 @@ class Snapshot(BaseModel):
             self.resume_hint = event.resume_hint
         elif isinstance(event, IntentsConsumed):
             self.intents_consumed = max(self.intents_consumed, event.position)
+        elif isinstance(event, ReviewHandoff):
+            self.review_agent_id = event.agent_id
 
 
 def save_snapshot(snapshot: Snapshot, plan_dir: Path) -> None:

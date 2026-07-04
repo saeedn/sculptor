@@ -20,6 +20,7 @@ from coordinator.journal import CommitRecorded
 from coordinator.journal import ControlIntent
 from coordinator.journal import GateResult
 from coordinator.journal import Journal
+from coordinator.journal import ReviewHandoff
 from coordinator.journal import RunPaused
 from coordinator.journal import TaskStateChanged
 from coordinator.journal import load_snapshot
@@ -485,16 +486,29 @@ def test_abort_kills_in_flight_worker(tmp_path: Path) -> None:
     assert load_snapshot(plan_dir).nodes["a"].state == "failed"
 
 
-def use_fake_sculpt(tmp_path: Path, monkeypatch) -> Path:
-    """A fake `sculpt` on PATH + SCULPT_AGENT_ID: signaling turns on against it."""
+def use_fake_sculpt(tmp_path: Path, monkeypatch, workspace_env: bool = False) -> Path:
+    """A fake `sculpt` on PATH + SCULPT_AGENT_ID: signaling turns on against it.
+
+    With ``workspace_env`` the full in-Sculptor env is simulated and the
+    fake answers `agent create` with a JSON id, so the Review handoff
+    engages too.
+    """
     bin_dir = tmp_path / "sculpt-bin"
     bin_dir.mkdir(exist_ok=True)
     log_path = tmp_path / "sculpt_calls.log"
     script = bin_dir / "sculpt"
-    script.write_text(f'#!/bin/sh\necho "$@" >> "{log_path}"\n')
+    script.write_text(
+        "#!/bin/sh\n"
+        f'echo "$@" >> "{log_path}"\n'
+        'if [ "$1" = "agent" ] && [ "$2" = "create" ]; then\n'
+        '  echo \'{"id": "tsk_review123"}\'\n'
+        "fi\n"
+    )
     script.chmod(0o755)
     monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
     monkeypatch.setenv("SCULPT_AGENT_ID", "tsk_fake")
+    if workspace_env:
+        monkeypatch.setenv("SCULPT_WORKSPACE_ID", "ws_fake")
     return log_path
 
 
@@ -514,6 +528,37 @@ def test_signal_sequence_with_fake_sculpt(tmp_path: Path, monkeypatch) -> None:
     # One files-changed per task commit keeps the diff viewer live.
     assert signals.count("signal files-changed") == 2
     assert signals[-1] == "signal idle"
+
+
+def test_review_handoff_spawns_agent_after_full_success(tmp_path: Path, monkeypatch) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "a", 0, pass_actions("a"))
+    log_path = use_fake_sculpt(tmp_path, monkeypatch, workspace_env=True)
+    assert run_plan(plan_dir, repo) == "completed"
+    log = log_path.read_text()
+    calls = log.splitlines()
+    assert "agent create --harness Claude CLI --json" in calls
+    send_calls = [line for line in calls if line.startswith("agent send tsk_review123")]
+    assert len(send_calls) == 1
+    # The multiline seed is one send argument, spread over log lines by echo.
+    assert "/sculptor-workflow:review" in log
+    assert f"Plan folder: {plan_dir.resolve()}" in log
+    # The handoff happens before the final idle signal and is journaled.
+    assert calls[-1] == "signal idle"
+    events = list(replay(journal_path(plan_dir)))
+    handoffs = [e for e in events if isinstance(e, ReviewHandoff)]
+    assert [e.agent_id for e in handoffs] == ["tsk_review123"]
+    assert load_snapshot(plan_dir).review_agent_id == "tsk_review123"
+
+
+def test_no_review_handoff_on_failed_run(tmp_path: Path, monkeypatch) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "a", 0, stop_without_commit_actions())
+    log_path = use_fake_sculpt(tmp_path, monkeypatch, workspace_env=True)
+    assert run_plan(plan_dir, repo) == "failed"
+    assert "agent create --harness Claude CLI --json" not in log_path.read_text()
 
 
 def test_signal_waiting_on_failed_run(tmp_path: Path, monkeypatch) -> None:

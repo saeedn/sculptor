@@ -11,6 +11,10 @@ Full schema (version 1):
 .. code-block:: yaml
 
     version: 1                       # required; must be 1
+    meta:                            # optional; identifies the feature the
+      slug: my-feature               # plan implements (the Review handoff
+      spec: ../spec.md               # uses these; paths are relative to the
+      architecture: ../architecture.md   # plan folder)
     defaults:
       worker: claude-print           # worker registration name
       escalation_worker: claude-print-opus   # optional
@@ -116,8 +120,15 @@ class PhaseSpec(BaseModel):
     tasks: list[TaskSpec]
 
 
+class ManifestMeta(BaseModel):
+    slug: str | None = None
+    spec: str | None = None
+    architecture: str | None = None
+
+
 class PlanManifest(BaseModel):
     version: int
+    meta: ManifestMeta | None = None
     defaults: ManifestDefaults
     phases: list[PhaseSpec]
 

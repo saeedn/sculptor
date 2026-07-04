@@ -30,6 +30,10 @@ _SEND_RETRY_INTERVAL_SECONDS = 3.0
 _SCULPT_TIMEOUT_SECONDS = 60.0
 
 
+class _HandoffError(Exception):
+    """A sculpt handoff step failed; caught locally to trigger the printed fallback."""
+
+
 def build_review_seed(plan_dir: Path, manifest: PlanManifest) -> str:
     """The seeded review invocation (marker lines only for known values).
 
@@ -98,7 +102,7 @@ def handoff_review(
             timeout=_SCULPT_TIMEOUT_SECONDS,
         )
         if created.returncode != 0:
-            raise RuntimeError(f"sculpt agent create failed: {created.stderr.strip() or created.stdout.strip()}")
+            raise _HandoffError(f"sculpt agent create failed: {created.stderr.strip() or created.stdout.strip()}")
         agent_id = json.loads(created.stdout)["id"]
         deadline = time.monotonic() + send_retry_window_seconds
         while True:
@@ -112,7 +116,7 @@ def handoff_review(
                 out(f"Review agent spawned: {agent_id} — the review continues in that tab.")
                 return agent_id
             if time.monotonic() >= deadline:
-                raise RuntimeError(f"sculpt agent send kept failing: {sent.stderr.strip() or sent.stdout.strip()}")
+                raise _HandoffError(f"sculpt agent send kept failing: {sent.stderr.strip() or sent.stdout.strip()}")
             sleep(send_retry_interval_seconds)
     except Exception as e:
         # Never crash a completed run over the handoff.

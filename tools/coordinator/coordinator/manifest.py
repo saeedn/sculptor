@@ -37,7 +37,8 @@ Full schema (version 1):
             file: 01_02_manifest_parser.md   # relative to the plan folder
             deps: ["1.1"]            # task ids this task depends on
             kind: task               # task|spec|mock|architect|plan|review|gate
-                                     # (only "task" executes in increment 1)
+                                     # (only "task" is executable today;
+                                     # the rest are reserved)
             worker: claude-opus      # optional per-task override
             gates: [mechanical, agentic]     # optional per-task override;
                                              # allowed: mechanical|agentic|human
@@ -61,7 +62,7 @@ from pydantic import field_validator
 
 ALLOWED_GATES = ("mechanical", "agentic", "human")
 ALLOWED_PHASE_REVIEWS = ("agentic", "human", "none")
-# Reserved node kinds for later increments; increment 1 executes only "task".
+# Only "task" is executable today; the other kinds are reserved.
 TASK_KINDS = ("task", "spec", "mock", "architect", "plan", "review", "gate")
 
 
@@ -220,13 +221,13 @@ def load_manifest(plan_dir: Path) -> PlanManifest:
     try:
         data = yaml.safe_load(manifest_path.read_text())
     except yaml.YAMLError as e:
-        raise ManifestError([f"invalid YAML in {manifest_path}: {e}"])
+        raise ManifestError([f"invalid YAML in {manifest_path}: {e}"]) from e
     if not isinstance(data, dict):
         raise ManifestError([f"manifest must be a YAML mapping, got {type(data).__name__}"])
     try:
         manifest = PlanManifest.model_validate(data)
     except ValidationError as e:
-        raise ManifestError(_format_pydantic_errors(e))
+        raise ManifestError(_format_pydantic_errors(e)) from e
     problems = _validate_manifest(manifest, plan_dir)
     if problems:
         raise ManifestError(problems)

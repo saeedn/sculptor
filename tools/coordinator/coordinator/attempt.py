@@ -24,16 +24,18 @@ worker's cwd is the repo, not the attempt dir.
 
 import json
 import shlex
-from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
+
+from pydantic import BaseModel
+from pydantic import ConfigDict
 
 from coordinator.dag import Node
 from coordinator.statedir import attempt_dir
 
-# Hook events that matter for lifecycle observation (spike-verified on
-# Claude Code 2.1.200). Stop is the "turn finished" signal — SessionEnd
-# fires with the same reason for clean exits and SIGTERM kills.
+# Hook events that matter for lifecycle observation. Stop is the "turn
+# finished" signal — SessionEnd fires with the same reason for clean
+# exits and SIGTERM kills.
 _HOOK_EVENTS: tuple[tuple[str, str | None], ...] = (
     ("SessionStart", None),
     ("UserPromptSubmit", None),
@@ -44,8 +46,9 @@ _HOOK_EVENTS: tuple[tuple[str, str | None], ...] = (
 )
 
 
-@dataclass(frozen=True)
-class PreparedAttempt:
+class PreparedAttempt(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     attempt_dir: Path
     hooks_file: Path
     prompt: str

@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Deterministic build coordinator that executes implementation plans with Claude Code workers"
 license = { text = "MIT" }
 dependencies = [
+    "loguru>=0.7.0",
     "psutil>=7.0.0",
     "pydantic>=2.11.4",
     "pyyaml>=6.0",

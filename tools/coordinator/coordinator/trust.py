@@ -21,6 +21,10 @@ import tempfile
 from pathlib import Path
 
 
+class TrustError(Exception):
+    """Raised when ``~/.claude.json`` cannot be safely updated."""
+
+
 def claude_config_path(home: Path | None = None) -> Path:
     return (home if home is not None else Path.home()) / ".claude.json"
 
@@ -29,7 +33,7 @@ def ensure_trusted(cwd: Path, home: Path | None = None) -> None:
     """Merge the trust entry for ``cwd`` into ``~/.claude.json`` atomically.
 
     ``home`` overrides the home directory (for tests). Raises
-    ``ValueError`` on an unparseable config — silently replacing it
+    :class:`TrustError` on an unparseable config — silently replacing it
     would destroy the user's Claude state.
     """
     config_path = claude_config_path(home)
@@ -40,7 +44,7 @@ def ensure_trusted(cwd: Path, home: Path | None = None) -> None:
             try:
                 data = json.loads(text)
             except json.JSONDecodeError as e:
-                raise ValueError(f"{config_path} is not valid JSON; refusing to overwrite it: {e}")
+                raise TrustError(f"{config_path} is not valid JSON; refusing to overwrite it: {e}") from e
     projects = data.setdefault("projects", {})
     entry = projects.setdefault(str(cwd.resolve()), {})
     if entry.get("hasTrustDialogAccepted") is True:

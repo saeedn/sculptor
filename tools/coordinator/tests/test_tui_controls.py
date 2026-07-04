@@ -34,7 +34,7 @@ def start_journal(plan_dir: Path) -> Journal:
 
 
 def make_app(plan_dir: Path) -> CoordinatorApp:
-    return CoordinatorApp(plan_dir, start_run=False)
+    return CoordinatorApp(plan_dir, should_start_run=False)
 
 
 async def test_run_level_controls_append_intents(tmp_path: Path) -> None:

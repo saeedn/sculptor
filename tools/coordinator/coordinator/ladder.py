@@ -9,7 +9,8 @@ count. Rate-limited attempts never burn budget.
 Pure arithmetic and string formatting — no journal, no processes.
 """
 
-from dataclasses import dataclass
+from pydantic import BaseModel
+from pydantic import ConfigDict
 
 from coordinator.manifest import ManifestDefaults
 from coordinator.manifest import TaskSpec
@@ -19,15 +20,19 @@ from coordinator.manifest import TaskSpec
 _EXCERPT_CAP = 2048
 
 
-@dataclass(frozen=True)
-class AttemptBudget:
+class AttemptBudget(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     base_count: int
     escalation_worker: str | None
 
 
-@dataclass
-class AttemptRecordLite:
-    """The slice of attempt history the ladder counts."""
+class AttemptRecordLite(BaseModel):
+    """The slice of attempt history the ladder counts.
+
+    Mutable: ``rate_limited``/``discarded`` are set after construction,
+    when the attempt's fate becomes known.
+    """
 
     attempt_index: int
     registration: str | None
@@ -37,20 +42,21 @@ class AttemptRecordLite:
     discarded: bool = False
 
 
-@dataclass(frozen=True)
-class NextAttempt:
+class NextAttempt(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     escalated: bool
     registration_override: str | None
 
 
-@dataclass(frozen=True)
-class Exhausted:
-    pass
+class Exhausted(BaseModel):
+    model_config = ConfigDict(frozen=True)
 
 
-@dataclass(frozen=True)
-class FailureRecord:
+class FailureRecord(BaseModel):
     """One failed attempt, as seen by the retry context and the report."""
+
+    model_config = ConfigDict(frozen=True)
 
     attempt_index: int
     registration: str | None

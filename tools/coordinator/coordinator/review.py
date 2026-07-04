@@ -18,9 +18,7 @@ Stop-completed reviewer attempt fails CLOSED.
 
 import json
 import subprocess
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 from pydantic import BaseModel
 from pydantic import ConfigDict
@@ -30,6 +28,7 @@ from pydantic import ValidationError
 from coordinator.attempt import PreparedAttempt
 from coordinator.attempt import builtin_data_text
 from coordinator.attempt import write_hooks_fragment
+from coordinator.findings import Finding as Finding
 from coordinator.statedir import attempt_dir
 
 VERDICT_FILENAME = "verdict.json"
@@ -43,13 +42,6 @@ _EMPTY_TREE_HASH = "4b825dc642cb6eb9a060e54bf8d69288fbee4904"
 
 class VerdictError(Exception):
     pass
-
-
-class Finding(BaseModel):
-    task_id: str | None = None
-    severity: Literal["blocker", "warning"]
-    summary: str
-    detail: str = ""
 
 
 class Verdict(BaseModel):
@@ -69,11 +61,11 @@ def parse_verdict(path: Path) -> Verdict:
     try:
         data = json.loads(path.read_text())
     except ValueError as e:
-        raise VerdictError(f"verdict file {path} is not valid JSON: {e}")
+        raise VerdictError(f"verdict file {path} is not valid JSON: {e}") from e
     try:
         return Verdict.model_validate(data)
     except ValidationError as e:
-        raise VerdictError(f"verdict file {path} does not match the verdict schema: {e}")
+        raise VerdictError(f"verdict file {path} does not match the verdict schema: {e}") from e
 
 
 def format_findings(verdict: Verdict) -> str:
@@ -88,7 +80,7 @@ def format_findings(verdict: Verdict) -> str:
 
 
 def build_review_diff(cwd: Path, commits: list[str], max_bytes: int = MAX_DIFF_BYTES) -> str:
-    """The combined diff of a contiguous commit range (sequential increment 1)."""
+    """The combined diff of a contiguous commit range."""
     if not commits:
         return "(no commits recorded in the review scope)\n"
     base = f"{commits[0]}^"
@@ -112,8 +104,9 @@ def build_review_diff(cwd: Path, commits: list[str], max_bytes: int = MAX_DIFF_B
     return diff
 
 
-@dataclass(frozen=True)
-class ReviewAttempt:
+class ReviewAttempt(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     prepared: PreparedAttempt
     verdict_path: Path
     diff_path: Path

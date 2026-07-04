@@ -1,7 +1,7 @@
 """Orchestration for ``coordinator run``: manifest -> DAG -> scheduler -> workers.
 
 Deliberately free of any TUI imports — the plain-text progress path
-must never pay Textual's startup cost (phase 6 layers the TUI on top).
+must never pay Textual's startup cost.
 """
 
 import os
@@ -9,8 +9,10 @@ import threading
 import time
 from collections.abc import Callable
 from collections.abc import Iterator
-from dataclasses import dataclass
 from pathlib import Path
+
+from pydantic import BaseModel
+from pydantic import ConfigDict
 
 from coordinator.dag import build_graph
 from coordinator.executor import PlanExecutor
@@ -221,8 +223,9 @@ def find_plan_by_run_id(root: Path, run_id: str) -> Path:
     raise RunError(f"no plan with run id {run_id!r} found under {root}")
 
 
-@dataclass(frozen=True)
-class IncompletePlan:
+class IncompletePlan(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     plan_dir: Path
     run_id: str | None
     completed: int

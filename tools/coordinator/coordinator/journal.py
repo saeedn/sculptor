@@ -13,7 +13,6 @@ share these models rather than scattering string-typed event names.
 
 import json
 import os
-import sys
 import tempfile
 import time
 from collections.abc import Iterable
@@ -22,6 +21,7 @@ from pathlib import Path
 from typing import Annotated
 from typing import Literal
 
+from loguru import logger
 from pydantic import BaseModel
 from pydantic import Field
 from pydantic import TypeAdapter
@@ -204,14 +204,14 @@ def replay(path: Path) -> Iterator[Event]:
     text = path.read_text()
     complete, _, truncated = text.rpartition("\n")
     if truncated:
-        print(f"warning: ignoring truncated final journal line in {path}", file=sys.stderr)
+        logger.warning("ignoring truncated final journal line in {}", path)
     if not complete:
         return
     for line_number, line in enumerate(complete.split("\n"), start=1):
         try:
             yield _EVENT_ADAPTER.validate_json(line)
         except ValidationError as e:
-            raise JournalError(f"{path}:{line_number}: invalid journal event: {e}")
+            raise JournalError(f"{path}:{line_number}: invalid journal event: {e}") from e
 
 
 def complete_line_count(path: Path) -> int:
@@ -351,6 +351,10 @@ class Snapshot(BaseModel):
             self.intents_consumed = max(self.intents_consumed, self.journal_line_count + 1)
         elif isinstance(event, ReviewHandoff):
             self.review_agent_id = event.agent_id
+        else:
+            # Unreachable for valid inputs: the Event union is closed and
+            # every member is handled above.
+            raise JournalError(f"unhandled journal event type {type(event).__name__}")
 
 
 def save_snapshot(snapshot: Snapshot, plan_dir: Path) -> None:

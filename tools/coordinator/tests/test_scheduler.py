@@ -53,7 +53,7 @@ class FakeExecutor:
         queue = self.attempts.get(node.node_id)
         if queue:
             return queue.pop(0)
-        return AttemptResult(ok=True)
+        return AttemptResult(is_ok=True)
 
     def run_gates(self, node: Node, result: AttemptResult) -> GateOutcome:
         self.calls.append(f"gates:{node.node_id}")
@@ -123,7 +123,7 @@ def test_gate_failure_blocks_dependents_but_not_independent_branch(tmp_path: Pat
 
 def test_attempt_failure_marks_failed(tmp_path: Path) -> None:
     manifest = make_manifest([task("a")])
-    executor = FakeExecutor(attempts={"a": [AttemptResult(ok=False, error="crashed")]})
+    executor = FakeExecutor(attempts={"a": [AttemptResult(is_ok=False, error="crashed")]})
     scheduler = make_scheduler(tmp_path, manifest, executor)
     assert scheduler.run() == "failed"
     assert scheduler.states["a"] == NodeState.FAILED
@@ -173,7 +173,7 @@ def test_retry_intent_reruns_failed_node(tmp_path: Path) -> None:
 
 def test_skip_intent_satisfies_dependents(tmp_path: Path) -> None:
     manifest = make_manifest([task("a"), task("b", ["a"])])
-    executor = FakeExecutor(attempts={"a": [AttemptResult(ok=False, error="crashed")]})
+    executor = FakeExecutor(attempts={"a": [AttemptResult(is_ok=False, error="crashed")]})
     scheduler = make_scheduler(tmp_path, manifest, executor)
     assert scheduler.run() == "failed"
     append_intent(tmp_path, "skip", node_id="a")

@@ -6,15 +6,16 @@ The coordinator stays fully standalone: sculpt is DISCOVERED at runtime
 shell. Outside Sculptor every signal is a silent no-op and behavior is
 otherwise identical.
 
-Signal failures (backend down, sculpt broken) are logged to stderr and
-IGNORED — signaling must never break a run.
+Signal failures (backend down, sculpt broken) are logged as warnings
+and IGNORED — signaling must never break a run.
 """
 
 import os
 import shutil
 import subprocess
-import sys
 from collections.abc import Mapping
+
+from loguru import logger
 
 _SIGNAL_TIMEOUT_SECONDS = 10.0
 
@@ -53,7 +54,7 @@ class SculptSignaler:
                 check=True,
             )
         except Exception as e:
-            print(f"warning: sculpt signal {' '.join(args)} failed: {e}", file=sys.stderr)
+            logger.warning("sculpt signal {} failed: {}", " ".join(args), e)
 
     def busy(self) -> None:
         self._signal("busy")

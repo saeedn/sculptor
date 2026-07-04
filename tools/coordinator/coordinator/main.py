@@ -52,7 +52,7 @@ def _execute_plan_dir(plan_dir: Path, resume_run: bool, no_tui: bool) -> None:
             status = execute_plan(plan_dir, resume=resume_run, progress=typer.echo)
         except (ManifestError, RunError) as e:
             typer.echo(f"Error: {e}", err=True)
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
         if status != "completed":
             raise typer.Exit(1)
         return
@@ -63,7 +63,7 @@ def _execute_plan_dir(plan_dir: Path, resume_run: bool, no_tui: bool) -> None:
         dashboard = CoordinatorApp(plan_dir, resume=resume_run)
     except ManifestError as e:
         typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     dashboard.run()
     if dashboard.run_error is not None:
         typer.echo(f"Error: {dashboard.run_error}", err=True)
@@ -123,7 +123,7 @@ def resume(
         plan_dir = find_plan_by_run_id(Path.cwd(), run_id)
     except RunError as e:
         typer.echo(f"Error: {e}", err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     _execute_plan_dir(plan_dir, resume_run=True, no_tui=no_tui)
 
 
@@ -153,7 +153,7 @@ def intent(
             graph = build_graph(load_manifest(plan_dir))
         except ManifestError as e:
             typer.echo(f"Error: {e}", err=True)
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
         if node_id not in graph.nodes:
             typer.echo(f"Error: unknown node {node_id!r}; known: {', '.join(graph.nodes)}", err=True)
             raise typer.Exit(1)

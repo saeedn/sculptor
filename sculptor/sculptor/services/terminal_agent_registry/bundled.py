@@ -22,17 +22,16 @@ registrations are indistinguishable from hand-written ones.
 """
 
 import hashlib
-from dataclasses import dataclass
 from pathlib import Path
 
 from loguru import logger
 
 from sculptor.common.plugin import get_plugins_base_dir
+from sculptor.foundation.pydantic_serialization import FrozenModel
 from sculptor.services.terminal_agent_registry.registry import get_registrations_dir
 
 
-@dataclass(frozen=True)
-class _Bundle:
+class _Bundle(FrozenModel):
     sample_dir_name: str
     sentinel_name: str
     file_names: tuple[str, ...]

@@ -3,6 +3,7 @@ import subprocess
 from pathlib import Path
 
 import pytest
+from loguru import logger
 
 from coordinator.journal import AttemptStarted
 from coordinator.journal import CommitRecorded
@@ -59,7 +60,7 @@ def test_replay_missing_journal_yields_nothing(tmp_path: Path) -> None:
     assert list(replay(tmp_path / "journal.jsonl")) == []
 
 
-def test_replay_tolerates_truncated_final_line(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_replay_tolerates_truncated_final_line(tmp_path: Path) -> None:
     ensure_state_dir(tmp_path)
     journal = Journal(journal_path(tmp_path))
     events = make_events()[:3]
@@ -67,9 +68,14 @@ def test_replay_tolerates_truncated_final_line(tmp_path: Path, capsys: pytest.Ca
         journal.append(event)
     with open(journal_path(tmp_path), "a") as f:
         f.write('{"type": "task-state-changed", "ts": 1.0, "node')
-    replayed = list(replay(journal_path(tmp_path)))
+    warnings: list[str] = []
+    handler_id = logger.add(warnings.append, format="{message}", level="WARNING")
+    try:
+        replayed = list(replay(journal_path(tmp_path)))
+    finally:
+        logger.remove(handler_id)
     assert replayed == events
-    assert "truncated" in capsys.readouterr().err
+    assert any("truncated" in message for message in warnings)
 
 
 def test_append_after_truncated_final_line_discards_the_chunk(tmp_path: Path) -> None:

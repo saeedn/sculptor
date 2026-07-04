@@ -8,9 +8,11 @@ never the screen.
 
 import json
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from pydantic import BaseModel
+from pydantic import ConfigDict
 
 if TYPE_CHECKING:
     from coordinator.scheduler import AttemptResult
@@ -35,8 +37,9 @@ _RESET_PATTERN = re.compile(r"resets? (?:at|in) ([^\n\"\\]+)", re.IGNORECASE)
 _ISO_TIMESTAMP_PATTERN = re.compile(r"\d{4}-\d{2}-\d{2}T[0-9:]{5,8}(?:Z|[+-]\d{2}:?\d{2})?")
 
 
-@dataclass(frozen=True)
-class RateLimit:
+class RateLimit(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     resume_hint: str | None
 
 

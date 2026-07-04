@@ -1,6 +1,6 @@
 """The coordinator's Textual dashboard.
 
-A live view over the on-disk execution state (REQ-UX-4): the scheduler
+A live view over the on-disk execution state: the scheduler
 runs in a background thread with the journal as the only communication
 channel, and the app re-reads the snapshot on a timer — the dashboard
 shows exactly what a resumed coordinator would see. Works in a plain
@@ -116,13 +116,13 @@ class CoordinatorApp(App):
         self,
         plan_dir: Path,
         resume: bool = False,
-        start_run: bool = True,
+        should_start_run: bool = True,
         **execute_kwargs,
     ) -> None:
         super().__init__()
         self.plan_dir = plan_dir.resolve()
         self.resume = resume
-        self.start_run = start_run
+        self.should_start_run = should_start_run
         self.execute_kwargs = execute_kwargs
         self.manifest: PlanManifest = load_manifest(self.plan_dir)
         self.graph: Graph = build_graph(self.manifest)
@@ -160,7 +160,7 @@ class CoordinatorApp(App):
                 activity_cell(None),
                 key=node_id,
             )
-        if self.start_run:
+        if self.should_start_run:
             self._run_thread = start_run_in_thread(
                 self.plan_dir, self._on_run_done, resume=self.resume, **self.execute_kwargs
             )
@@ -221,9 +221,9 @@ class CoordinatorApp(App):
         status.update(self.status_text)
 
     # -- Controls: every control APPENDS a control-intent to the journal;
-    # the TUI never mutates scheduler state directly (REQ-UX-4). The
-    # scheduler picks intents up at the top of its loop, so run-level
-    # pause latency is one node step.
+    # the TUI never mutates scheduler state directly. The scheduler picks
+    # intents up at the top of its loop, so run-level pause latency is
+    # one node step.
 
     def _run_active(self) -> bool:
         return self._run_thread is not None and self._run_thread.is_alive()

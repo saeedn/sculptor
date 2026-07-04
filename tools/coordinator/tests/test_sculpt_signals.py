@@ -3,6 +3,7 @@ import stat
 from pathlib import Path
 
 import pytest
+from loguru import logger
 
 from coordinator.sculpt_signals import NullSignaler
 from coordinator.sculpt_signals import SculptSignaler
@@ -66,14 +67,17 @@ def test_signals_invoke_sculpt(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) 
     ]
 
 
-def test_signal_failure_is_ignored(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_signal_failure_is_ignored(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     use_fake_sculpt(tmp_path, monkeypatch, exit_code=1)
     signaler = detect_signaler()
     assert isinstance(signaler, SculptSignaler)
-    signaler.busy()
-    assert "sculpt signal busy failed" in capsys.readouterr().err
+    warnings: list[str] = []
+    handler_id = logger.add(warnings.append, format="{message}", level="WARNING")
+    try:
+        signaler.busy()
+    finally:
+        logger.remove(handler_id)
+    assert any("sculpt signal busy failed" in message for message in warnings)
 
 
 def test_null_signaler_is_inert() -> None:

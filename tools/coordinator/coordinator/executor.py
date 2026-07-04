@@ -106,6 +106,43 @@ class PlanExecutor:
             for event in events[self._journal_position_at_start :]
         )
 
+    def _journal_callbacks(
+        self,
+        node_id: str,
+        attempt_index: int,
+        worker_registration: str,
+        attempt_directory: Path,
+    ) -> tuple[Callable[[int], None], Callable[[dict], None]]:
+        """The (on_spawn, on_signal) pair that journals one attempt's lifecycle."""
+
+        def on_spawn(pid: int) -> None:
+            self.journal.append(
+                AttemptStarted(
+                    ts=self.clock(),
+                    node_id=node_id,
+                    attempt_index=attempt_index,
+                    worker_registration=worker_registration,
+                    pid=pid,
+                    attempt_dir=str(attempt_directory),
+                )
+            )
+
+        def on_signal(event: dict) -> None:
+            payload = event.get("payload")
+            payload = payload if isinstance(payload, dict) else {}
+            self.journal.append(
+                SignalObserved(
+                    ts=self.clock(),
+                    node_id=node_id,
+                    attempt_index=attempt_index,
+                    event=event.get("event", "unknown"),
+                    session_id=payload.get("session_id"),
+                    transcript_path=payload.get("transcript_path"),
+                )
+            )
+
+        return on_spawn, on_signal
+
     def run_attempt(
         self,
         node: Node,
@@ -117,7 +154,7 @@ class PlanExecutor:
             # Phase reviews run no implementer worker; the reviewer runs
             # in run_gates. Remember the attempt index for its dir.
             self._prepared[node.node_id] = (attempt_index, None, head_commit(self.cwd))
-            return AttemptResult(ok=True, status="completed")
+            return AttemptResult(is_ok=True, status="completed")
         if not is_tree_clean(self.cwd):
             status = porcelain_status(self.cwd)
             self.journal.append(
@@ -149,33 +186,7 @@ class PlanExecutor:
             ensure_trusted(self.cwd, home=self.trust_home)
         base_commit = head_commit(self.cwd)
         self._prepared[node.node_id] = (attempt_index, prepared, base_commit)
-
-        def on_spawn(pid: int) -> None:
-            self.journal.append(
-                AttemptStarted(
-                    ts=self.clock(),
-                    node_id=node.node_id,
-                    attempt_index=attempt_index,
-                    worker_registration=worker_name,
-                    pid=pid,
-                    attempt_dir=str(prepared.attempt_dir),
-                )
-            )
-
-        def on_signal(event: dict) -> None:
-            payload = event.get("payload")
-            payload = payload if isinstance(payload, dict) else {}
-            self.journal.append(
-                SignalObserved(
-                    ts=self.clock(),
-                    node_id=node.node_id,
-                    attempt_index=attempt_index,
-                    event=event.get("event", "unknown"),
-                    session_id=payload.get("session_id"),
-                    transcript_path=payload.get("transcript_path"),
-                )
-            )
-
+        on_spawn, on_signal = self._journal_callbacks(node.node_id, attempt_index, worker_name, prepared.attempt_dir)
         return launch_attempt(
             registration,
             prepared,
@@ -318,33 +329,9 @@ class PlanExecutor:
         if registration.mode == "interactive":
             ensure_trusted(self.cwd, home=self.trust_home)
         head_before = head_commit(self.cwd)
-
-        def on_spawn(pid: int) -> None:
-            self.journal.append(
-                AttemptStarted(
-                    ts=self.clock(),
-                    node_id=review_node_id,
-                    attempt_index=attempt_index,
-                    worker_registration=reviewer_name,
-                    pid=pid,
-                    attempt_dir=str(review.prepared.attempt_dir),
-                )
-            )
-
-        def on_signal(event: dict) -> None:
-            payload = event.get("payload")
-            payload = payload if isinstance(payload, dict) else {}
-            self.journal.append(
-                SignalObserved(
-                    ts=self.clock(),
-                    node_id=review_node_id,
-                    attempt_index=attempt_index,
-                    event=event.get("event", "unknown"),
-                    session_id=payload.get("session_id"),
-                    transcript_path=payload.get("transcript_path"),
-                )
-            )
-
+        on_spawn, on_signal = self._journal_callbacks(
+            review_node_id, attempt_index, reviewer_name, review.prepared.attempt_dir
+        )
         result = launch_attempt(
             registration,
             review.prepared,

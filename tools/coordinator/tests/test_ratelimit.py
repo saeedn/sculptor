@@ -11,7 +11,7 @@ from coordinator.scheduler import AttemptResult
 def result_with_transcript(tmp_path: Path, text: str) -> AttemptResult:
     transcript = tmp_path / "transcript.jsonl"
     transcript.write_text(text)
-    return AttemptResult(ok=False, status="exited-without-stop", transcript_path=str(transcript))
+    return AttemptResult(is_ok=False, status="exited-without-stop", transcript_path=str(transcript))
 
 
 @pytest.mark.parametrize("marker", RATE_LIMIT_MARKERS)
@@ -33,7 +33,7 @@ def test_marker_case_insensitive(tmp_path: Path) -> None:
 def test_last_assistant_message_is_not_scanned() -> None:
     # Assistant content is conversation, not an error surface — a worker
     # merely TALKING about rate limits must not pause the run.
-    result = AttemptResult(ok=False, status="completed", last_assistant_message="I hit a rate limit, sorry")
+    result = AttemptResult(is_ok=False, status="completed", last_assistant_message="I hit a rate limit, sorry")
     assert classify_attempt(result) is None
 
 
@@ -56,7 +56,7 @@ def test_marker_in_stdout_log(tmp_path: Path) -> None:
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     (attempt_dir / "stdout.log").write_text("Claude usage limit reached\n")
-    result = AttemptResult(ok=False, status="exited-without-stop")
+    result = AttemptResult(is_ok=False, status="exited-without-stop")
     assert classify_attempt(result, attempt_dir) is not None
 
 
@@ -64,17 +64,17 @@ def test_marker_in_stderr_log(tmp_path: Path) -> None:
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     (attempt_dir / "stderr.log").write_text("HTTP 429 from api.anthropic.com\n")
-    result = AttemptResult(ok=False, status="exited-without-stop")
+    result = AttemptResult(is_ok=False, status="exited-without-stop")
     assert classify_attempt(result, attempt_dir) is not None
 
 
 def test_no_artifacts_is_not_rate_limited() -> None:
-    result = AttemptResult(ok=False, status="timeout")
+    result = AttemptResult(is_ok=False, status="timeout")
     assert classify_attempt(result) is None
 
 
 def test_missing_transcript_file_ignored() -> None:
-    result = AttemptResult(ok=False, status="exited-without-stop", transcript_path="/nonexistent/transcript.jsonl")
+    result = AttemptResult(is_ok=False, status="exited-without-stop", transcript_path="/nonexistent/transcript.jsonl")
     assert classify_attempt(result) is None
 
 

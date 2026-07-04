@@ -50,7 +50,7 @@ def assert_process_gone(pid: int) -> None:
 def test_stop_completes_and_kills(tmp_path: Path, mode: Literal["print", "interactive"]) -> None:
     prepared, result = launch(tmp_path, STOP_THEN_SLEEP, mode)
     assert result.status == "completed"
-    assert result.ok
+    assert result.is_ok
     assert result.session_id == "fake-sess"
     assert result.transcript_path == "/tmp/fake-transcript.jsonl"
     assert result.last_assistant_message == "SUCCESS: did the thing"
@@ -69,7 +69,7 @@ def test_stop_completes_and_kills(tmp_path: Path, mode: Literal["print", "intera
 def test_exit_without_stop_fails(tmp_path: Path, mode: Literal["print", "interactive"]) -> None:
     _, result = launch(tmp_path, EXIT_WITHOUT_STOP, mode)
     assert result.status == "exited-without-stop"
-    assert not result.ok
+    assert not result.is_ok
     assert result.session_id == "fake-sess"
 
 
@@ -77,7 +77,7 @@ def test_exit_without_stop_fails(tmp_path: Path, mode: Literal["print", "interac
 def test_waiting_signal_fails_attempt(tmp_path: Path, mode: Literal["print", "interactive"]) -> None:
     _, result = launch(tmp_path, ASK_QUESTION_THEN_SLEEP, mode)
     assert result.status == "waiting"
-    assert not result.ok
+    assert not result.is_ok
     assert result.pid is not None
     assert_process_gone(result.pid)
 
@@ -104,7 +104,7 @@ def test_stop_after_abort_does_not_flip_the_verdict(tmp_path: Path) -> None:
         should_abort=should_abort,
     )
     assert result.status == "killed"
-    assert not result.ok
+    assert not result.is_ok
     # The late Stop was still recorded — it just doesn't change the verdict.
     assert "Stop" in result.signals
 
@@ -147,7 +147,7 @@ def test_sigterm_immune_worker_gets_sigkilled(tmp_path: Path) -> None:
 def test_timeout(tmp_path: Path, mode: Literal["print", "interactive"]) -> None:
     _, result = launch(tmp_path, SLEEP_FOREVER, mode, timeout_seconds=0.5)
     assert result.status == "timeout"
-    assert not result.ok
+    assert not result.is_ok
     assert result.pid is not None
     assert_process_gone(result.pid)
 

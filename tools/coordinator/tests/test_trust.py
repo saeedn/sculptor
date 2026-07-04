@@ -3,6 +3,7 @@ from pathlib import Path
 
 import pytest
 
+from coordinator.trust import TrustError
 from coordinator.trust import claude_config_path
 from coordinator.trust import ensure_trusted
 
@@ -71,7 +72,7 @@ def test_unparseable_config_refused(tmp_path: Path) -> None:
     cwd = tmp_path / "repo"
     cwd.mkdir()
     claude_config_path(tmp_path).write_text("{corrupt json")
-    with pytest.raises(ValueError):
+    with pytest.raises(TrustError):
         ensure_trusted(cwd, home=tmp_path)
     # The corrupt file is left untouched rather than clobbered.
     assert claude_config_path(tmp_path).read_text() == "{corrupt json"

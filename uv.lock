@@ -208,6 +208,7 @@ name = "coordinator"
 version = "0.1.0"
 source = { editable = "tools/coordinator" }
 dependencies = [
+    { name = "loguru" },
     { name = "psutil" },
     { name = "pydantic" },
     { name = "pyyaml" },
@@ -228,6 +229,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "loguru", specifier = ">=0.7.0" },
     { name = "psutil", specifier = ">=7.0.0" },
     { name = "pydantic", specifier = ">=2.11.4" },
     { name = "pyinstaller", marker = "extra == 'packaging'", specifier = ">=6.15.0" },

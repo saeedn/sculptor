@@ -125,15 +125,15 @@ class NodeDetailScreen(Screen):
     def _details_text(self) -> str:
         lines: list[str] = []
         if self.node_snapshot is not None:
-            failed_gates = [g for g in self.node_snapshot.gates if g.passed is not None]
-            if failed_gates:
+            finished_gates = [gate for gate in self.node_snapshot.gates if gate.passed is not None]
+            if finished_gates:
                 lines.append("Gate results:")
-                for gate in failed_gates:
+                for gate in finished_gates:
                     verdict = "pass" if gate.passed else "FAIL"
                     lines.append(f"  [{gate.gate}] {verdict}: {gate.findings or '(no findings)'}")
                 lines.append("")
             if self.node_snapshot.commits:
-                lines.append("Commits: " + ", ".join(c[:12] for c in self.node_snapshot.commits))
+                lines.append("Commits: " + ", ".join(commit[:12] for commit in self.node_snapshot.commits))
                 lines.append("")
             latest = self.node_snapshot.attempts[-1] if self.node_snapshot.attempts else None
             if latest is not None:

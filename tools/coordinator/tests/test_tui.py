@@ -61,7 +61,7 @@ def write_mid_run_journal(plan_dir: Path) -> None:
 
 
 def make_app(plan_dir: Path) -> CoordinatorApp:
-    return CoordinatorApp(plan_dir, start_run=False)
+    return CoordinatorApp(plan_dir, should_start_run=False)
 
 
 async def test_table_renders_mid_run_state(tmp_path: Path) -> None:

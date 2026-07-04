@@ -5,12 +5,13 @@ The graph has one node per task plus one synthetic phase-review node per
 phase whose ``review`` policy is not ``none``. Phase boundaries gate the
 next phase: tasks of a later phase depend on the previous phase's review
 node (or on all of the previous phase's tasks when it has no review
-node). Increment 1 executes sequentially, but the graph models real
-dependencies so later increments can run independent branches
-concurrently without a schema change.
+node). Execution is sequential today, but the graph models real
+dependencies so independent branches can later run concurrently
+without a schema change.
 """
 
-from dataclasses import dataclass
+from pydantic import BaseModel
+from pydantic import ConfigDict
 
 from coordinator.manifest import ManifestError
 from coordinator.manifest import PhaseSpec
@@ -23,8 +24,9 @@ TASK_NODE = "task"
 PHASE_REVIEW_NODE = "phase-review"
 
 
-@dataclass(frozen=True)
-class Node:
+class Node(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     node_id: str
     kind: str
     deps: frozenset[str]
@@ -35,9 +37,10 @@ class Node:
     review: str | None = None
 
 
-@dataclass(frozen=True)
-class Graph:
+class Graph(BaseModel):
     """Nodes keyed by id; dict insertion order is (phase order, manifest task order)."""
+
+    model_config = ConfigDict(frozen=True)
 
     nodes: dict[str, Node]
 

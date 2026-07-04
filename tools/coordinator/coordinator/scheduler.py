@@ -12,24 +12,26 @@ one ordered input history.
 Worker execution and gates are injected as an :class:`Executor` — the
 scheduler never reads ``signals.jsonl`` or task files; it sees only
 :class:`AttemptResult` / :class:`GateOutcome` values and the journal.
-Increment 1 executes sequentially: at most one node is in flight at a
-time.
+Execution is sequential: at most one node is in flight at a time.
 """
 
 import hashlib
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Literal
 from typing import Protocol
+
+from pydantic import BaseModel
+from pydantic import ConfigDict
 
 from coordinator.dag import Graph
 from coordinator.dag import Node
 from coordinator.dag import PHASE_REVIEW_NODE
 from coordinator.dag import TASK_NODE
 from coordinator.dag import runnable
+from coordinator.findings import Finding
 from coordinator.journal import AttemptStarted
 from coordinator.journal import ControlIntent
 from coordinator.journal import Event
@@ -98,9 +100,10 @@ class IllegalTransition(Exception):
 AttemptStatus = Literal["completed", "exited-without-stop", "waiting", "timeout", "killed"]
 
 
-@dataclass(frozen=True)
-class AttemptResult:
-    ok: bool
+class AttemptResult(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
+    is_ok: bool
     status: AttemptStatus | None = None
     error: str | None = None
     commit: str | None = None
@@ -113,15 +116,16 @@ class AttemptResult:
     bytes_drained: int | None = None
 
 
-@dataclass(frozen=True)
-class GateOutcome:
+class GateOutcome(BaseModel):
+    model_config = ConfigDict(frozen=True)
+
     gate: str
     passed: bool
     waiting_human: bool = False
     findings: str | None = None
-    # Parsed reviewer findings (review.Finding objects) when the agentic
-    # gate ran; the retry ladder formats these into the retry context.
-    findings_list: tuple[object, ...] = ()
+    # Parsed reviewer findings when the agentic gate ran; the retry
+    # ladder formats these into the retry context.
+    findings_list: tuple[Finding, ...] = ()
     # A rate-limited REVIEWER failed the gate through no fault of the
     # implementation; the run pauses instead of burning an attempt.
     rate_limited: bool = False
@@ -357,7 +361,7 @@ class Scheduler:
             node, attempt_index, seed_context=seed_context, registration_override=registration_override
         )
         self._last_results[node.node_id] = result
-        if not result.ok:
+        if not result.is_ok:
             self.on_attempt_failure(node, attempt_index, result)
             return
         self.transition(node.node_id, NodeState.GATE_CHECKING, reason="attempt-finished")
@@ -459,7 +463,7 @@ class Scheduler:
             return
         reopened = False
         for finding in outcome.findings_list:
-            task_id = getattr(finding, "task_id", None)
+            task_id = finding.task_id
             if task_id is None or self.states.get(task_id) != NodeState.PASSED:
                 continue
             self._failures[task_id].append(
@@ -467,8 +471,7 @@ class Scheduler:
                     attempt_index=self.attempt_counts[task_id] - 1,
                     registration=None,
                     status=None,
-                    findings=f"phase review finding: {getattr(finding, 'summary', '')}: "
-                    f"{getattr(finding, 'detail', '')}",
+                    findings=f"phase review finding: {finding.summary}: {finding.detail}",
                     last_assistant_message=None,
                 )
             )
@@ -557,6 +560,10 @@ class Scheduler:
                     )
                 )
                 self.transition(intent.node_id, NodeState.PASSED, reason="approve-intent")
+        else:
+            # Unreachable for valid inputs: pydantic validates the intent
+            # name against ControlIntentName.
+            raise ValueError(f"unhandled intent {intent.intent!r}")
 
     def _fail_in_flight_nodes(self, reason: str) -> None:
         for node_id, state in self.states.items():
@@ -565,7 +572,7 @@ class Scheduler:
 
     def _guard_unsupported_kinds(self) -> None:
         problems = [
-            f"task {node.task.id}: kind {node.task.kind!r} is not supported yet (arrives in increment 2)"
+            f"task {node.task.id}: kind {node.task.kind!r} is not supported yet"
             for node in self.graph.nodes.values()
             if node.kind == TASK_NODE and node.task is not None and node.task.kind != "task"
         ]

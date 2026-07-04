@@ -351,11 +351,11 @@ def launch_attempt(
             os.close(master_fd)
     consume(reader.poll())
 
-    ok = status == "completed"
+    is_ok = status == "completed"
     return AttemptResult(
-        ok=ok,
+        is_ok=is_ok,
         status=status,
-        error=None if ok else f"attempt {status}",
+        error=None if is_ok else f"attempt {status}",
         pid=proc.pid,
         session_id=reader.session_id,
         transcript_path=reader.transcript_path,

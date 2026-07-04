@@ -31,6 +31,7 @@ from sculptor.primitives.ids import RequestID
 from sculptor.service_collections.service_collection import CompleteServiceCollection
 from sculptor.services.data_model_service.data_types import DataModelTransaction
 from sculptor.services.terminal_agent_registry import registry as registry_module
+from sculptor.services.terminal_agent_registry.registry import TerminalAgentRegistration
 from sculptor.services.user_config.user_config import set_user_config_instance
 from sculptor.web.app import _agent_config_for_request
 from sculptor.web.auth import SESSION_TOKEN_HEADER_NAME
@@ -524,6 +525,60 @@ def test_agent_config_for_request_resolves_each_type() -> None:
     assert isinstance(_agent_config_for_request(AgentTypeName.TERMINAL, None), TerminalAgentConfig)
     with pytest.raises(HTTPException) as exc_info:
         _agent_config_for_request(AgentTypeName.REGISTERED, "some-registration")
+    assert exc_info.value.status_code == 422
+
+
+def _fake_registration_with_args() -> TerminalAgentRegistration:
+    return TerminalAgentRegistration(
+        registration_id="coordinator",
+        display_name="Coordinator",
+        launch_command="coordinator {args}",
+    )
+
+
+def test_agent_config_for_request_stamps_launch_args(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("sculptor.web.app.get_registration", lambda _rid: _fake_registration_with_args())
+    config = _agent_config_for_request(AgentTypeName.REGISTERED, "coordinator", ["run", "plan dir"])
+    assert isinstance(config, RegisteredTerminalAgentConfig)
+    assert config.launch_args == ["run", "plan dir"]
+    # No args → stamped as None, not [].
+    config = _agent_config_for_request(AgentTypeName.REGISTERED, "coordinator", None)
+    assert isinstance(config, RegisteredTerminalAgentConfig)
+    assert config.launch_args is None
+
+
+def test_agent_config_for_request_rejects_args_without_placeholder(monkeypatch: pytest.MonkeyPatch) -> None:
+    registration = TerminalAgentRegistration(
+        registration_id="claude-code", display_name="Claude Code", launch_command="claude"
+    )
+    monkeypatch.setattr("sculptor.web.app.get_registration", lambda _rid: registration)
+    with pytest.raises(HTTPException) as exc_info:
+        _agent_config_for_request(AgentTypeName.REGISTERED, "claude-code", ["run"])
+    assert exc_info.value.status_code == 422
+    assert "does not accept launch args" in exc_info.value.detail
+
+
+def test_agent_config_for_request_rejects_args_for_plain_terminal() -> None:
+    with pytest.raises(HTTPException) as exc_info:
+        _agent_config_for_request(AgentTypeName.TERMINAL, None, ["run"])
+    assert exc_info.value.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "bad_args",
+    [
+        ["x"] * 33,
+        ["y" * 1025],
+        ["line\nbreak"],
+        ["nul\x00byte"],
+    ],
+)
+def test_agent_config_for_request_rejects_bad_launch_args(
+    monkeypatch: pytest.MonkeyPatch, bad_args: list[str]
+) -> None:
+    monkeypatch.setattr("sculptor.web.app.get_registration", lambda _rid: _fake_registration_with_args())
+    with pytest.raises(HTTPException) as exc_info:
+        _agent_config_for_request(AgentTypeName.REGISTERED, "coordinator", bad_args)
     assert exc_info.value.status_code == 422
 
 

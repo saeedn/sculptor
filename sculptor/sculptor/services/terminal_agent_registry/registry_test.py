@@ -77,6 +77,29 @@ def test_invalid_files_are_skipped_and_valid_ones_still_load(
     assert [r.registration_id for r in registrations] == ["good"]
 
 
+def test_args_placeholder_accepted_once_in_launch_command(registrations_dir: Path) -> None:
+    (registrations_dir / "coordinator.toml").write_text(
+        'display_name = "Coordinator"\nlaunch_command = "coordinator {args}"\n'
+    )
+    registration = load_registrations()[0]
+    assert registration.launch_command == "coordinator {args}"
+
+
+def test_args_placeholder_rejected_twice_in_launch_command(registrations_dir: Path) -> None:
+    (registrations_dir / "coordinator.toml").write_text(
+        'display_name = "Coordinator"\nlaunch_command = "coordinator {args} {args}"\n'
+    )
+    assert load_registrations() == []
+
+
+def test_args_placeholder_rejected_in_resume_template(registrations_dir: Path) -> None:
+    (registrations_dir / "coordinator.toml").write_text(
+        'display_name = "Coordinator"\nlaunch_command = "coordinator {args}"\n'
+        'resume_command_template = "coordinator resume {args}"\n'
+    )
+    assert load_registrations() == []
+
+
 def test_registrations_sorted_by_id(registrations_dir: Path) -> None:
     (registrations_dir / "zeta.toml").write_text('display_name = "Z"\nlaunch_command = "z"\n')
     (registrations_dir / "alpha.toml").write_text('display_name = "A"\nlaunch_command = "a"\n')

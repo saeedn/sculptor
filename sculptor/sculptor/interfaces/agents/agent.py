@@ -132,6 +132,9 @@ class RegisteredTerminalAgentConfig(AgentConfig):
     # May contain the literal placeholder `{session_id}`.
     resume_command_template: str | None = None
     accepts_automated_prompts: bool = False
+    # Caller-supplied args substituted (shell-quoted) for the launch
+    # command's `{args}` placeholder; launch-only, never used on resume.
+    launch_args: list[str] | None = None
 
 
 AgentConfigTypes = Annotated[

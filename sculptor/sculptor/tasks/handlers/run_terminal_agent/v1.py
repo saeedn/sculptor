@@ -73,8 +73,10 @@ def launch_command_for_start(task_data: AgentTaskInputsV2, task_state: AgentTask
     if not isinstance(config, RegisteredTerminalAgentConfig):
         return None
     if task_state.terminal_session_id is not None and config.resume_command_template is not None:
+        # Resume relies on the program's own session state; launch args are
+        # deliberately not re-applied.
         return render_terminal_command(config.resume_command_template, session_id=task_state.terminal_session_id)
-    return render_terminal_command(config.launch_command)
+    return render_terminal_command(config.launch_command, args=config.launch_args)
 
 
 def _persist_terminal_shell_pid(task_id: TaskID, pid: int | None, services: ServiceCollectionForTask) -> None:

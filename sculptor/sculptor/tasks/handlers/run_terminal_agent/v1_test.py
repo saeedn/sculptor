@@ -285,6 +285,24 @@ def test_launch_command_for_start_selects_per_config() -> None:
     assert launch_command_for_start(registered_no_template, state_with_session) == "claude"
 
 
+def test_launch_command_for_start_applies_launch_args_only_on_launch() -> None:
+    state = AgentTaskStateV2(workspace_id=WorkspaceID())
+    state_with_session = AgentTaskStateV2(workspace_id=WorkspaceID(), terminal_session_id="sess-42")
+    registered = AgentTaskInputsV2(
+        agent_config=RegisteredTerminalAgentConfig(
+            registration_id="coordinator",
+            display_name="Coordinator",
+            launch_command="coordinator {args}",
+            resume_command_template="coordinator resume {session_id}",
+            launch_args=["run", "agent_docs/my plan"],
+        ),
+    )
+    # Launch splices the stamped args, shell-quoted per argument.
+    assert launch_command_for_start(registered, state) == "coordinator run 'agent_docs/my plan'"
+    # Resume relies on the program's own session state — args are ignored.
+    assert launch_command_for_start(registered, state_with_session) == "coordinator resume sess-42"
+
+
 def test_registered_config_launch_command_is_written_on_spawn(
     services: ServiceCollectionForTask,
     project: Project,

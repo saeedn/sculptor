@@ -133,6 +133,10 @@ class CreateAgentRequest(RequestModel):
     agent_type: AgentTypeName | None = None
     # Required iff agent_type is REGISTERED.
     registration_id: str | None = None
+    # Substituted (shell-quoted per argument) for the registration's
+    # `{args}` placeholder at launch; only valid for registrations whose
+    # launch_command contains it.
+    launch_args: list[str] | None = None
 
 
 class RenameAgentRequest(RequestModel):

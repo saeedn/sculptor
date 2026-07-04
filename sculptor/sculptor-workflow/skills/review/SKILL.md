@@ -5,7 +5,8 @@ description: |
   satisfies the spec's requirements, that tests were written and pass,
   and invokes the repo's configured code-review skill. Writes review.md
   alongside the spec, then offers options for handling findings.
-  Input: a feature slug (or seed message from /build with paths).
+  Input: a feature slug (or a seed message with paths, from /plan or
+  from the build coordinator at the end of a run).
 argument-hint: <feature-slug>
 ---
 
@@ -64,7 +65,9 @@ Read them. Key sections:
 
 ## Step 2: Parse the input
 
-`$ARGUMENTS` may contain a bare slug or seed markers from `/sculptor-workflow:build`:
+`$ARGUMENTS` may contain a bare slug or seed markers. The build
+coordinator seeds these same markers automatically at the end of a
+successful run; `/sculptor-workflow:plan` uses the same format:
 
 - `Slug:` feature slug
 - `Spec path:` absolute or repo-relative

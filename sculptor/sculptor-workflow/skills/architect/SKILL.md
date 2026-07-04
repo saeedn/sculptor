@@ -260,7 +260,7 @@ diff against it). Write it for them, and for the user:
   "we could also support X" in the architecture is a maintenance
   bill someone else will pay.
 - **List files to modify / create / delete.** A concrete appendix
-  the Plan agent and Build agent will both consult. Group by
+  the Plan agent and the build workers will both consult. Group by
   modify/create/delete.
 
 What NOT to write:

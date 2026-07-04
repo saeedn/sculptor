@@ -333,7 +333,7 @@ in the diff viewer.
 
 Requirements are the load-bearing artifact for downstream phases.
 `/sculptor-workflow:architect`, `/sculptor-workflow:plan`,
-`/sculptor-workflow:build`, and `/sculptor-workflow:review` all
+the build coordinator's workers, and `/sculptor-workflow:review` all
 reference them by ID to show traceability from the spec into the
 implementation. Write them with that in mind:
 
@@ -501,10 +501,11 @@ When they signal they're done refining, ask with your question tool, offering:
   same agent, following the spec. Best for small features where the
   spec is enough to drive the work.
 - **Kick off the full workflow** — spawn an Architect agent that
-  will produce an architecture doc, then chain through Plan, Build,
-  and Review in their own tabs. Each phase is gated by a finalize
-  prompt except the Build → Review hand-off, which runs as the
-  plan's final task. Best for larger features
+  will produce an architecture doc, then chain through Plan, the
+  build coordinator, and Review in their own tabs. Each phase is
+  gated by a finalize prompt except the build → Review hand-off,
+  which the coordinator performs automatically when every task
+  passes. Best for larger features
   where the design and implementation benefit from independent
   agent contexts. Use the `/sculptor:sculpt-cli` skill to spawn a
   fresh agent in this same workspace, invoke `/sculptor-workflow:architect` there,

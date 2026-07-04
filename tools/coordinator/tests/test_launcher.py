@@ -19,6 +19,7 @@ from tests.fakes import ECHO_ENV
 from tests.fakes import EXIT_WITHOUT_STOP
 from tests.fakes import IGNORE_SIGTERM
 from tests.fakes import SLEEP_FOREVER
+from tests.fakes import STOP_ON_SIGTERM
 from tests.fakes import STOP_THEN_SLEEP
 from tests.fakes import make_registration
 
@@ -78,6 +79,58 @@ def test_waiting_signal_fails_attempt(tmp_path: Path) -> None:
     assert not result.ok
     assert result.pid is not None
     assert_process_gone(result.pid)
+
+
+def test_stop_after_abort_does_not_flip_the_verdict(tmp_path: Path) -> None:
+    script = tmp_path / "fake_worker.py"
+    script.write_text(STOP_ON_SIGTERM)
+    prepared = prepare(tmp_path)
+    registration = make_registration(script, "print", None)
+
+    def should_abort() -> bool:
+        # Abort once the worker is up (its SIGTERM handler is installed
+        # before it emits SessionStart), so the Stop it emits on TERM
+        # reliably lands after the kill decision.
+        return prepared.signals_path.is_file() and "SessionStart" in prepared.signals_path.read_text()
+
+    result = launch_attempt(
+        registration,
+        prepared,
+        tmp_path,
+        timeout_seconds=15.0,
+        poll_interval=0.05,
+        kill_grace_seconds=2.0,
+        should_abort=should_abort,
+    )
+    assert result.status == "killed"
+    assert not result.ok
+    # The late Stop was still recorded — it just doesn't change the verdict.
+    assert "Stop" in result.signals
+
+
+def test_worker_is_reaped_when_a_callback_raises(tmp_path: Path) -> None:
+    script = tmp_path / "fake_worker.py"
+    script.write_text(SLEEP_FOREVER)
+    prepared = prepare(tmp_path)
+    registration = make_registration(script, "print", None)
+    seen_pid: list[int] = []
+
+    def on_spawn(pid: int) -> None:
+        seen_pid.append(pid)
+        raise RuntimeError("journal write failed")
+
+    with pytest.raises(RuntimeError):
+        launch_attempt(
+            registration,
+            prepared,
+            tmp_path,
+            timeout_seconds=15.0,
+            poll_interval=0.05,
+            kill_grace_seconds=1.0,
+            on_spawn=on_spawn,
+        )
+    assert seen_pid
+    assert_process_gone(seen_pid[0])
 
 
 def test_sigterm_immune_worker_gets_sigkilled(tmp_path: Path) -> None:

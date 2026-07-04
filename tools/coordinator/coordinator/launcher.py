@@ -269,16 +269,21 @@ def launch_attempt(
             stderr_file.close()
     else:
         master_fd, slave_fd = os.openpty()
-        _set_pty_window_size(slave_fd)
-        proc = subprocess.Popen(
-            argv,
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            cwd=str(cwd),
-            env=env,
-            start_new_session=True,
-        )
+        try:
+            _set_pty_window_size(slave_fd)
+            proc = subprocess.Popen(
+                argv,
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                cwd=str(cwd),
+                env=env,
+                start_new_session=True,
+            )
+        except BaseException:
+            os.close(master_fd)
+            os.close(slave_fd)
+            raise
         # Close the slave in the parent immediately, or the drain thread
         # never sees EOF when the child exits.
         os.close(slave_fd)
@@ -289,9 +294,6 @@ def launch_attempt(
         )
         drain_thread.start()
 
-    if on_spawn is not None:
-        on_spawn(proc.pid)
-
     status: AttemptStatus | None = None
     deadline = time.monotonic() + timeout_seconds
 
@@ -300,42 +302,53 @@ def launch_attempt(
         for event in events:
             if on_signal is not None:
                 on_signal(event)
-            if _is_stop(event):
+            # A Stop may override "waiting" (the turn finished after all)
+            # but never a kill/timeout verdict already handed down.
+            if _is_stop(event) and status in (None, "waiting"):
                 status = "completed"
             elif _is_waiting(event) and status is None:
                 status = "waiting"
 
-    while status is None:
-        consume(reader.poll())
-        if status is not None:
-            break
-        if proc.poll() is not None:
-            # Final sweep: signals may have landed right at exit.
+    try:
+        if on_spawn is not None:
+            on_spawn(proc.pid)
+
+        while status is None:
             consume(reader.poll())
-            if status is None:
-                status = "exited-without-stop"
-            break
-        if time.monotonic() >= deadline:
-            status = "timeout"
-            break
-        if should_abort is not None and should_abort():
-            status = "killed"
-            break
-        time.sleep(poll_interval)
+            if status is not None:
+                break
+            if proc.poll() is not None:
+                # Final sweep: signals may have landed right at exit.
+                consume(reader.poll())
+                if status is None:
+                    status = "exited-without-stop"
+                break
+            if time.monotonic() >= deadline:
+                status = "timeout"
+                break
+            if should_abort is not None and should_abort():
+                status = "killed"
+                break
+            time.sleep(poll_interval)
 
-    if status == "completed" and registration.mode == "print" and proc.poll() is None:
-        # Print-mode workers exit by themselves shortly after Stop; give
-        # them the grace window before forcing the issue.
-        try:
-            proc.wait(timeout=kill_grace_seconds)
-        except subprocess.TimeoutExpired:
-            pass
-    _terminate_child(proc, kill_grace_seconds)
-
-    if drain_thread is not None:
-        drain_thread.join(timeout=5.0)
-    if master_fd is not None:
-        os.close(master_fd)
+        if status == "completed" and registration.mode == "print" and proc.poll() is None:
+            # Print-mode workers exit by themselves shortly after Stop; give
+            # them the grace window before forcing the issue.
+            try:
+                proc.wait(timeout=kill_grace_seconds)
+            except subprocess.TimeoutExpired:
+                pass
+    finally:
+        # Cleanup must run even when a callback raises — the worker
+        # process, drain thread, and PTY fd must never outlive the call.
+        _terminate_child(proc, kill_grace_seconds)
+        if drain_thread is not None:
+            drain_thread.join(timeout=5.0)
+        if master_fd is not None and (drain_thread is None or not drain_thread.is_alive()):
+            # If the drain thread is somehow still blocked in os.read,
+            # leak the fd rather than close it out from under the read
+            # (a closed-and-reused fd would corrupt an unrelated file).
+            os.close(master_fd)
     consume(reader.poll())
 
     ok = status == "completed"

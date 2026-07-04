@@ -67,6 +67,20 @@ emit("Stop", {"session_id": "fake-sess", "env": {k: os.environ.get(k) for k in k
 
 SLEEP_FOREVER = FAKE_PROLOGUE + "\ntime.sleep(60)\n"
 
+# Emits Stop from its SIGTERM handler — models a worker whose turn-end
+# signal lands only after the coordinator has already decided to kill it.
+STOP_ON_SIGTERM = (
+    FAKE_PROLOGUE
+    + """
+def on_term(signum, frame):
+    emit("Stop", {"session_id": "fake-sess"})
+    sys.exit(0)
+signal.signal(signal.SIGTERM, on_term)
+emit("SessionStart", {"session_id": "fake-sess"})
+time.sleep(60)
+"""
+)
+
 # A well-behaved task worker: writes a file named after its node id
 # (the attempt dir's parent is the sanitized node id), commits it in
 # the repo it was launched in (its cwd), then signals Stop and exits.

@@ -29,6 +29,21 @@ glance. This applies whether you were spawned by `/sculptor-workflow:spec`
 or invoked directly. Use `sculpt --help` or `sculpt schema` to find
 the right rename command.
 
+## The Q&A ritual
+
+This skill's iteration loop (Step 8) is a Q&A loop. The non-negotiable
+rule: **every Q&A turn MUST end by asking the user a question with
+your question tool** — ending a turn without it is a silent stop.
+
+**Read `../_shared/qa-ritual.md` (relative to this SKILL.md) at skill
+start.** It holds the full ritual: the every-turn rule, handling
+push-back and research turns, never announcing upcoming tool calls,
+and how to ask.
+
+Mock-specific delta on top of the shared ritual: every Step 8 turn
+ends with **the checklist footer AND the question** — the footer is
+the drift-prevention anchor; missing either is a failure.
+
 ## Step 1: Load docs config (REQUIRED — do not skip)
 
 **You MUST have the docs config before doing anything else.** Do not
@@ -278,7 +293,8 @@ the spec using Decisions and Rejected Alternatives as input.
 
 ## Rules
 
-- **Ask every question with your question tool** — the built-in `AskUserQuestion`. Never ask in plain text: only the tool call puts the workspace into the "waiting for input" state that alerts the user.
+- **Follow the shared Q&A ritual** (`../_shared/qa-ritual.md`): every
+  question goes through your question tool, never plain text.
 - **Every turn in Step 8 MUST end with the checklist footer AND
   a question to the user via your question tool.** The footer is the drift-prevention
   anchor; the tool call keeps the ritual intact. Missing either is a
@@ -294,8 +310,6 @@ the spec using Decisions and Rejected Alternatives as input.
 - **Do NOT produce an unstyled mock.** If the repo has no UI Reference
   and no discoverable frontend code, ask the user for direction before
   generating anything.
-- **Do NOT announce upcoming tool calls in text.** Phrases like "Let me
-  ask what you think next" or "Here are some options:" followed by a
-  tool call are a known failure trigger — the model emits end-of-turn
-  instead of the tool call. Say nothing about what you're about to do;
-  just do it.
+- **Do NOT announce upcoming tool calls in text** (see the shared
+  ritual doc for the failure trigger) — say nothing about what you're
+  about to do; just do it.

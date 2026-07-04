@@ -26,69 +26,22 @@ Before doing anything else, rename this agent to "Plan" via the
 
 ## The Q&A ritual
 
-The plan agent runs a multi-turn Q&A loop with the user. The rules
-below apply to every Q&A turn.
+The plan agent runs a multi-turn Q&A loop with the user. The
+non-negotiable rule: **every turn in a Q&A loop MUST end by asking the
+user a question with your question tool** — ending a turn without it
+is a silent stop and the primary failure mode of this skill.
 
-### Every turn ends by asking the user a question
+**Read `../_shared/qa-ritual.md` (relative to this SKILL.md) at skill
+start.** It holds the full ritual: the every-turn rule, handling
+push-back and research turns, never announcing upcoming tool calls,
+and how to ask.
 
-**Every turn in a Q&A loop MUST end with a question to the user via your question tool.** This is the single
-rule that determines whether the turn succeeded. If you end a turn
-without it, you have stopped silently and the user has nothing to
-respond to.
+Plan-specific deltas on top of the shared ritual:
 
-The ritual holds regardless of what happened earlier in the turn —
-research, answering the user's question, long discussion, a
-back-and-forth. Every one of those ends by asking the user a question with your question tool.
-
-**One narrow exception: spawning the Build agent.** When you spawn
-`/sculptor-workflow:build` at finalize, the spawning turn ends with
-**text instructions** rather than a question.
-The workspace's "waiting for input" state must belong to the Build
-agent, not to this one. The exception applies only to the spawn turn.
-
-### When the user asks a question back or pushes back
-
-The user will often ask a question back, push back on your options,
-or want to drill into a topic. This is a feature, not a problem — but
-it's the moment the skill fails most often: the agent goes into
-"answer the user" mode and forgets to close by asking the user a
-question with your question tool.
-
-Handle it like this:
-
-1. Engage with what the user said. Answer, push back, do research
-   (Grep, Read) if needed.
-2. Update the relevant task file (or `00_overview.md`) to reflect
-   anything new the conversation surfaced.
-3. End the turn by asking the user a question with your question tool —
-   usually a follow-up that builds on the discussion, or a "keep
-   drilling or move on?" pacing question.
-
-Research does not excuse skipping the ritual.
-
-### Do not announce upcoming tool calls
-
-When you're about to ask the user a question, do
-**not** announce it in text first. Just make the call.
-
-Any sentence that announces an upcoming tool call ("Here are the
-options:", "Let me ask the next round.", "A few more questions.") is
-a known failure trigger — the model emits an end-of-turn token after
-the announcement instead of continuing into the tool call. Options,
-questions, and choices go INSIDE the tool call.
-
-Context about prior state ("I updated `01_02_<task>.md` with the
-end-to-end test list.") is fine. Announcements about the next
-action are not.
-
-### How to ask
-
-Provide 1-4 concrete options per question, grounded in what you found
-in the codebase or upstream artifacts. Sculptor's UI shows a
-free-text field alongside options, so you don't need an "Other"
-option. For genuinely open-ended questions, omit options entirely.
-
-One sharp question beats four padded ones.
+- The artifact you update after every answer is **the relevant task
+  file (or `00_overview.md`)**.
+- The spawn-turn exception applies when you spawn the **Build agent**
+  at finalize: that turn ends with text instructions, not a question.
 
 ## Step 1: Load docs config
 
@@ -147,13 +100,16 @@ changing.
 - Use Grep and Glob for targeted searches when you need to find
   patterns or usages.
 
-**Context management — critical to avoid `prompt too long` failures:**
+**Context management:**
 
-- Read files **directly** with the Read tool. Do NOT delegate
-  codebase exploration to sub-agents — sub-agent transcripts include
-  their full conversation history (every tool call, every file read,
-  all intermediate reasoning), which can be 10-50x larger than the
-  files themselves.
+- Read **directly** (with the Read tool) every file you will cite in
+  a task file or whose integration points you must name precisely —
+  second-hand summaries produce vague task files.
+- Sub-agents are fine for **broad discovery** where you only need the
+  conclusions — e.g. "find every caller of X across the repo" or
+  "which modules follow pattern Y" — since only their final report
+  enters your context. Don't use them as a substitute for reading the
+  files you'll actually reference.
 - If the architecture references many files (>15), prioritize the
   most important ones first. You can re-read specific files later
   when writing individual task files.

@@ -160,10 +160,34 @@ class Journal:
 
     def append(self, event: Event) -> None:
         line = json.dumps(event.model_dump(), separators=(",", ":"))
+        self._discard_truncated_final_line()
         with open(self.path, "a") as f:
             f.write(line + "\n")
             f.flush()
             os.fsync(f.fileno())
+
+    def _discard_truncated_final_line(self) -> None:
+        """Drop a crash-truncated final chunk before appending.
+
+        Appending straight after an unterminated chunk would fuse the two
+        into one newline-terminated garbage line that every later
+        ``replay`` rejects as corruption. ``replay`` already ignores the
+        unterminated chunk, so truncating it away loses nothing.
+        """
+        try:
+            f = open(self.path, "rb+")
+        except FileNotFoundError:
+            return
+        with f:
+            size = f.seek(0, os.SEEK_END)
+            if size == 0:
+                return
+            f.seek(size - 1)
+            if f.read(1) == b"\n":
+                return
+            f.seek(0)
+            data = f.read()
+            f.truncate(data.rfind(b"\n") + 1)
 
 
 def replay(path: Path) -> Iterator[Event]:

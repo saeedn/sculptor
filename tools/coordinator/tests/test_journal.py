@@ -72,6 +72,20 @@ def test_replay_tolerates_truncated_final_line(tmp_path: Path, capsys: pytest.Ca
     assert "truncated" in capsys.readouterr().err
 
 
+def test_append_after_truncated_final_line_discards_the_chunk(tmp_path: Path) -> None:
+    ensure_state_dir(tmp_path)
+    journal = Journal(journal_path(tmp_path))
+    events = make_events()[:3]
+    for event in events:
+        journal.append(event)
+    with open(journal_path(tmp_path), "a") as f:
+        f.write('{"type": "task-state-changed", "ts": 1.0, "node')
+    resumed = make_events()[3]
+    journal.append(resumed)
+    # The truncated chunk is gone and the journal replays cleanly.
+    assert list(replay(journal_path(tmp_path))) == events + [resumed]
+
+
 def test_replay_rejects_unknown_event_type(tmp_path: Path) -> None:
     ensure_state_dir(tmp_path)
     journal_path(tmp_path).write_text('{"type": "mystery-event", "ts": 1.0}\n')

@@ -24,18 +24,39 @@ GATE_HUMAN = "human"
 GATE_PHASE_REVIEW = "phase-review"
 
 _FINDINGS_TAIL_LINES = 50
+# Bounded so a wedged command (index.lock, a hung hook, a test suite
+# waiting on input) fails the gate instead of wedging the whole run.
+_GIT_TIMEOUT_SECONDS = 60.0
+_VERIFICATION_TIMEOUT_SECONDS = 3600.0
+
+
+class GitError(Exception):
+    """A git helper failed; the message carries the command and stderr."""
+
+
+def _git(cwd: Path, *args: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(cwd), *args],
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=_GIT_TIMEOUT_SECONDS,
+        )
+    except subprocess.CalledProcessError as e:
+        raise GitError(f"git {' '.join(args)} failed (exit {e.returncode}): {e.stderr.strip()}") from e
+    except subprocess.TimeoutExpired as e:
+        raise GitError(f"git {' '.join(args)} timed out after {_GIT_TIMEOUT_SECONDS:.0f}s") from e
+    return result.stdout
 
 
 def head_commit(cwd: Path) -> str:
-    return subprocess.run(
-        ["git", "-C", str(cwd), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
-    ).stdout.strip()
+    return _git(cwd, "rev-parse", "HEAD").strip()
 
 
 def porcelain_status(cwd: Path) -> str:
-    return subprocess.run(
-        ["git", "-C", str(cwd), "status", "--porcelain"], capture_output=True, text=True, check=True
-    ).stdout
+    return _git(cwd, "status", "--porcelain")
 
 
 def is_tree_clean(cwd: Path) -> bool:
@@ -44,10 +65,7 @@ def is_tree_clean(cwd: Path) -> bool:
 
 def commits_since(cwd: Path, base: str) -> list[str]:
     """Commit hashes after ``base`` up to HEAD, oldest first."""
-    output = subprocess.run(
-        ["git", "-C", str(cwd), "rev-list", "--reverse", f"{base}..HEAD"], capture_output=True, text=True, check=True
-    ).stdout
-    return output.split()
+    return _git(cwd, "rev-list", "--reverse", f"{base}..HEAD").split()
 
 
 def _log_tail(log_path: Path) -> str:
@@ -69,7 +87,22 @@ def run_mechanical_gate(
         # Stream to the log file — verification commands can run for
         # minutes and produce a lot of output.
         with open(log_path, "wb") as log_file:
-            result = subprocess.run(command, shell=True, cwd=str(cwd), stdout=log_file, stderr=subprocess.STDOUT)
+            try:
+                result = subprocess.run(
+                    command,
+                    shell=True,
+                    cwd=str(cwd),
+                    stdin=subprocess.DEVNULL,
+                    stdout=log_file,
+                    stderr=subprocess.STDOUT,
+                    timeout=_VERIFICATION_TIMEOUT_SECONDS,
+                )
+            except subprocess.TimeoutExpired:
+                findings = (
+                    f"verification command timed out after {_VERIFICATION_TIMEOUT_SECONDS:.0f}s: {command!r}\n"
+                    f"log: {log_path}\n{_log_tail(log_path)}"
+                )
+                return GateOutcome(gate=GATE_MECHANICAL, passed=False, findings=findings)
         if result.returncode != 0:
             findings = (
                 f"verification command failed: {command!r} (exit {result.returncode})\n"

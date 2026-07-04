@@ -1,6 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 from coordinator.dag import Node
+from coordinator.gates import GitError
 from coordinator.gates import commits_since
 from coordinator.gates import head_commit
 from coordinator.gates import is_tree_clean
@@ -101,3 +104,12 @@ def test_commits_since_ordered_oldest_first(tmp_path: Path) -> None:
     repo_commit_all(repo, "second")
     second = head_commit(repo)
     assert commits_since(repo, base) == [first, second]
+
+
+def test_git_failure_carries_stderr_context(tmp_path: Path) -> None:
+    not_a_repo = tmp_path / "empty"
+    not_a_repo.mkdir()
+    with pytest.raises(GitError) as exc_info:
+        head_commit(not_a_repo)
+    assert "rev-parse" in str(exc_info.value)
+    assert "not a git repository" in str(exc_info.value).lower()

@@ -112,6 +112,7 @@ class PlanExecutor:
         attempt_index: int,
         worker_registration: str,
         attempt_directory: Path,
+        base_commit: str | None = None,
     ) -> tuple[Callable[[int], None], Callable[[dict], None]]:
         """The (on_spawn, on_signal) pair that journals one attempt's lifecycle."""
 
@@ -124,6 +125,7 @@ class PlanExecutor:
                     worker_registration=worker_registration,
                     pid=pid,
                     attempt_dir=str(attempt_directory),
+                    base_commit=base_commit,
                 )
             )
 
@@ -186,7 +188,9 @@ class PlanExecutor:
             ensure_trusted(self.cwd, home=self.trust_home)
         base_commit = head_commit(self.cwd)
         self._prepared[node.node_id] = (attempt_index, prepared, base_commit)
-        on_spawn, on_signal = self._journal_callbacks(node.node_id, attempt_index, worker_name, prepared.attempt_dir)
+        on_spawn, on_signal = self._journal_callbacks(
+            node.node_id, attempt_index, worker_name, prepared.attempt_dir, base_commit=base_commit
+        )
         return launch_attempt(
             registration,
             prepared,
@@ -198,6 +202,24 @@ class PlanExecutor:
             on_spawn=on_spawn,
             should_abort=self._abort_requested,
         )
+
+    def restore_attempt(self, node: Node, attempt_index: int, attempt_directory: Path, base_commit: str) -> None:
+        """Rebind gate state to a completed attempt from a previous coordinator.
+
+        The attempt directory already holds everything a gate reads; only
+        the in-memory ``_prepared`` entry needs rebuilding.
+        """
+        context_file = attempt_directory / "context.md"
+        prompt_file = attempt_directory / "prompt.txt"
+        prepared = PreparedAttempt(
+            attempt_dir=attempt_directory,
+            hooks_file=attempt_directory / "hooks.json",
+            prompt=prompt_file.read_text() if prompt_file.is_file() else "",
+            signals_path=attempt_directory / "signals.jsonl",
+            process_doc=attempt_directory / "process.md",
+            context_file=context_file if context_file.is_file() else None,
+        )
+        self._prepared[node.node_id] = (attempt_index, prepared, base_commit)
 
     def _phase_commits(self, node: Node) -> list[str]:
         assert node.phase is not None

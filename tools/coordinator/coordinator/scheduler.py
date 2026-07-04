@@ -38,6 +38,7 @@ from coordinator.journal import Event
 from coordinator.journal import GateResult
 from coordinator.journal import IntentsConsumed
 from coordinator.journal import Journal
+from coordinator.journal import NodeSnapshot
 from coordinator.journal import RunPaused
 from coordinator.journal import RunStarted
 from coordinator.journal import SignalObserved
@@ -54,6 +55,7 @@ from coordinator.ladder import next_attempt
 from coordinator.manifest import ManifestError
 from coordinator.manifest import PlanManifest
 from coordinator.ratelimit import classify_attempt
+from coordinator.signals import read_completed_signals
 from coordinator.statedir import attempt_dir
 from coordinator.statedir import ensure_state_dir
 from coordinator.statedir import new_run_id
@@ -132,6 +134,17 @@ class GateOutcome(BaseModel):
     rate_limit_hint: str | None = None
 
 
+class ResumedAttempt(BaseModel):
+    """A completed-but-ungated attempt recovered during resume."""
+
+    model_config = ConfigDict(frozen=True)
+
+    attempt_index: int
+    attempt_dir: str
+    base_commit: str
+    result: AttemptResult
+
+
 class Executor(Protocol):
     def run_attempt(
         self,
@@ -142,6 +155,8 @@ class Executor(Protocol):
     ) -> AttemptResult: ...
 
     def run_gates(self, node: Node, result: AttemptResult) -> GateOutcome: ...
+
+    def restore_attempt(self, node: Node, attempt_index: int, attempt_directory: Path, base_commit: str) -> None: ...
 
 
 RunStatus = Literal["completed", "failed", "paused", "waiting-human", "aborted"]
@@ -194,6 +209,7 @@ class Scheduler:
         self._seed_context: dict[str, str] = {}
         self._registration_override: dict[str, str] = {}
         self._last_results: dict[str, AttemptResult] = {}
+        self._resume_completed: dict[str, ResumedAttempt] = {}
         self._phase_review_failures: dict[str, int] = {node_id: 0 for node_id in graph.nodes}
 
     @classmethod
@@ -258,6 +274,14 @@ class Scheduler:
                         pid = node_snapshot.attempts[-1].pid
                         if pid is not None:
                             reaper(pid)
+                resumed = scheduler._detect_completed_attempt(graph.nodes[node_id], snapshot.nodes.get(node_id))
+                if resumed is not None:
+                    # The worker finished (its Stop is on disk) but the dead
+                    # coordinator never gate-checked it. Don't redo the
+                    # work — re-enter at the gates.
+                    scheduler._resume_completed[node_id] = resumed
+                    scheduler.transition(node_id, NodeState.PENDING, reason="resume-gates")
+                    continue
                 if scheduler._attempt_records[node_id]:
                     # The discarded attempt reached no verdict; it must not
                     # burn retry budget (its dir index stays used, so the
@@ -265,6 +289,31 @@ class Scheduler:
                     scheduler._attempt_records[node_id][-1].discarded = True
                 scheduler.transition(node_id, NodeState.PENDING, reason="resume-discard")
         return scheduler
+
+    @staticmethod
+    def _detect_completed_attempt(node: Node, node_snapshot: "NodeSnapshot | None") -> "ResumedAttempt | None":
+        """A mid-flight attempt that actually reached Stop, ready for gating."""
+        if node.kind != TASK_NODE or node_snapshot is None or not node_snapshot.attempts:
+            return None
+        attempt = node_snapshot.attempts[-1]
+        if attempt.base_commit is None or not attempt.attempt_dir:
+            return None
+        reader = read_completed_signals(Path(attempt.attempt_dir) / "signals.jsonl")
+        if reader is None:
+            return None
+        return ResumedAttempt(
+            attempt_index=attempt.attempt_index,
+            attempt_dir=attempt.attempt_dir,
+            base_commit=attempt.base_commit,
+            result=AttemptResult(
+                is_ok=True,
+                status="completed",
+                session_id=reader.session_id,
+                transcript_path=reader.transcript_path,
+                last_assistant_message=reader.last_assistant_message,
+                signals=tuple(event.get("event", "unknown") for event in reader.events),
+            ),
+        )
 
     def transition(self, node_id: str, new_state: NodeState, reason: str | None = None) -> None:
         """The single code path for state changes: journal first, then mutate."""
@@ -339,27 +388,37 @@ class Scheduler:
         return runnable(self.graph, completed=completed, failed=failed, running=in_flight)
 
     def _execute_node(self, node: Node) -> None:
-        self.transition(node.node_id, NodeState.RUNNING, reason="start")
-        attempt_index = self.attempt_counts[node.node_id]
-        self.attempt_counts[node.node_id] += 1
-        seed_context = self._seed_context.pop(node.node_id, None)
-        registration_override = self._registration_override.pop(node.node_id, None)
-        worker_name = registration_override or self._worker_for(node)
-        self._attempt_records[node.node_id].append(
-            AttemptRecordLite(attempt_index=attempt_index, registration=worker_name)
-        )
-        self.journal.append(
-            AttemptStarted(
-                ts=self.clock(),
-                node_id=node.node_id,
-                attempt_index=attempt_index,
-                worker_registration=worker_name,
-                attempt_dir=str(attempt_dir(self.plan_dir, node.node_id, attempt_index)),
+        resumed = self._resume_completed.pop(node.node_id, None)
+        if resumed is not None:
+            # The attempt already ran to Stop under a previous coordinator;
+            # skip straight to its gates. No new attempt is journaled or
+            # counted — this IS the recorded attempt, finally judged.
+            self.transition(node.node_id, NodeState.RUNNING, reason="resume-gates")
+            attempt_index = resumed.attempt_index
+            self.executor.restore_attempt(node, attempt_index, Path(resumed.attempt_dir), resumed.base_commit)
+            result = resumed.result
+        else:
+            self.transition(node.node_id, NodeState.RUNNING, reason="start")
+            attempt_index = self.attempt_counts[node.node_id]
+            self.attempt_counts[node.node_id] += 1
+            seed_context = self._seed_context.pop(node.node_id, None)
+            registration_override = self._registration_override.pop(node.node_id, None)
+            worker_name = registration_override or self._worker_for(node)
+            self._attempt_records[node.node_id].append(
+                AttemptRecordLite(attempt_index=attempt_index, registration=worker_name)
             )
-        )
-        result = self.executor.run_attempt(
-            node, attempt_index, seed_context=seed_context, registration_override=registration_override
-        )
+            self.journal.append(
+                AttemptStarted(
+                    ts=self.clock(),
+                    node_id=node.node_id,
+                    attempt_index=attempt_index,
+                    worker_registration=worker_name,
+                    attempt_dir=str(attempt_dir(self.plan_dir, node.node_id, attempt_index)),
+                )
+            )
+            result = self.executor.run_attempt(
+                node, attempt_index, seed_context=seed_context, registration_override=registration_override
+            )
         self._last_results[node.node_id] = result
         if not result.is_ok:
             self.on_attempt_failure(node, attempt_index, result)

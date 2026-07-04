@@ -1,5 +1,6 @@
 """Pilot tests: TUI controls append journal intents; drill-down renders."""
 
+import threading
 from pathlib import Path
 
 from textual.widgets import DataTable
@@ -122,3 +123,20 @@ async def test_failure_report_screen(tmp_path: Path) -> None:
         screen = app.screen
         assert isinstance(screen, TextScreen)
         assert "Coordinator failure report" in screen.body_text
+
+
+async def test_ctrl_c_does_not_kill_a_live_run(tmp_path: Path) -> None:
+    plan_dir = make_plan_dir(tmp_path)
+    app = make_app(plan_dir)
+    async with app.run_test() as pilot:
+        stop = threading.Event()
+        run_thread = threading.Thread(target=stop.wait, daemon=True)
+        run_thread.start()
+        app._run_thread = run_thread
+        await pilot.press("ctrl+c")
+        assert app.is_running
+        stop.set()
+        run_thread.join(timeout=5.0)
+        app._run_thread = None
+        await pilot.press("ctrl+c")
+    assert not app.is_running

@@ -65,6 +65,9 @@ class AttemptStarted(BaseModel):
     worker_registration: str
     pid: int | None = None
     attempt_dir: str
+    # HEAD when the worker was spawned — lets a resumed coordinator gate a
+    # completed attempt it never got to observe (commit detection needs it).
+    base_commit: str | None = None
 
 
 class SignalObserved(BaseModel):
@@ -225,6 +228,7 @@ class AttemptRecord(BaseModel):
     worker_registration: str
     pid: int | None = None
     attempt_dir: str
+    base_commit: str | None = None
     session_id: str | None = None
     transcript_path: str | None = None
     signals: list[str] = []
@@ -297,6 +301,8 @@ class Snapshot(BaseModel):
                 if attempt.attempt_index == event.attempt_index:
                     if event.pid is not None:
                         attempt.pid = event.pid
+                    if event.base_commit is not None:
+                        attempt.base_commit = event.base_commit
                     attempt.worker_registration = event.worker_registration
                     attempt.attempt_dir = event.attempt_dir
                     break
@@ -307,6 +313,7 @@ class Snapshot(BaseModel):
                         worker_registration=event.worker_registration,
                         pid=event.pid,
                         attempt_dir=event.attempt_dir,
+                        base_commit=event.base_commit,
                     )
                 )
         elif isinstance(event, SignalObserved):

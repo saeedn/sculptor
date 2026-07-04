@@ -62,6 +62,9 @@ class FakeExecutor:
             return queue.pop(0)
         return GateOutcome(gate="mechanical", passed=True)
 
+    def restore_attempt(self, node: Node, attempt_index: int, attempt_directory: Path, base_commit: str) -> None:
+        self.calls.append(f"restore:{node.node_id}:{attempt_index}:{base_commit}")
+
 
 def make_manifest(tasks: list[TaskSpec]) -> PlanManifest:
     # attempts=1: these tests exercise the state machine, not the retry
@@ -352,3 +355,52 @@ def test_resume_discarded_attempt_does_not_burn_budget(tmp_path: Path) -> None:
     resumed = make_scheduler(tmp_path, manifest, executor, resume=True)
     assert resumed.run() == "completed"
     assert executor.calls == ["attempt:a:1", "gates:a", "attempt:a:2", "gates:a"]
+
+
+def write_stop_signals(attempt_directory: Path) -> None:
+    attempt_directory.mkdir(parents=True, exist_ok=True)
+    with open(attempt_directory / "signals.jsonl", "w") as f:
+        f.write('{"event": "SessionStart", "ts": 1.0, "payload": {"session_id": "dead-sess"}}\n')
+        f.write('{"event": "Stop", "ts": 2.0, "payload": {"session_id": "dead-sess"}}\n')
+
+
+def test_resume_gates_completed_attempt_without_rerunning(tmp_path: Path) -> None:
+    manifest = make_manifest([task("a")])
+    ensure_state_dir(tmp_path)
+    attempt_directory = tmp_path / "_state" / "attempts" / "a" / "0"
+    write_stop_signals(attempt_directory)
+    journal = Journal(journal_path(tmp_path))
+    journal.append(RunStarted(run_id="run-dead", plan_dir=str(tmp_path), manifest_hash="h"))
+    journal.append(TaskStateChanged(node_id="a", old_state="pending", new_state="running"))
+    journal.append(
+        AttemptStarted(
+            node_id="a",
+            attempt_index=0,
+            worker_registration="w",
+            attempt_dir=str(attempt_directory),
+            base_commit="basecafe",
+        )
+    )
+    executor = FakeExecutor()
+    resumed = make_scheduler(tmp_path, manifest, executor, resume=True)
+    assert resumed.run() == "completed"
+    # Restored and gated; no fresh worker attempt.
+    assert executor.calls == ["restore:a:0:basecafe", "gates:a"]
+
+
+def test_resume_discards_stopped_attempt_without_base_commit(tmp_path: Path) -> None:
+    manifest = make_manifest([task("a")])
+    ensure_state_dir(tmp_path)
+    attempt_directory = tmp_path / "_state" / "attempts" / "a" / "0"
+    write_stop_signals(attempt_directory)
+    journal = Journal(journal_path(tmp_path))
+    journal.append(RunStarted(run_id="run-old", plan_dir=str(tmp_path), manifest_hash="h"))
+    journal.append(TaskStateChanged(node_id="a", old_state="pending", new_state="running"))
+    # An old journal without base_commit cannot be gated on resume.
+    journal.append(
+        AttemptStarted(node_id="a", attempt_index=0, worker_registration="w", attempt_dir=str(attempt_directory))
+    )
+    executor = FakeExecutor()
+    resumed = make_scheduler(tmp_path, manifest, executor, resume=True)
+    assert resumed.run() == "completed"
+    assert executor.calls == ["attempt:a:1", "gates:a"]

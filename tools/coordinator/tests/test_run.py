@@ -1,3 +1,4 @@
+import json
 import subprocess
 from pathlib import Path
 
@@ -20,6 +21,7 @@ from coordinator.run import execute_plan
 from coordinator.run import find_incomplete_plans
 from coordinator.run import find_plan_by_run_id
 from coordinator.run import iter_plan_dirs
+from coordinator.statedir import attempt_dir
 from coordinator.statedir import ensure_state_dir
 from coordinator.statedir import journal_path
 from coordinator.statedir import write_run_id
@@ -247,3 +249,72 @@ def test_unknown_per_task_escalation_worker_fails_fast(tmp_path: Path) -> None:
     subprocess.run(["git", "-C", str(repo), "commit", "-aqm", "edit plan"], check=True)
     with pytest.raises(ManifestError, match="no-such-worker"):
         run_plan(plan_dir, repo)
+
+
+def test_resume_gates_a_completed_but_ungated_attempt(tmp_path: Path) -> None:
+    """A coordinator dies after its worker's Stop lands but before consuming
+    it; the resumed coordinator must gate the finished attempt, not redo it."""
+    repo, plan_dir = make_plan_repo(tmp_path, COMMIT_THEN_STOP)
+    base_commit = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"], capture_output=True, text=True, check=True
+    ).stdout.strip()
+    # The dead run's worker committed its work...
+    (repo / "file_1.1.txt").write_text("content from the dead run\n")
+    subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+    subprocess.run(["git", "-C", str(repo), "commit", "-q", "-m", "fake commit for 1.1"], check=True)
+    # ...and its Stop reached signals.jsonl, unconsumed.
+    attempt = attempt_dir(plan_dir, "1.1", 0)
+    attempt.mkdir(parents=True)
+    with open(attempt / "signals.jsonl", "w") as f:
+        f.write(
+            json.dumps(
+                {
+                    "event": "SessionStart",
+                    "ts": 1.0,
+                    "payload": {"session_id": "dead-sess", "transcript_path": "/tmp/dead.jsonl"},
+                }
+            )
+            + "\n"
+        )
+        f.write(
+            json.dumps(
+                {"event": "Stop", "ts": 2.0, "payload": {"session_id": "dead-sess", "last_assistant_message": "done"}}
+            )
+            + "\n"
+        )
+    ensure_state_dir(plan_dir)
+    journal = Journal(journal_path(plan_dir))
+    journal.append(RunStarted(run_id="run-dead", plan_dir=str(plan_dir), manifest_hash="h"))
+    journal.append(TaskStateChanged(node_id="1.1", old_state="pending", new_state="running"))
+    journal.append(
+        AttemptStarted(node_id="1.1", attempt_index=0, worker_registration="fake-worker", attempt_dir=str(attempt))
+    )
+    journal.append(
+        AttemptStarted(
+            node_id="1.1",
+            attempt_index=0,
+            worker_registration="fake-worker",
+            attempt_dir=str(attempt),
+            base_commit=base_commit,
+        )
+    )
+    write_run_id(plan_dir, "run-dead")
+
+    assert run_plan(plan_dir, repo, resume=True) == "completed"
+
+    events = list(replay(journal_path(plan_dir)))
+    # 1.1 was gated, never re-attempted.
+    assert not any(isinstance(e, AttemptStarted) and e.node_id == "1.1" and e.attempt_index == 1 for e in events)
+    resumes = [e for e in events if isinstance(e, TaskStateChanged) and e.reason == "resume-gates"]
+    assert [(e.node_id, e.old_state, e.new_state) for e in resumes] == [
+        ("1.1", "running", "pending"),
+        ("1.1", "pending", "running"),
+    ]
+    gate_results = [e for e in events if isinstance(e, GateResult) and e.node_id == "1.1"]
+    assert gate_results and gate_results[-1].passed is True
+    commits = [e for e in events if isinstance(e, CommitRecorded) and e.node_id == "1.1"]
+    assert len(commits) == 1
+    # The dead run's work was preserved, not redone by a fresh worker.
+    assert (repo / "file_1.1.txt").read_text() == "content from the dead run\n"
+    # The rest of the plan proceeded normally.
+    assert (repo / "file_1.2.txt").is_file()

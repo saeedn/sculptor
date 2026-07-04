@@ -14,6 +14,7 @@ from coordinator.launcher import SignalReader
 from coordinator.launcher import launch_attempt
 from coordinator.launcher import reap_recorded_pid
 from coordinator.launcher import scrub_env
+from coordinator.signals import read_completed_signals
 from tests.fakes import ASK_QUESTION_THEN_SLEEP
 from tests.fakes import ECHO_ENV
 from tests.fakes import EXIT_WITHOUT_STOP
@@ -263,3 +264,18 @@ def test_reap_recorded_pid_missing_pid_is_noop() -> None:
     proc = subprocess.Popen([sys.executable, "-c", "pass"])
     proc.wait()
     reap_recorded_pid(proc.pid, our_create_time=time.time() + 3600)
+
+
+def test_read_completed_signals(tmp_path: Path) -> None:
+    path = tmp_path / "signals.jsonl"
+    assert read_completed_signals(path) is None
+    path.write_text(json.dumps({"event": "SessionStart", "payload": {"session_id": "s1"}}) + "\n")
+    assert read_completed_signals(path) is None
+    with open(path, "a") as f:
+        f.write(
+            json.dumps({"event": "Stop", "payload": {"session_id": "s1", "last_assistant_message": "done"}}) + "\n"
+        )
+    reader = read_completed_signals(path)
+    assert reader is not None
+    assert reader.session_id == "s1"
+    assert reader.last_assistant_message == "done"

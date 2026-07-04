@@ -29,7 +29,6 @@ HOME.
 """
 
 import fcntl
-import json
 import os
 import signal
 import struct
@@ -48,6 +47,9 @@ from coordinator.registrations import WorkerRegistration
 from coordinator.registrations import render
 from coordinator.scheduler import AttemptResult
 from coordinator.scheduler import AttemptStatus
+from coordinator.signals import SignalReader
+from coordinator.signals import is_stop
+from coordinator.signals import is_waiting
 
 _PTY_COLUMNS = 200
 _PTY_ROWS = 50
@@ -69,69 +71,6 @@ def scrub_env(base: Mapping[str, str]) -> dict[str, str]:
         for key, value in base.items()
         if not key.startswith(("SCULPT_", "SCULPTOR_", "CLAUDE")) and key != "AI_AGENT"
     }
-
-
-class SignalReader:
-    """Incremental reader of an attempt's signals.jsonl.
-
-    Remembers the file offset and only consumes newline-terminated
-    lines, so a partially-written final line is picked up on the next
-    poll. Extracts session_id / transcript_path from the first payload
-    carrying them and tracks the latest last_assistant_message.
-    """
-
-    def __init__(self, path: Path) -> None:
-        self.path = path
-        self._offset = 0
-        self.events: list[dict] = []
-        self.session_id: str | None = None
-        self.transcript_path: str | None = None
-        self.last_assistant_message: str | None = None
-
-    def poll(self) -> list[dict]:
-        if not self.path.is_file():
-            return []
-        with open(self.path, "rb") as f:
-            f.seek(self._offset)
-            chunk = f.read()
-        complete, separator, _partial = chunk.rpartition(b"\n")
-        if not separator:
-            return []
-        self._offset += len(complete) + 1
-        new_events: list[dict] = []
-        for raw_line in complete.split(b"\n"):
-            if not raw_line.strip():
-                continue
-            try:
-                event = json.loads(raw_line)
-            except ValueError:
-                continue
-            payload = event.get("payload")
-            if isinstance(payload, dict):
-                if self.session_id is None and payload.get("session_id"):
-                    self.session_id = payload["session_id"]
-                if self.transcript_path is None and payload.get("transcript_path"):
-                    self.transcript_path = payload["transcript_path"]
-                if payload.get("last_assistant_message"):
-                    self.last_assistant_message = payload["last_assistant_message"]
-            self.events.append(event)
-            new_events.append(event)
-        return new_events
-
-
-def _is_stop(event: dict) -> bool:
-    return event.get("event") == "Stop"
-
-
-def _is_waiting(event: dict) -> bool:
-    payload = event.get("payload")
-    if not isinstance(payload, dict):
-        return False
-    if event.get("event") == "PreToolUse" and payload.get("tool_name") == "AskUserQuestion":
-        return True
-    if event.get("event") == "Notification" and payload.get("notification_type") == "idle_prompt":
-        return True
-    return False
 
 
 def _set_pty_window_size(fd: int) -> None:
@@ -304,9 +243,9 @@ def launch_attempt(
                 on_signal(event)
             # A Stop may override "waiting" (the turn finished after all)
             # but never a kill/timeout verdict already handed down.
-            if _is_stop(event) and status in (None, "waiting"):
+            if is_stop(event) and status in (None, "waiting"):
                 status = "completed"
-            elif _is_waiting(event) and status is None:
+            elif is_waiting(event) and status is None:
                 status = "waiting"
 
     try:

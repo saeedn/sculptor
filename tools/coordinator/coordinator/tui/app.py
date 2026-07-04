@@ -13,6 +13,7 @@ from pathlib import Path
 
 from textual.app import App
 from textual.app import ComposeResult
+from textual.binding import Binding
 from textual.widgets import DataTable
 from textual.widgets import Footer
 from textual.widgets import Static
@@ -102,6 +103,9 @@ class CoordinatorApp(App):
     """
     BINDINGS = [
         ("q", "quit_if_idle", "Quit (when idle)"),
+        # Shadows Textual's built-in priority quit: a reflexive ctrl-c must
+        # not silently kill a run whose worker keeps going without us.
+        Binding("ctrl+c", "quit_if_idle", "Quit (when idle)", show=False, priority=True),
         ("p", "pause", "Pause"),
         ("r", "resume", "Resume"),
         ("t", "retry_selected", "Retry task"),
@@ -217,8 +221,12 @@ class CoordinatorApp(App):
         pending = [label for label, position in self._requested_intents if position >= consumed]
         if pending:
             parts.append(f"requested: {', '.join(pending)}")
-        self.status_text = "  •  ".join(parts)
-        status.update(self.status_text)
+        text = "  •  ".join(parts)
+        if text != self.status_text:
+            # Update only on change: an unconditional update() redraws the
+            # bar every refresh tick and floods the PTY stream.
+            self.status_text = text
+            status.update(text)
 
     # -- Controls: every control APPENDS a control-intent to the journal;
     # the TUI never mutates scheduler state directly. The scheduler picks

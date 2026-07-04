@@ -4,9 +4,12 @@ Deliberately free of any TUI imports — the plain-text progress path
 must never pay Textual's startup cost (phase 6 layers the TUI on top).
 """
 
+import os
 import threading
 import time
 from collections.abc import Callable
+from collections.abc import Iterator
+from dataclasses import dataclass
 from pathlib import Path
 
 from coordinator.dag import build_graph
@@ -14,8 +17,11 @@ from coordinator.executor import PlanExecutor
 from coordinator.executor import RunPausedError
 from coordinator.gates import is_tree_clean
 from coordinator.gates import porcelain_status
+from coordinator.journal import CommitRecorded
+from coordinator.journal import Event
 from coordinator.journal import Journal
 from coordinator.journal import Snapshot
+from coordinator.journal import load_snapshot
 from coordinator.journal import replay
 from coordinator.journal import save_snapshot
 from coordinator.launcher import reap_recorded_pid
@@ -27,12 +33,41 @@ from coordinator.registrations import load_registrations
 from coordinator.registrations import resolve_worker
 from coordinator.scheduler import RunStatus
 from coordinator.scheduler import Scheduler
+from coordinator.sculpt_signals import Signaler
+from coordinator.sculpt_signals import detect_signaler
 from coordinator.statedir import ensure_state_dir
 from coordinator.statedir import journal_path
+from coordinator.statedir import new_run_id
+from coordinator.statedir import read_run_id
+
+# Directory names never descended into when scanning for plans: VCS and
+# dependency trees, plus _state (fake-worker attempt dirs can contain
+# whole git repos of their own).
+_PRUNED_DIR_NAMES = frozenset({".git", "node_modules", "_state", ".venv"})
+
+# Run outcomes that should raise the tab's attention indicator.
+_WAITING_STATUSES = frozenset({"waiting-human", "paused", "failed"})
 
 
 class RunError(Exception):
     pass
+
+
+class _SignalingJournal(Journal):
+    """Journal wrapper signaling Sculptor on observed events.
+
+    `files-changed` after EVERY task commit is what keeps Sculptor's
+    diff viewer live during long runs.
+    """
+
+    def __init__(self, path: Path, signaler: Signaler) -> None:
+        super().__init__(path)
+        self.signaler = signaler
+
+    def append(self, event: Event) -> None:
+        super().append(event)
+        if isinstance(event, CommitRecorded):
+            self.signaler.files_changed()
 
 
 def _validate_workers(manifest: PlanManifest, registrations: dict[str, WorkerRegistration]) -> None:
@@ -80,7 +115,9 @@ def execute_plan(
         )
 
     ensure_state_dir(plan_dir)
-    journal = Journal(journal_path(plan_dir))
+    signaler = detect_signaler()
+    journal = _SignalingJournal(journal_path(plan_dir), signaler)
+    run_id = read_run_id(plan_dir) if resume else new_run_id()
     executor = PlanExecutor(
         plan_dir,
         manifest,
@@ -99,28 +136,84 @@ def execute_plan(
             suffix = f" ({reason})" if reason else ""
             progress(f"{node_id}: {old_state} -> {new_state}{suffix}")
 
-    factory = Scheduler.load if resume else Scheduler
-    scheduler = factory(
-        plan_dir,
-        manifest,
-        graph,
-        journal,
-        executor,
-        reap_recorded_pid,
-        clock,
-        on_transition,
-    )
+    if resume:
+        scheduler = Scheduler.load(
+            plan_dir, manifest, graph, journal, executor, reap_recorded_pid, clock, on_transition
+        )
+    else:
+        scheduler = Scheduler(
+            plan_dir,
+            manifest,
+            graph,
+            journal,
+            executor,
+            reap_recorded_pid,
+            clock,
+            on_transition,
+            run_id=run_id,
+        )
+    if run_id is not None:
+        signaler.session_id(run_id)
+    signaler.busy()
     try:
         status: RunStatus = scheduler.run()
     except RunPausedError as e:
         # The executor already journaled the run-paused event.
         save_snapshot(Snapshot.from_events(replay(journal.path)), plan_dir)
+        signaler.waiting()
         if progress is not None:
             progress(f"run paused: {e}")
         return "paused"
+    if status in _WAITING_STATUSES:
+        signaler.waiting()
+    else:
+        signaler.idle()
     if progress is not None:
         progress(f"run finished: {status}")
     return status
+
+
+def iter_plan_dirs(root: Path) -> Iterator[Path]:
+    """Every directory under ``root`` containing a plan.yaml (pruned walk)."""
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if name not in _PRUNED_DIR_NAMES]
+        if "plan.yaml" in filenames:
+            yield Path(dirpath)
+
+
+def find_plan_by_run_id(root: Path, run_id: str) -> Path:
+    """The plan directory whose recorded run id matches (the resume path)."""
+    for plan_dir in iter_plan_dirs(root):
+        if read_run_id(plan_dir) == run_id:
+            return plan_dir
+    raise RunError(f"no plan with run id {run_id!r} found under {root}")
+
+
+@dataclass(frozen=True)
+class IncompletePlan:
+    plan_dir: Path
+    run_id: str | None
+    completed: int
+    total: int
+
+
+def find_incomplete_plans(root: Path) -> list[IncompletePlan]:
+    """Plans under ``root`` with started-but-unfinished runs (the picker's list)."""
+    incomplete: list[IncompletePlan] = []
+    for plan_dir in iter_plan_dirs(root):
+        if not journal_path(plan_dir).is_file():
+            continue
+        try:
+            graph = build_graph(load_manifest(plan_dir))
+        except ManifestError:
+            continue
+        snapshot = load_snapshot(plan_dir)
+        completed = sum(1 for node in snapshot.nodes.values() if node.state in ("passed", "skipped"))
+        total = len(graph.nodes)
+        if completed >= total and snapshot.run_status != "paused":
+            continue
+        incomplete.append(IncompletePlan(plan_dir=plan_dir, run_id=snapshot.run_id, completed=completed, total=total))
+    return incomplete
 
 
 def start_run_in_thread(

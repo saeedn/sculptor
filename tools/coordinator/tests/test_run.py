@@ -7,6 +7,7 @@ from typer.testing import CliRunner
 from coordinator.journal import AttemptStarted
 from coordinator.journal import CommitRecorded
 from coordinator.journal import GateResult
+from coordinator.journal import Journal
 from coordinator.journal import RunPaused
 from coordinator.journal import RunStarted
 from coordinator.journal import SignalObserved
@@ -16,7 +17,12 @@ from coordinator.main import app
 from coordinator.manifest import ManifestError
 from coordinator.run import RunError
 from coordinator.run import execute_plan
+from coordinator.run import find_incomplete_plans
+from coordinator.run import find_plan_by_run_id
+from coordinator.run import iter_plan_dirs
+from coordinator.statedir import ensure_state_dir
 from coordinator.statedir import journal_path
+from coordinator.statedir import write_run_id
 from tests.fakes import COMMIT_THEN_STOP
 from tests.fakes import STOP_WITHOUT_COMMIT
 from tests.fakes import make_git_repo
@@ -155,3 +161,65 @@ def test_status_command_renders_snapshot(tmp_path: Path) -> None:
     json_result = CliRunner().invoke(app, ["status", str(plan_dir), "--json"])
     assert json_result.exit_code == 0
     assert '"run_status"' in json_result.output
+
+
+def test_iter_plan_dirs_prunes_state_and_git(tmp_path: Path) -> None:
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "plan.yaml").touch()
+    (tmp_path / "b" / "nested").mkdir(parents=True)
+    (tmp_path / "b" / "nested" / "plan.yaml").touch()
+    # plan.yaml files inside pruned dirs must not be found (fake-worker
+    # tests create whole git repos under _state/attempts/*).
+    (tmp_path / "a" / "_state" / "attempts").mkdir(parents=True)
+    (tmp_path / "a" / "_state" / "attempts" / "plan.yaml").touch()
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "plan.yaml").touch()
+    found = sorted(iter_plan_dirs(tmp_path))
+    assert found == [tmp_path / "a", tmp_path / "b" / "nested"]
+
+
+def test_find_plan_by_run_id(tmp_path: Path) -> None:
+    for name, run_id in (("one", "run-first"), ("two", "run-second")):
+        plan_dir = tmp_path / "plans" / name
+        plan_dir.mkdir(parents=True)
+        (plan_dir / "plan.yaml").touch()
+        ensure_state_dir(plan_dir)
+        write_run_id(plan_dir, run_id)
+    assert find_plan_by_run_id(tmp_path, "run-second") == tmp_path / "plans" / "two"
+    with pytest.raises(RunError) as exc_info:
+        find_plan_by_run_id(tmp_path, "run-missing")
+    assert "run-missing" in str(exc_info.value)
+    assert str(tmp_path) in str(exc_info.value)
+
+
+def test_find_incomplete_plans(tmp_path: Path) -> None:
+    # A completed run is excluded; a started-but-unfinished one is listed.
+    complete_repo, complete_plan = make_plan_repo(tmp_path / "complete", COMMIT_THEN_STOP)
+    assert run_plan(complete_plan, complete_repo) == "completed"
+    incomplete_repo, incomplete_plan = make_plan_repo(tmp_path / "incomplete", COMMIT_THEN_STOP)
+    ensure_state_dir(incomplete_plan)
+    Journal(journal_path(incomplete_plan)).append(
+        RunStarted(run_id="run-incomplete", plan_dir=str(incomplete_plan), manifest_hash="h")
+    )
+    plans = find_incomplete_plans(tmp_path)
+    assert [plan.plan_dir for plan in plans] == [incomplete_plan]
+    assert plans[0].run_id == "run-incomplete"
+    assert plans[0].completed == 0
+    assert plans[0].total == 2
+
+
+def test_no_args_picker_resumes_selected_plan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo, plan_dir = make_plan_repo(tmp_path, COMMIT_THEN_STOP)
+    ensure_state_dir(plan_dir)
+    Journal(journal_path(plan_dir)).append(RunStarted(run_id="run-picker", plan_dir=str(plan_dir), manifest_hash="h"))
+    monkeypatch.chdir(repo)
+    result = CliRunner().invoke(app, ["run"], input="1\n")
+    assert result.exit_code == 0, result.output
+    assert "run-picker" in result.output
+    assert "1." in result.output
+
+
+def test_no_args_picker_with_no_incomplete_plans(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    result = CliRunner().invoke(app, ["run"])
+    assert result.exit_code == 1

@@ -4,6 +4,7 @@ No LLM, no network — a scripted sys.executable worker emits the same
 hook-shaped signals real workers produce and makes real git commits.
 """
 
+import os
 import subprocess
 import sys
 import threading
@@ -26,6 +27,7 @@ from coordinator.journal import replay
 from coordinator.main import app as cli_app
 from coordinator.run import execute_plan
 from coordinator.statedir import journal_path
+from coordinator.statedir import read_run_id
 from tests.fakes import SCENARIO_WORKER
 from tests.fakes import make_git_repo
 from tests.fakes import pass_actions
@@ -483,6 +485,47 @@ def test_abort_kills_in_flight_worker(tmp_path: Path) -> None:
     assert load_snapshot(plan_dir).nodes["a"].state == "failed"
 
 
+def use_fake_sculpt(tmp_path: Path, monkeypatch) -> Path:
+    """A fake `sculpt` on PATH + SCULPT_AGENT_ID: signaling turns on against it."""
+    bin_dir = tmp_path / "sculpt-bin"
+    bin_dir.mkdir(exist_ok=True)
+    log_path = tmp_path / "sculpt_calls.log"
+    script = bin_dir / "sculpt"
+    script.write_text(f'#!/bin/sh\necho "$@" >> "{log_path}"\n')
+    script.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("SCULPT_AGENT_ID", "tsk_fake")
+    return log_path
+
+
+def test_signal_sequence_with_fake_sculpt(tmp_path: Path, monkeypatch) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a"), task_entry("b", ["a"])]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "a", 0, pass_actions("a"))
+    write_scenario(scenario_dir, "b", 0, pass_actions("b"))
+    log_path = use_fake_sculpt(tmp_path, monkeypatch)
+    assert run_plan(plan_dir, repo) == "completed"
+    signals = log_path.read_text().splitlines()
+    run_id = read_run_id(plan_dir)
+    assert run_id is not None
+    # The coordinator's session id IS its run id, reported before work starts.
+    assert signals[0] == f"signal session-id {run_id}"
+    assert signals[1] == "signal busy"
+    # One files-changed per task commit keeps the diff viewer live.
+    assert signals.count("signal files-changed") == 2
+    assert signals[-1] == "signal idle"
+
+
+def test_signal_waiting_on_failed_run(tmp_path: Path, monkeypatch) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "a", 0, stop_without_commit_actions())
+    log_path = use_fake_sculpt(tmp_path, monkeypatch)
+    assert run_plan(plan_dir, repo) == "failed"
+    # A failure report needs the user's attention: waiting, not idle.
+    assert log_path.read_text().splitlines()[-1] == "signal waiting"
+
+
 RESUME_DRIVER = """\
 import sys
 from pathlib import Path
@@ -507,7 +550,7 @@ def wait_for_journal(plan_dir: Path, predicate, timeout: float = 30.0) -> None:
     raise AssertionError("journal condition not reached within timeout")
 
 
-def test_resume_after_kill_skips_completed_tasks(tmp_path: Path) -> None:
+def test_resume_after_kill_skips_completed_tasks(tmp_path: Path, monkeypatch) -> None:
     phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("t1"), task_entry("t2", ["t1"])]}]
     repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
     # t1 passes on attempt 0 and has NO scenario for attempt 1 — a re-run
@@ -529,7 +572,13 @@ def test_resume_after_kill_skips_completed_tasks(tmp_path: Path) -> None:
     finally:
         coordinator.wait(timeout=10)
 
-    assert run_plan(plan_dir, repo, resume=True) == "completed"
+    # Resume through the CLI path: `coordinator resume <run-id>` discovers
+    # the plan by its recorded run id from the working directory.
+    run_id = read_run_id(plan_dir)
+    assert run_id is not None
+    monkeypatch.chdir(repo)
+    result = CliRunner().invoke(cli_app, ["resume", run_id])
+    assert result.exit_code == 0, result.output
     events = list(replay(journal_path(plan_dir)))
     # The mid-flight t2 attempt was discarded and re-ran as attempt 1.
     discards = [

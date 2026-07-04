@@ -13,6 +13,8 @@ from coordinator.manifest import ManifestError
 from coordinator.manifest import load_manifest
 from coordinator.run import RunError
 from coordinator.run import execute_plan
+from coordinator.run import find_incomplete_plans
+from coordinator.run import find_plan_by_run_id
 from coordinator.statedir import ensure_state_dir
 from coordinator.statedir import journal_path
 
@@ -44,22 +46,10 @@ def main(
     """Deterministic build coordinator that executes implementation plans with Claude Code workers."""
 
 
-@app.command()
-def run(
-    plan_dir: Path = typer.Argument(..., help="Path to the plan directory containing plan.yaml."),
-    no_tui: bool = typer.Option(
-        False,
-        "--no-tui",
-        help="Plain-text progress instead of the live dashboard (implied when stdout is not a tty).",
-    ),
-) -> None:
-    """Execute a plan, showing a live dashboard (the default on a tty)."""
-    if not plan_dir.is_dir():
-        typer.echo(f"Error: plan directory does not exist: {plan_dir}", err=True)
-        raise typer.Exit(1)
+def _execute_plan_dir(plan_dir: Path, resume_run: bool, no_tui: bool) -> None:
     if no_tui or not sys.stdout.isatty():
         try:
-            status = execute_plan(plan_dir, progress=typer.echo)
+            status = execute_plan(plan_dir, resume=resume_run, progress=typer.echo)
         except (ManifestError, RunError) as e:
             typer.echo(f"Error: {e}", err=True)
             raise typer.Exit(1)
@@ -70,7 +60,7 @@ def run(
     from coordinator.tui.app import CoordinatorApp
 
     try:
-        dashboard = CoordinatorApp(plan_dir)
+        dashboard = CoordinatorApp(plan_dir, resume=resume_run)
     except ManifestError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
@@ -82,11 +72,59 @@ def run(
         raise typer.Exit(1)
 
 
+def _pick_incomplete_plan() -> Path:
+    plans = find_incomplete_plans(Path.cwd())
+    if not plans:
+        typer.echo(f"No plans with incomplete runs found under {Path.cwd()}", err=True)
+        raise typer.Exit(1)
+    typer.echo("Plans with incomplete runs:")
+    for index, plan in enumerate(plans, start=1):
+        typer.echo(f"{index}. {plan.plan_dir} — {plan.completed}/{plan.total} passed (run {plan.run_id or '-'})")
+    choice = typer.prompt("Resume which plan?", type=int)
+    if not 1 <= choice <= len(plans):
+        typer.echo(f"Error: choose a number between 1 and {len(plans)}", err=True)
+        raise typer.Exit(1)
+    return plans[choice - 1].plan_dir
+
+
 @app.command()
-def resume(run_id: str = typer.Argument(..., help="ID of the run to resume.")) -> None:
-    """Resume a previously interrupted run."""
-    typer.echo("not yet implemented", err=True)
-    raise typer.Exit(1)
+def run(
+    plan_dir: Path | None = typer.Argument(
+        None,
+        help="Path to the plan directory containing plan.yaml. Omit to pick from incomplete runs.",
+    ),
+    no_tui: bool = typer.Option(
+        False,
+        "--no-tui",
+        help="Plain-text progress instead of the live dashboard (implied when stdout is not a tty).",
+    ),
+) -> None:
+    """Execute a plan, showing a live dashboard (the default on a tty)."""
+    if plan_dir is None:
+        _execute_plan_dir(_pick_incomplete_plan(), resume_run=True, no_tui=no_tui)
+        return
+    if not plan_dir.is_dir():
+        typer.echo(f"Error: plan directory does not exist: {plan_dir}", err=True)
+        raise typer.Exit(1)
+    _execute_plan_dir(plan_dir, resume_run=False, no_tui=no_tui)
+
+
+@app.command()
+def resume(
+    run_id: str = typer.Argument(..., help="ID of the run to resume (see _state/run_id)."),
+    no_tui: bool = typer.Option(
+        False,
+        "--no-tui",
+        help="Plain-text progress instead of the live dashboard (implied when stdout is not a tty).",
+    ),
+) -> None:
+    """Resume a previously interrupted run by its run id."""
+    try:
+        plan_dir = find_plan_by_run_id(Path.cwd(), run_id)
+    except RunError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+    _execute_plan_dir(plan_dir, resume_run=True, no_tui=no_tui)
 
 
 @app.command()

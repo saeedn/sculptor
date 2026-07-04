@@ -161,8 +161,10 @@ class Scheduler:
         reaper: Reaper,
         clock: Callable[[], float] = time.time,
         on_transition: Callable[[str, str, str, str | None], None] | None = None,
+        run_id: str | None = None,
     ) -> None:
         self.plan_dir = plan_dir
+        self._preassigned_run_id = run_id
         self.manifest = manifest
         self.graph = graph
         self.journal = journal
@@ -266,7 +268,7 @@ class Scheduler:
         self._guard_unsupported_kinds()
         ensure_state_dir(self.plan_dir)
         if not self._resumed:
-            run_id = new_run_id()
+            run_id = self._preassigned_run_id or new_run_id()
             self.journal.append(
                 RunStarted(
                     ts=self.clock(),

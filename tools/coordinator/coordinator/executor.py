@@ -41,6 +41,7 @@ from coordinator.journal import replay
 from coordinator.launcher import launch_attempt
 from coordinator.manifest import PlanManifest
 from coordinator.manifest import TaskSpec
+from coordinator.ratelimit import classify_attempt
 from coordinator.registrations import WorkerRegistration
 from coordinator.registrations import resolve_worker
 from coordinator.review import VerdictError
@@ -352,6 +353,7 @@ class PlanExecutor:
             kill_grace_seconds=self.kill_grace_seconds,
             on_signal=on_signal,
             on_spawn=on_spawn,
+            should_abort=self._abort_requested,
         )
 
         if head_commit(self.cwd) != head_before:
@@ -359,7 +361,14 @@ class PlanExecutor:
                 gate=gate_kind, passed=False, findings="reviewer modified the repository (HEAD moved); review is void"
             )
         elif result.status != "completed":
-            outcome = GateOutcome(gate=gate_kind, passed=False, findings=f"reviewer attempt {result.status}")
+            rate_limit = classify_attempt(result, review.prepared.attempt_dir)
+            outcome = GateOutcome(
+                gate=gate_kind,
+                passed=False,
+                findings=f"reviewer attempt {result.status}",
+                rate_limited=rate_limit is not None,
+                rate_limit_hint=rate_limit.resume_hint if rate_limit is not None else None,
+            )
         else:
             try:
                 verdict = parse_verdict(review.verdict_path)

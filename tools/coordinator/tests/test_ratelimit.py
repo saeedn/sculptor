@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -29,9 +30,34 @@ def test_marker_case_insensitive(tmp_path: Path) -> None:
     assert classify_attempt(result) is not None
 
 
-def test_marker_in_last_assistant_message() -> None:
+def test_last_assistant_message_is_not_scanned() -> None:
+    # Assistant content is conversation, not an error surface — a worker
+    # merely TALKING about rate limits must not pause the run.
     result = AttemptResult(ok=False, status="completed", last_assistant_message="I hit a rate limit, sorry")
+    assert classify_attempt(result) is None
+
+
+def test_conversation_content_about_rate_limits_is_ignored(tmp_path: Path) -> None:
+    lines = [
+        json.dumps({"type": "user", "message": "implement rate limit handling for HTTP 429"}),
+        json.dumps({"type": "assistant", "message": "added the rate-limit retry logic"}),
+    ]
+    result = result_with_transcript(tmp_path, "\n".join(lines) + "\n")
+    assert classify_attempt(result) is None
+
+
+def test_transcript_error_entry_classifies(tmp_path: Path) -> None:
+    line = json.dumps({"type": "system", "subtype": "error", "message": "API Error: 429 rate limit"})
+    result = result_with_transcript(tmp_path, line + "\n")
     assert classify_attempt(result) is not None
+
+
+def test_marker_in_stdout_log(tmp_path: Path) -> None:
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    (attempt_dir / "stdout.log").write_text("Claude usage limit reached\n")
+    result = AttemptResult(ok=False, status="exited-without-stop")
+    assert classify_attempt(result, attempt_dir) is not None
 
 
 def test_marker_in_stderr_log(tmp_path: Path) -> None:

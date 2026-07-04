@@ -31,7 +31,10 @@ class AttemptRecordLite:
 
     attempt_index: int
     registration: str | None
+    # Neither burns budget: rate-limited attempts are the provider's
+    # fault, discarded ones never ran to a verdict (crash/pause mid-flight).
     rate_limited: bool = False
+    discarded: bool = False
 
 
 @dataclass(frozen=True)
@@ -58,14 +61,18 @@ class FailureRecord:
 
 def attempt_plan(task_spec: TaskSpec | None, defaults: ManifestDefaults) -> AttemptBudget:
     base = defaults.attempts
-    if task_spec is not None and task_spec.attempts is not None:
-        base = task_spec.attempts
-    return AttemptBudget(base_count=base, escalation_worker=defaults.escalation_worker)
+    escalation = defaults.escalation_worker
+    if task_spec is not None:
+        if task_spec.attempts is not None:
+            base = task_spec.attempts
+        if task_spec.escalation_worker is not None:
+            escalation = task_spec.escalation_worker
+    return AttemptBudget(base_count=base, escalation_worker=escalation)
 
 
 def next_attempt(history: list[AttemptRecordLite], budget: AttemptBudget) -> NextAttempt | Exhausted:
     """Decide the next rung after a failure, given the attempts so far."""
-    counted = sum(1 for record in history if not record.rate_limited)
+    counted = sum(1 for record in history if not record.rate_limited and not record.discarded)
     if counted < budget.base_count:
         return NextAttempt(escalated=False, registration_override=None)
     if budget.escalation_worker is not None and counted < budget.base_count + 1:

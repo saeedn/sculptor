@@ -7,6 +7,7 @@ from coordinator.dag import build_graph
 from coordinator.journal import AttemptStarted
 from coordinator.journal import ControlIntent
 from coordinator.journal import ControlIntentName
+from coordinator.journal import GateResult
 from coordinator.journal import Journal
 from coordinator.journal import RunStarted
 from coordinator.journal import Snapshot
@@ -38,6 +39,7 @@ class FakeExecutor:
         self.attempts = attempts or {}
         self.gates = gates or {}
         self.calls: list[str] = []
+        self.seeds: dict[str, list[str | None]] = {}
 
     def run_attempt(
         self,
@@ -47,6 +49,7 @@ class FakeExecutor:
         registration_override: str | None = None,
     ) -> AttemptResult:
         self.calls.append(f"attempt:{node.node_id}:{attempt_index}")
+        self.seeds.setdefault(node.node_id, []).append(seed_context)
         queue = self.attempts.get(node.node_id)
         if queue:
             return queue.pop(0)
@@ -209,6 +212,45 @@ def test_retry_intent_requeues_waiting_human(tmp_path: Path) -> None:
     assert executor_2.calls == ["attempt:a:1", "gates:a"]
 
 
+def test_manual_retry_carries_failure_context(tmp_path: Path) -> None:
+    manifest = make_manifest([task("a")])
+    executor = FakeExecutor(
+        gates={"a": [GateOutcome(gate="mechanical", passed=False, findings="missing frobnicator")]}
+    )
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "failed"
+    # The real executor journals its gate verdicts; the fake does not.
+    Journal(journal_path(tmp_path)).append(
+        GateResult(node_id="a", gate="mechanical", passed=False, findings="missing frobnicator")
+    )
+    append_intent(tmp_path, "retry", node_id="a")
+    executor_2 = FakeExecutor()
+    resumed = make_scheduler(tmp_path, manifest, executor_2, resume=True)
+    assert resumed.run() == "completed"
+    seed = executor_2.seeds["a"][0]
+    assert seed is not None and "missing frobnicator" in seed
+
+
+def test_pause_undone_by_resume_in_same_batch_is_not_sticky(tmp_path: Path) -> None:
+    manifest = make_manifest([task("a")])
+    append_intent(tmp_path, "pause")
+    append_intent(tmp_path, "resume")
+    scheduler = make_scheduler(tmp_path, manifest, FakeExecutor())
+    assert scheduler.run() == "completed"
+    snapshot = Snapshot.from_events(replay(journal_path(tmp_path)))
+    assert snapshot.run_status != "paused"
+
+
+def test_stale_abort_is_dropped_on_resume(tmp_path: Path) -> None:
+    manifest = make_manifest([task("a")])
+    # The user aborted, then the coordinator died before consuming it.
+    # Re-running IS the decision to continue — the stale abort must not
+    # cancel the resumed run.
+    append_intent(tmp_path, "abort")
+    resumed = make_scheduler(tmp_path, manifest, FakeExecutor(), resume=True)
+    assert resumed.run() == "completed"
+
+
 def test_abort_intent_stops_run(tmp_path: Path) -> None:
     manifest = make_manifest([task("a")])
     append_intent(tmp_path, "abort")
@@ -291,3 +333,22 @@ def test_phase_review_node_uses_default_worker(tmp_path: Path) -> None:
     assert scheduler.states["phase-review:1"] == NodeState.PASSED
     attempt_events = [e for e in replay(journal_path(tmp_path)) if isinstance(e, AttemptStarted)]
     assert [e.worker_registration for e in attempt_events] == ["w", "w"]
+
+
+def test_resume_discarded_attempt_does_not_burn_budget(tmp_path: Path) -> None:
+    manifest = PlanManifest(
+        version=1,
+        defaults=ManifestDefaults(worker="w", verification=[], attempts=2),
+        phases=[PhaseSpec(id=1, name="P", review="none", tasks=[task("a")])],
+    )
+    ensure_state_dir(tmp_path)
+    journal = Journal(journal_path(tmp_path))
+    journal.append(RunStarted(run_id="run-old", plan_dir=str(tmp_path), manifest_hash="h"))
+    journal.append(TaskStateChanged(node_id="a", old_state="pending", new_state="running"))
+    journal.append(AttemptStarted(node_id="a", attempt_index=0, worker_registration="w", attempt_dir="/a/0"))
+    # The discarded mid-flight attempt keeps its dir index but not its
+    # budget slot: the node still gets 2 real attempts (indexes 1 and 2).
+    executor = FakeExecutor(gates={"a": [GateOutcome(gate="mechanical", passed=False, findings="real failure")]})
+    resumed = make_scheduler(tmp_path, manifest, executor, resume=True)
+    assert resumed.run() == "completed"
+    assert executor.calls == ["attempt:a:1", "gates:a", "attempt:a:2", "gates:a"]

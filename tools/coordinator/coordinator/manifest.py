@@ -98,6 +98,7 @@ class TaskSpec(BaseModel):
     worker: str | None = None
     gates: list[str] | None = None
     attempts: int | None = None
+    escalation_worker: str | None = None
     no_change: bool = False
 
     @field_validator("id", mode="before")

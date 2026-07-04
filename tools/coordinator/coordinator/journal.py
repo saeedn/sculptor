@@ -343,7 +343,12 @@ class Snapshot(BaseModel):
             self.pause_reason = event.reason
             self.resume_hint = event.resume_hint
         elif isinstance(event, IntentsConsumed):
-            self.intents_consumed = max(self.intents_consumed, event.position)
+            # The marker consumes every intent that precedes it in file
+            # order; journal_line_count is this event's own index while
+            # folding (from_events increments it afterwards). The event's
+            # stored position is advisory — file order is what the
+            # scheduler applies.
+            self.intents_consumed = max(self.intents_consumed, self.journal_line_count + 1)
         elif isinstance(event, ReviewHandoff):
             self.review_agent_id = event.agent_id
 

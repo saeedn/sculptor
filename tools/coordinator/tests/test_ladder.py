@@ -78,3 +78,21 @@ def test_seed_context_caps_long_excerpts() -> None:
     text = format_seed_context([failure(0, "x" * 10_000)])
     assert "[...truncated]" in text
     assert len(text) < 6_000
+
+
+def test_discarded_attempts_do_not_count() -> None:
+    budget = AttemptBudget(base_count=2, escalation_worker=None)
+    history = [
+        AttemptRecordLite(attempt_index=0, registration="w", discarded=True),
+        AttemptRecordLite(attempt_index=1, registration="w"),
+    ]
+    decision = next_attempt(history, budget)
+    assert isinstance(decision, NextAttempt) and not decision.escalated
+
+
+def test_per_task_escalation_worker_override() -> None:
+    defaults = ManifestDefaults(worker="w", verification=[], attempts=2, escalation_worker="opus")
+    task = TaskSpec(id="1.1", file="t.md", escalation_worker="fable")
+    budget = attempt_plan(task, defaults)
+    assert budget.escalation_worker == "fable"
+    assert attempt_plan(None, defaults).escalation_worker == "opus"

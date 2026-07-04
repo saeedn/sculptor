@@ -122,6 +122,10 @@ class GateOutcome:
     # Parsed reviewer findings (review.Finding objects) when the agentic
     # gate ran; the retry ladder formats these into the retry context.
     findings_list: tuple[object, ...] = ()
+    # A rate-limited REVIEWER failed the gate through no fault of the
+    # implementation; the run pauses instead of burning an attempt.
+    rate_limited: bool = False
+    rate_limit_hint: str | None = None
 
 
 class Executor(Protocol):
@@ -178,6 +182,9 @@ class Scheduler:
         self._aborted = False
         self._resumed = False
         self._intents_position = 0
+        # Journal index before which abort intents are ignored (set on
+        # resume so a killed run's stale abort cannot cancel the new one).
+        self._ignore_aborts_before = 0
         self._attempt_records: dict[str, list[AttemptRecordLite]] = {node_id: [] for node_id in graph.nodes}
         self._failures: dict[str, list[FailureRecord]] = {node_id: [] for node_id in graph.nodes}
         self._seed_context: dict[str, str] = {}
@@ -202,6 +209,7 @@ class Scheduler:
         scheduler._resumed = True
         snapshot = Snapshot.from_events(replay(journal.path))
         scheduler._intents_position = snapshot.intents_consumed
+        scheduler._ignore_aborts_before = snapshot.journal_line_count
         scheduler._paused = snapshot.run_status == "paused" and snapshot.pause_reason in _STICKY_PAUSE_REASONS
         for node_id, node_snapshot in snapshot.nodes.items():
             if node_id not in scheduler.states:
@@ -246,6 +254,11 @@ class Scheduler:
                         pid = node_snapshot.attempts[-1].pid
                         if pid is not None:
                             reaper(pid)
+                if scheduler._attempt_records[node_id]:
+                    # The discarded attempt reached no verdict; it must not
+                    # burn retry budget (its dir index stays used, so the
+                    # re-run never reuses a stale attempt dir).
+                    scheduler._attempt_records[node_id][-1].discarded = True
                 scheduler.transition(node_id, NodeState.PENDING, reason="resume-discard")
         return scheduler
 
@@ -304,7 +317,6 @@ class Scheduler:
                     self.journal.append(
                         RunPaused(ts=self.clock(), reason="failed", resume_hint=f"failure report: {report_path}")
                     )
-                    print(f"run failed — see the failure report: {report_path}")
                     return "failed"
                 return "completed"
             self._execute_node(self.graph.nodes[ready[0]])
@@ -412,6 +424,11 @@ class Scheduler:
         self._schedule_next_rung(node, result.error or "attempt-failed")
 
     def on_gate_failure(self, node: Node, attempt_index: int, outcome: GateOutcome) -> None:
+        if outcome.rate_limited:
+            # The REVIEWER was rate-limited; the implementation attempt is
+            # not at fault and must not burn budget.
+            self._pause_for_rate_limit(node, attempt_index, outcome.rate_limit_hint)
+            return
         result = self._last_results.get(node.node_id)
         if result is not None:
             rate_limit = classify_attempt(result, attempt_dir(self.plan_dir, node.node_id, attempt_index))
@@ -470,29 +487,52 @@ class Scheduler:
 
     def _consume_intents(self) -> None:
         events: list[Event] = list(replay(self.journal.path))
-        intents = [event for event in events[self._intents_position :] if isinstance(event, ControlIntent)]
-        # Mark the batch consumed before acting on it (write-ahead): a crash
-        # mid-batch drops intents rather than double-applying them.
-        self._intents_position = len(events)
-        if intents:
-            self.journal.append(IntentsConsumed(ts=self.clock(), position=self._intents_position))
-            self._intents_position += 1
-        for intent in intents:
-            self._apply_intent(intent)
+        if not any(isinstance(event, ControlIntent) for event in events[self._intents_position :]):
+            return
+        # Write the consumed marker FIRST, then read back and apply exactly
+        # the intents that precede it in file order: an intent appended
+        # concurrently (the TUI thread, the `coordinator intent` CLI)
+        # either lands before the marker and is applied now, or after it
+        # and is applied on the next poll — never silently skipped. A
+        # crash between the marker and application drops the batch rather
+        # than double-applying it.
+        self.journal.append(IntentsConsumed(ts=self.clock(), position=self._intents_position))
+        events = list(replay(self.journal.path))
+        marker_index = max(index for index, event in enumerate(events) if isinstance(event, IntentsConsumed))
+        batch = [
+            (index, event)
+            for index, event in enumerate(events[:marker_index])
+            if index >= self._intents_position and isinstance(event, ControlIntent)
+        ]
+        self._intents_position = marker_index + 1
+        was_paused = self._paused
+        for index, intent in batch:
+            self._apply_intent(intent, index)
+        if self._paused and not was_paused:
+            # Journaled after the whole batch so a pause immediately undone
+            # by a later resume in the same batch never records a sticky
+            # paused state.
+            self.journal.append(RunPaused(ts=self.clock(), reason="pause-intent"))
 
-    def _apply_intent(self, intent: ControlIntent) -> None:
+    def _apply_intent(self, intent: ControlIntent, index: int) -> None:
         if intent.intent == "pause":
             self._paused = True
-            self.journal.append(RunPaused(ts=self.clock(), reason="pause-intent"))
         elif intent.intent == "resume":
             self._paused = False
         elif intent.intent == "abort":
-            self._aborted = True
+            # A stale abort left over from a killed run must not abort the
+            # resumed run — re-running IS the decision to continue.
+            if index >= self._ignore_aborts_before:
+                self._aborted = True
         elif intent.intent == "retry":
             if intent.node_id is not None and self.states.get(intent.node_id) in (
                 NodeState.FAILED,
                 NodeState.WAITING_HUMAN,
             ):
+                # A manual retry gets the same seeded failure context an
+                # automatic one would.
+                if self._failures.get(intent.node_id):
+                    self._seed_context[intent.node_id] = format_seed_context(self._failures[intent.node_id])
                 self.transition(intent.node_id, NodeState.PENDING, reason="retry-intent")
         elif intent.intent == "skip":
             if intent.node_id is not None and self.states.get(intent.node_id) in (

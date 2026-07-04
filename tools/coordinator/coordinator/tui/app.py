@@ -47,14 +47,21 @@ from coordinator.tui.widgets import state_cell
 from coordinator.tui.widgets import worker_cell
 
 _REFRESH_INTERVAL_SECONDS = 0.5
+_SNAPSHOT_RETRY_DELAY_SECONDS = 0.05
 
 
 class StateReader:
-    """Re-reads the snapshot, no-oping when the journal hasn't grown."""
+    """Re-reads the snapshot, no-oping when the journal hasn't grown.
+
+    Persistent read failures (e.g. a corrupt journal) are surfaced via
+    ``last_error`` so the dashboard reports them instead of silently
+    freezing on the last good state.
+    """
 
     def __init__(self, plan_dir: Path) -> None:
         self.plan_dir = plan_dir
         self._last_size = -1
+        self.last_error: str | None = None
 
     def read(self) -> Snapshot | None:
         path = journal_path(self.plan_dir)
@@ -63,15 +70,18 @@ class StateReader:
             return None
         self._last_size = size
         try:
-            return load_snapshot(self.plan_dir)
+            snapshot = load_snapshot(self.plan_dir)
         except Exception:
             # A mid-write race; retry once before giving up on this tick.
-            time.sleep(0.05)
+            time.sleep(_SNAPSHOT_RETRY_DELAY_SECONDS)
             try:
-                return load_snapshot(self.plan_dir)
-            except Exception:
+                snapshot = load_snapshot(self.plan_dir)
+            except Exception as e:
                 self._last_size = -1
+                self.last_error = f"state unreadable: {e}"
                 return None
+        self.last_error = None
+        return snapshot
 
 
 class CoordinatorApp(App):
@@ -194,8 +204,15 @@ class CoordinatorApp(App):
             parts.append(progress_summary(snapshot, len(self.node_order)))
         elif self.final_status is not None:
             parts.append(f"state: {self.final_status}")
+        if self.reader.last_error is not None:
+            parts.append(self.reader.last_error)
         if self.run_error is not None:
             parts.append(f"RUN CRASHED: {self.run_error}")
+        elif not self._run_active() and self.final_status not in (None, "completed"):
+            run_id = snapshot.run_id if snapshot is not None else None
+            parts.append(
+                f"run stopped — controls are recorded and apply on `coordinator resume {run_id or '<run-id>'}`"
+            )
         consumed = snapshot.intents_consumed if snapshot is not None else 0
         pending = [label for label, position in self._requested_intents if position >= consumed]
         if pending:
@@ -208,12 +225,18 @@ class CoordinatorApp(App):
     # scheduler picks intents up at the top of its loop, so run-level
     # pause latency is one node step.
 
+    def _run_active(self) -> bool:
+        return self._run_thread is not None and self._run_thread.is_alive()
+
     def _append_intent(self, intent: ControlIntentName, node_id: str | None = None) -> None:
         position = complete_line_count(journal_path(self.plan_dir))
         Journal(journal_path(self.plan_dir)).append(ControlIntent(intent=intent, node_id=node_id))
         label = intent if node_id is None else f"{intent} {node_id}"
         self._requested_intents.append((label, position))
-        self.notify(f"{label} requested")
+        if self._run_active():
+            self.notify(f"{label} requested")
+        else:
+            self.notify(f"{label} recorded — takes effect when the run is resumed")
         self._update_status_bar()
 
     def _selected_node_id(self) -> str | None:

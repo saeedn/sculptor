@@ -21,6 +21,7 @@ from coordinator.journal import CommitRecorded
 from coordinator.journal import Event
 from coordinator.journal import Journal
 from coordinator.journal import ReviewHandoff
+from coordinator.journal import RunPaused
 from coordinator.journal import Snapshot
 from coordinator.journal import load_snapshot
 from coordinator.journal import replay
@@ -82,6 +83,8 @@ def _validate_workers(manifest: PlanManifest, registrations: dict[str, WorkerReg
                 resolve_worker(manifest, task, registrations)
             except ManifestError as e:
                 problems.extend(e.problems)
+            if task.escalation_worker is not None and task.escalation_worker not in registrations:
+                problems.append(f"task {task.id}: unknown escalation worker registration {task.escalation_worker!r}")
     escalation = manifest.defaults.escalation_worker
     if escalation is not None and escalation not in registrations:
         problems.append(f"defaults.escalation_worker: unknown worker registration {escalation!r}")
@@ -182,15 +185,22 @@ def execute_plan(
         return "paused"
     if status == "completed" and all(state == NodeState.PASSED for state in scheduler.states.values()):
         # Fully successful (nothing skipped or failed): hand the feature
-        # to the Review agent. Never fatal to the completed run.
-        agent_id = handoff_review(plan_dir, manifest, out=progress if progress is not None else print)
-        journal.append(ReviewHandoff(ts=clock(), agent_id=agent_id))
-        save_snapshot(Snapshot.from_events(replay(journal.path)), plan_dir)
+        # to the Review agent. Never fatal to the completed run, and never
+        # repeated — resuming an already-completed run must not spawn a
+        # second Review agent.
+        if not any(isinstance(event, ReviewHandoff) for event in replay(journal.path)):
+            agent_id = handoff_review(plan_dir, manifest, out=progress if progress is not None else print)
+            journal.append(ReviewHandoff(ts=clock(), agent_id=agent_id))
+            save_snapshot(Snapshot.from_events(replay(journal.path)), plan_dir)
     if status in _WAITING_STATUSES:
         signaler.waiting()
     else:
         signaler.idle()
     if progress is not None:
+        if status == "failed":
+            paused_events = [event for event in replay(journal.path) if isinstance(event, RunPaused)]
+            if paused_events and paused_events[-1].resume_hint:
+                progress(paused_events[-1].resume_hint)
         progress(f"run finished: {status}")
     return status
 

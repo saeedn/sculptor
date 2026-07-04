@@ -235,3 +235,15 @@ def test_no_args_picker_with_no_incomplete_plans(tmp_path: Path, monkeypatch: py
     monkeypatch.chdir(tmp_path)
     result = CliRunner().invoke(app, ["run"])
     assert result.exit_code == 1
+
+
+def test_unknown_per_task_escalation_worker_fails_fast(tmp_path: Path) -> None:
+    repo, plan_dir = make_plan_repo(tmp_path, COMMIT_THEN_STOP)
+    plan = (plan_dir / "plan.yaml").read_text()
+    plan = plan.replace(
+        "        file: 01_01_first.md\n", "        file: 01_01_first.md\n        escalation_worker: no-such-worker\n"
+    )
+    (plan_dir / "plan.yaml").write_text(plan)
+    subprocess.run(["git", "-C", str(repo), "commit", "-aqm", "edit plan"], check=True)
+    with pytest.raises(ManifestError, match="no-such-worker"):
+        run_plan(plan_dir, repo)

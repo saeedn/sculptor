@@ -2,10 +2,11 @@
 
 A rate-limited attempt must not burn retry budget: the run pauses with
 the resume time surfaced instead. Classification reads FILES — the
-transcript tail, the captured stderr, and the last assistant message —
+transcript tail's non-content entries and the captured process output —
 never the screen.
 """
 
+import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,19 +48,47 @@ def _tail(path: Path) -> str:
     return data[-_TAIL_BYTES:].decode(errors="replace")
 
 
+def _transcript_error_text(path: Path) -> str:
+    """The transcript tail with conversation content stripped.
+
+    A transcript is JSONL of conversation entries, and user/assistant
+    content legitimately discusses rate limits (a task ABOUT rate
+    limiting must not pause the run on every attempt). A real rate limit
+    surfaces in error/system entries, so only non-content lines are
+    scanned; lines that don't parse as JSON are scanned as-is.
+    """
+    lines: list[str] = []
+    for line in _tail(path).splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        try:
+            entry = json.loads(stripped)
+        except ValueError:
+            lines.append(stripped)
+            continue
+        if isinstance(entry, dict) and entry.get("type") in ("user", "assistant"):
+            continue
+        lines.append(stripped)
+    return "\n".join(lines)
+
+
 def classify_attempt(result: "AttemptResult", attempt_dir: Path | None = None) -> RateLimit | None:
-    """``RateLimit`` when the attempt's artifacts show a rate-limit marker, else None."""
+    """``RateLimit`` when the attempt's artifacts show a rate-limit marker, else None.
+
+    Scans error surfaces only — the transcript's non-content entries and
+    the captured process output — never the conversation itself.
+    """
     texts: list[str] = []
     if result.transcript_path is not None:
         transcript = Path(result.transcript_path)
         if transcript.is_file():
-            texts.append(_tail(transcript))
-    if result.last_assistant_message:
-        texts.append(result.last_assistant_message)
+            texts.append(_transcript_error_text(transcript))
     if attempt_dir is not None:
-        stderr_log = attempt_dir / "stderr.log"
-        if stderr_log.is_file():
-            texts.append(_tail(stderr_log))
+        for log_name in ("stderr.log", "stdout.log"):
+            log = attempt_dir / log_name
+            if log.is_file():
+                texts.append(_tail(log))
     combined = "\n".join(texts)
     lowered = combined.lower()
     if not any(marker in lowered for marker in RATE_LIMIT_MARKERS):

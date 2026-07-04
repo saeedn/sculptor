@@ -331,6 +331,7 @@ phases:
         worker: claude-print-opus      # optional per-task override
         gates: [mechanical, agentic]   # optional per-task override
         attempts: 3                    # optional per-task override
+        escalation_worker: claude-print-opus  # optional per-task override
         no_change: false           # true for tasks expected to not commit
 ```
 

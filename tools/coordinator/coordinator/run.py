@@ -121,14 +121,16 @@ def execute_plan(
         # A fresh run over existing state would reuse attempt dirs — the
         # stale signals.jsonl files would satisfy the new workers' Stop
         # detection instantly — and interleave two runs in one journal.
+        # Sculptor tab restarts re-issue the launch command, so this is a
+        # routine event: continue the recorded run instead of refusing.
         existing_journal = journal_path(plan_dir)
         if existing_journal.is_file() and existing_journal.stat().st_size > 0:
-            run_id_hint = read_run_id(plan_dir) or "<run-id>"
-            raise RunError(
-                f"refusing to start: {plan_dir} already has state from a previous run. "
-                + f"Resume it with `coordinator resume {run_id_hint}`, "
-                + f"or delete {state_dir(plan_dir)} to start over."
-            )
+            resume = True
+            if progress is not None:
+                progress(
+                    f"existing run state found ({read_run_id(plan_dir) or 'unknown run id'}) — resuming. "
+                    + f"Delete {state_dir(plan_dir)} to start the plan over."
+                )
     if not resume and not is_tree_clean(cwd):
         raise RunError(
             f"refusing to start: the working tree at {cwd} is dirty. "

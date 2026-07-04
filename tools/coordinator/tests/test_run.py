@@ -24,6 +24,7 @@ from coordinator.run import iter_plan_dirs
 from coordinator.statedir import attempt_dir
 from coordinator.statedir import ensure_state_dir
 from coordinator.statedir import journal_path
+from coordinator.statedir import read_run_id
 from coordinator.statedir import write_run_id
 from tests.fakes import COMMIT_THEN_STOP
 from tests.fakes import STOP_WITHOUT_COMMIT
@@ -106,16 +107,21 @@ def test_two_task_plan_passes(tmp_path: Path) -> None:
     assert any("1.1: pending -> running" in m for m in messages)
 
 
-def test_fresh_run_over_existing_state_refused(tmp_path: Path) -> None:
+def test_run_over_existing_state_resumes_instead_of_restarting(tmp_path: Path) -> None:
     repo, plan_dir = make_plan_repo(tmp_path, COMMIT_THEN_STOP)
-    assert run_plan(plan_dir, repo) == "completed"
-    journal_size = journal_path(plan_dir).stat().st_size
-    with pytest.raises(RunError) as exc_info:
-        run_plan(plan_dir, repo)
-    assert "already has state" in str(exc_info.value)
-    assert "coordinator resume run-" in str(exc_info.value)
-    # Refused before touching the existing journal.
-    assert journal_path(plan_dir).stat().st_size == journal_size
+    messages: list[str] = []
+    assert run_plan(plan_dir, repo, progress=messages.append) == "completed"
+    first_run_id = read_run_id(plan_dir)
+    messages.clear()
+    # A re-issued launch command (Sculptor tab restart) must continue the
+    # recorded run — never reuse attempt dirs or interleave a second run.
+    assert run_plan(plan_dir, repo, progress=messages.append) == "completed"
+    assert any("existing run state found" in m for m in messages)
+    assert read_run_id(plan_dir) == first_run_id
+    events = list(replay(journal_path(plan_dir)))
+    # Exactly one run and no re-attempts: the completed tasks stay done.
+    assert len([e for e in events if isinstance(e, RunStarted)]) == 1
+    assert not any(isinstance(e, AttemptStarted) and e.attempt_index > 0 for e in events)
 
 
 def test_dirty_tree_at_start_refused(tmp_path: Path) -> None:

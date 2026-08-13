@@ -27,8 +27,19 @@ RATE_LIMIT_MARKERS = (
     "rate-limit",
     "usage limit reached",
     "you've reached your usage limit",
-    "429",
     "overloaded_error",
+)
+
+# A bare "429" is not a marker: those digits occur inside token counts
+# ("cache_read_input_tokens":142990), timestamps, and hashes, and one
+# such match silently converts an unrelated failure into a rate-limit
+# pause. Require the structure of an actual HTTP status instead.
+_HTTP_429_PATTERN = re.compile(
+    r"\"status(?:_?code)?\"\s*:\s*429\b"
+    r"|\bstatus(?:\s+code)?\s*[:=]\s*429\b"
+    r"|\bhttp(?:/[\d.]+)?\s+429\b"
+    r"|\b429\s+too\s+many\s+requests\b",
+    re.IGNORECASE,
 )
 
 # "resets at 6pm", "resets at 2026-07-03T18:00:00Z", "reset at ..." —
@@ -44,11 +55,25 @@ class RateLimit(BaseModel):
 
 
 def _tail(path: Path) -> str:
+    """The last ``_TAIL_BYTES`` of a file, starting at a line boundary.
+
+    The cut lands mid-line in general, and a partial JSONL line would
+    fail to parse and therefore escape the content filter below — so the
+    truncated first line is dropped whenever the tail is not the whole
+    file.
+    """
     try:
         data = path.read_bytes()
     except OSError:
         return ""
-    return data[-_TAIL_BYTES:].decode(errors="replace")
+    if len(data) <= _TAIL_BYTES:
+        return data.decode(errors="replace")
+    tail = data[-_TAIL_BYTES:]
+    newline = tail.find(b"\n")
+    if newline == -1:
+        # One enormous line spans the whole tail; nothing survives the cut.
+        return ""
+    return tail[newline + 1 :].decode(errors="replace")
 
 
 def _transcript_error_text(path: Path) -> str:
@@ -94,7 +119,7 @@ def classify_attempt(result: "AttemptResult", attempt_dir: Path | None = None) -
                 texts.append(_tail(log))
     combined = "\n".join(texts)
     lowered = combined.lower()
-    if not any(marker in lowered for marker in RATE_LIMIT_MARKERS):
+    if not any(marker in lowered for marker in RATE_LIMIT_MARKERS) and _HTTP_429_PATTERN.search(combined) is None:
         return None
     reset_match = _RESET_PATTERN.search(combined)
     if reset_match is not None:

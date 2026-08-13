@@ -99,3 +99,56 @@ def test_no_reset_time_gives_none_hint(tmp_path: Path) -> None:
     rate_limit = classify_attempt(result)
     assert rate_limit is not None
     assert rate_limit.resume_hint is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        '"cache_read_input_tokens":142990',
+        '"output_tokens":4290',
+        "commit 429fa17b3c",
+        "elapsed 14:29:03",
+    ],
+)
+def test_digits_containing_429_are_not_a_rate_limit(tmp_path: Path, text: str) -> None:
+    # A bare "429" substring occurs constantly in token counts, hashes,
+    # and timestamps; only an HTTP status shape counts.
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    (attempt_dir / "stdout.log").write_text(text + "\n")
+    result = AttemptResult(is_ok=False, status="timeout")
+    assert classify_attempt(result, attempt_dir) is None
+
+
+@pytest.mark.parametrize(
+    "text",
+    ['{"status":429}', '{"status_code": 429}', "status: 429", "HTTP/1.1 429", "429 Too Many Requests"],
+)
+def test_http_429_shapes_classify(tmp_path: Path, text: str) -> None:
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    (attempt_dir / "stderr.log").write_text(text + "\n")
+    result = AttemptResult(is_ok=False, status="exited-without-stop")
+    assert classify_attempt(result, attempt_dir) is not None
+
+
+def test_transcript_tail_never_scans_a_truncated_conversation_line(tmp_path: Path) -> None:
+    # The 64KiB tail cuts mid-line. A partial assistant entry does not
+    # parse as JSON, and scanning it raw would defeat the content filter
+    # entirely — a task ABOUT rate limiting would pause its own run.
+    padding = json.dumps({"type": "assistant", "message": "x" * 200}) + "\n"
+    long_assistant_line = json.dumps(
+        {"type": "assistant", "message": "we must handle rate limit errors", "blob": "y" * 70_000}
+    )
+    text = padding * 20 + long_assistant_line + "\n" + json.dumps({"type": "user", "message": "ok"}) + "\n"
+    result = result_with_transcript(tmp_path, text)
+    assert classify_attempt(result) is None
+
+
+def test_error_entry_after_a_truncated_line_still_classifies(tmp_path: Path) -> None:
+    # Dropping the partial first line must not blind the scan to the
+    # real error surfaces that follow it.
+    long_line = json.dumps({"type": "assistant", "message": "working", "blob": "y" * 70_000})
+    error_line = json.dumps({"type": "system", "subtype": "error", "message": "usage limit reached"})
+    result = result_with_transcript(tmp_path, long_line + "\n" + error_line + "\n")
+    assert classify_attempt(result) is not None

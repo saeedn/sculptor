@@ -54,6 +54,13 @@ from coordinator.signals import is_waiting
 _PTY_COLUMNS = 200
 _PTY_ROWS = 50
 
+# How long one attempt may run before the launcher kills it. Generous by
+# design: a task whose verification runs a real end-to-end suite can
+# legitimately spend well over an hour, and a timeout kill lands
+# mid-tool-call, discarding the work with no commit. Override per plan
+# or per task (``attempt_timeout_minutes``) or per run (``--timeout-minutes``).
+DEFAULT_ATTEMPT_TIMEOUT_SECONDS = 120 * 60.0
+
 SignalCallback = Callable[[dict], None]
 
 
@@ -168,7 +175,7 @@ def launch_attempt(
     prepared: PreparedAttempt,
     cwd: Path,
     *,
-    timeout_seconds: float = 1800.0,
+    timeout_seconds: float = DEFAULT_ATTEMPT_TIMEOUT_SECONDS,
     poll_interval: float = 0.5,
     kill_grace_seconds: float = 10.0,
     on_signal: SignalCallback | None = None,

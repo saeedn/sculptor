@@ -19,6 +19,7 @@ from coordinator.attempt import PreparedAttempt
 from coordinator.attempt import prepare_attempt
 from coordinator.dag import Node
 from coordinator.dag import PHASE_REVIEW_NODE
+from coordinator.dag import TASK_NODE
 from coordinator.gates import GATE_AGENTIC
 from coordinator.gates import GATE_HUMAN
 from coordinator.gates import GATE_MECHANICAL
@@ -39,6 +40,7 @@ from coordinator.journal import RunPaused
 from coordinator.journal import SignalObserved
 from coordinator.journal import complete_line_count
 from coordinator.journal import replay
+from coordinator.launcher import DEFAULT_ATTEMPT_TIMEOUT_SECONDS
 from coordinator.launcher import launch_attempt
 from coordinator.manifest import PlanManifest
 from coordinator.manifest import TaskSpec
@@ -78,7 +80,7 @@ class PlanExecutor:
         journal: Journal,
         cwd: Path,
         *,
-        timeout_seconds: float = 1800.0,
+        timeout_seconds: float | None = None,
         poll_interval: float = 0.5,
         kill_grace_seconds: float = 10.0,
         trust_home: Path | None = None,
@@ -98,6 +100,17 @@ class PlanExecutor:
         # Abort intents appended after this run started kill the in-flight
         # worker via the launcher's poll loop (never os.kill from a UI).
         self._journal_position_at_start = complete_line_count(journal.path)
+
+    def _timeout_for(self, node: Node) -> float:
+        """Attempt timeout for one node: run override > task > plan > built-in."""
+        if self.timeout_seconds is not None:
+            return self.timeout_seconds
+        minutes = self.manifest.defaults.attempt_timeout_minutes
+        if node.kind == TASK_NODE and node.task is not None and node.task.attempt_timeout_minutes is not None:
+            minutes = node.task.attempt_timeout_minutes
+        if minutes is None:
+            return DEFAULT_ATTEMPT_TIMEOUT_SECONDS
+        return minutes * 60.0
 
     def _abort_requested(self) -> bool:
         events = list(replay(self.journal.path))
@@ -195,7 +208,7 @@ class PlanExecutor:
             registration,
             prepared,
             self.cwd,
-            timeout_seconds=self.timeout_seconds,
+            timeout_seconds=self._timeout_for(node),
             poll_interval=self.poll_interval,
             kill_grace_seconds=self.kill_grace_seconds,
             on_signal=on_signal,
@@ -358,7 +371,7 @@ class PlanExecutor:
             registration,
             review.prepared,
             self.cwd,
-            timeout_seconds=self.timeout_seconds,
+            timeout_seconds=self._timeout_for(node),
             poll_interval=self.poll_interval,
             kill_grace_seconds=self.kill_grace_seconds,
             on_signal=on_signal,

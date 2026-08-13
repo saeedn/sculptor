@@ -46,10 +46,14 @@ def main(
     """Deterministic build coordinator that executes implementation plans with Claude Code workers."""
 
 
-def _execute_plan_dir(plan_dir: Path, resume_run: bool, no_tui: bool) -> None:
+def _execute_plan_dir(plan_dir: Path, resume_run: bool, no_tui: bool, timeout_minutes: int | None = None) -> None:
+    if timeout_minutes is not None and timeout_minutes < 1:
+        typer.echo(f"Error: --timeout-minutes must be >= 1, got {timeout_minutes}", err=True)
+        raise typer.Exit(1)
+    timeout_seconds = timeout_minutes * 60.0 if timeout_minutes is not None else None
     if no_tui or not sys.stdout.isatty():
         try:
-            status = execute_plan(plan_dir, resume=resume_run, progress=typer.echo)
+            status = execute_plan(plan_dir, resume=resume_run, timeout_seconds=timeout_seconds, progress=typer.echo)
         except (ManifestError, RunError) as e:
             typer.echo(f"Error: {e}", err=True)
             raise typer.Exit(1) from e
@@ -60,7 +64,7 @@ def _execute_plan_dir(plan_dir: Path, resume_run: bool, no_tui: bool) -> None:
     from coordinator.tui.app import CoordinatorApp
 
     try:
-        dashboard = CoordinatorApp(plan_dir, resume=resume_run)
+        dashboard = CoordinatorApp(plan_dir, resume=resume_run, timeout_seconds=timeout_seconds)
     except ManifestError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1) from e
@@ -98,15 +102,20 @@ def run(
         "--no-tui",
         help="Plain-text progress instead of the live dashboard (implied when stdout is not a tty).",
     ),
+    timeout_minutes: int | None = typer.Option(
+        None,
+        "--timeout-minutes",
+        help="Override the per-attempt timeout for every node (default: the plan's, else 120).",
+    ),
 ) -> None:
     """Execute a plan, showing a live dashboard (the default on a tty)."""
     if plan_dir is None:
-        _execute_plan_dir(_pick_incomplete_plan(), resume_run=True, no_tui=no_tui)
+        _execute_plan_dir(_pick_incomplete_plan(), resume_run=True, no_tui=no_tui, timeout_minutes=timeout_minutes)
         return
     if not plan_dir.is_dir():
         typer.echo(f"Error: plan directory does not exist: {plan_dir}", err=True)
         raise typer.Exit(1)
-    _execute_plan_dir(plan_dir, resume_run=False, no_tui=no_tui)
+    _execute_plan_dir(plan_dir, resume_run=False, no_tui=no_tui, timeout_minutes=timeout_minutes)
 
 
 @app.command()
@@ -117,6 +126,11 @@ def resume(
         "--no-tui",
         help="Plain-text progress instead of the live dashboard (implied when stdout is not a tty).",
     ),
+    timeout_minutes: int | None = typer.Option(
+        None,
+        "--timeout-minutes",
+        help="Override the per-attempt timeout for every node (default: the plan's, else 120).",
+    ),
 ) -> None:
     """Resume a previously interrupted run by its run id."""
     try:
@@ -124,7 +138,7 @@ def resume(
     except RunError as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1) from e
-    _execute_plan_dir(plan_dir, resume_run=True, no_tui=no_tui)
+    _execute_plan_dir(plan_dir, resume_run=True, no_tui=no_tui, timeout_minutes=timeout_minutes)
 
 
 @app.command()

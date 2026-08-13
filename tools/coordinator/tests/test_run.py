@@ -5,6 +5,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
+from coordinator.dag import build_graph
+from coordinator.executor import PlanExecutor
 from coordinator.journal import AttemptStarted
 from coordinator.journal import CommitRecorded
 from coordinator.journal import GateResult
@@ -14,8 +16,10 @@ from coordinator.journal import RunStarted
 from coordinator.journal import SignalObserved
 from coordinator.journal import TaskStateChanged
 from coordinator.journal import replay
+from coordinator.launcher import DEFAULT_ATTEMPT_TIMEOUT_SECONDS
 from coordinator.main import app
 from coordinator.manifest import ManifestError
+from coordinator.manifest import load_manifest
 from coordinator.run import RunError
 from coordinator.run import execute_plan
 from coordinator.run import find_incomplete_plans
@@ -76,6 +80,82 @@ def run_plan(plan_dir: Path, repo: Path, progress=None, resume: bool = False):
         kill_grace_seconds=1.0,
         progress=progress,
     )
+
+
+TIMEOUT_PLAN_TEMPLATE = """\
+version: 1
+defaults:
+  worker: fake-worker
+{defaults_timeout}  verification: []
+phases:
+  - id: 1
+    name: Phase one
+    review: none
+    tasks:
+      - id: "1.1"
+        file: 01_01_first.md
+      - id: "1.2"
+        file: 01_02_second.md
+        deps: ["1.1"]
+{task_timeout}"""
+
+
+def make_timeout_executor(
+    tmp_path: Path, defaults_timeout: str = "", task_timeout: str = "", timeout_seconds: float | None = None
+) -> "PlanExecutor":
+    plan_dir = tmp_path / "plan"
+    plan_dir.mkdir()
+    (plan_dir / "plan.yaml").write_text(
+        TIMEOUT_PLAN_TEMPLATE.format(defaults_timeout=defaults_timeout, task_timeout=task_timeout)
+    )
+    (plan_dir / "01_01_first.md").write_text("# Task 1.1\n")
+    (plan_dir / "01_02_second.md").write_text("# Task 1.2\n")
+    manifest = load_manifest(plan_dir)
+    ensure_state_dir(plan_dir)
+    return PlanExecutor(
+        plan_dir,
+        manifest,
+        {},
+        Journal(journal_path(plan_dir)),
+        tmp_path,
+        timeout_seconds=timeout_seconds,
+    )
+
+
+def test_attempt_timeout_falls_back_to_the_builtin_default(tmp_path: Path) -> None:
+    executor = make_timeout_executor(tmp_path)
+    graph = build_graph(executor.manifest)
+    assert executor._timeout_for(graph.nodes["1.1"]) == DEFAULT_ATTEMPT_TIMEOUT_SECONDS
+
+
+def test_plan_defaults_attempt_timeout_applies_to_every_node(tmp_path: Path) -> None:
+    executor = make_timeout_executor(tmp_path, defaults_timeout="  attempt_timeout_minutes: 45\n")
+    graph = build_graph(executor.manifest)
+    assert executor._timeout_for(graph.nodes["1.1"]) == 45 * 60.0
+    assert executor._timeout_for(graph.nodes["1.2"]) == 45 * 60.0
+
+
+def test_task_attempt_timeout_overrides_the_plan_default(tmp_path: Path) -> None:
+    executor = make_timeout_executor(
+        tmp_path,
+        defaults_timeout="  attempt_timeout_minutes: 45\n",
+        task_timeout="        attempt_timeout_minutes: 240\n",
+    )
+    graph = build_graph(executor.manifest)
+    assert executor._timeout_for(graph.nodes["1.1"]) == 45 * 60.0
+    assert executor._timeout_for(graph.nodes["1.2"]) == 240 * 60.0
+
+
+def test_run_override_wins_over_both(tmp_path: Path) -> None:
+    executor = make_timeout_executor(
+        tmp_path,
+        defaults_timeout="  attempt_timeout_minutes: 45\n",
+        task_timeout="        attempt_timeout_minutes: 240\n",
+        timeout_seconds=30.0,
+    )
+    graph = build_graph(executor.manifest)
+    assert executor._timeout_for(graph.nodes["1.1"]) == 30.0
+    assert executor._timeout_for(graph.nodes["1.2"]) == 30.0
 
 
 def test_two_task_plan_passes(tmp_path: Path) -> None:

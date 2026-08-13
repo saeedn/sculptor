@@ -102,14 +102,18 @@ def execute_plan(
     *,
     resume: bool = False,
     repo_root: Path | None = None,
-    timeout_seconds: float = 1800.0,
+    timeout_seconds: float | None = None,
     poll_interval: float = 0.5,
     kill_grace_seconds: float = 10.0,
     trust_home: Path | None = None,
     progress: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.time,
 ) -> RunStatus:
-    """Run (or resume) a plan; returns the final run status."""
+    """Run (or resume) a plan; returns the final run status.
+
+    ``timeout_seconds`` overrides the per-attempt timeout for every node;
+    left as None, each node resolves its own from the manifest.
+    """
     plan_dir = plan_dir.resolve()
     cwd = (repo_root if repo_root is not None else Path.cwd()).resolve()
     manifest = load_manifest(plan_dir)

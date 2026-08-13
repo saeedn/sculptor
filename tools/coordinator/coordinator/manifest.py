@@ -22,6 +22,8 @@ Full schema (version 1):
                                      # review gates (defaults to the
                                      # node's worker)
       attempts: 2                    # base attempts before escalation; >= 1
+      attempt_timeout_minutes: 120   # optional; how long one attempt may
+                                     # run before it is killed; >= 1
       verification:                  # commands run by the mechanical gate
         - just format
         - just check
@@ -43,6 +45,7 @@ Full schema (version 1):
             gates: [mechanical, agentic]     # optional per-task override;
                                              # allowed: mechanical|agentic|human
             attempts: 3              # optional per-task override; >= 1
+            attempt_timeout_minutes: 240   # optional per-task override; >= 1
             no_change: false         # true for tasks expected to not commit
 
 Validation collects every problem into one :class:`ManifestError` so a
@@ -87,6 +90,7 @@ class ManifestDefaults(BaseModel):
     escalation_worker: str | None = None
     reviewer: str | None = None
     attempts: int = 2
+    attempt_timeout_minutes: int | None = None
     verification: list[str]
     process_doc: str | None = None
 
@@ -99,6 +103,7 @@ class TaskSpec(BaseModel):
     worker: str | None = None
     gates: list[str] | None = None
     attempts: int | None = None
+    attempt_timeout_minutes: int | None = None
     escalation_worker: str | None = None
     no_change: bool = False
 
@@ -175,6 +180,10 @@ def _validate_manifest(manifest: PlanManifest, plan_dir: Path) -> list[str]:
         problems.append(f"version: must be 1, got {manifest.version}")
     if manifest.defaults.attempts < 1:
         problems.append(f"defaults.attempts: must be >= 1, got {manifest.defaults.attempts}")
+    if manifest.defaults.attempt_timeout_minutes is not None and manifest.defaults.attempt_timeout_minutes < 1:
+        problems.append(
+            f"defaults.attempt_timeout_minutes: must be >= 1, got {manifest.defaults.attempt_timeout_minutes}"
+        )
     if manifest.defaults.process_doc is not None:
         _validate_process_doc(manifest.defaults.process_doc, plan_dir, problems)
 
@@ -206,6 +215,10 @@ def _validate_manifest(manifest: PlanManifest, plan_dir: Path) -> list[str]:
                         )
             if task.attempts is not None and task.attempts < 1:
                 problems.append(f"task {task.id}: attempts must be >= 1, got {task.attempts}")
+            if task.attempt_timeout_minutes is not None and task.attempt_timeout_minutes < 1:
+                problems.append(
+                    f"task {task.id}: attempt_timeout_minutes must be >= 1, got {task.attempt_timeout_minutes}"
+                )
             _validate_task_file(task, plan_dir, problems)
     return problems
 

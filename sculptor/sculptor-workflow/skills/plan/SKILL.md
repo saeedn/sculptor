@@ -331,6 +331,7 @@ phases:
         worker: claude-print-opus      # optional per-task override
         gates: [mechanical, agentic]   # optional per-task override
         attempts: 3                    # optional per-task override
+        attempt_timeout_minutes: 240   # optional per-task override
         escalation_worker: claude-print-opus  # optional per-task override
         no_change: false           # true for tasks expected to not commit
 ```
@@ -357,6 +358,11 @@ Authoring rules:
   steps → add `human` to the gates; `no_change: true` for tasks not
   expected to produce a commit (the mechanical gate otherwise fails a
   commit-less task).
+- **`attempt_timeout_minutes`** (on `defaults` or a task) caps how long
+  one attempt may run; the built-in default is 120. Raise it for a
+  task whose verification runs a long end-to-end suite — a timeout
+  kills the worker mid-tool-call and the attempt's work is discarded
+  uncommitted.
 - **`meta`** carries the slug and the spec/architecture paths
   (relative to the plan folder); the coordinator uses them to seed the
   Review agent at the end of a successful run.

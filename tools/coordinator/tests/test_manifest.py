@@ -208,6 +208,30 @@ def test_defaults_attempts_below_one(tmp_path: Path) -> None:
     assert "defaults.attempts: must be >= 1" in str(error)
 
 
+def test_task_attempt_timeout_below_one(tmp_path: Path) -> None:
+    manifest_text = minimal_manifest('      - id: "1.1"\n        file: a.md\n        attempt_timeout_minutes: 0')
+    plan_dir = write_plan(tmp_path, manifest_text, ["a.md"])
+    error = load_expecting_error(plan_dir)
+    assert "task 1.1: attempt_timeout_minutes must be >= 1" in str(error)
+
+
+def test_defaults_attempt_timeout_below_one(tmp_path: Path) -> None:
+    manifest_text = minimal_manifest(
+        '      - id: "1.1"\n        file: a.md', defaults_attempts="  attempt_timeout_minutes: 0\n"
+    )
+    plan_dir = write_plan(tmp_path, manifest_text, ["a.md"])
+    error = load_expecting_error(plan_dir)
+    assert "defaults.attempt_timeout_minutes: must be >= 1" in str(error)
+
+
+def test_attempt_timeout_defaults_to_unset(tmp_path: Path) -> None:
+    manifest_text = minimal_manifest('      - id: "1.1"\n        file: a.md')
+    plan_dir = write_plan(tmp_path, manifest_text, ["a.md"])
+    manifest = load_manifest(plan_dir)
+    assert manifest.defaults.attempt_timeout_minutes is None
+    assert manifest.phases[0].tasks[0].attempt_timeout_minutes is None
+
+
 def test_all_problems_collected(tmp_path: Path) -> None:
     manifest_text = minimal_manifest(
         '      - id: "1.1"\n        file: missing.md\n        kind: bogus\n        deps: ["9.9"]'

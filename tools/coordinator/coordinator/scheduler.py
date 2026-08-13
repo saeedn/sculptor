@@ -39,6 +39,7 @@ from coordinator.journal import GateResult
 from coordinator.journal import IntentsConsumed
 from coordinator.journal import Journal
 from coordinator.journal import NodeSnapshot
+from coordinator.journal import PHASE_REVIEW_REOPEN_REASON
 from coordinator.journal import RunPaused
 from coordinator.journal import RunStarted
 from coordinator.journal import SignalObserved
@@ -241,6 +242,9 @@ class Scheduler:
                     attempt_index=attempt.attempt_index,
                     registration=attempt.worker_registration,
                     rate_limited="rate-limited" in attempt.signals,
+                    # Attempts predating the last phase-review reopen paid
+                    # for work the review has since sent back.
+                    reopened=attempt.attempt_index < node_snapshot.budget_reset_at_attempt,
                 )
                 for attempt in node_snapshot.attempts
             ]
@@ -535,7 +539,14 @@ class Scheduler:
                 )
             )
             self._seed_context[task_id] = format_seed_context(self._failures[task_id])
-            self.transition(task_id, NodeState.PENDING, reason="phase-review-reopen")
+            # Fresh work deserves a fresh ladder: the task passed its own
+            # gates, and the review is asking for something it was never
+            # asked for before. Without this, a task that needed its full
+            # budget to pass fails the run on its first stumble after a
+            # reopen. Its attempt dirs keep their indexes.
+            for record in self._attempt_records[task_id]:
+                record.reopened = True
+            self.transition(task_id, NodeState.PENDING, reason=PHASE_REVIEW_REOPEN_REASON)
             reopened = True
         # The review node re-runs after the reopened tasks pass again (or
         # immediately, when no finding named a task).

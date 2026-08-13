@@ -14,8 +14,27 @@ def defaults(attempts: int = 2, escalation_worker: str | None = "opus-worker") -
     return ManifestDefaults(worker="w", verification=[], attempts=attempts, escalation_worker=escalation_worker)
 
 
-def record(index: int, rate_limited: bool = False) -> AttemptRecordLite:
-    return AttemptRecordLite(attempt_index=index, registration="w", rate_limited=rate_limited)
+def record(index: int, rate_limited: bool = False, reopened: bool = False) -> AttemptRecordLite:
+    return AttemptRecordLite(attempt_index=index, registration="w", rate_limited=rate_limited, reopened=reopened)
+
+
+def test_reopened_attempts_do_not_burn_budget() -> None:
+    # A phase review sending a passed task back is new work; the whole
+    # exhausted ladder from the previous round starts over.
+    budget = attempt_plan(TaskSpec(id="1", file="a.md"), defaults())
+    exhausted = [record(0), record(1), record(2)]
+    assert isinstance(next_attempt(exhausted, budget), Exhausted)
+    reopened = [record(0, reopened=True), record(1, reopened=True), record(2, reopened=True)]
+    assert next_attempt(reopened, budget) == NextAttempt(escalated=False, registration_override=None)
+
+
+def test_ladder_after_a_reopen_escalates_again() -> None:
+    budget = attempt_plan(TaskSpec(id="1", file="a.md"), defaults())
+    history = [record(index, reopened=True) for index in range(3)]
+    history += [record(3), record(4)]
+    assert next_attempt(history, budget) == NextAttempt(escalated=True, registration_override="opus-worker")
+    history.append(record(5))
+    assert isinstance(next_attempt(history, budget), Exhausted)
 
 
 def test_attempt_plan_defaults() -> None:

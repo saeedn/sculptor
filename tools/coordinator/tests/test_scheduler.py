@@ -4,6 +4,7 @@ import pytest
 
 from coordinator.dag import Node
 from coordinator.dag import build_graph
+from coordinator.findings import Finding
 from coordinator.journal import AttemptStarted
 from coordinator.journal import ControlIntent
 from coordinator.journal import ControlIntentName
@@ -355,6 +356,65 @@ def test_resume_discarded_attempt_does_not_burn_budget(tmp_path: Path) -> None:
     resumed = make_scheduler(tmp_path, manifest, executor, resume=True)
     assert resumed.run() == "completed"
     assert executor.calls == ["attempt:a:1", "gates:a", "attempt:a:2", "gates:a"]
+
+
+def test_phase_review_reopen_restores_the_attempt_budget(tmp_path: Path) -> None:
+    # "a" spends its whole ladder passing, then a phase review sends it
+    # back. The reopened task must get a full budget for the new work,
+    # not fail the run on its first stumble.
+    manifest = PlanManifest(
+        version=1,
+        defaults=ManifestDefaults(worker="w", verification=[], attempts=2),
+        phases=[PhaseSpec(id=1, name="P", review="agentic", tasks=[task("a")])],
+    )
+    fail = GateOutcome(gate="mechanical", passed=False, findings="not yet")
+    review_fail = GateOutcome(
+        gate="phase-review",
+        passed=False,
+        findings="[blocker] (task a) missing case",
+        findings_list=(Finding(task_id="a", severity="blocker", summary="missing case"),),
+    )
+    ok = GateOutcome(gate="mechanical", passed=True)
+    executor = FakeExecutor(gates={"a": [fail, ok, fail, ok], "phase-review:1": [review_fail]})
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "completed"
+    assert executor.calls == [
+        "attempt:a:0",
+        "gates:a",
+        "attempt:a:1",
+        "gates:a",
+        "attempt:phase-review:1:0",
+        "gates:phase-review:1",
+        # Budget restored: a failure here would be terminal without it.
+        "attempt:a:2",
+        "gates:a",
+        "attempt:a:3",
+        "gates:a",
+        "attempt:phase-review:1:1",
+        "gates:phase-review:1",
+    ]
+
+
+def test_restored_budget_survives_a_resume(tmp_path: Path) -> None:
+    # The reset is derived from the journal, so a coordinator restarted
+    # between the reopen and the retry sees the same fresh ladder.
+    manifest = PlanManifest(
+        version=1,
+        defaults=ManifestDefaults(worker="w", verification=[], attempts=2),
+        phases=[PhaseSpec(id=1, name="P", review="none", tasks=[task("a")])],
+    )
+    ensure_state_dir(tmp_path)
+    journal = Journal(journal_path(tmp_path))
+    journal.append(RunStarted(run_id="run-old", plan_dir=str(tmp_path), manifest_hash="h"))
+    for index in range(2):
+        journal.append(AttemptStarted(node_id="a", attempt_index=index, worker_registration="w", attempt_dir="/a"))
+    journal.append(
+        TaskStateChanged(node_id="a", old_state="passed", new_state="pending", reason="phase-review-reopen")
+    )
+    executor = FakeExecutor(gates={"a": [GateOutcome(gate="mechanical", passed=False, findings="boom")]})
+    resumed = make_scheduler(tmp_path, manifest, executor, resume=True)
+    assert resumed.run() == "completed"
+    assert executor.calls == ["attempt:a:2", "gates:a", "attempt:a:3", "gates:a"]
 
 
 def write_stop_signals(attempt_directory: Path) -> None:

@@ -34,6 +34,11 @@ JOURNAL_SCHEMA_VERSION = 1
 
 ControlIntentName = Literal["pause", "resume", "retry", "skip", "approve", "abort"]
 
+# Transition reason the scheduler writes when a phase review sends an
+# already-passed task back for more work. Shared so the snapshot can
+# recognize it without importing the scheduler.
+PHASE_REVIEW_REOPEN_REASON = "phase-review-reopen"
+
 
 class JournalError(Exception):
     pass
@@ -248,6 +253,11 @@ class NodeSnapshot(BaseModel):
     attempts: list[AttemptRecord] = []
     gates: list[GateRecord] = []
     commits: list[str] = []
+    # A phase review that re-opens an already-passed task hands it fresh
+    # work, so it gets its retry budget back: attempts before this index
+    # no longer count against it. Derived here rather than held in the
+    # scheduler so a resumed run restores the same budget.
+    budget_reset_at_attempt: int = 0
 
 
 class Snapshot(BaseModel):
@@ -291,7 +301,10 @@ class Snapshot(BaseModel):
             self.pause_reason = None
             self.resume_hint = None
         elif isinstance(event, TaskStateChanged):
-            self._node(event.node_id).state = event.new_state
+            node = self._node(event.node_id)
+            node.state = event.new_state
+            if event.reason == PHASE_REVIEW_REOPEN_REASON:
+                node.budget_reset_at_attempt = len(node.attempts)
         elif isinstance(event, AttemptStarted):
             node = self._node(event.node_id)
             for attempt in node.attempts:

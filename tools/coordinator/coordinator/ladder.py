@@ -4,7 +4,8 @@ The ladder: ``defaults.attempts`` base attempts (default 2 — initial +
 one seeded retry) on the task's registration, then one escalated
 attempt on ``defaults.escalation_worker`` seeded with ALL prior
 attempts' failure context. Per-task ``attempts`` overrides the base
-count. Rate-limited attempts never burn budget.
+count. Rate-limited, discarded, and phase-review-reopened attempts
+never burn budget.
 
 Pure arithmetic and string formatting — no journal, no processes.
 """
@@ -30,16 +31,19 @@ class AttemptBudget(BaseModel):
 class AttemptRecordLite(BaseModel):
     """The slice of attempt history the ladder counts.
 
-    Mutable: ``rate_limited``/``discarded`` are set after construction,
-    when the attempt's fate becomes known.
+    Mutable: ``rate_limited``/``discarded``/``reopened`` are set after
+    construction, when the attempt's fate becomes known.
     """
 
     attempt_index: int
     registration: str | None
-    # Neither burns budget: rate-limited attempts are the provider's
-    # fault, discarded ones never ran to a verdict (crash/pause mid-flight).
+    # None of these burn budget: rate-limited attempts are the provider's
+    # fault, discarded ones never ran to a verdict (crash/pause
+    # mid-flight), and reopened ones belong to work a phase review has
+    # since sent back — the task starts its ladder over on the new work.
     rate_limited: bool = False
     discarded: bool = False
+    reopened: bool = False
 
 
 class NextAttempt(BaseModel):
@@ -78,7 +82,7 @@ def attempt_plan(task_spec: TaskSpec | None, defaults: ManifestDefaults) -> Atte
 
 def next_attempt(history: list[AttemptRecordLite], budget: AttemptBudget) -> NextAttempt | Exhausted:
     """Decide the next rung after a failure, given the attempts so far."""
-    counted = sum(1 for record in history if not record.rate_limited and not record.discarded)
+    counted = sum(1 for record in history if not record.rate_limited and not record.discarded and not record.reopened)
     if counted < budget.base_count:
         return NextAttempt(escalated=False, registration_override=None)
     if budget.escalation_worker is not None and counted < budget.base_count + 1:

@@ -152,3 +152,14 @@ def test_error_entry_after_a_truncated_line_still_classifies(tmp_path: Path) -> 
     error_line = json.dumps({"type": "system", "subtype": "error", "message": "usage limit reached"})
     result = result_with_transcript(tmp_path, long_line + "\n" + error_line + "\n")
     assert classify_attempt(result) is not None
+
+
+def test_long_unterminated_log_line_still_classifies(tmp_path: Path) -> None:
+    # Process logs are not line-structured: a crash dump or a JSON blob
+    # can fill the whole 64KiB window without a newline, and cutting to
+    # the first one would throw the entire scan away.
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    (attempt_dir / "stderr.log").write_text("x" * 70_000 + " usage limit reached")
+    result = AttemptResult(is_ok=False, status="exited-without-stop")
+    assert classify_attempt(result, attempt_dir) is not None

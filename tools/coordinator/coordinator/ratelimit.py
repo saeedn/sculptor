@@ -54,13 +54,14 @@ class RateLimit(BaseModel):
     resume_hint: str | None
 
 
-def _tail(path: Path) -> str:
-    """The last ``_TAIL_BYTES`` of a file, starting at a line boundary.
+def _tail(path: Path, *, whole_lines: bool = False) -> str:
+    """The last ``_TAIL_BYTES`` of a file.
 
-    The cut lands mid-line in general, and a partial JSONL line would
-    fail to parse and therefore escape the content filter below — so the
-    truncated first line is dropped whenever the tail is not the whole
-    file.
+    ``whole_lines`` drops the leading fragment the cut leaves behind. Ask
+    for it when the caller parses the tail line by line — a partial JSONL
+    line fails to parse and would escape the content filter below. Plain
+    logs are not line-structured, so they keep the raw tail: dropping to
+    the first newline there can discard the whole window.
     """
     try:
         data = path.read_bytes()
@@ -69,9 +70,11 @@ def _tail(path: Path) -> str:
     if len(data) <= _TAIL_BYTES:
         return data.decode(errors="replace")
     tail = data[-_TAIL_BYTES:]
+    if not whole_lines:
+        return tail.decode(errors="replace")
     newline = tail.find(b"\n")
     if newline == -1:
-        # One enormous line spans the whole tail; nothing survives the cut.
+        # One enormous line spans the whole tail; no complete line survives.
         return ""
     return tail[newline + 1 :].decode(errors="replace")
 
@@ -86,7 +89,7 @@ def _transcript_error_text(path: Path) -> str:
     scanned; lines that don't parse as JSON are scanned as-is.
     """
     lines: list[str] = []
-    for line in _tail(path).splitlines():
+    for line in _tail(path, whole_lines=True).splitlines():
         stripped = line.strip()
         if not stripped:
             continue

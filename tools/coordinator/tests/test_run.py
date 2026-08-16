@@ -214,6 +214,20 @@ def test_dirty_tree_at_start_refused(tmp_path: Path) -> None:
     assert not journal_path(plan_dir).exists()
 
 
+def test_auto_resume_announces_itself_through_notice(tmp_path: Path) -> None:
+    # The dashboard has no use for the per-transition progress firehose,
+    # so the one message that explains a continuation gets its own channel.
+    repo, plan_dir = make_plan_repo(tmp_path, COMMIT_THEN_STOP)
+    run_plan(plan_dir, repo)
+    notices: list[str] = []
+    execute_plan(plan_dir, repo_root=repo, timeout_seconds=30.0, poll_interval=0.05, notice=notices.append)
+    assert len(notices) == 1
+    run_id = read_run_id(plan_dir)
+    assert run_id is not None
+    assert run_id in notices[0]
+    assert "resuming" in notices[0]
+
+
 def test_dirty_tree_does_not_block_an_auto_resume(tmp_path: Path) -> None:
     # A killed worker leaves the tree however it left it; refusing to
     # continue over that would strand the run. The executor's per-task

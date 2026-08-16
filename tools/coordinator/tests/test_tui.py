@@ -1,5 +1,6 @@
 """Pilot tests: the dashboard renders exclusively from the on-disk state."""
 
+import asyncio
 from pathlib import Path
 
 from textual.widgets import DataTable
@@ -148,3 +149,16 @@ async def test_run_thread_crash_is_visible(tmp_path: Path) -> None:
         status_text = app.status_text
         assert "RUN CRASHED" in status_text
         assert "scheduler exploded" in status_text
+
+
+async def test_run_level_notice_reaches_the_dashboard(tmp_path: Path) -> None:
+    # A notice posted from the run thread must surface as a toast, not
+    # vanish the way the progress firehose does in TUI mode.
+    plan_dir = make_plan_dir(tmp_path)
+    write_mid_run_journal(plan_dir)
+    app = make_app(plan_dir)
+    async with app.run_test() as pilot:
+        await asyncio.to_thread(app._post_notice, "existing run state found (run-tui) — resuming.")
+        await pilot.pause()
+        assert app.notices == ["existing run state found (run-tui) — resuming."]
+        assert any("resuming" in notification.message for notification in app._notifications)

@@ -49,6 +49,9 @@ from coordinator.tui.widgets import worker_cell
 
 _REFRESH_INTERVAL_SECONDS = 0.5
 _SNAPSHOT_RETRY_DELAY_SECONDS = 0.05
+# Long enough to read a sentence that explains why the run looks the way
+# it does; a notice fires at most once per run.
+_NOTICE_SECONDS = 15.0
 
 
 class StateReader:
@@ -133,6 +136,8 @@ class CoordinatorApp(App):
         self.node_order: list[str] = topological_order(self.graph)
         self.reader = StateReader(self.plan_dir)
         self.final_status: RunStatus | None = None
+        # Run-level messages posted from the run thread, newest last.
+        self.notices: list[str] = []
         self.run_error: BaseException | None = None
         self._run_thread: threading.Thread | None = None
         self._last_snapshot: Snapshot | None = None
@@ -165,6 +170,7 @@ class CoordinatorApp(App):
                 key=node_id,
             )
         if self.should_start_run:
+            self.execute_kwargs.setdefault("notice", self._post_notice)
             self._run_thread = start_run_in_thread(
                 self.plan_dir, self._on_run_done, resume=self.resume, **self.execute_kwargs
             )
@@ -176,6 +182,11 @@ class CoordinatorApp(App):
         # UI thread's next timer tick.
         self.final_status = status
         self.run_error = error
+
+    def _post_notice(self, message: str) -> None:
+        """Surface a run-level message from the run thread as a toast."""
+        self.notices.append(message)
+        self.call_from_thread(self.notify, message, title="coordinator", timeout=_NOTICE_SECONDS)
 
     def refresh_state(self) -> None:
         snapshot = self.reader.read()

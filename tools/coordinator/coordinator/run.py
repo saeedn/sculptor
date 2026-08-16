@@ -106,13 +106,20 @@ def execute_plan(
     poll_interval: float = 0.5,
     kill_grace_seconds: float = 10.0,
     progress: Callable[[str], None] | None = None,
+    notice: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.time,
 ) -> RunStatus:
     """Run (or resume) a plan; returns the final run status.
 
     ``timeout_seconds`` overrides the per-attempt timeout for every node;
     left as None, each node resolves its own from the manifest.
+
+    ``progress`` receives a line per state transition — a firehose the
+    dashboard has no use for, since it renders the same states itself.
+    ``notice`` receives the few run-level messages a user must see in
+    either front end, and falls back to ``progress`` when unset.
     """
+    announce = notice if notice is not None else progress
     plan_dir = plan_dir.resolve()
     cwd = (repo_root if repo_root is not None else Path.cwd()).resolve()
     manifest = load_manifest(plan_dir)
@@ -129,8 +136,8 @@ def execute_plan(
         existing_journal = journal_path(plan_dir)
         if existing_journal.is_file() and existing_journal.stat().st_size > 0:
             resume = True
-            if progress is not None:
-                progress(
+            if announce is not None:
+                announce(
                     f"existing run state found ({read_run_id(plan_dir) or 'unknown run id'}) — resuming. "
                     + f"Delete {state_dir(plan_dir)} to start the plan over."
                 )

@@ -10,6 +10,7 @@ from coordinator.journal import ControlIntent
 from coordinator.journal import ControlIntentName
 from coordinator.journal import GateResult
 from coordinator.journal import Journal
+from coordinator.journal import PHASE_REVIEW_REOPEN_REASON
 from coordinator.journal import RunStarted
 from coordinator.journal import Snapshot
 from coordinator.journal import TaskStateChanged
@@ -409,7 +410,7 @@ def test_restored_budget_survives_a_resume(tmp_path: Path) -> None:
     for index in range(2):
         journal.append(AttemptStarted(node_id="a", attempt_index=index, worker_registration="w", attempt_dir="/a"))
     journal.append(
-        TaskStateChanged(node_id="a", old_state="passed", new_state="pending", reason="phase-review-reopen")
+        TaskStateChanged(node_id="a", old_state="passed", new_state="pending", reason=PHASE_REVIEW_REOPEN_REASON)
     )
     executor = FakeExecutor(gates={"a": [GateOutcome(gate="mechanical", passed=False, findings="boom")]})
     resumed = make_scheduler(tmp_path, manifest, executor, resume=True)

@@ -95,6 +95,8 @@ def main() -> None:
         if blocks_left >= 0:
             json.dump({"decision": "block", "reason": block_reason(tasks, blocks_left)}, sys.stdout)
     except Exception:
+        # Fail open, as the module docstring promises: a guard that cannot
+        # do its job must still let the worker finish its turn.
         pass
     sys.exit(0)
 

@@ -540,11 +540,9 @@ class Scheduler:
                 )
             )
             self._seed_context[task_id] = format_seed_context(self._failures[task_id])
-            # Fresh work deserves a fresh ladder: the task passed its own
-            # gates, and the review is asking for something it was never
-            # asked for before. Without this, a task that needed its full
-            # budget to pass fails the run on its first stumble after a
-            # reopen. Its attempt dirs keep their indexes.
+            # Fresh work, fresh ladder: the task passed its own gates, and
+            # the review is asking for something it was never asked for
+            # before. Its attempt dirs keep their indexes.
             for record in self._attempt_records[task_id]:
                 record.reopened = True
             self.transition(task_id, NodeState.PENDING, reason=PHASE_REVIEW_REOPEN_REASON)

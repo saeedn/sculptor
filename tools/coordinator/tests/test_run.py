@@ -214,6 +214,16 @@ def test_dirty_tree_at_start_refused(tmp_path: Path) -> None:
     assert not journal_path(plan_dir).exists()
 
 
+def test_dirty_tree_does_not_block_an_auto_resume(tmp_path: Path) -> None:
+    # A killed worker leaves the tree however it left it; refusing to
+    # continue over that would strand the run. The executor's per-task
+    # check still catches the dirt before any work lands in a commit.
+    repo, plan_dir = make_plan_repo(tmp_path, COMMIT_THEN_STOP)
+    run_plan(plan_dir, repo)
+    (repo / "uncommitted.txt").write_text("dirt\n")
+    assert run_plan(plan_dir, repo) == "completed"
+
+
 def test_mid_run_user_edit_pauses(tmp_path: Path) -> None:
     repo, plan_dir = make_plan_repo(tmp_path, COMMIT_THEN_STOP)
 

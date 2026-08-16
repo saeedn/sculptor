@@ -134,11 +134,14 @@ def execute_plan(
                     f"existing run state found ({read_run_id(plan_dir) or 'unknown run id'}) — resuming. "
                     + f"Delete {state_dir(plan_dir)} to start the plan over."
                 )
-    if not resume and not is_tree_clean(cwd):
-        raise RunError(
-            f"refusing to start: the working tree at {cwd} is dirty. "
-            + f"Commit or stash these changes first:\n{porcelain_status(cwd)}"
-        )
+        elif not is_tree_clean(cwd):
+            # Only a genuinely fresh run demands a clean tree. A resumed
+            # one inherits whatever its killed worker left behind, and the
+            # executor re-checks before each task anyway.
+            raise RunError(
+                f"refusing to start: the working tree at {cwd} is dirty. "
+                + f"Commit or stash these changes first:\n{porcelain_status(cwd)}"
+            )
 
     ensure_state_dir(plan_dir)
     signaler = detect_signaler()

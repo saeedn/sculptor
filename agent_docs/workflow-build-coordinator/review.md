@@ -1,19 +1,29 @@
 # Workflow Build Coordinator (Increment 1) — Review
 
-Reviewed: `origin/main...HEAD` (23 commits, 91 files, ~9,900 insertions),
-against `spec.md`, `architecture.md`, and `plan/00_overview.md`.
+Reviewed: `origin/main...HEAD` (41 commits, 91 files, 11,891 insertions
+/ 768 deletions), against `spec.md`, `architecture.md`, and
+`plan/00_overview.md`.
+
+This document records **two review passes**. The first covered the
+original 23-commit implementation and its fix pass; the second
+(*Second review pass*, below) covers the eight commits that landed
+afterwards — the field-test fixes and the headless-worker pivot.
 
 ## Summary
 
-- **The implementation meets the spec**, and after the fix pass every
-  requirement in scope is Covered — including the two former Partials
-  (per-task escalation override, REQ-GATE-4 / REQ-FAIL-4, added in
-  `b2ff9c7a`).
-- **All findings below have been fixed and committed** (resolution log
-  at the top of *Code Review Findings*), except three consciously
-  declined LOWs with rationale. The full verification suite is green
-  after every fix commit: `just check` plus `just test-unit` (backend,
-  foundation, sculpt, coordinator — now 225 tests — and frontend).
+- **The implementation meets the spec** and every requirement in scope
+  is Covered. REQ-FAIL-2 briefly regressed to Partial in `ca136462`
+  (one built-in worker registration left a skill-authored plan with
+  nothing to escalate *to*) and is Covered again as of `d5bbb9df`.
+- **Findings from both passes are fixed and committed** — resolution
+  logs at the top of *Code Review Findings* and at the end of *Second
+  review pass* — except three consciously declined LOWs from the first
+  pass and one from the second, each with rationale. Neither pass found
+  a CRITICAL or HIGH issue in the second round.
+- The full verification suite is green at HEAD: `just check` passes
+  (lint, typecheck, ratchets, hygiene) and `just test-unit` passes
+  (backend 763 passed / 4 skipped, foundation 124, sculpt 203,
+  coordinator 259 passed / 1 deselected, frontend OK).
 - The original top risks — the CRITICAL stale-state rerun hazard, the
   journal-poisoning crash path, the launcher resource leaks, and the
   orphaned reviewer processes — are all closed with regression tests.
@@ -29,7 +39,7 @@ against `spec.md`, `architecture.md`, and `plan/00_overview.md`.
 | REQ-COORD-5 | Covered | `attempt.py:108-114` (one-task bootstrap prompt), `launcher.py:58-71` (`scrub_env` guarantees fresh session), `data/implement_task.md` |
 | REQ-COORD-6 | Covered | session id from hooks (`launcher.py:110-113`) → journal (`executor.py:163-175`, `journal.py:288-297`); failure report prints `claude --resume` hints (`scheduler.py:558-560`) |
 | REQ-STATE-1 | Covered | `statedir.py:19-33` (`_state/` + self-written `.gitignore`), `scheduler.py:248-264` (write-ahead transitions) |
-| REQ-STATE-2 | Covered | `scheduler.py:188-246` (`Scheduler.load`: replay, mid-flight discard, PID reap) — but see the reviewer-PID reap gap in findings |
+| REQ-STATE-2 | Covered | `scheduler.py:188-246` (`Scheduler.load`: replay, mid-flight discard, implementer + reviewer PID reap, resume-at-gates for an attempt that reached Stop) |
 | REQ-PIPE-1..3 | Deferred | Increment 2, per plan (REQ-FLOW-2) |
 | REQ-PIPE-4 | Covered | `sculpt_signals.py:79-88` (`detect_signaler`: PATH + `SCULPT_AGENT_ID`), `NullSignaler` no-op outside Sculptor |
 | REQ-PKG-1 | Covered | `tools/coordinator/pyproject.toml` (typer CLI entry); `justfile` format/lint/`test-unit-coordinator`; `pyrefly.toml:26` |
@@ -40,20 +50,20 @@ against `spec.md`, `architecture.md`, and `plan/00_overview.md`.
 | REQ-PAR-2 | Deferred | Increment 3, per plan |
 | REQ-WORKER-1 | Covered | `registrations.py:67-185` — YAML command templates, layered built-in → user → repo discovery, unknown placeholders rejected |
 | REQ-WORKER-2 | Dropped | Interactive/PTY workers removed; `data/workers/claude.yaml` runs headless `claude -p`, screen never parsed (`launcher.py:1-27`) |
-| REQ-WORKER-3 | Covered | signals + process lifecycle only (`launcher.py:298-324`); exit without Stop → `exited-without-stop` failure |
-| REQ-WORKER-4 | Covered | Stop only hands off to gates (`gates.py:1-13`); gate failure → fresh seeded attempt (`scheduler.py:376-429`) |
+| REQ-WORKER-3 | Covered | signals + process lifecycle only (`launcher.py:191-233`); exit without Stop → `exited-without-stop`; a Stop carrying running `background_tasks` → `stopped-with-pending-background` (`signals.py:64-92`, `data/stop_guard.py`) |
+| REQ-WORKER-4 | Covered | Stop only hands off to gates (`gates.py:1-13`); gate failure → fresh seeded attempt (`scheduler.py:376-429`); an abandoned turn is not a finished one (`launcher.py:194-207`) |
 | REQ-WORKER-5 | Covered | `launcher.py:110-112` → `SignalObserved` → `AttemptRecord.session_id` |
 | REQ-WORKER-6 | Covered | `--dangerously-skip-permissions` + `skipDangerousModePermissionPrompt` (`attempt.py:66`); waiting signal = failed attempt (`launcher.py:126-134,305`) |
-| REQ-WORKER-7 | Covered | `ratelimit.py:22-73` transcript-tail classification; paused without burning budget (`scheduler.py:358-374`) — see false-positive finding |
+| REQ-WORKER-7 | Covered | `ratelimit.py:22-145` — HTTP-status-shaped 429s only, and generic phrasings only on surfaces the model does not author (`ad06d185`); paused without burning budget (`scheduler.py:358-374`) |
 | REQ-MODEL-1 | Covered | `TaskSpec.worker` override (`manifest.py:98`), `registrations.py:188-195` |
 | REQ-GATE-1 | Covered | `gates.py:58-101` — verification commands + commit-required (honors `no_change`) |
 | REQ-GATE-2 | Covered | `review.py` + `executor.py:296-389`; phase-boundary default (`manifest.py:119`, `dag.py:65-70`); fail-closed verdicts |
-| REQ-GATE-3 | Covered | `executor.py:198-209` + `scheduler.py:504-515`; TUI approval — see waiting-state UX finding |
+| REQ-GATE-3 | Covered | `executor.py:198-209` + `scheduler.py:504-515`; TUI approval |
 | REQ-GATE-4 | Covered | per-task `gates`/`attempts` (`manifest.py:99-100`); per-task `escalation_worker` added in `b2ff9c7a` |
 | REQ-FAIL-1 | Covered | `scheduler.py:376-429`, `ladder.py:59-102` (seeded retries, bounded budget) |
-| REQ-FAIL-2 | Covered | `ladder.py:66-73` — escalated rung with full failure history; defaults 2 base + 1 escalated |
+| REQ-FAIL-2 | Covered | `ladder.py:83-90` — escalated rung with full failure history; `d5bbb9df` restores the built-in pair (`claude-sonnet` → `claude-opus`) so a skill-authored plan escalates by default |
 | REQ-FAIL-3 | Covered | independent branches continue (`dag.py:123-141`); consolidated failure report + waiting signal (`scheduler.py:531-564`, `run.py:176-177`) |
-| REQ-FAIL-4 | Covered | attempts + escalation model configurable plan-wide and overridable per task (per-task `escalation_worker` added in `b2ff9c7a`) |
+| REQ-FAIL-4 | Covered | attempts + escalation model configurable plan-wide and overridable per task (per-task `escalation_worker` added in `b2ff9c7a`); `attempt_timeout_minutes` follows the same precedence (`executor.py:102-111`, `manifest.py:94,107`) |
 | REQ-UX-1 | Covered | `tui/app.py:135-182`, `tui/widgets.py` — task table with states, attempts, worker, activity |
 | REQ-UX-2 | Covered | `tui/drilldown.py:71-163` — gates, attempt history, session ids, transcript tail |
 | REQ-UX-3 | Covered | `tui/app.py:93-103,231-267` — pause/resume/retry/skip/approve/abort |
@@ -77,6 +87,10 @@ gates, commits per task, and signals files-changed per commit. Tested by
 `::test_signal_sequence_with_fake_sculpt`, and
 `::test_review_handoff_spawns_agent_after_full_success`; a live manual
 demo through a real Sculptor tab is documented in commit `5a242370`.
+Workers are headless (`claude -p`), and a worker that ends its turn on
+still-running background work is pushed back by the Stop guard rather
+than handing half-done work to the gates
+(`::test_stopping_on_pending_background_work_retries`).
 
 **Task fails, retries, escalates, recovers.** Delivered. Findings seed
 fresh attempts; the escalated rung runs on the stronger registration
@@ -89,18 +103,15 @@ block independent branches; the consolidated failure report (with
 session ids and resume hints) lands when nothing runnable remains, and
 the drill-down exposes attempts. Tested by
 `::test_exhausted_ladder_fails_with_report` and
-`::test_signal_waiting_on_failed_run`. Caveat: a manual TUI `retry`
-does not carry the failure seed context an automatic retry gets
-(finding below).
+`::test_signal_waiting_on_failed_run`. A manual TUI `retry` now carries
+the same failure seed context an automatic retry gets (`b2ff9c7a`).
 
-**Human gate on a risky task.** Delivered with a UX caveat. Human-gated
-tasks pause the branch, signal waiting, and approve via TUI intent
+**Human gate on a risky task.** Delivered. Human-gated tasks pause the
+branch, signal waiting, and approve via TUI intent
 (`::test_human_gated_task_blocks_then_approves`,
-`::test_human_phase_review_waits_and_approves`). However, once nothing
-else is runnable the run loop exits while the dashboard stays up, so an
-approval clicked after that point is journaled but not consumed until
-the coordinator is re-run — the dashboard doesn't say so (finding
-below).
+`::test_human_phase_review_waits_and_approves`). The dashboard's
+stopped state is now explicit, so an approval clicked after the run
+loop exits no longer reads as accepted (`b2ff9c7a`).
 
 **Crash / restart resume.** Delivered. The run id doubles as the
 Sculptor terminal session id, so the tab's resume path re-enters
@@ -108,8 +119,13 @@ Sculptor terminal session id, so the tab's resume path re-enters
 reaps recorded implementer PIDs. Tested by
 `::test_resume_after_kill_skips_completed_tasks` (kill -9 mid-run) and
 `test_scheduler.py::test_resume_discards_mid_flight_attempt_and_reaps`.
-Caveats: reviewer PIDs are not reaped, and a discarded mid-flight
-attempt still burns retry budget (findings below).
+Reviewer PIDs are reaped too (`bf6de4a6`), a discarded mid-flight
+attempt burns no retry budget (`b2ff9c7a`), and an attempt whose Stop
+reached disk before the coordinator died re-enters at its gates instead
+of being redone (`a5554cf3`). A `coordinator run` re-issued by a tab
+restart auto-resumes the recorded run rather than refusing
+(`ba2d82c7`) — see the two auto-resume findings in *Second review
+pass*.
 
 **Phase boundary with re-architecting.** Process-level (REQ-FLOW-4);
 nothing to verify in code. The plan-per-phase structure this diff was
@@ -122,7 +138,7 @@ table shows each task's worker registration. Tested by
 
 ## Test Coverage
 
-- **Tests added:** 26 coordinator test files (205 tests: manifest, DAG,
+- **Tests added:** 26 coordinator test files (259 tests at HEAD: manifest, DAG,
   journal replay/resume, scheduler transitions and intents, launcher
   spawn/kill/reap with real subprocesses, gates, ladder, rate-limit,
   registrations, attempt prep, trust seeding, sculpt signaling, review
@@ -131,10 +147,21 @@ table shows each task's worker registration. Tested by
   validation, shell-quoted rendering incl. hostile input, create-agent
   API 422 paths, launch-vs-resume, bundled install); sculpt CLI
   `--launch-arg` tests.
-- **Suite status:** all green. `just check` passes (lint, typecheck,
-  ratchets, file hygiene). `just test-unit` passes: backend 763 passed
-  / 4 skipped (pre-existing skips, untouched by this diff), foundation
-  124, sculpt 203, coordinator 205 passed / 1 deselected, frontend OK.
+- **Second-pass additions:** Stop-guard unit tests (block, allow,
+  budget exhaustion, fail-open) in `test_attempt.py`; launcher verdicts
+  for `stopped-with-pending-background` and for the drain-then-clean-Stop
+  path; `read_completed_signals` rejecting a dirty Stop on resume; an
+  e2e retry-after-abandoned-turn test asserting the retry context names
+  the abandoned command; ladder tests for reopened budgets and
+  re-escalation; a scheduler test proving the restored budget survives a
+  resume; four `_timeout_for` precedence tests; and rate-limit tests for
+  the 429 shapes that must and must not classify plus the
+  truncated-first-line regression.
+- **Suite status:** all green, re-run at HEAD for this review. `just
+  check` passes (lint, typecheck, ratchets, file hygiene). `just
+  test-unit` passes: backend 763 passed / 4 skipped (pre-existing skips,
+  untouched by this diff), foundation 124, sculpt 203, coordinator 259
+  passed / 1 deselected, frontend OK.
 - **Integration tests run:** none added or required — the plan's
   end-to-end coverage is the fake-worker e2e suite (real subprocesses,
   real git, real signals files; no LLM), which ran green as part of
@@ -559,6 +586,195 @@ read as a stuck run. `coordinator run` over existing state now
 auto-resumes the recorded run (the same safe path as `coordinator
 resume`) with a notice, so tab restarts self-heal.
 
+## Second review pass
+
+Covers the eight commits after the first review pass: `b85bb5e4`…
+`a31e5e49` were already recorded above; this pass reviews `a5554cf3`,
+`ba2d82c7`, `b74c52fd`, `6f9b6611`, `9667d6a7`, and `ca136462`.
+
+### What landed
+
+- **`a5554cf3` / `ba2d82c7`** (field-test fixes, recorded in the
+  section above): resume gates a completed-but-unjudged attempt instead
+  of redoing it; Ctrl+C routes through the quit-when-idle guard; the
+  status bar only redraws on change; `coordinator run` over existing
+  state auto-resumes.
+- **`b74c52fd`**: rate-limit classification no longer treats a bare
+  `429` as a marker (it now requires an HTTP-status shape) and the
+  64 KiB tail starts at a line boundary so a truncated JSONL line
+  cannot bypass the conversation-content filter.
+- **`6f9b6611`**: the per-attempt timeout moves from a hardcoded 30
+  minutes to a 120-minute built-in default, configurable on
+  `defaults`, per task, and per run (`--timeout-minutes`), resolved by
+  `PlanExecutor._timeout_for` for implementer and reviewer attempts
+  alike.
+- **`9667d6a7`**: a phase review that re-opens an already-passed task
+  restores its attempt budget, derived from the journal so the reset
+  survives a restart.
+- **`ca136462`**: a Stop guard hook vetoes a turn that ends with
+  background tasks still running; a turn that ends that way anyway
+  verdicts as `stopped-with-pending-background` and retries with the
+  abandoned commands named. The interactive/PTY worker path is removed
+  along with `trust.py`, the four built-in registrations collapse to
+  one (`claude.yaml`), and `review_task.md` is finally shipped as
+  package data.
+
+Design docs were updated to match: `REQ-WORKER-2` is marked **Dropped**
+in `spec.md`, and `architecture.md` replaces the PTY worker description
+and its "interactive Claude in a headless PTY" risk with the headless
+worker and the abandoned-turn risk.
+
+### Findings
+
+Output of `/code-review-checklist` over the new commits. No CRITICAL or
+HIGH findings. All are resolved — see the resolution log at the end of
+this section.
+
+**MEDIUM** — `tools/coordinator/coordinator/ratelimit.py:104-122`.
+`classify_attempt` appends `_tail(stderr.log)` and `_tail(stdout.log)`
+raw, bypassing the conversation-content filter that
+`_transcript_error_text` applies to the transcript. Under `claude -p`,
+`stdout.log` holds the worker's final assistant message — so a worker
+whose closing summary mentions "rate limit" (any task *about*
+rate-limit handling, including the work in `b74c52fd` itself)
+classifies as rate-limited on every attempt: the run pauses instead of
+failing and the node can neither pass nor fail. This is the same
+false-positive class the filter exists to prevent, left open on the
+other input.
+
+**MEDIUM** — `tools/coordinator/coordinator/run.py:123-141`.
+Auto-resume sets `resume = True` inside the `if not resume:` block, so
+the very next guard — `if not resume and not is_tree_clean(cwd)` — is
+skipped for every auto-resumed run. The architecture states the
+coordinator refuses to start on a dirty tree; a `coordinator run` over
+existing state now starts anyway and only stops later at the executor's
+per-task dirty check, under a different message.
+
+**MEDIUM** — `run.py:132-136` + `tools/coordinator/coordinator/tui/app.py:167-169`.
+`ba2d82c7` promises auto-resume "with a notice naming the run id and
+how to start over", but the notice travels through `progress`, which is
+only wired in `--no-tui` mode. In a Sculptor tab stdout is a tty, so
+the TUI runs, `progress is None`, and the notice is dropped — in
+exactly the environment whose ambiguity the commit set out to remove.
+
+**MEDIUM** — `tools/coordinator/coordinator/data/workers/claude.yaml`,
+`sculptor/sculptor-workflow/skills/plan/SKILL.md:349-355`. Collapsing to
+one built-in registration removed the only registration a default plan
+could escalate to, and the Plan skill now omits `escalation_worker`
+entirely. REQ-FAIL-2 ("MUST first escalate to a stronger worker …
+before involving the human") and the architecture's stated default ("at
+most three worker sessions per task") no longer hold for a
+skill-authored plan: the ladder stops after the two base attempts. The
+mechanism is intact and configurable — either ship a second built-in
+registration or record the deviation in the architecture.
+
+**MEDIUM** — `.sculptor/workers/claude-interactive.yaml`,
+`.sculptor/workers/claude-interactive-opus.yaml`. `ca136462` deleted the
+interactive built-ins and the whole PTY path, but this repo's own
+checked-in registrations still declare `mode: interactive` and launch
+`claude` without `-p`. Repo-level registrations shadow built-ins, so a
+plan naming `claude-interactive` still resolves — and now launches an
+interactive session on pipes, which can never report a verdict; the
+attempt dies as `exited-without-stop`. The `mode:` key is silently
+ignored (pydantic drops unknown fields), so nothing warns.
+`claude-print.yaml` / `claude-print-opus.yaml` still load and run, but
+carry the same dead key and duplicate the built-in under its old names.
+
+**LOW** — `ratelimit.py:69-76`. `_tail` returns `""` when a >64 KiB tail
+contains no newline. For the JSONL transcript that is the intended
+conservative behaviour, but `stdout.log`/`stderr.log` are not
+line-oriented: one long unterminated line (a crash dump, a
+`--output-format json` blob) now drops the entire scan window, where
+the previous code scanned the raw tail.
+
+**LOW** — `tools/coordinator/coordinator/registrations.py:71-78`. Dropping
+the `mode` field keeps old registrations loading but silently changes
+their behaviour (an `interactive` one now runs headless). The commit
+message calls this out as intentional; the loader says nothing. A
+one-line warning when a registration carries `mode:` would make the
+change visible to whoever wrote it.
+
+**LOW** — `tools/coordinator/tests/test_scheduler.py:411-413`.
+`test_restored_budget_survives_a_resume` hardcodes
+`reason="phase-review-reopen"` instead of importing
+`PHASE_REVIEW_REOPEN_REASON`, the constant introduced in the same
+commit precisely so that string has one owner. Renaming the constant
+would leave the test green against a stale value.
+
+**LOW** — `tools/coordinator/coordinator/data/stop_guard.py:97-98`.
+`except Exception: pass` in `main()`. Deliberate and explained in the
+module docstring (a broken guard must never wedge a worker), but the
+swallow carries no marker at the handler itself and hides programming
+errors during development.
+
+**LOW** — `tools/coordinator/coordinator/scheduler.py:543-547`. "Without
+this, a task that needed its full budget to pass fails the run on its
+first stumble after a reopen" argues for the change rather than
+describing the code; the preceding two sentences already carry the why.
+
+**LOW** — git hygiene: `ca136462` bundles four separable changes (the
+Stop guard, the registration collapse, the removal of the
+interactive/PTY path including `trust.py`, and the unrelated packaging
+fix for `review_task.md`). The message ties the first three together
+convincingly; the packaging fix is an independent bug.
+
+**LOW** — `spec.md:362-366` still lists "**Billing premise to verify:**
+does `claude -p` bill against a logged-in subscription the same way" as
+an Open Question, while the same document's REQ-WORKER-2 now asserts
+that it does. `architecture.md` dropped its copy of the question; the
+spec's should follow.
+
+Categories with no findings in this pass: proof-of-work completeness
+(the stated goal is a spec, not an MR body), security & secrets,
+frontend (no `.tsx` changes), integration tests (nothing under
+`sculptor/tests/integration/`), style guide & ratchets (`just check`
+passes), and public-facing text (the six commit messages carry no PII,
+secrets, internal hostnames, or user paths).
+
+### Resolution log
+
+One commit per finding, each gated on `just format` / `just check` /
+`just test-unit`:
+
+- `ad06d185` — **Resolved** the `stdout.log` rate-limit false positive.
+  Markers now come in two tiers: harness-only phrasings and the HTTP
+  status shapes count anywhere; the generic "rate limit" / "rate-limit"
+  count only on the transcript's non-content entries and stderr. Tests
+  cover a worker summary that must not classify and an unambiguous
+  marker on stdout that must.
+- `f2f4c744` — **Resolved** the tail regression: dropping the leading
+  partial line is now opt-in, asked for only by the transcript reader,
+  so an unterminated log line no longer discards the whole scan window.
+- `931f0942` — **Resolved** the invisible dirty-tree exemption. The
+  refusal moved into the branch it belongs to, as the alternative to
+  finding existing state. Behaviour is unchanged and now pinned by
+  `test_dirty_tree_does_not_block_an_auto_resume`.
+- `5d6a53a6` — **Resolved** the dropped auto-resume notice. Run-level
+  messages have their own channel, falling back to `progress` when
+  unset; the dashboard posts them as a toast from the run thread.
+- `d5bbb9df` — **Resolved** REQ-FAIL-2. The built-ins are the pair the
+  architecture describes — `claude-sonnet` to build, `claude-opus` to
+  escalate to — and the Plan skill emits both. The bare name `claude` is
+  gone rather than aliased, so a stale manifest fails at run start
+  naming both replacements.
+- `8a48c626` — **Resolved** the stale repo registrations: the two
+  interactive files (which would have launched an unsupported worker)
+  and the two print-mode duplicates are deleted; the README says what
+  the now-empty directory is for.
+- `81d96024` — **Resolved** the silent `mode:` behaviour change: the
+  loader warns once per file and names the ignored value.
+- `8c8153de` — **Resolved** the three nits: the resume test uses
+  `PHASE_REVIEW_REOPEN_REASON`, the reopen comment stops arguing for
+  itself, and the Stop guard's catch-all carries its reason at the
+  handler.
+- `dd11d034` — **Resolved** the stale spec Open Question that
+  REQ-WORKER-2 already answers.
+
+**Declined with rationale:** the git-hygiene finding on `ca136462`.
+Splitting a published commit means rewriting shared history, which costs
+more than the tidier log is worth; the packaging fix it carries is one
+line and the message names it.
+
 ## Overall Assessment
 
 This is a strong, well-tested implementation of increment 1. Every
@@ -580,7 +796,27 @@ the post-review pass (`18cf7de2` through `960715c2`, see the Resolution
 log), each gated on the full verification suite. The coordinator test
 count grew from 205 to 225 in the process.
 
-Remaining follow-ups are increment-2 scope, not defects: the
-interactive-node pipeline, the finalize-signal contract, and worktree
-parallelism, plus the known opt-in-only coverage of the real-Claude
-hooks contract.
+The second pass, over the field-test fixes and the headless-worker
+pivot, found nothing blocking. The pivot is coherent — spec,
+architecture, launcher, registrations, process docs, and tests all
+moved together, and the Stop-guard design (veto the turn, bound the
+loop, name the abandoned commands in the retry context, fail open on
+every guard error) is the right shape for a problem a headless session
+cannot otherwise survive.
+
+Its five MEDIUMs were all holes a real run could fall into rather than
+data-loss risks, and all are now closed (`ad06d185` through
+`8a48c626`): the `stdout.log` rate-limit false positive that could wedge
+a run on a task merely *discussing* rate limits, the missing default
+escalation rung, the stale `.sculptor/workers/claude-interactive*.yaml`
+files that would have launched an unsupported worker, the dirty-tree
+exemption that read as an accident, and the auto-resume notice the
+dashboard never showed. The one declined finding is cosmetic: splitting
+`ca136462` would mean rewriting published history.
+
+Remaining follow-ups beyond those are increment-2 scope, not defects:
+the interactive-node pipeline, the finalize-signal contract, and
+worktree parallelism, plus the known opt-in-only coverage of the
+real-Claude hooks contract — a seam the Stop-guard work enlarges
+slightly, since the guard's `background_tasks` payload contract is
+exercised only by unit tests and the opt-in smoke test.

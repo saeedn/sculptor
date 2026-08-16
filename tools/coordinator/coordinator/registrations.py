@@ -54,6 +54,7 @@ from importlib import resources
 from pathlib import Path
 
 import yaml
+from loguru import logger
 from pydantic import BaseModel
 from pydantic import ValidationError
 from pydantic import model_validator
@@ -151,6 +152,11 @@ def _load_yaml_registration(name: str, text: str, source: str, problems: list[st
     if not isinstance(data, dict):
         problems.append(f"{source}: registration must be a YAML mapping, got {type(data).__name__}")
         return None
+    if "mode" in data:
+        # Registrations predating the headless-only launcher still carry
+        # this. Loading them is deliberate, but `mode: interactive` used
+        # to mean something and now silently does not.
+        logger.warning("{}: ignoring `mode: {}` — every worker runs headless; drop the key", source, data.pop("mode"))
     try:
         return WorkerRegistration(name=name, **data)
     except (ValidationError, TypeError) as e:

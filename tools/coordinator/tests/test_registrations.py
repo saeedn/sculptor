@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import pytest
+from loguru import logger
 from pydantic import ValidationError
 
 from coordinator.manifest import ManifestDefaults
@@ -180,3 +181,20 @@ def test_resolve_worker_unknown_name_raises(tmp_path: Path) -> None:
         resolve_worker(manifest, task, registrations)
     assert "task 1.1" in str(exc_info.value)
     assert "no-such-worker" in str(exc_info.value)
+
+
+def test_stale_mode_key_loads_but_warns(tmp_path: Path) -> None:
+    # Registrations written before the launcher went headless-only still
+    # work; `mode: interactive` just stopped meaning anything, and a
+    # silent change of behaviour is worse than a noisy one.
+    workers = tmp_path / ".sculptor" / "workers"
+    workers.mkdir(parents=True)
+    (workers / "legacy.yaml").write_text('display_name: Legacy\nmode: interactive\ncommand: ["worker", "{prompt}"]\n')
+    warnings: list[str] = []
+    handler_id = logger.add(lambda message: warnings.append(message), level="WARNING")
+    try:
+        registrations = load_registrations(tmp_path)
+    finally:
+        logger.remove(handler_id)
+    assert registrations["legacy"].display_name == "Legacy"
+    assert any("mode: interactive" in warning for warning in warnings)

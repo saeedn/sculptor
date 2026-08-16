@@ -360,10 +360,6 @@ These are unresolved decisions for the Architect and Plan phases to
 pick up; everything decided during spec Q&A has been folded into the
 Requirements above.
 
-- **Billing premise to verify:** does `claude -p` (print mode) bill
-  against a logged-in subscription the same way interactive mode
-  does? If yes, print-mode workers (no PTY, structured output) are
-  strictly more stable and become just another worker registration.
 - **Worker contract details:** exact placeholder set for worker
   registrations, how the hooks fragment reaches the worker, how the
   completion signal travels coordinator-ward (file, socket, `sculpt

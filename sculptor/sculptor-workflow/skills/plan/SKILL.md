@@ -311,7 +311,8 @@ meta:
   spec: ../spec.md                 # relative to the plan folder
   architecture: ../architecture.md
 defaults:
-  worker: claude                   # worker registration name
+  worker: claude-sonnet            # worker registration name
+  escalation_worker: claude-opus   # stronger worker for the last attempt
   attempts: 2                      # base attempts before escalation
   verification:                    # materialized from .sculptor/code.md
     - just format
@@ -346,17 +347,17 @@ Authoring rules:
 - **`defaults.verification` is materialized from `.sculptor/code.md`'s
   *Pre-commit Verification* section** — copy the actual commands into
   the list; the coordinator cannot parse prose.
-- **Workers**: default to `claude`, the built-in registration, unless
+- **Workers**: default to the built-in pair — `claude-sonnet` to build,
+  `claude-opus` to escalate to once the base attempts are spent — unless
   the repo's `.sculptor/workers/` directory offers something better
-  suited. Set `escalation_worker` only when such a registration exists
-  to escalate *to* — there is no built-in stronger worker, and naming a
-  missing registration fails the run at start.
+  suited. Naming a registration that does not exist fails the run at
+  start.
 - **Per-task overrides only where a task is genuinely risky or
-  special**: gnarly concurrency/migration work → `gates: [mechanical,
-  agentic]` or more `attempts`; schema migrations or destructive
-  steps → add `human` to the gates; `no_change: true` for tasks not
-  expected to produce a commit (the mechanical gate otherwise fails a
-  commit-less task).
+  special**: gnarly concurrency/migration work → `worker: claude-opus`,
+  `gates: [mechanical, agentic]`, or more `attempts`; schema
+  migrations or destructive steps → add `human` to the gates;
+  `no_change: true` for tasks not expected to produce a commit (the
+  mechanical gate otherwise fails a commit-less task).
 - **`attempt_timeout_minutes`** (on `defaults` or a task) caps how long
   one attempt may run; the built-in default is 120. Raise it for a
   task whose verification runs a long end-to-end suite — a timeout

@@ -13,7 +13,7 @@ from coordinator.registrations import load_registrations
 from coordinator.registrations import render
 from coordinator.registrations import resolve_worker
 
-BUILTIN_NAMES = {"claude"}
+BUILTIN_NAMES = {"claude-sonnet", "claude-opus"}
 
 
 @pytest.fixture(autouse=True)
@@ -31,15 +31,18 @@ def write_registration(directory: Path, name: str, display_name: str) -> None:
 def test_builtins_load(tmp_path: Path) -> None:
     registrations = load_registrations(tmp_path)
     assert BUILTIN_NAMES <= set(registrations)
-    claude = registrations["claude"]
-    assert "-p" in claude.command
-    assert "--dangerously-skip-permissions" in claude.command
+    for name in BUILTIN_NAMES:
+        assert "-p" in registrations[name].command
+        assert "--dangerously-skip-permissions" in registrations[name].command
+    # A default plan can escalate: the pair differs only by model.
+    assert registrations["claude-sonnet"].model == "sonnet"
+    assert registrations["claude-opus"].model == "opus"
 
 
 def test_claude_renders_to_valid_argv(tmp_path: Path) -> None:
     registrations = load_registrations(tmp_path)
     argv, env = render(
-        registrations["claude"],
+        registrations["claude-opus"],
         prompt="do the thing",
         settings_file="/attempt/hooks.json",
         attempt_dir="/attempt",
@@ -128,11 +131,11 @@ def test_model_placeholder_without_model_rejected() -> None:
 
 def test_layering_repo_shadows_user_shadows_builtin(tmp_path: Path, isolated_user_config: Path) -> None:
     repo_root = tmp_path / "repo"
-    write_registration(isolated_user_config / "coordinator" / "workers", "claude", "user-level")
+    write_registration(isolated_user_config / "coordinator" / "workers", "claude-opus", "user-level")
     write_registration(isolated_user_config / "coordinator" / "workers", "user-only", "user-only")
-    write_registration(repo_root / ".sculptor" / "workers", "claude", "repo-level")
+    write_registration(repo_root / ".sculptor" / "workers", "claude-opus", "repo-level")
     registrations = load_registrations(repo_root)
-    assert registrations["claude"].display_name == "repo-level"
+    assert registrations["claude-opus"].display_name == "repo-level"
     assert registrations["user-only"].display_name == "user-only"
 
 
@@ -160,14 +163,14 @@ def make_manifest(worker: str, task_worker: str | None = None) -> tuple[PlanMani
 def test_resolve_worker_prefers_task_override(tmp_path: Path) -> None:
     write_registration(tmp_path / ".sculptor" / "workers", "stronger", "Stronger")
     registrations = load_registrations(tmp_path)
-    manifest, task = make_manifest("claude", task_worker="stronger")
+    manifest, task = make_manifest("claude-sonnet", task_worker="stronger")
     assert resolve_worker(manifest, task, registrations) == "stronger"
 
 
 def test_resolve_worker_falls_back_to_default(tmp_path: Path) -> None:
     registrations = load_registrations(tmp_path)
-    manifest, task = make_manifest("claude")
-    assert resolve_worker(manifest, task, registrations) == "claude"
+    manifest, task = make_manifest("claude-sonnet")
+    assert resolve_worker(manifest, task, registrations) == "claude-sonnet"
 
 
 def test_resolve_worker_unknown_name_raises(tmp_path: Path) -> None:

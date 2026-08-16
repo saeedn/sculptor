@@ -16,10 +16,11 @@ Full schema (version 1):
       spec: ../spec.md               # uses these; paths are relative to the
       architecture: ../architecture.md   # plan folder)
     defaults:
-      worker: claude                 # worker registration name
-      escalation_worker: claude-max  # optional; a registration to retry on
-                                     # after the base attempts are spent
-      reviewer: claude               # optional; worker used by agentic
+      worker: claude-sonnet          # worker registration name
+      escalation_worker: claude-opus # optional; a stronger registration to
+                                     # retry on once the base attempts are
+                                     # spent
+      reviewer: claude-opus          # optional; worker used by agentic
                                      # review gates (defaults to the
                                      # node's worker)
       attempts: 2                    # base attempts before escalation; >= 1
@@ -42,7 +43,7 @@ Full schema (version 1):
             kind: task               # task|spec|mock|architect|plan|review|gate
                                      # (only "task" is executable today;
                                      # the rest are reserved)
-            worker: claude           # optional per-task override
+            worker: claude-opus      # optional per-task override
             gates: [mechanical, agentic]     # optional per-task override;
                                              # allowed: mechanical|agentic|human
             attempts: 3              # optional per-task override; >= 1

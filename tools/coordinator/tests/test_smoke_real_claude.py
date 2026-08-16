@@ -26,7 +26,7 @@ from tests.fakes import make_git_repo
 PLAN_YAML = """\
 version: 1
 defaults:
-  worker: claude
+  worker: claude-sonnet
   verification:
     - "true"
 phases:

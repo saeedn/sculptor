@@ -19,15 +19,22 @@ if TYPE_CHECKING:
 
 _TAIL_BYTES = 64 * 1024
 
-# Case-insensitive substrings that mark a rate-limited attempt. Exact
-# strings drift across Claude Code versions — extend this list as new
+# Case-insensitive substrings specific enough to mean a rate limit
+# wherever they appear, including in text the model itself wrote. Exact
+# strings drift across Claude Code versions — extend these lists as new
 # phrasings show up in the wild.
-RATE_LIMIT_MARKERS = (
-    "rate limit",
-    "rate-limit",
+UNAMBIGUOUS_RATE_LIMIT_MARKERS = (
     "usage limit reached",
     "you've reached your usage limit",
     "overloaded_error",
+)
+
+# The generic phrasings on top. These are ordinary English a worker
+# writes while doing ordinary work, so they count only on surfaces the
+# model does not author.
+RATE_LIMIT_MARKERS = UNAMBIGUOUS_RATE_LIMIT_MARKERS + (
+    "rate limit",
+    "rate-limit",
 )
 
 # A bare "429" is not a marker: those digits occur inside token counts
@@ -104,26 +111,36 @@ def _transcript_error_text(path: Path) -> str:
     return "\n".join(lines)
 
 
+def _matches(text: str, markers: tuple[str, ...]) -> bool:
+    lowered = text.lower()
+    return any(marker in lowered for marker in markers) or _HTTP_429_PATTERN.search(text) is not None
+
+
 def classify_attempt(result: "AttemptResult", attempt_dir: Path | None = None) -> RateLimit | None:
     """``RateLimit`` when the attempt's artifacts show a rate-limit marker, else None.
 
-    Scans error surfaces only — the transcript's non-content entries and
-    the captured process output — never the conversation itself.
+    Two surfaces, two bars. The transcript's non-content entries and
+    ``stderr.log`` are the harness talking, so every marker counts there.
+    ``stdout.log`` under ``claude -p`` is the worker's own final message —
+    conversation, held to the unambiguous markers only, or a task about
+    rate limiting would pause its own run on every attempt.
     """
-    texts: list[str] = []
+    error_texts: list[str] = []
+    content_texts: list[str] = []
     if result.transcript_path is not None:
         transcript = Path(result.transcript_path)
         if transcript.is_file():
-            texts.append(_transcript_error_text(transcript))
+            error_texts.append(_transcript_error_text(transcript))
     if attempt_dir is not None:
-        for log_name in ("stderr.log", "stdout.log"):
+        for log_name, texts in (("stderr.log", error_texts), ("stdout.log", content_texts)):
             log = attempt_dir / log_name
             if log.is_file():
                 texts.append(_tail(log))
-    combined = "\n".join(texts)
-    lowered = combined.lower()
-    if not any(marker in lowered for marker in RATE_LIMIT_MARKERS) and _HTTP_429_PATTERN.search(combined) is None:
+    if not _matches("\n".join(error_texts), RATE_LIMIT_MARKERS) and not _matches(
+        "\n".join(content_texts), UNAMBIGUOUS_RATE_LIMIT_MARKERS
+    ):
         return None
+    combined = "\n".join(error_texts + content_texts)
     reset_match = _RESET_PATTERN.search(combined)
     if reset_match is not None:
         return RateLimit(resume_hint=f"resets at {reset_match.group(1).strip()}")

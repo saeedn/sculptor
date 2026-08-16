@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from coordinator.ratelimit import RATE_LIMIT_MARKERS
+from coordinator.ratelimit import UNAMBIGUOUS_RATE_LIMIT_MARKERS
 from coordinator.ratelimit import classify_attempt
 from coordinator.scheduler import AttemptResult
 
@@ -161,5 +162,34 @@ def test_long_unterminated_log_line_still_classifies(tmp_path: Path) -> None:
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     (attempt_dir / "stderr.log").write_text("x" * 70_000 + " usage limit reached")
+    result = AttemptResult(is_ok=False, status="exited-without-stop")
+    assert classify_attempt(result, attempt_dir) is not None
+
+
+def test_worker_summary_mentioning_rate_limits_is_not_a_rate_limit(tmp_path: Path) -> None:
+    # `claude -p` prints the worker's own final message to stdout, so a
+    # task ABOUT rate limiting would otherwise pause its own run.
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    (attempt_dir / "stdout.log").write_text("SUCCESS: added rate limit handling and a retry test\n")
+    result = AttemptResult(is_ok=False, status="timeout")
+    assert classify_attempt(result, attempt_dir) is None
+
+
+def test_generic_marker_on_stderr_still_classifies(tmp_path: Path) -> None:
+    # stderr is the harness talking, not the worker: the same phrasing counts.
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    (attempt_dir / "stderr.log").write_text("Error: rate limit exceeded\n")
+    result = AttemptResult(is_ok=False, status="exited-without-stop")
+    assert classify_attempt(result, attempt_dir) is not None
+
+
+@pytest.mark.parametrize("marker", UNAMBIGUOUS_RATE_LIMIT_MARKERS)
+def test_unambiguous_marker_on_stdout_classifies(tmp_path: Path, marker: str) -> None:
+    # A real limit ends the session by printing exactly this and nothing else.
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    (attempt_dir / "stdout.log").write_text(f"{marker}\n")
     result = AttemptResult(is_ok=False, status="exited-without-stop")
     assert classify_attempt(result, attempt_dir) is not None

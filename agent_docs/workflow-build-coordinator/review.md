@@ -39,7 +39,7 @@ against `spec.md`, `architecture.md`, and `plan/00_overview.md`.
 | REQ-PAR-1 | Covered | `scheduler.py:306` executes `ready[0]` only — sequential, in the shared tree |
 | REQ-PAR-2 | Deferred | Increment 3, per plan |
 | REQ-WORKER-1 | Covered | `registrations.py:67-185` — YAML command templates, layered built-in → user → repo discovery, unknown placeholders rejected |
-| REQ-WORKER-2 | Covered | `data/workers/claude-interactive.yaml`; PTY launch `launcher.py:227-290`; screen never parsed (`launcher.py:10-12`) |
+| REQ-WORKER-2 | Dropped | Interactive/PTY workers removed; `data/workers/claude.yaml` runs headless `claude -p`, screen never parsed (`launcher.py:1-27`) |
 | REQ-WORKER-3 | Covered | signals + process lifecycle only (`launcher.py:298-324`); exit without Stop → `exited-without-stop` failure |
 | REQ-WORKER-4 | Covered | Stop only hands off to gates (`gates.py:1-13`); gate failure → fresh seeded attempt (`scheduler.py:376-429`) |
 | REQ-WORKER-5 | Covered | `launcher.py:110-112` → `SignalObserved` → `AttemptRecord.session_id` |

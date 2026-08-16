@@ -13,7 +13,7 @@ from coordinator.registrations import load_registrations
 from coordinator.registrations import render
 from coordinator.registrations import resolve_worker
 
-BUILTIN_NAMES = {"claude-print", "claude-print-opus", "claude-interactive", "claude-interactive-opus"}
+BUILTIN_NAMES = {"claude"}
 
 
 @pytest.fixture(autouse=True)
@@ -25,35 +25,33 @@ def isolated_user_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Pat
 
 def write_registration(directory: Path, name: str, display_name: str) -> None:
     directory.mkdir(parents=True, exist_ok=True)
-    (directory / f"{name}.yaml").write_text(
-        f'display_name: {display_name}\nmode: print\ncommand: ["worker", "{{prompt}}"]\n'
-    )
+    (directory / f"{name}.yaml").write_text(f'display_name: {display_name}\ncommand: ["worker", "{{prompt}}"]\n')
 
 
 def test_builtins_load(tmp_path: Path) -> None:
     registrations = load_registrations(tmp_path)
     assert BUILTIN_NAMES <= set(registrations)
-    claude_print = registrations["claude-print"]
-    assert claude_print.mode == "print"
-    assert "-p" in claude_print.command
-    assert "--dangerously-skip-permissions" in claude_print.command
-    assert registrations["claude-interactive"].mode == "interactive"
-    assert "-p" not in registrations["claude-interactive"].command
+    claude = registrations["claude"]
+    assert "-p" in claude.command
+    assert "--dangerously-skip-permissions" in claude.command
 
 
-def test_claude_print_renders_to_valid_argv(tmp_path: Path) -> None:
+def test_claude_renders_to_valid_argv(tmp_path: Path) -> None:
     registrations = load_registrations(tmp_path)
     argv, env = render(
-        registrations["claude-print"],
+        registrations["claude"],
         prompt="do the thing",
         settings_file="/attempt/hooks.json",
         attempt_dir="/attempt",
         cwd="/repo",
     )
+    # The model is pinned, never left to the harness default.
     assert argv == [
         "claude",
         "-p",
         "--dangerously-skip-permissions",
+        "--model",
+        "opus",
         "--settings",
         "/attempt/hooks.json",
         "do the thing",
@@ -65,7 +63,6 @@ def test_render_handles_embedded_placeholders_and_literal_braces() -> None:
     registration = WorkerRegistration(
         name="w",
         display_name="W",
-        mode="print",
         command=["worker", "--settings={settings_file}", "{prompt}"],
         env={"WORKDIR": "{cwd}"},
     )
@@ -86,7 +83,6 @@ def test_model_placeholder_renders() -> None:
     registration = WorkerRegistration(
         name="w",
         display_name="W",
-        mode="print",
         command=["worker", "--model", "{model}", "{prompt}"],
         model="opus",
     )
@@ -96,56 +92,55 @@ def test_model_placeholder_renders() -> None:
 
 def test_unknown_placeholder_rejected() -> None:
     with pytest.raises(ValidationError) as exc_info:
-        WorkerRegistration(name="w", display_name="W", mode="print", command=["worker", "{prompt}", "{session_id}"])
+        WorkerRegistration(name="w", display_name="W", command=["worker", "{prompt}", "{session_id}"])
     assert "{session_id}" in str(exc_info.value)
 
 
 def test_unknown_placeholder_in_env_rejected() -> None:
     with pytest.raises(ValidationError):
-        WorkerRegistration(
-            name="w", display_name="W", mode="print", command=["worker", "{prompt}"], env={"X": "{typo}"}
-        )
+        WorkerRegistration(name="w", display_name="W", command=["worker", "{prompt}"], env={"X": "{typo}"})
 
 
 def test_missing_prompt_rejected() -> None:
     with pytest.raises(ValidationError) as exc_info:
-        WorkerRegistration(name="w", display_name="W", mode="print", command=["worker"])
+        WorkerRegistration(name="w", display_name="W", command=["worker"])
     assert "{prompt}" in str(exc_info.value)
 
 
 def test_double_prompt_rejected() -> None:
     with pytest.raises(ValidationError):
-        WorkerRegistration(name="w", display_name="W", mode="print", command=["worker", "{prompt}", "{prompt}"])
+        WorkerRegistration(name="w", display_name="W", command=["worker", "{prompt}", "{prompt}"])
 
 
-def test_bad_mode_rejected() -> None:
-    with pytest.raises(ValidationError):
-        # pyrefly: ignore [bad-argument-type]
-        WorkerRegistration(name="w", display_name="W", mode="batch", command=["worker", "{prompt}"])
+def test_legacy_mode_key_is_ignored(tmp_path: Path) -> None:
+    # Workers are headless-only; a `mode:` left over in someone's own
+    # registration must not break their run.
+    workers = tmp_path / ".sculptor" / "workers"
+    workers.mkdir(parents=True)
+    (workers / "legacy.yaml").write_text('display_name: Legacy\nmode: print\ncommand: ["worker", "{prompt}"]\n')
+    assert load_registrations(tmp_path)["legacy"].display_name == "Legacy"
 
 
 def test_model_placeholder_without_model_rejected() -> None:
     with pytest.raises(ValidationError):
-        WorkerRegistration(name="w", display_name="W", mode="print", command=["worker", "{model}", "{prompt}"])
+        WorkerRegistration(name="w", display_name="W", command=["worker", "{model}", "{prompt}"])
 
 
 def test_layering_repo_shadows_user_shadows_builtin(tmp_path: Path, isolated_user_config: Path) -> None:
     repo_root = tmp_path / "repo"
-    write_registration(isolated_user_config / "coordinator" / "workers", "claude-print", "user-level")
+    write_registration(isolated_user_config / "coordinator" / "workers", "claude", "user-level")
     write_registration(isolated_user_config / "coordinator" / "workers", "user-only", "user-only")
-    write_registration(repo_root / ".sculptor" / "workers", "claude-print", "repo-level")
+    write_registration(repo_root / ".sculptor" / "workers", "claude", "repo-level")
     registrations = load_registrations(repo_root)
-    assert registrations["claude-print"].display_name == "repo-level"
+    assert registrations["claude"].display_name == "repo-level"
     assert registrations["user-only"].display_name == "user-only"
-    # Un-shadowed built-ins are still present.
-    assert "claude-print-opus" in registrations
 
 
 def test_broken_files_collected_into_one_error(tmp_path: Path) -> None:
     workers = tmp_path / ".sculptor" / "workers"
     workers.mkdir(parents=True)
-    (workers / "bad-yaml.yaml").write_text("mode: [unclosed\n")
-    (workers / "bad-schema.yaml").write_text('display_name: X\nmode: print\ncommand: ["worker"]\n')
+    (workers / "bad-yaml.yaml").write_text("command: [unclosed\n")
+    (workers / "bad-schema.yaml").write_text('display_name: X\ncommand: ["worker"]\n')
     with pytest.raises(ManifestError) as exc_info:
         load_registrations(tmp_path)
     assert "bad-yaml.yaml" in str(exc_info.value)
@@ -163,15 +158,16 @@ def make_manifest(worker: str, task_worker: str | None = None) -> tuple[PlanMani
 
 
 def test_resolve_worker_prefers_task_override(tmp_path: Path) -> None:
+    write_registration(tmp_path / ".sculptor" / "workers", "stronger", "Stronger")
     registrations = load_registrations(tmp_path)
-    manifest, task = make_manifest("claude-print", task_worker="claude-print-opus")
-    assert resolve_worker(manifest, task, registrations) == "claude-print-opus"
+    manifest, task = make_manifest("claude", task_worker="stronger")
+    assert resolve_worker(manifest, task, registrations) == "stronger"
 
 
 def test_resolve_worker_falls_back_to_default(tmp_path: Path) -> None:
     registrations = load_registrations(tmp_path)
-    manifest, task = make_manifest("claude-print")
-    assert resolve_worker(manifest, task, registrations) == "claude-print"
+    manifest, task = make_manifest("claude")
+    assert resolve_worker(manifest, task, registrations) == "claude"
 
 
 def test_resolve_worker_unknown_name_raises(tmp_path: Path) -> None:

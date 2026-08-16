@@ -35,7 +35,13 @@ dev = [
 where = ["."]
 
 [tool.setuptools.package-data]
-coordinator = ["data/workers/*.yaml", "data/append_signal.py", "data/implement_task.md"]
+coordinator = [
+    "data/workers/*.yaml",
+    "data/append_signal.py",
+    "data/stop_guard.py",
+    "data/implement_task.md",
+    "data/review_task.md",
+]
 
 [tool.pytest.ini_options]
 markers = [

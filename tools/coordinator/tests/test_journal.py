@@ -33,7 +33,7 @@ def make_events() -> list:
     return [
         RunStarted(run_id="run-1", plan_dir="/plan", manifest_hash="abc"),
         TaskStateChanged(node_id="1.1", old_state="pending", new_state="running"),
-        AttemptStarted(node_id="1.1", attempt_index=0, worker_registration="claude-print", pid=42, attempt_dir="/a/0"),
+        AttemptStarted(node_id="1.1", attempt_index=0, worker_registration="claude", pid=42, attempt_dir="/a/0"),
         SignalObserved(node_id="1.1", attempt_index=0, event="session-start", session_id="sess-1"),
         SignalObserved(node_id="1.1", attempt_index=0, event="stop", transcript_path="/t.jsonl"),
         GateStarted(node_id="1.1", gate="mechanical"),

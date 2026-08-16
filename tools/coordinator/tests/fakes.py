@@ -4,7 +4,6 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import Literal
 
 from coordinator.registrations import WorkerRegistration
 from coordinator.statedir import sanitize_node_id
@@ -66,6 +65,35 @@ emit("Stop", {"session_id": "fake-sess", "env": {k: os.environ.get(k) for k in k
 )
 
 SLEEP_FOREVER = FAKE_PROLOGUE + "\ntime.sleep(60)\n"
+
+# Background tasks as Claude Code reports them in a Stop payload.
+RUNNING_BACKGROUND = [{"id": "bkg1", "status": "running", "description": "pnpm exec playwright test"}]
+FINISHED_BACKGROUND = [{"id": "bkg1", "status": "completed", "description": "pnpm exec playwright test"}]
+
+# Ends its turn with a background task still running, then exits — the
+# worker that waits for a notification `claude -p` can never deliver.
+STOP_WITH_BACKGROUND_THEN_EXIT = (
+    FAKE_PROLOGUE
+    + f"""
+emit("SessionStart", {{"session_id": "fake-sess"}})
+emit("Stop", {{"session_id": "fake-sess", "background_tasks": {json.dumps(RUNNING_BACKGROUND)}}})
+sys.exit(0)
+"""
+)
+
+# Stops dirty, then (as the Stop guard demands) drains the task and
+# stops clean.
+STOP_WITH_BACKGROUND_THEN_CLEAN_STOP = (
+    FAKE_PROLOGUE
+    + f"""
+emit("SessionStart", {{"session_id": "fake-sess"}})
+emit("Stop", {{"session_id": "fake-sess", "background_tasks": {json.dumps(RUNNING_BACKGROUND)}}})
+time.sleep(0.2)
+emit("Stop", {{"session_id": "fake-sess", "last_assistant_message": "SUCCESS: drained it",
+               "background_tasks": {json.dumps(FINISHED_BACKGROUND)}}})
+time.sleep(60)
+"""
+)
 
 # Emits Stop from its SIGTERM handler — models a worker whose turn-end
 # signal lands only after the coordinator has already decided to kill it.
@@ -129,11 +157,13 @@ emit("Stop", {"session_id": "fake-sess"})
 #                {"write": {"path": "a.txt", "content": "x"}},
 #                {"commit": "message"},
 #                {"verdict": {"pass": true, "findings": []}},
-#                {"signal": "Stop"},
+#                {"signal": "Stop", "background": [{"id": "b1", "status": "running"}]},
 #                {"sleep": 30}],
 #    "exit_code": 0}
 # "waiting" emits a PreToolUse/AskUserQuestion signal; "verdict" writes
-# the given JSON to <attempt_dir>/verdict.json (reviewer scenarios).
+# the given JSON to <attempt_dir>/verdict.json (reviewer scenarios);
+# "background" attaches background_tasks to the signal's payload, so a
+# scenario can model a turn abandoned on unfinished work.
 SCENARIO_WORKER = """\
 import json, pathlib, subprocess, sys, time
 attempt_dir = pathlib.Path(sys.argv[1])
@@ -159,6 +189,8 @@ for action in scenario.get("actions", []):
             payload = {"session_id": session, "transcript_path": str(transcript)}
             if name == "Stop":
                 payload["last_assistant_message"] = "SUCCESS: " + node
+            if "background" in action:
+                payload["background_tasks"] = action["background"]
             emit(name, payload)
     elif "write" in action:
         pathlib.Path(action["write"]["path"]).write_text(action["write"]["content"])
@@ -193,50 +225,38 @@ def pass_actions(node_id: str) -> list[dict]:
     ]
 
 
-def make_scenario_registration(
-    script: Path, scenario_dir: Path, mode: Literal["print", "interactive"] = "print"
-) -> WorkerRegistration:
+def make_scenario_registration(script: Path, scenario_dir: Path) -> WorkerRegistration:
     return WorkerRegistration(
         name="fake-scenario",
         display_name="Scenario-driven fake worker",
-        mode=mode,
         command=[sys.executable, str(script), "{attempt_dir}", str(scenario_dir), "{prompt}"],
     )
 
 
-def write_scenario_registration_yaml(
-    directory: Path, name: str, script: Path, scenario_dir: Path, mode: str = "print"
-) -> None:
+def write_scenario_registration_yaml(directory: Path, name: str, script: Path, scenario_dir: Path) -> None:
     directory.mkdir(parents=True, exist_ok=True)
     command_lines = "\n".join(
         f'  - "{element}"' for element in (sys.executable, str(script), "{attempt_dir}", str(scenario_dir), "{prompt}")
     )
-    (directory / f"{name}.yaml").write_text(
-        f"display_name: Scenario fake {name}\nmode: {mode}\ncommand:\n{command_lines}\n"
-    )
+    (directory / f"{name}.yaml").write_text(f"display_name: Scenario fake {name}\ncommand:\n{command_lines}\n")
 
 
-def make_registration(
-    script: Path, mode: Literal["print", "interactive"], env: dict[str, str] | None = None
-) -> WorkerRegistration:
+def make_registration(script: Path, env: dict[str, str] | None = None) -> WorkerRegistration:
     return WorkerRegistration(
         name="fake",
         display_name="Fake worker",
-        mode=mode,
         command=[sys.executable, str(script), "{attempt_dir}", "{prompt}"],
         env=env or {},
     )
 
 
-def write_registration_yaml(directory: Path, name: str, script: Path, mode: str = "print") -> None:
+def write_registration_yaml(directory: Path, name: str, script: Path) -> None:
     """Write a fake-worker registration file for layered discovery."""
     directory.mkdir(parents=True, exist_ok=True)
     command_lines = "\n".join(
         f'  - "{element}"' for element in (sys.executable, str(script), "{attempt_dir}", "{prompt}")
     )
-    (directory / f"{name}.yaml").write_text(
-        f"display_name: Fake worker {name}\nmode: {mode}\ncommand:\n{command_lines}\n"
-    )
+    (directory / f"{name}.yaml").write_text(f"display_name: Fake worker {name}\ncommand:\n{command_lines}\n")
 
 
 def make_git_repo(path: Path) -> Path:

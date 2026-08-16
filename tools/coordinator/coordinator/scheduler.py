@@ -100,7 +100,9 @@ class IllegalTransition(Exception):
     pass
 
 
-AttemptStatus = Literal["completed", "exited-without-stop", "waiting", "timeout", "killed"]
+AttemptStatus = Literal[
+    "completed", "exited-without-stop", "stopped-with-pending-background", "waiting", "timeout", "killed"
+]
 
 
 class AttemptResult(BaseModel):
@@ -116,7 +118,6 @@ class AttemptResult(BaseModel):
     last_assistant_message: str | None = None
     signals: tuple[str, ...] = ()
     exit_code: int | None = None
-    bytes_drained: int | None = None
 
 
 class GateOutcome(BaseModel):

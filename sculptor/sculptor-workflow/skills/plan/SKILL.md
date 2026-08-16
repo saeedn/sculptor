@@ -311,8 +311,7 @@ meta:
   spec: ../spec.md                 # relative to the plan folder
   architecture: ../architecture.md
 defaults:
-  worker: claude-print             # worker registration name
-  escalation_worker: claude-print-opus
+  worker: claude                   # worker registration name
   attempts: 2                      # base attempts before escalation
   verification:                    # materialized from .sculptor/code.md
     - just format
@@ -328,11 +327,9 @@ phases:
       - id: "1.2"
         file: 01_02_manifest_parser.md
         deps: ["1.1"]
-        worker: claude-print-opus      # optional per-task override
         gates: [mechanical, agentic]   # optional per-task override
         attempts: 3                    # optional per-task override
         attempt_timeout_minutes: 240   # optional per-task override
-        escalation_worker: claude-print-opus  # optional per-task override
         no_change: false           # true for tasks expected to not commit
 ```
 
@@ -349,12 +346,14 @@ Authoring rules:
 - **`defaults.verification` is materialized from `.sculptor/code.md`'s
   *Pre-commit Verification* section** — copy the actual commands into
   the list; the coordinator cannot parse prose.
-- **Workers**: default to `claude-print` with
-  `claude-print-opus` as the escalation worker, unless the repo's
-  `.sculptor/workers/` directory offers something better suited.
+- **Workers**: default to `claude`, the built-in registration, unless
+  the repo's `.sculptor/workers/` directory offers something better
+  suited. Set `escalation_worker` only when such a registration exists
+  to escalate *to* — there is no built-in stronger worker, and naming a
+  missing registration fails the run at start.
 - **Per-task overrides only where a task is genuinely risky or
-  special**: gnarly concurrency/migration work → a stronger `worker`
-  or `gates: [mechanical, agentic]`; schema migrations or destructive
+  special**: gnarly concurrency/migration work → `gates: [mechanical,
+  agentic]` or more `attempts`; schema migrations or destructive
   steps → add `human` to the gates; `no_change: true` for tasks not
   expected to produce a commit (the mechanical gate otherwise fails a
   commit-less task).

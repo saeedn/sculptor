@@ -3,7 +3,6 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Literal
 
 import psutil
 import pytest
@@ -19,9 +18,12 @@ from tests.fakes import ASK_QUESTION_THEN_SLEEP
 from tests.fakes import ECHO_ENV
 from tests.fakes import EXIT_WITHOUT_STOP
 from tests.fakes import IGNORE_SIGTERM
+from tests.fakes import RUNNING_BACKGROUND
 from tests.fakes import SLEEP_FOREVER
 from tests.fakes import STOP_ON_SIGTERM
 from tests.fakes import STOP_THEN_SLEEP
+from tests.fakes import STOP_WITH_BACKGROUND_THEN_CLEAN_STOP
+from tests.fakes import STOP_WITH_BACKGROUND_THEN_EXIT
 from tests.fakes import make_registration
 
 
@@ -32,11 +34,11 @@ def prepare(tmp_path: Path):
     return prepare_attempt(tmp_path, node, 0, task_file, None, None)
 
 
-def launch(tmp_path: Path, script_body: str, mode: Literal["print", "interactive"], env: dict | None = None, **kwargs):
+def launch(tmp_path: Path, script_body: str, env: dict | None = None, **kwargs):
     script = tmp_path / "fake_worker.py"
     script.write_text(script_body)
     prepared = prepare(tmp_path)
-    registration = make_registration(script, mode, env)
+    registration = make_registration(script, env)
     kwargs.setdefault("timeout_seconds", 15.0)
     kwargs.setdefault("poll_interval", 0.05)
     kwargs.setdefault("kill_grace_seconds", 1.0)
@@ -47,9 +49,8 @@ def assert_process_gone(pid: int) -> None:
     assert not psutil.pid_exists(pid)
 
 
-@pytest.mark.parametrize("mode", ["print", "interactive"])
-def test_stop_completes_and_kills(tmp_path: Path, mode: Literal["print", "interactive"]) -> None:
-    prepared, result = launch(tmp_path, STOP_THEN_SLEEP, mode)
+def test_stop_completes_and_kills(tmp_path: Path) -> None:
+    prepared, result = launch(tmp_path, STOP_THEN_SLEEP)
     assert result.status == "completed"
     assert result.is_ok
     assert result.session_id == "fake-sess"
@@ -58,36 +59,48 @@ def test_stop_completes_and_kills(tmp_path: Path, mode: Literal["print", "intera
     assert "Stop" in result.signals
     assert result.pid is not None
     assert_process_gone(result.pid)
-    if mode == "interactive":
-        pty_output = (prepared.attempt_dir / "pty_output.raw").read_bytes()
-        assert b"fake worker output" in pty_output
-        assert result.bytes_drained is not None and result.bytes_drained > 0
-    else:
-        assert b"fake worker output" in (prepared.attempt_dir / "stdout.log").read_bytes()
+    assert b"fake worker output" in (prepared.attempt_dir / "stdout.log").read_bytes()
 
 
-@pytest.mark.parametrize("mode", ["print", "interactive"])
-def test_exit_without_stop_fails(tmp_path: Path, mode: Literal["print", "interactive"]) -> None:
-    _, result = launch(tmp_path, EXIT_WITHOUT_STOP, mode)
+def test_exit_without_stop_fails(tmp_path: Path) -> None:
+    _, result = launch(tmp_path, EXIT_WITHOUT_STOP)
     assert result.status == "exited-without-stop"
     assert not result.is_ok
     assert result.session_id == "fake-sess"
 
 
-@pytest.mark.parametrize("mode", ["print", "interactive"])
-def test_waiting_signal_fails_attempt(tmp_path: Path, mode: Literal["print", "interactive"]) -> None:
-    _, result = launch(tmp_path, ASK_QUESTION_THEN_SLEEP, mode)
+def test_waiting_signal_fails_attempt(tmp_path: Path) -> None:
+    _, result = launch(tmp_path, ASK_QUESTION_THEN_SLEEP)
     assert result.status == "waiting"
     assert not result.is_ok
     assert result.pid is not None
     assert_process_gone(result.pid)
 
 
+def test_stop_with_pending_background_then_exit_fails(tmp_path: Path) -> None:
+    _, result = launch(tmp_path, STOP_WITH_BACKGROUND_THEN_EXIT)
+    assert result.status == "stopped-with-pending-background"
+    assert not result.is_ok
+    # The retry context has to name what was abandoned.
+    assert result.error is not None
+    assert RUNNING_BACKGROUND[0]["id"] in result.error
+    assert RUNNING_BACKGROUND[0]["description"] in result.error
+
+
+def test_clean_stop_after_a_pending_one_completes(tmp_path: Path) -> None:
+    # The Stop guard sends the worker back to drain its tasks; the
+    # launcher must still be waiting when the clean Stop arrives.
+    _, result = launch(tmp_path, STOP_WITH_BACKGROUND_THEN_CLEAN_STOP)
+    assert result.status == "completed"
+    assert result.is_ok
+    assert result.last_assistant_message == "SUCCESS: drained it"
+
+
 def test_stop_after_abort_does_not_flip_the_verdict(tmp_path: Path) -> None:
     script = tmp_path / "fake_worker.py"
     script.write_text(STOP_ON_SIGTERM)
     prepared = prepare(tmp_path)
-    registration = make_registration(script, "print", None)
+    registration = make_registration(script)
 
     def should_abort() -> bool:
         # Abort once the worker is up (its SIGTERM handler is installed
@@ -114,7 +127,7 @@ def test_worker_is_reaped_when_a_callback_raises(tmp_path: Path) -> None:
     script = tmp_path / "fake_worker.py"
     script.write_text(SLEEP_FOREVER)
     prepared = prepare(tmp_path)
-    registration = make_registration(script, "print", None)
+    registration = make_registration(script)
     seen_pid: list[int] = []
 
     def on_spawn(pid: int) -> None:
@@ -136,7 +149,7 @@ def test_worker_is_reaped_when_a_callback_raises(tmp_path: Path) -> None:
 
 
 def test_sigterm_immune_worker_gets_sigkilled(tmp_path: Path) -> None:
-    _, result = launch(tmp_path, IGNORE_SIGTERM, "print", kill_grace_seconds=0.5)
+    _, result = launch(tmp_path, IGNORE_SIGTERM, kill_grace_seconds=0.5)
     assert result.status == "completed"
     assert result.pid is not None
     assert_process_gone(result.pid)
@@ -144,9 +157,8 @@ def test_sigterm_immune_worker_gets_sigkilled(tmp_path: Path) -> None:
     assert result.exit_code == -9
 
 
-@pytest.mark.parametrize("mode", ["print", "interactive"])
-def test_timeout(tmp_path: Path, mode: Literal["print", "interactive"]) -> None:
-    _, result = launch(tmp_path, SLEEP_FOREVER, mode, timeout_seconds=0.5)
+def test_timeout(tmp_path: Path) -> None:
+    _, result = launch(tmp_path, SLEEP_FOREVER, timeout_seconds=0.5)
     assert result.status == "timeout"
     assert not result.is_ok
     assert result.pid is not None
@@ -159,7 +171,7 @@ def test_env_scrubbed_and_registration_env_applied(tmp_path: Path, monkeypatch: 
     monkeypatch.setenv("CLAUDECODE", "1")
     monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "abc")
     monkeypatch.setenv("AI_AGENT", "yes")
-    _, result = launch(tmp_path, ECHO_ENV, "print", env={"EXTRA_VAR": "from-registration"})
+    _, result = launch(tmp_path, ECHO_ENV, env={"EXTRA_VAR": "from-registration"})
     assert result.status == "completed"
     signals_file = tmp_path / "_state" / "attempts" / "1.1" / "0" / "signals.jsonl"
     events = [json.loads(line) for line in signals_file.read_text().splitlines()]
@@ -174,7 +186,7 @@ def test_env_scrubbed_and_registration_env_applied(tmp_path: Path, monkeypatch: 
 
 def test_on_signal_callback_receives_events(tmp_path: Path) -> None:
     observed: list[str] = []
-    _, result = launch(tmp_path, STOP_THEN_SLEEP, "print", on_signal=lambda e: observed.append(e["event"]))
+    _, result = launch(tmp_path, STOP_THEN_SLEEP, on_signal=lambda e: observed.append(e["event"]))
     assert result.status == "completed"
     assert "SessionStart" in observed
     assert "Stop" in observed
@@ -279,3 +291,13 @@ def test_read_completed_signals(tmp_path: Path) -> None:
     assert reader is not None
     assert reader.session_id == "s1"
     assert reader.last_assistant_message == "done"
+
+
+def test_read_completed_signals_rejects_a_stop_on_pending_background(tmp_path: Path) -> None:
+    # Resuming must re-run this attempt, not gate it: the turn was
+    # abandoned on work that died with the session.
+    path = tmp_path / "signals.jsonl"
+    path.write_text(
+        json.dumps({"event": "Stop", "payload": {"session_id": "s1", "background_tasks": RUNNING_BACKGROUND}}) + "\n"
+    )
+    assert read_completed_signals(path) is None

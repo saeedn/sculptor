@@ -10,6 +10,9 @@ Each attempt gets its own directory (``attempt_dir`` from
 - ``append_signal.py`` — the stdin-to-JSONL helper the hooks invoke,
   copied from package data so attempt dirs are self-contained (they
   survive package upgrades and keep every input on disk for diagnosis).
+- ``stop_guard.py`` — the second Stop hook, which vetoes a turn that
+  ends with background tasks still running; ``stop_blocks`` holds its
+  per-attempt block count.
 - ``prompt.txt`` — the one-line bootstrap prompt pointing the worker at
   the task file, process doc, and retry context.
 - ``process.md`` — the per-task process document (the manifest's
@@ -57,12 +60,17 @@ class PreparedAttempt(BaseModel):
     context_file: Path | None
 
 
-def _hooks_settings(helper: Path, signals_path: Path) -> dict:
+def _hooks_settings(helper: Path, guard: Path, signals_path: Path, blocks_path: Path) -> dict:
     hooks: dict[str, list[dict]] = {}
     for event, matcher in _HOOK_EVENTS:
         # `|| true` so a failing hook never breaks the worker session.
-        command = f"python3 {shlex.quote(str(helper))} {event} {shlex.quote(str(signals_path))} || true"
-        entry: dict = {"hooks": [{"type": "command", "command": command}]}
+        commands = [f"python3 {shlex.quote(str(helper))} {event} {shlex.quote(str(signals_path))} || true"]
+        if event == "Stop":
+            # No `|| true` here: the guard vetoes the Stop through its
+            # stdout, so its exit status must stay its own. It exits 0 on
+            # every path itself, including failures.
+            commands.append(f"python3 {shlex.quote(str(guard))} {shlex.quote(str(blocks_path))}")
+        entry: dict = {"hooks": [{"type": "command", "command": command} for command in commands]}
         if matcher is not None:
             entry["matcher"] = matcher
         hooks[event] = [entry]
@@ -74,12 +82,16 @@ def builtin_data_text(filename: str) -> str:
 
 
 def write_hooks_fragment(directory: Path) -> tuple[Path, Path]:
-    """Write hooks.json + the copied signal helper; returns (hooks_file, signals_path)."""
+    """Write hooks.json + the copied hook helpers; returns (hooks_file, signals_path)."""
     helper = directory / "append_signal.py"
     helper.write_text(builtin_data_text("append_signal.py"))
+    guard = directory / "stop_guard.py"
+    guard.write_text(builtin_data_text("stop_guard.py"))
     signals_path = directory / "signals.jsonl"
+    blocks_path = directory / "stop_blocks"
     hooks_file = directory / "hooks.json"
-    hooks_file.write_text(json.dumps(_hooks_settings(helper.resolve(), signals_path.resolve()), indent=2) + "\n")
+    settings = _hooks_settings(helper.resolve(), guard.resolve(), signals_path.resolve(), blocks_path.resolve())
+    hooks_file.write_text(json.dumps(settings, indent=2) + "\n")
     return hooks_file, signals_path
 
 
@@ -108,11 +120,17 @@ def prepare_attempt(
         context_file = directory / "context.md"
         context_file.write_text(seed_context)
 
-    prompt = (
-        f"Read and execute exactly one task: {task_file.resolve()}. "
-        f"Follow the process at {process_doc.resolve()}. "
-        f"Your retry context, if any, is at {context_file.resolve() if context_file is not None else 'none'}. "
-        "Work autonomously; never wait for user input; when the task is complete, stop."
+    prompt = " ".join(
+        [
+            f"Read and execute exactly one task: {task_file.resolve()}.",
+            f"Follow the process at {process_doc.resolve()}.",
+            f"Your retry context, if any, is at {context_file.resolve() if context_file is not None else 'none'}.",
+            "Work autonomously; never wait for user input.",
+            "This session is non-interactive: ending your turn ends the session rather than waiting.",
+            "Never end your turn with a background task still running; wait for such work in the",
+            "foreground, within the turn that started it.",
+            "When the task is complete, stop.",
+        ]
     )
     (directory / "prompt.txt").write_text(prompt + "\n")
 

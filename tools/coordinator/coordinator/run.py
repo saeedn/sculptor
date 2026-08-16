@@ -105,7 +105,6 @@ def execute_plan(
     timeout_seconds: float | None = None,
     poll_interval: float = 0.5,
     kill_grace_seconds: float = 10.0,
-    trust_home: Path | None = None,
     progress: Callable[[str], None] | None = None,
     clock: Callable[[], float] = time.time,
 ) -> RunStatus:
@@ -154,7 +153,6 @@ def execute_plan(
         timeout_seconds=timeout_seconds,
         poll_interval=poll_interval,
         kill_grace_seconds=kill_grace_seconds,
-        trust_home=trust_home,
         clock=clock,
     )
 

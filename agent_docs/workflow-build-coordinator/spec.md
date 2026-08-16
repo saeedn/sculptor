@@ -55,7 +55,7 @@ The user finalizes a phase plan in the Plan tab and picks "Proceed to
 Build." The Plan agent launches the coordinator as a terminal-agent
 tab and hands it the plan folder. The coordinator parses the DAG,
 signals `busy`, and works through tasks in topological order: one
-fresh interactive worker per task (REQ-COORD-5, REQ-WORKER-2), gates
+fresh headless worker per task (REQ-COORD-5, REQ-WORKER-2), gates
 after each (REQ-GATE-1..2), a commit per passing task, `files-changed`
 after each commit so the diff viewer stays live. The user checks the
 TUI dashboard occasionally (REQ-UX-1), then goes to bed. In the
@@ -208,8 +208,9 @@ dashboard shows which model ran each task.
   (a template with placeholders, in the spirit of terminal-agent
   registrations) — not hardcoded to one harness. Adding a new
   harness/model means writing a new worker registration.
-- `REQ-WORKER-2`: v1 MUST support **interactive** Claude Code sessions
-  as workers (subscription billing, not per-token API billing). One
+- `REQ-WORKER-2`: **Dropped.** Workers are headless Claude Code
+  sessions (`claude -p`), which bill against a subscription the same
+  way and write transcripts an interactive PTY session does not. One
   fresh session per task attempt, task prompt passed at launch; the
   coordinator MUST NOT depend on parsing the TUI screen.
 - `REQ-WORKER-3`: Completion/liveness detection MUST come from hooks

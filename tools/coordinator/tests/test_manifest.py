@@ -8,8 +8,8 @@ from coordinator.manifest import load_manifest
 EXAMPLE_MANIFEST = """\
 version: 1
 defaults:
-  worker: claude-print
-  escalation_worker: claude-print-opus
+  worker: claude
+  escalation_worker: claude-max
   attempts: 2
   verification:
     - just format
@@ -43,7 +43,7 @@ def test_load_example_manifest(tmp_path: Path) -> None:
     plan_dir = write_plan(tmp_path, EXAMPLE_MANIFEST, ["01_01_scaffold.md", "01_02_manifest_parser.md"])
     manifest = load_manifest(plan_dir)
     assert manifest.version == 1
-    assert manifest.defaults.worker == "claude-print"
+    assert manifest.defaults.worker == "claude"
     assert manifest.defaults.verification == ["just format", "just check", "just test-unit"]
     assert len(manifest.phases) == 1
     task = manifest.phases[0].tasks[1]

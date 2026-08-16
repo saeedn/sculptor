@@ -10,18 +10,23 @@ Schema:
 
 .. code-block:: yaml
 
-    display_name: Claude (print mode)   # human-readable label
-    mode: print                         # print | interactive
+    display_name: Claude Opus           # human-readable label
+    model: opus                         # optional; substituted for {model}
     command:                            # argv template
       - claude
       - -p
       - --dangerously-skip-permissions
+      - --model
+      - "{model}"
       - --settings
       - "{settings_file}"
       - "{prompt}"
-    model: opus                         # optional; substituted for {model}
     env:                                # optional extra env for the child
       SOME_VAR: value
+
+Workers run headless: the coordinator spawns them on pipes, observes
+them through hooks, and reaps them. A command that needs a terminal has
+no way to report a verdict here.
 
 ``command`` is an argv LIST, not a shell string — elements are passed
 to the child verbatim, so no shell quoting is ever needed (this is why
@@ -47,7 +52,6 @@ import os
 import re
 from importlib import resources
 from pathlib import Path
-from typing import Literal
 
 import yaml
 from pydantic import BaseModel
@@ -69,7 +73,6 @@ class WorkerRegistration(BaseModel):
 
     name: str
     display_name: str
-    mode: Literal["print", "interactive"]
     command: list[str]
     model: str | None = None
     env: dict[str, str] = {}

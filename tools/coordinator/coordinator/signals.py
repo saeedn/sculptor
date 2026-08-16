@@ -61,16 +61,47 @@ def is_stop(event: dict) -> bool:
     return event.get("event") == "Stop"
 
 
+def pending_background_tasks(event: dict) -> list[dict]:
+    """The background tasks still running when this Stop fired.
+
+    A worker cannot wait by ending its turn — the session exits and the
+    tasks die with it — so a Stop carrying running tasks is an abandoned
+    turn, not a finished one.
+    """
+    payload = event.get("payload")
+    if not is_stop(event) or not isinstance(payload, dict):
+        return []
+    tasks = payload.get("background_tasks")
+    if not isinstance(tasks, list):
+        return []
+    return [task for task in tasks if isinstance(task, dict) and task.get("status") == "running"]
+
+
+def is_clean_stop(event: dict) -> bool:
+    """A Stop that ended the turn with no background work left running."""
+    return is_stop(event) and not pending_background_tasks(event)
+
+
+def describe_background_tasks(tasks: list[dict]) -> str:
+    """One-line summary of abandoned tasks, for the retry context."""
+    described = ", ".join(
+        f"{task.get('id', '?')} ({' '.join(str(task.get('description') or task.get('command') or '?').split())})"
+        for task in tasks
+    )
+    return f"{len(tasks)} background task(s) still running when the turn ended: {described}"
+
+
 def read_completed_signals(signals_path: Path) -> SignalReader | None:
-    """The parsed signals of an attempt that reached Stop, else None.
+    """The parsed signals of an attempt that reached a clean Stop, else None.
 
     Lets a resumed coordinator recognize that a mid-flight worker actually
     finished its turn (the Stop is on disk even though the coordinator that
-    spawned it died before consuming it).
+    spawned it died before consuming it). A Stop that abandoned background
+    tasks does not count — that attempt has to be re-run.
     """
     reader = SignalReader(signals_path)
     events = reader.poll()
-    if any(is_stop(event) for event in events):
+    if any(is_clean_stop(event) for event in events):
         return reader
     return None
 

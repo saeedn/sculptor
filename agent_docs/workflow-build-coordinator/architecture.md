@@ -106,7 +106,7 @@ Increment 1 (REQ-INC-1) — the build-DAG executor:
  │                          ▼        per task attempt        │
  │                 ┌─────────────────────────────┐           │
  │                 │ spawn fresh worker process  │           │
- │                 │ (interactive claude in PTY, │           │
+ │                 │ (headless `claude -p`,      │           │
  │                 │  bootstrap prompt at launch,│           │
  │                 │  per-attempt hooks fragment)│           │
  │                 └──────────┬──────────────────┘           │
@@ -173,14 +173,20 @@ so TUI actions and state changes share one ordered history.
 ### Worker launcher (per-attempt lifecycle)
 
 Each task attempt spawns one fresh worker process (REQ-COORD-5,
-REQ-WORKER-2): an interactive Claude Code session in a
-coordinator-allocated PTY with a fixed window size, bootstrap prompt
-passed at launch, permissions pre-granted
+REQ-WORKER-2): a headless Claude Code session (`claude -p`) on pipes,
+bootstrap prompt passed at launch, permissions pre-granted
 (`--dangerously-skip-permissions` + the skip-disclaimer setting, as
-the sample registration does). The coordinator never renders or parses the
-worker's screen; the PTY exists only because interactive sessions
-require one. Worker PIDs are recorded in the journal so a resumed
+the sample registration does). The coordinator never renders or parses
+a worker's screen. Worker PIDs are recorded in the journal so a resumed
 coordinator can reap orphans.
+
+Headless workers exit the instant their turn ends, so a worker that
+backgrounds work and stops to await a completion notification is
+waiting for something that can never arrive. A Stop guard hook vetoes
+such a turn and sends the worker back to drain the work in the
+foreground; a turn that ends that way regardless fails the attempt
+(`stopped-with-pending-background`) rather than passing half-done work
+to the gates.
 
 **Worker registrations** are one YAML file per harness+model
 combination (e.g. `claude-sonnet.yaml`, `claude-opus.yaml`), each a
@@ -526,13 +532,12 @@ Delete:
 
 ## Risks and Mitigations
 
-- **Interactive Claude Code misbehaves in a headless PTY** (window
-  size probing, alt-screen quirks): coordinator allocates a real PTY with
-  a fixed winsize and never reads the screen. Mitigation: the very
-  first plan task for increment 1 is a spike that launches a worker
-  end-to-end through hooks; if interactive mode proves unstable, the
-  open billing question about `claude -p` becomes the fallback (a
-  print-mode worker is just another registration).
+- **A worker ends its turn with work unfinished:** a headless session
+  exits at turn end, so backgrounded work dies with it and its
+  completion notification never arrives. Mitigation: a Stop guard hook
+  vetoes the turn and sends the worker back to drain it in the
+  foreground; an attempt that ends that way anyway fails and retries
+  with the abandoned tasks named in its retry context.
 - **Hook fragment interplay with user settings:** Claude Code merges
   hooks across settings sources, so a developer's global hooks also
   fire inside workers. Signals are still isolated (per-attempt
@@ -592,10 +597,6 @@ Delete:
 
 ## Open Questions
 
-- Billing premise (spec question): does `claude -p` bill against a
-  subscription like interactive mode? Not load-bearing for v1
-  (interactive workers are required regardless, REQ-WORKER-2), but it
-  decides the fallback registration if PTY workers prove flaky.
 - Exact rate-limit markers in transcripts across Claude Code versions
   — resolve during the increment-1 spike task.
 - Interactive-node UX outside Sculptor (increment 2): terminal

@@ -7,6 +7,14 @@ human is watching, and nobody can answer questions. Work autonomously.
 **You are read-only.** Do not modify, stage, or commit anything in the
 repository. Any commit you make fails this review automatically.
 
+**Never end your turn on unfinished background work.** Your session is
+non-interactive: ending your turn does not wait for that work, it ends
+the session, and unfinished tasks are killed with it. Wait for
+long-running work in the foreground, inside the turn that started it. A
+hook refuses a turn that ends with a task still running — treat that
+refusal as instruction — and a review that ends that way anyway is
+void.
+
 ## What to review
 
 Your prompt names:

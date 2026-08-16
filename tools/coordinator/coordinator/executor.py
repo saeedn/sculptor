@@ -55,10 +55,10 @@ from coordinator.review import prepare_review_attempt
 from coordinator.scheduler import AttemptResult
 from coordinator.scheduler import GateOutcome
 from coordinator.statedir import attempt_dir
-from coordinator.trust import ensure_trusted
 
 _LIFECYCLE_FINDINGS = {
     "exited-without-stop": "worker process exited without a Stop signal",
+    "stopped-with-pending-background": "worker ended its turn with background tasks still running",
     "waiting": "worker went waiting for user input (AskUserQuestion or idle prompt)",
     "timeout": "worker attempt timed out",
     "killed": "worker attempt was killed",
@@ -83,7 +83,6 @@ class PlanExecutor:
         timeout_seconds: float | None = None,
         poll_interval: float = 0.5,
         kill_grace_seconds: float = 10.0,
-        trust_home: Path | None = None,
         clock: Callable[[], float] = time.time,
     ) -> None:
         self.plan_dir = plan_dir
@@ -94,7 +93,6 @@ class PlanExecutor:
         self.timeout_seconds = timeout_seconds
         self.poll_interval = poll_interval
         self.kill_grace_seconds = kill_grace_seconds
-        self.trust_home = trust_home
         self.clock = clock
         self._prepared: dict[str, tuple[int, PreparedAttempt | None, str]] = {}
         # Abort intents appended after this run started kill the in-flight
@@ -197,8 +195,6 @@ class PlanExecutor:
             process_doc_path=process_doc_path,
             seed_context=seed_context,
         )
-        if registration.mode == "interactive":
-            ensure_trusted(self.cwd, home=self.trust_home)
         base_commit = head_commit(self.cwd)
         self._prepared[node.node_id] = (attempt_index, prepared, base_commit)
         on_spawn, on_signal = self._journal_callbacks(
@@ -361,8 +357,6 @@ class PlanExecutor:
         task_files = [self.plan_dir / task.file for task in scope_tasks]
         diff_text = build_review_diff(self.cwd, commits)
         review = prepare_review_attempt(self.plan_dir, review_node_id, attempt_index, task_files, diff_text)
-        if registration.mode == "interactive":
-            ensure_trusted(self.cwd, home=self.trust_home)
         head_before = head_commit(self.cwd)
         on_spawn, on_signal = self._journal_callbacks(
             review_node_id, attempt_index, reviewer_name, review.prepared.attempt_dir

@@ -1,40 +1,34 @@
 """Worker launcher: spawn, observe via signals.jsonl, kill, reap.
 
 One fresh worker process per attempt — plain processes the coordinator
-spawns and reaps itself, never Sculptor agents. Print-mode workers run
-on pipes and exit by themselves; interactive-mode workers run on a
-drained PTY (an undrained worker wedges at 0% CPU before processing
-its prompt).
+spawns and reaps itself, never Sculptor agents. Workers run headless
+(``claude -p``) on pipes and exit by themselves once their turn ends.
 
 Lifecycle is observed ONLY through the hook events the attempt's
 ``hooks.json`` appends to ``signals.jsonl`` plus process state — never
-screen parsing. ``pty_output.raw`` is captured purely for human
-diagnosis and is never parsed for decisions.
+screen parsing.
 
-Decision rules (both modes):
+Decision rules:
 
-- ``Stop`` observed -> ``completed`` (the turn ended; gates decide
+- A clean ``Stop`` -> ``completed`` (the turn ended; gates decide
   success). ``SessionEnd`` is never used for verdicts — it fires with
   the same reason on clean exits and kills.
+- A ``Stop`` carrying still-running ``background_tasks`` is NOT a
+  finished turn: the session is about to exit and take that work with
+  it. The attempt's Stop guard hook pushes the worker back to drain it,
+  so the launcher keeps waiting; if the worker exits anyway the verdict
+  is ``stopped-with-pending-background``.
 - A waiting signal (``PreToolUse`` with ``tool_name`` ==
   ``AskUserQuestion``, or ``Notification`` with ``notification_type``
   == ``idle_prompt``) -> ``waiting``; workers must never block on user
   input.
 - Process exit without a Stop -> ``exited-without-stop``.
 - Deadline hit -> ``timeout``.
-
-Trust-dialog seeding (``trust.ensure_trusted``) is the CALLER's job for
-interactive registrations — launching stays side-effect-free w.r.t.
-HOME.
 """
 
-import fcntl
 import os
 import signal
-import struct
 import subprocess
-import termios
-import threading
 import time
 from collections.abc import Callable
 from collections.abc import Mapping
@@ -48,11 +42,10 @@ from coordinator.registrations import render
 from coordinator.scheduler import AttemptResult
 from coordinator.scheduler import AttemptStatus
 from coordinator.signals import SignalReader
+from coordinator.signals import describe_background_tasks
 from coordinator.signals import is_stop
 from coordinator.signals import is_waiting
-
-_PTY_COLUMNS = 200
-_PTY_ROWS = 50
+from coordinator.signals import pending_background_tasks
 
 # How long one attempt may run before the launcher kills it. Generous by
 # design: a task whose verification runs a real end-to-end suite can
@@ -80,29 +73,10 @@ def scrub_env(base: Mapping[str, str]) -> dict[str, str]:
     }
 
 
-def _set_pty_window_size(fd: int) -> None:
-    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", _PTY_ROWS, _PTY_COLUMNS, 0, 0))
-
-
-def _drain_pty(master_fd: int, output_path: Path, byte_counter: list[int]) -> None:
-    with open(output_path, "wb") as out:
-        while True:
-            try:
-                data = os.read(master_fd, 65536)
-            except OSError:
-                # EIO means the child side closed — PTY EOF on macOS/Linux.
-                break
-            if not data:
-                break
-            out.write(data)
-            out.flush()
-            byte_counter[0] += len(data)
-
-
 def _terminate_child(proc: subprocess.Popen, kill_grace_seconds: float) -> None:
     """SIGTERM the child's process group, escalating to SIGKILL.
 
-    Wedged PTY workers survive SIGTERM — the escalation is mandatory.
+    A worker can ignore or outlive SIGTERM — the escalation is mandatory.
     Always reaps the child (no zombies).
     """
     if proc.poll() is not None:
@@ -193,65 +167,46 @@ def launch_attempt(
     env = scrub_env(os.environ)
     env.update(registration_env)
     reader = SignalReader(prepared.signals_path)
-    byte_counter = [0]
-    drain_thread: threading.Thread | None = None
-    master_fd: int | None = None
 
-    if registration.mode == "print":
-        stdout_file = open(prepared.attempt_dir / "stdout.log", "wb")
-        stderr_file = open(prepared.attempt_dir / "stderr.log", "wb")
-        try:
-            proc = subprocess.Popen(
-                argv,
-                stdin=subprocess.DEVNULL,
-                stdout=stdout_file,
-                stderr=stderr_file,
-                cwd=str(cwd),
-                env=env,
-                start_new_session=True,
-            )
-        finally:
-            stdout_file.close()
-            stderr_file.close()
-    else:
-        master_fd, slave_fd = os.openpty()
-        try:
-            _set_pty_window_size(slave_fd)
-            proc = subprocess.Popen(
-                argv,
-                stdin=slave_fd,
-                stdout=slave_fd,
-                stderr=slave_fd,
-                cwd=str(cwd),
-                env=env,
-                start_new_session=True,
-            )
-        except BaseException:
-            os.close(master_fd)
-            os.close(slave_fd)
-            raise
-        # Close the slave in the parent immediately, or the drain thread
-        # never sees EOF when the child exits.
-        os.close(slave_fd)
-        drain_thread = threading.Thread(
-            target=_drain_pty,
-            args=(master_fd, prepared.attempt_dir / "pty_output.raw", byte_counter),
-            daemon=True,
+    stdout_file = open(prepared.attempt_dir / "stdout.log", "wb")
+    stderr_file = open(prepared.attempt_dir / "stderr.log", "wb")
+    try:
+        proc = subprocess.Popen(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_file,
+            stderr=stderr_file,
+            cwd=str(cwd),
+            env=env,
+            start_new_session=True,
         )
-        drain_thread.start()
+    finally:
+        stdout_file.close()
+        stderr_file.close()
 
     status: AttemptStatus | None = None
+    pending_background: list[dict] = []
     deadline = time.monotonic() + timeout_seconds
 
     def consume(events: list[dict]) -> None:
-        nonlocal status
+        nonlocal status, pending_background
         for event in events:
             if on_signal is not None:
                 on_signal(event)
-            # A Stop may override "waiting" (the turn finished after all)
-            # but never a kill/timeout verdict already handed down.
-            if is_stop(event) and status in (None, "waiting"):
-                status = "completed"
+            if is_stop(event):
+                running = pending_background_tasks(event)
+                if running:
+                    # The turn ended on work that is still in flight. The
+                    # Stop guard hook is pushing the worker back to drain
+                    # it, so keep waiting — only a Stop with nothing left
+                    # running means this attempt is finished.
+                    pending_background = running
+                    continue
+                pending_background = []
+                # A Stop may override "waiting" (the turn finished after all)
+                # but never a kill/timeout verdict already handed down.
+                if status in (None, "waiting"):
+                    status = "completed"
             elif is_waiting(event) and status is None:
                 status = "waiting"
 
@@ -267,7 +222,10 @@ def launch_attempt(
                 # Final sweep: signals may have landed right at exit.
                 consume(reader.poll())
                 if status is None:
-                    status = "exited-without-stop"
+                    # A worker that stopped on running background tasks and
+                    # then exited spent its guard budget without draining
+                    # them; name that rather than the generic exit.
+                    status = "stopped-with-pending-background" if pending_background else "exited-without-stop"
                 break
             if time.monotonic() >= deadline:
                 status = "timeout"
@@ -277,36 +235,31 @@ def launch_attempt(
                 break
             time.sleep(poll_interval)
 
-        if status == "completed" and registration.mode == "print" and proc.poll() is None:
-            # Print-mode workers exit by themselves shortly after Stop; give
-            # them the grace window before forcing the issue.
+        if status == "completed" and proc.poll() is None:
+            # Workers exit by themselves shortly after Stop; give them the
+            # grace window before forcing the issue.
             try:
                 proc.wait(timeout=kill_grace_seconds)
             except subprocess.TimeoutExpired:
                 pass
     finally:
         # Cleanup must run even when a callback raises — the worker
-        # process, drain thread, and PTY fd must never outlive the call.
+        # process must never outlive the call.
         _terminate_child(proc, kill_grace_seconds)
-        if drain_thread is not None:
-            drain_thread.join(timeout=5.0)
-        if master_fd is not None and (drain_thread is None or not drain_thread.is_alive()):
-            # If the drain thread is somehow still blocked in os.read,
-            # leak the fd rather than close it out from under the read
-            # (a closed-and-reused fd would corrupt an unrelated file).
-            os.close(master_fd)
     consume(reader.poll())
 
     is_ok = status == "completed"
+    error = None if is_ok else f"attempt {status}"
+    if status == "stopped-with-pending-background":
+        error = f"{error}: {describe_background_tasks(pending_background)}"
     return AttemptResult(
         is_ok=is_ok,
         status=status,
-        error=None if is_ok else f"attempt {status}",
+        error=error,
         pid=proc.pid,
         session_id=reader.session_id,
         transcript_path=reader.transcript_path,
         last_assistant_message=reader.last_assistant_message,
         signals=tuple(event.get("event", "unknown") for event in reader.events),
         exit_code=proc.returncode,
-        bytes_drained=byte_counter[0] if registration.mode == "interactive" else None,
     )

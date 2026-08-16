@@ -41,7 +41,6 @@ def make_plan(
     tmp_path: Path,
     phases: list[dict],
     verification: list[str] | None = None,
-    mode: str = "print",
     defaults_extra: dict | None = None,
 ) -> tuple[Path, Path, Path]:
     """A git repo containing a plan wired to the scenario fake worker.
@@ -54,8 +53,8 @@ def make_plan(
     script = tmp_path / "scenario_worker.py"
     script.write_text(SCENARIO_WORKER)
     workers_dir = repo / ".sculptor" / "workers"
-    write_scenario_registration_yaml(workers_dir, "fake-scenario", script, scenario_dir, mode)
-    write_scenario_registration_yaml(workers_dir, "fake-escalation", script, scenario_dir, mode)
+    write_scenario_registration_yaml(workers_dir, "fake-scenario", script, scenario_dir)
+    write_scenario_registration_yaml(workers_dir, "fake-escalation", script, scenario_dir)
     plan_dir = repo / "plan"
     plan_dir.mkdir()
     manifest = {
@@ -76,7 +75,7 @@ def make_plan(
     return repo, plan_dir, scenario_dir
 
 
-def run_plan(plan_dir: Path, repo: Path, resume: bool = False, trust_home: Path | None = None):
+def run_plan(plan_dir: Path, repo: Path, resume: bool = False):
     return execute_plan(
         plan_dir,
         resume=resume,
@@ -84,7 +83,6 @@ def run_plan(plan_dir: Path, repo: Path, resume: bool = False, trust_home: Path 
         timeout_seconds=30.0,
         poll_interval=0.05,
         kill_grace_seconds=1.0,
-        trust_home=trust_home,
     )
 
 
@@ -182,19 +180,6 @@ def test_verification_failure_fails_gate_with_log(tmp_path: Path) -> None:
     gate_results = [e for e in replay(journal_path(plan_dir)) if isinstance(e, GateResult)]
     assert gate_results[-1].findings is not None
     assert "echo verifying && false" in gate_results[-1].findings
-
-
-def test_interactive_mode_all_pass(tmp_path: Path) -> None:
-    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
-    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases, mode="interactive")
-    write_scenario(scenario_dir, "a", 0, pass_actions("a"))
-    trust_home = tmp_path / "home"
-    trust_home.mkdir()
-    assert run_plan(plan_dir, repo, trust_home=trust_home) == "completed"
-    # The PTY path ran: output was drained and trust was seeded in the
-    # injected (fake) home, never the real one.
-    assert (plan_dir / "_state" / "attempts" / "a" / "0" / "pty_output.raw").exists()
-    assert str(repo.resolve()) in (trust_home / ".claude.json").read_text()
 
 
 def failing_review_actions(task_id: str | None) -> list[dict]:
@@ -325,6 +310,31 @@ def test_retry_after_gate_failure_succeeds(tmp_path: Path) -> None:
     # The retry attempt was seeded with the prior gate findings.
     context = plan_dir / "_state" / "attempts" / "a" / "1" / "context.md"
     assert "produced no commit" in context.read_text()
+    assert load_snapshot(plan_dir).nodes["a"].state == "passed"
+
+
+def test_stopping_on_pending_background_work_retries(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    # Attempt 0 does the work but ends its turn on a still-running task,
+    # so its commit must not be accepted as a finished attempt.
+    write_scenario(
+        scenario_dir,
+        "a",
+        0,
+        [
+            {"signal": "SessionStart"},
+            {"signal": "Stop", "background": [{"id": "bkg1", "status": "running", "description": "just test-e2e"}]},
+        ],
+    )
+    write_scenario(scenario_dir, "a", 1, pass_actions("a"))
+    assert run_plan(plan_dir, repo) == "completed"
+    events = list(replay(journal_path(plan_dir)))
+    assert [e for e in events if isinstance(e, TaskStateChanged) and e.reason == "retry"]
+    # The retry context names the abandoned task so the next worker knows why.
+    context = (plan_dir / "_state" / "attempts" / "a" / "1" / "context.md").read_text()
+    assert "stopped-with-pending-background" in context
+    assert "just test-e2e" in context
     assert load_snapshot(plan_dir).nodes["a"].state == "passed"
 
 

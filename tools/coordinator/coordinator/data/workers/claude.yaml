@@ -1,9 +1,11 @@
-display_name: Claude (print mode)
-mode: print
+display_name: Claude Opus
+model: opus
 command:
   - claude
   - -p
   - --dangerously-skip-permissions
+  - --model
+  - "{model}"
   - --settings
   - "{settings_file}"
   - "{prompt}"

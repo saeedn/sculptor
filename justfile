@@ -168,7 +168,10 @@ typecheck:
     {{ _quiet_by_default_fn }}
     _do_typecheck() {
       echo "Type checking Python files with pyrefly..."
-      cd "{{justfile_directory()}}" && uv run --project sculptor pyrefly check
+      # --all-packages, not --project sculptor: pyrefly.toml also checks
+      # tools/coordinator, whose imports (textual, the coordinator package itself)
+      # only resolve when every workspace member is synced into the venv.
+      cd "{{justfile_directory()}}" && uv run --all-packages pyrefly check
       echo "Type checking JS/TS files with tsc..."
       {{ nvm_use }}
       cd "{{justfile_directory()}}/sculptor/frontend" && npm run tsc
@@ -923,7 +926,8 @@ pyrefly-check:
         echo "Skipping pyrefly check (SKIP_PYREFLY_IN_SCULPTOR_BUILD is set)"
     else
         echo "Running pyrefly type check..."
-        uv run --project sculptor pyrefly check
+        # --all-packages so tools/coordinator's imports resolve; see `typecheck`.
+        uv run --all-packages pyrefly check
         echo "Pyrefly check passed!"
     fi
 

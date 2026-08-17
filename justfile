@@ -131,8 +131,8 @@ format:
     {{ _quiet_by_default_fn }}
     _do_format() {
       echo "Formatting Python files..."
-      uv run ruff check --select UP006,UP007,I,F401 --fix --force-exclude --config pyproject.toml sculptor/
-      uv run ruff format --force-exclude --config pyproject.toml sculptor/
+      uv run ruff check --select UP006,UP007,I,F401 --fix --force-exclude --config pyproject.toml sculptor/ tools/coordinator/
+      uv run ruff format --force-exclude --config pyproject.toml sculptor/ tools/coordinator/
       echo "Formatting JS/TS files..."
       {{ nvm_use }}
       cd "{{justfile_directory()}}/sculptor/frontend" && npm run format -- .
@@ -149,9 +149,9 @@ lint:
     {{ _quiet_by_default_fn }}
     _do_lint() {
       echo "Checking Python formatting..."
-      uv run ruff format --check --force-exclude --config pyproject.toml sculptor/
+      uv run ruff format --check --force-exclude --config pyproject.toml sculptor/ tools/coordinator/
       echo "Linting Python files..."
-      uv run ruff check --force-exclude --config pyproject.toml sculptor/
+      uv run ruff check --force-exclude --config pyproject.toml sculptor/ tools/coordinator/
       echo "Linting JS/TS files..."
       {{ nvm_use }}
       cd "{{justfile_directory()}}/sculptor/frontend" && npm run lint -- .
@@ -168,7 +168,10 @@ typecheck:
     {{ _quiet_by_default_fn }}
     _do_typecheck() {
       echo "Type checking Python files with pyrefly..."
-      cd "{{justfile_directory()}}" && uv run --project sculptor pyrefly check
+      # --all-packages, not --project sculptor: pyrefly.toml also checks
+      # tools/coordinator, whose imports (textual, the coordinator package itself)
+      # only resolve when every workspace member is synced into the venv.
+      cd "{{justfile_directory()}}" && uv run --all-packages pyrefly check
       echo "Type checking JS/TS files with tsc..."
       {{ nvm_use }}
       cd "{{justfile_directory()}}/sculptor/frontend" && npm run tsc
@@ -389,6 +392,7 @@ test-unit junitxml="":
     just test-unit-frontend
     just test-unit-foundation
     just test-unit-sculpt {{ if junitxml != "" { "sculpt_junit.xml" } else { "" } }}
+    just test-unit-coordinator {{ if junitxml != "" { "coordinator_junit.xml" } else { "" } }}
 
 # Run foundation unit tests (the former imbue_core library, now sculptor.foundation).
 # Runs with sculptor/sculptor/foundation/ as the pytest rootdir (via its own pytest.ini) so it
@@ -415,6 +419,18 @@ test-unit-sculpt junitxml="":
       env -u SESSION_TOKEN uv run --project tools/sculpt python -m pytest tools/sculpt/tests/ {{ if junitxml != "" { "--junitxml=" + quote(junitxml) } else { "" } }}
     }
     quiet_by_default test-unit-sculpt _do_test_unit_sculpt
+
+# Run coordinator unit tests
+# Pass a path to junitxml to output JUnit XML for CI
+[group("ci")]
+test-unit-coordinator junitxml="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    {{ _quiet_by_default_fn }}
+    _do_test_unit_coordinator() {
+      env -u SESSION_TOKEN uv run --project tools/coordinator python -m pytest tools/coordinator/tests/ {{ if junitxml != "" { "--junitxml=" + quote(junitxml) } else { "" } }}
+    }
+    quiet_by_default test-unit-coordinator _do_test_unit_coordinator
 
 # === Testing ===
 
@@ -910,7 +926,8 @@ pyrefly-check:
         echo "Skipping pyrefly check (SKIP_PYREFLY_IN_SCULPTOR_BUILD is set)"
     else
         echo "Running pyrefly type check..."
-        uv run --project sculptor pyrefly check
+        # --all-packages so tools/coordinator's imports resolve; see `typecheck`.
+        uv run --all-packages pyrefly check
         echo "Pyrefly check passed!"
     fi
 

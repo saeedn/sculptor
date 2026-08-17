@@ -1,0 +1,26 @@
+# Registration for running the build coordinator as a Sculptor terminal agent.
+# Sculptor installs this registration automatically on first run; the
+# installed copy in <sculptor folder>/terminal_agents/ is yours to edit or
+# delete (deleting it sticks — it is not re-installed). The registration id
+# is this file's name ("coordinator"); renaming the file changes the id.
+
+display_name = "Coordinator"
+
+# The launch command runs in the agent's login shell, so `coordinator` must
+# be installed and reachable on PATH (see this sample's README.md).
+# {args} is replaced with the launch args supplied at agent creation, each
+# shell-quoted — e.g.
+#   sculpt agent create --harness Coordinator \
+#     --launch-arg run --launch-arg agent_docs/<slug>/plan
+# renders `coordinator run 'agent_docs/<slug>/plan'`. With no launch args
+# the coordinator opens its picker of plans with incomplete runs.
+launch_command = 'coordinator {args}'
+
+# The coordinator reports its run id to Sculptor as the terminal session id,
+# so after a Sculptor restart the tab resumes the same run from its on-disk
+# journal. {session_id} is that run id.
+resume_command_template = 'coordinator resume {session_id}'
+
+# Launch args carry everything the coordinator needs; nothing is ever typed
+# into its dashboard, so automated prompt delivery stays off.
+accepts_automated_prompts = false

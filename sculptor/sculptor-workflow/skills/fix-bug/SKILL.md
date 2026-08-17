@@ -34,6 +34,18 @@ Steps 1–3 below are shared by both modes. After Step 3, **autonomous mode jump
 to the "Autonomous Workflow" section near the end** of this file. Interactive
 mode continues into Phase 1.
 
+## The Q&A ritual (interactive mode only)
+
+Interactive mode asks the user questions at several points. **Read
+`../_shared/qa-ritual.md` (relative to this SKILL.md) before the
+first question** — every question goes through your question tool
+(never plain text), turns that ask must end with the question, and
+upcoming tool calls are never announced in text.
+
+This is conditional on the mode: **autonomous mode never asks the
+user anything** — questions are forbidden there (see *Forbidden in
+autonomous mode*), so the ritual simply does not apply.
+
 ## Step 1: Load config (REQUIRED — do not skip)
 
 **You MUST have all three config files before doing anything else.** Do not

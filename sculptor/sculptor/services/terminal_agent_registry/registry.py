@@ -32,10 +32,14 @@ _REGISTRATION_ID_PATTERN = re.compile(r"[a-z0-9][a-z0-9_-]*")
 # session at first launch). The loader rejects any other `{…}` token so a typo
 # fails loudly here instead of surviving verbatim into the launched command.
 SESSION_ID_PLACEHOLDER = "{session_id}"
+ARGS_PLACEHOLDER = "{args}"
 SCULPTOR_DIRECTORY_PLACEHOLDER = "{sculptor_directory}"
 TERMINAL_AGENTS_DIRECTORY_PLACEHOLDER = "{terminal_agents_directory}"
 _DIRECTORY_PLACEHOLDERS = frozenset({SCULPTOR_DIRECTORY_PLACEHOLDER, TERMINAL_AGENTS_DIRECTORY_PLACEHOLDER})
-_LAUNCH_COMMAND_PLACEHOLDERS = _DIRECTORY_PLACEHOLDERS
+# `{args}` is launch-only: caller-supplied launch args are substituted
+# shell-quoted at render time; a resume re-attaches the program's own
+# session state and takes no fresh args.
+_LAUNCH_COMMAND_PLACEHOLDERS = _DIRECTORY_PLACEHOLDERS | {ARGS_PLACEHOLDER}
 _RESUME_COMMAND_PLACEHOLDERS = _DIRECTORY_PLACEHOLDERS | {SESSION_ID_PLACEHOLDER}
 _PLACEHOLDER_PATTERN = re.compile(r"\{[^}]*\}")
 
@@ -67,6 +71,9 @@ class TerminalAgentRegistration(SerializableModel):
     @model_validator(mode="after")
     def _validate_command_placeholders(self) -> "TerminalAgentRegistration":
         _reject_unknown_placeholders(self.launch_command, _LAUNCH_COMMAND_PLACEHOLDERS, "launch_command")
+        # A launch splices one caller-arg list; a second {args} is a mistake.
+        if self.launch_command.count(ARGS_PLACEHOLDER) > 1:
+            raise ValueError(f"launch_command may contain {ARGS_PLACEHOLDER} at most once")
         template = self.resume_command_template
         if template is not None:
             _reject_unknown_placeholders(template, _RESUME_COMMAND_PLACEHOLDERS, "resume_command_template")

@@ -1,0 +1,11 @@
+display_name: Claude Sonnet
+model: sonnet
+command:
+  - claude
+  - -p
+  - --dangerously-skip-permissions
+  - --model
+  - "{model}"
+  - --settings
+  - "{settings_file}"
+  - "{prompt}"

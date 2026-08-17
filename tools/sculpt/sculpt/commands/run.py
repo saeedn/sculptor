@@ -119,6 +119,14 @@ def run_cmd(
             + " most-recently-used harness from the Sculptor app."
         ),
     ),
+    launch_arg: list[str] | None = typer.Option(
+        None,
+        "--launch-arg",
+        help=(
+            "Launch argument for a registered terminal agent whose launch_command"
+            + " contains {args}; repeatable, order preserved."
+        ),
+    ),
     submit: bool = typer.Option(True, "--submit/--no-submit", help="Press Enter after typing the prompt"),
     follow: bool = typer.Option(False, "--follow", "-f", help="Stream the agent's activity after creation"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
@@ -187,6 +195,7 @@ def run_cmd(
         registration_id=(
             selection.registration_id if selection is not None and selection.registration_id is not None else UNSET
         ),
+        launch_args=launch_arg if launch_arg else UNSET,
     )
 
     try:

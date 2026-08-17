@@ -85,6 +85,7 @@ from sculptor.services.project_service.default_implementation import get_most_re
 from sculptor.services.project_service.default_implementation import update_most_recently_used_project
 from sculptor.services.task_service.errors import TaskNotFound
 from sculptor.services.terminal_agent_registry.bundled import install_bundled_registrations
+from sculptor.services.terminal_agent_registry.registry import ARGS_PLACEHOLDER
 from sculptor.services.terminal_agent_registry.registry import get_registration
 from sculptor.services.terminal_agent_registry.registry import load_registrations
 from sculptor.services.user_config.user_config import get_config_path
@@ -1276,9 +1277,34 @@ def _record_most_recently_used_agent_type(agent_type: AgentTypeName, registratio
     set_user_config_instance(updated)
 
 
+_MAX_LAUNCH_ARGS = 32
+_MAX_LAUNCH_ARG_LENGTH = 1024
+
+
+def _launch_args_422(message: str) -> HTTPException:
+    # Manual 422s use the same list-of-dicts shape as FastAPI's automatic
+    # validation errors so the generated sculpt client can parse them.
+    return HTTPException(
+        status_code=422,
+        detail=[{"loc": ["body", "launch_args"], "msg": message, "type": "value_error"}],
+    )
+
+
+def _validate_launch_args(launch_args: list[str]) -> None:
+    """Conservative belt-and-suspenders on top of render-time shell quoting."""
+    if len(launch_args) > _MAX_LAUNCH_ARGS:
+        raise _launch_args_422(f"at most {_MAX_LAUNCH_ARGS} launch args are allowed")
+    for arg in launch_args:
+        if len(arg) > _MAX_LAUNCH_ARG_LENGTH:
+            raise _launch_args_422(f"launch args must be at most {_MAX_LAUNCH_ARG_LENGTH} characters each")
+        if not arg.isprintable():
+            raise _launch_args_422("launch args must be printable (no control characters)")
+
+
 def _agent_config_for_request(
     agent_type: AgentTypeName,
     registration_id: str | None,
+    launch_args: list[str] | None = None,
 ) -> AgentConfigTypes:
     """Resolve the requested agent type into a stamped `AgentConfigTypes`.
 
@@ -1286,6 +1312,8 @@ def _agent_config_for_request(
     harness selection is gone.
     """
     if agent_type == AgentTypeName.TERMINAL:
+        if launch_args:
+            raise _launch_args_422("plain terminal agents do not accept launch args")
         return TerminalAgentConfig()
     if agent_type == AgentTypeName.REGISTERED:
         if registration_id is None:
@@ -1297,6 +1325,14 @@ def _agent_config_for_request(
                 status_code=422,
                 detail=f"Terminal-agent registration '{registration_id}' not found",
             )
+        if launch_args:
+            if ARGS_PLACEHOLDER not in registration.launch_command:
+                message = (
+                    f"registration '{registration_id}' does not accept launch args"
+                    + f" ({ARGS_PLACEHOLDER} not in launch_command)"
+                )
+                raise _launch_args_422(message)
+            _validate_launch_args(launch_args)
         # Stamped at creation so the task stays self-describing even if the
         # registration file later changes.
         return RegisteredTerminalAgentConfig(
@@ -1305,6 +1341,7 @@ def _agent_config_for_request(
             launch_command=registration.launch_command,
             resume_command_template=registration.resume_command_template,
             accepts_automated_prompts=registration.accepts_automated_prompts,
+            launch_args=launch_args or None,
         )
     raise HTTPException(status_code=422, detail=f"Unsupported agent type: {agent_type}")
 
@@ -1411,7 +1448,9 @@ def create_workspace_agent(
         resolved_agent_type, resolved_registration_id = _resolve_requested_agent_type(
             agent_request.agent_type, agent_request.registration_id
         )
-        agent_config = _agent_config_for_request(resolved_agent_type, resolved_registration_id)
+        agent_config = _agent_config_for_request(
+            resolved_agent_type, resolved_registration_id, agent_request.launch_args
+        )
         if agent_request.agent_type is not None:
             _record_most_recently_used_agent_type(resolved_agent_type, resolved_registration_id)
         task_name = agent_request.name or _compute_next_agent_name(

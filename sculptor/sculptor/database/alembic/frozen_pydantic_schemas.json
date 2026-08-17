@@ -377,6 +377,21 @@
                 "title": "Displayname",
                 "type": "string"
               },
+              "launchArgs": {
+                "anyOf": [
+                  {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "title": "Launchargs"
+              },
               "launchCommand": {
                 "title": "Launchcommand",
                 "type": "string"

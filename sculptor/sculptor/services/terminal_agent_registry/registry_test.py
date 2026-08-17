@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from sculptor.services.terminal_agent_registry import registry as registry_module
-from sculptor.services.terminal_agent_registry.bundled import get_bundled_claude_code_dir
+from sculptor.services.terminal_agent_registry.bundled import get_bundled_sample_dir
 from sculptor.services.terminal_agent_registry.registry import get_registration
 from sculptor.services.terminal_agent_registry.registry import load_registrations
 
@@ -75,6 +75,29 @@ def test_invalid_files_are_skipped_and_valid_ones_still_load(
     registrations = load_registrations()
 
     assert [r.registration_id for r in registrations] == ["good"]
+
+
+def test_args_placeholder_accepted_once_in_launch_command(registrations_dir: Path) -> None:
+    (registrations_dir / "coordinator.toml").write_text(
+        'display_name = "Coordinator"\nlaunch_command = "coordinator {args}"\n'
+    )
+    registration = load_registrations()[0]
+    assert registration.launch_command == "coordinator {args}"
+
+
+def test_args_placeholder_rejected_twice_in_launch_command(registrations_dir: Path) -> None:
+    (registrations_dir / "coordinator.toml").write_text(
+        'display_name = "Coordinator"\nlaunch_command = "coordinator {args} {args}"\n'
+    )
+    assert load_registrations() == []
+
+
+def test_args_placeholder_rejected_in_resume_template(registrations_dir: Path) -> None:
+    (registrations_dir / "coordinator.toml").write_text(
+        'display_name = "Coordinator"\nlaunch_command = "coordinator {args}"\n'
+        'resume_command_template = "coordinator resume {args}"\n'
+    )
+    assert load_registrations() == []
 
 
 def test_registrations_sorted_by_id(registrations_dir: Path) -> None:
@@ -159,7 +182,7 @@ def test_bundled_claude_cli_hooks_only_signal_waiting_for_genuine_attention() ->
     question signal (PreToolUse = question shown -> waiting; PostToolUse =
     answered -> busy).
     """
-    sample_dir = get_bundled_claude_code_dir()
+    sample_dir = get_bundled_sample_dir("claude-code")
     assert sample_dir is not None, "bundled claude-code sample not found"
     hooks = json.loads((sample_dir / "claude-code-hooks.json").read_text())["hooks"]
 
@@ -214,7 +237,7 @@ def test_bundled_claude_cli_hooks_report_session_id_on_first_prompt_not_startup(
     launch command (a fresh TUI in the same tab), while every prompt
     re-reports the current id (e.g. fresh after /clear).
     """
-    sample_dir = get_bundled_claude_code_dir()
+    sample_dir = get_bundled_sample_dir("claude-code")
     assert sample_dir is not None, "bundled claude-code sample not found"
     hooks = json.loads((sample_dir / "claude-code-hooks.json").read_text())["hooks"]
 
@@ -237,7 +260,7 @@ def test_bundled_claude_cli_session_start_idles_on_real_starts_not_compaction() 
     filtering is done by Claude's ``source`` matcher (startup|resume|clear), so
     we assert the matcher semantics rather than executing a command.
     """
-    sample_dir = get_bundled_claude_code_dir()
+    sample_dir = get_bundled_sample_dir("claude-code")
     assert sample_dir is not None, "bundled claude-code sample not found"
     groups = json.loads((sample_dir / "claude-code-hooks.json").read_text())["hooks"]["SessionStart"]
     idle_matchers = [

@@ -20,6 +20,7 @@ import os
 import shlex
 import signal
 import threading
+from collections.abc import Sequence
 from pathlib import Path
 
 import psutil
@@ -27,6 +28,7 @@ from loguru import logger
 
 from sculptor.foundation.concurrency_group import ConcurrencyGroup
 from sculptor.primitives.ids import TaskID
+from sculptor.services.terminal_agent_registry.registry import ARGS_PLACEHOLDER
 from sculptor.services.terminal_agent_registry.registry import SCULPTOR_DIRECTORY_PLACEHOLDER
 from sculptor.services.terminal_agent_registry.registry import SESSION_ID_PLACEHOLDER
 from sculptor.services.terminal_agent_registry.registry import TERMINAL_AGENTS_DIRECTORY_PLACEHOLDER
@@ -146,7 +148,7 @@ def stop_agent_terminal(task_id: TaskID) -> None:
         manager.stop()
 
 
-def render_terminal_command(template: str, *, session_id: str | None = None) -> str:
+def render_terminal_command(template: str, *, session_id: str | None = None, args: Sequence[str] | None = None) -> str:
     """Substitute a registration command's placeholders with concrete values.
 
     Directory placeholders ({sculptor_directory}, {terminal_agents_directory})
@@ -155,6 +157,10 @@ def render_terminal_command(template: str, *, session_id: str | None = None) -> 
     safe. `{session_id}` is substituted only when one is supplied (resume; the
     loader already rejects it in `launch_command`) and is `shlex.quote`d —
     belt-and-suspenders over the API-validated charset ([A-Za-z0-9._-]{1,128}).
+    `{args}` (launch-only; the loader rejects it in resume templates) is
+    replaced with the caller args, each `shlex.quote`d individually and joined
+    with spaces — with no args it becomes the empty string, which may leave a
+    harmless trailing space in the command.
 
     `str.replace`, NOT `.format`, so any literal braces elsewhere are left
     untouched (the loader already rejects unknown `{…}` placeholders).
@@ -163,6 +169,7 @@ def render_terminal_command(template: str, *, session_id: str | None = None) -> 
     command = command.replace(TERMINAL_AGENTS_DIRECTORY_PLACEHOLDER, str(get_registrations_dir()))
     if session_id is not None:
         command = command.replace(SESSION_ID_PLACEHOLDER, shlex.quote(session_id))
+    command = command.replace(ARGS_PLACEHOLDER, " ".join(shlex.quote(arg) for arg in args) if args else "")
     return command
 
 

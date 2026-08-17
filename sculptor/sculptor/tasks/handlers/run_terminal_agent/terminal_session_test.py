@@ -196,6 +196,25 @@ def test_render_terminal_command_substitutes_directory_placeholders(monkeypatch:
     assert rendered == 'c --settings "/sculptor/terminal_agents/h.json" --root "/sculptor"'
 
 
+def test_render_terminal_command_shell_quotes_each_arg() -> None:
+    hostile = ["run", "my plan dir", "$(rm -rf /)", '"; rm -rf /', "a'b"]
+    rendered = render_terminal_command("coordinator {args}", args=hostile)
+    assert rendered == "coordinator run 'my plan dir' '$(rm -rf /)' '\"; rm -rf /' 'a'\"'\"'b'"
+
+
+def test_render_terminal_command_empty_args_leaves_empty_string() -> None:
+    # No args stamped → {args} renders to "" (a trailing space in the
+    # command is harmless).
+    assert render_terminal_command("coordinator run {args}", args=None) == "coordinator run "
+    assert render_terminal_command("coordinator run {args}", args=[]) == "coordinator run "
+
+
+def test_render_terminal_command_args_without_placeholder_is_a_no_op() -> None:
+    # The API rejects args for a registration without {args}; the renderer
+    # stays dumb and just has nothing to substitute.
+    assert render_terminal_command("coordinator run", args=["x"]) == "coordinator run"
+
+
 def test_reap_stale_shell_ignores_nonexistent_pid() -> None:
     # A reaped child's pid no longer exists (Popen + wait reaps it).
     probe = subprocess.Popen(["true"])

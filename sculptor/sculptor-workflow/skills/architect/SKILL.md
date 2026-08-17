@@ -29,70 +29,21 @@ rename command.
 
 ## The Q&A ritual
 
-The architect runs a multi-turn Q&A loop with the user. The rules
-below apply to every Q&A turn.
+The architect runs a multi-turn Q&A loop with the user. The
+non-negotiable rule: **every turn in a Q&A loop MUST end by asking the
+user a question with your question tool** — ending a turn without it
+is a silent stop and the primary failure mode of this skill.
 
-### Every turn ends by asking the user a question with your question tool
+**Read `../_shared/qa-ritual.md` (relative to this SKILL.md) at skill
+start.** It holds the full ritual: the every-turn rule, handling
+push-back and research turns, never announcing upcoming tool calls,
+and how to ask.
 
-**Every turn in a Q&A loop MUST end by asking the user a question with your question tool.**
-This is the single
-rule that determines whether the turn succeeded. If you end a turn
-without it, you have stopped silently and the user has nothing to
-respond to.
+Architect-specific deltas on top of the shared ritual:
 
-The ritual holds regardless of what happened earlier in the turn —
-research, answering the user's question, long discussion, a
-back-and-forth. Every one of those ends by asking the user a question with your question tool.
-
-**One narrow exception: spawning the Plan agent.** When you spawn
-`/sculptor-workflow:plan` at finalize, the spawning turn ends with
-**text instructions** rather than a question.
-The workspace's "waiting for input" state must belong to the Plan
-agent, not to this one. The exception applies only to the spawn turn.
-
-### When the user asks a question back or pushes back
-
-The user will often ask a question back, push back on your options,
-or want to drill into a topic. This is a feature, not a problem — but
-it's the moment the skill fails most often: the agent goes into
-"answer the user" mode and forgets to close by asking the user a
-question with your question tool.
-
-Handle it like this:
-
-1. Engage with what the user said. Answer, push back, do research
-   (Grep, Read) if needed.
-2. Update `architecture.md` to reflect anything new the conversation
-   surfaced.
-3. End the turn by asking the user a question with your question tool — usually a
-   follow-up that builds on the discussion, or a "keep drilling or
-   move on?" pacing question.
-
-Research does not excuse skipping the ritual.
-
-### Do not announce upcoming tool calls
-
-When you're about to ask the user a question, do
-**not** announce it in text first. Just make the call.
-
-Any sentence that announces an upcoming tool call ("Here are the
-options:", "Let me ask the next round.", "A few more questions.") is
-a known failure trigger — the model emits an end-of-turn token after
-the announcement instead of continuing into the tool call. Options,
-questions, and choices go INSIDE the tool call.
-
-Context about prior state ("I added the data model section to
-`architecture.md`.") is fine. Announcements about the next action
-are not.
-
-### How to ask
-
-Provide 1-4 concrete options per question, grounded in what you found
-in the codebase or upstream artifacts. Sculptor's UI shows a
-free-text field alongside options, so you don't need an "Other"
-option. For genuinely open-ended questions, omit options entirely.
-
-One sharp question beats four padded ones.
+- The artifact you update after every answer is **`architecture.md`**.
+- The spawn-turn exception applies when you spawn the **Plan agent**
+  at finalize: that turn ends with text instructions, not a question.
 
 ## Step 1: Load docs config (REQUIRED — do not skip)
 
@@ -231,9 +182,11 @@ Cover:
 - **Build/deploy assumptions** — anything that affects packaging or
   release that the spec touches
 
-Read **actual source files**. Don't skim summaries; don't delegate to
-sub-agents — the cost of context bloat is higher than the cost of
-direct reading.
+Read **actual source files** for anything you'll design against or
+cite in `architecture.md` — don't substitute second-hand summaries
+for the code the design depends on. Sub-agents are fine for broad
+discovery sweeps where only the conclusions matter (e.g. "list every
+consumer of this API"); read the load-bearing files directly.
 
 While reading, draft preliminary architecture content directly into
 the relevant sections of `architecture.md` (rough — labeled "draft").
@@ -307,7 +260,7 @@ diff against it). Write it for them, and for the user:
   "we could also support X" in the architecture is a maintenance
   bill someone else will pay.
 - **List files to modify / create / delete.** A concrete appendix
-  the Plan agent and Build agent will both consult. Group by
+  the Plan agent and the build workers will both consult. Group by
   modify/create/delete.
 
 What NOT to write:

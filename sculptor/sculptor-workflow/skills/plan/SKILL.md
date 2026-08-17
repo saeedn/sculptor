@@ -4,7 +4,7 @@ description: |
   Produce a detailed implementation plan from a spec and architecture
   document. Writes a folder of self-contained task files so the build
   agent can execute one task at a time without holding the full plan
-  in context. Hands off to /build when finalized.
+  in context. Hands off to the build coordinator when finalized.
   Input: a feature slug (or seed message from /architect with paths).
 argument-hint: <feature-slug>
 ---
@@ -12,12 +12,14 @@ argument-hint: <feature-slug>
 # Plan
 
 You are producing a detailed implementation plan that a developer (or
-the `/sculptor-workflow:build` agent) with zero context about this project can execute
+the build coordinator's fresh-context worker agents) with zero context about this project can execute
 one task at a time. Each task is a self-contained file, written so the
 implementer never needs to hold the full plan in context.
 
 You do **not** write implementation code. The only artifact you create
-is a `plan/` folder of task files alongside the spec.
+is a `plan/` folder of task files — plus the machine-readable
+`plan.yaml` manifest the build coordinator executes — alongside the
+spec.
 
 ## First: Rename this agent to "Plan"
 
@@ -26,69 +28,23 @@ Before doing anything else, rename this agent to "Plan" via the
 
 ## The Q&A ritual
 
-The plan agent runs a multi-turn Q&A loop with the user. The rules
-below apply to every Q&A turn.
+The plan agent runs a multi-turn Q&A loop with the user. The
+non-negotiable rule: **every turn in a Q&A loop MUST end by asking the
+user a question with your question tool** — ending a turn without it
+is a silent stop and the primary failure mode of this skill.
 
-### Every turn ends by asking the user a question
+**Read `../_shared/qa-ritual.md` (relative to this SKILL.md) at skill
+start.** It holds the full ritual: the every-turn rule, handling
+push-back and research turns, never announcing upcoming tool calls,
+and how to ask.
 
-**Every turn in a Q&A loop MUST end with a question to the user via your question tool.** This is the single
-rule that determines whether the turn succeeded. If you end a turn
-without it, you have stopped silently and the user has nothing to
-respond to.
+Plan-specific deltas on top of the shared ritual:
 
-The ritual holds regardless of what happened earlier in the turn —
-research, answering the user's question, long discussion, a
-back-and-forth. Every one of those ends by asking the user a question with your question tool.
-
-**One narrow exception: spawning the Build agent.** When you spawn
-`/sculptor-workflow:build` at finalize, the spawning turn ends with
-**text instructions** rather than a question.
-The workspace's "waiting for input" state must belong to the Build
-agent, not to this one. The exception applies only to the spawn turn.
-
-### When the user asks a question back or pushes back
-
-The user will often ask a question back, push back on your options,
-or want to drill into a topic. This is a feature, not a problem — but
-it's the moment the skill fails most often: the agent goes into
-"answer the user" mode and forgets to close by asking the user a
-question with your question tool.
-
-Handle it like this:
-
-1. Engage with what the user said. Answer, push back, do research
-   (Grep, Read) if needed.
-2. Update the relevant task file (or `00_overview.md`) to reflect
-   anything new the conversation surfaced.
-3. End the turn by asking the user a question with your question tool —
-   usually a follow-up that builds on the discussion, or a "keep
-   drilling or move on?" pacing question.
-
-Research does not excuse skipping the ritual.
-
-### Do not announce upcoming tool calls
-
-When you're about to ask the user a question, do
-**not** announce it in text first. Just make the call.
-
-Any sentence that announces an upcoming tool call ("Here are the
-options:", "Let me ask the next round.", "A few more questions.") is
-a known failure trigger — the model emits an end-of-turn token after
-the announcement instead of continuing into the tool call. Options,
-questions, and choices go INSIDE the tool call.
-
-Context about prior state ("I updated `01_02_<task>.md` with the
-end-to-end test list.") is fine. Announcements about the next
-action are not.
-
-### How to ask
-
-Provide 1-4 concrete options per question, grounded in what you found
-in the codebase or upstream artifacts. Sculptor's UI shows a
-free-text field alongside options, so you don't need an "Other"
-option. For genuinely open-ended questions, omit options entirely.
-
-One sharp question beats four padded ones.
+- The artifact you update after every answer is **the relevant task
+  file (or `00_overview.md`)**.
+- The spawn-turn exception applies when you launch the **coordinator
+  tab** at finalize: that turn ends with text instructions, not a
+  question.
 
 ## Step 1: Load docs config
 
@@ -119,7 +75,9 @@ The plan folder path:
 
 If the plan folder already exists, use your question tool to ask
 whether to extend it, replace it,
-or pick a new slug.
+or pick a new slug. A pre-manifest plan folder (task files but no
+`plan.yaml`) cannot be extended — the coordinator can't execute it;
+offer replace or a new slug instead.
 
 ## Step 3: Read upstream artifacts
 
@@ -147,13 +105,16 @@ changing.
 - Use Grep and Glob for targeted searches when you need to find
   patterns or usages.
 
-**Context management — critical to avoid `prompt too long` failures:**
+**Context management:**
 
-- Read files **directly** with the Read tool. Do NOT delegate
-  codebase exploration to sub-agents — sub-agent transcripts include
-  their full conversation history (every tool call, every file read,
-  all intermediate reasoning), which can be 10-50x larger than the
-  files themselves.
+- Read **directly** (with the Read tool) every file you will cite in
+  a task file or whose integration points you must name precisely —
+  second-hand summaries produce vague task files.
+- Sub-agents are fine for **broad discovery** where you only need the
+  conclusions — e.g. "find every caller of X across the repo" or
+  "which modules follow pattern Y" — since only their final report
+  enters your context. Don't use them as a substitute for reading the
+  files you'll actually reference.
 - If the architecture references many files (>15), prioritize the
   most important ones first. You can re-read specific files later
   when writing individual task files.
@@ -197,13 +158,12 @@ Create the `<plan-folder>/` containing:
 ```
 plan/
   00_overview.md             # Index file listing all tasks in order
+  plan.yaml                  # machine-readable manifest the coordinator executes
   _exploration_notes.md      # already written in Step 5
   01_01_<task_name>.md       # First task of phase 1
   01_02_<task_name>.md       # Second task of phase 1
   02_01_<task_name>.md       # First task of phase 2
   ...
-  99_01_verify_all_tests.md  # final phase: run all tests added in plan
-  99_02_launch_review.md     # final phase: spawn the Review agent
 ```
 
 Write the `00_overview.md` first, then each task file one at a time,
@@ -213,12 +173,11 @@ markdown is lightweight compared to the exploration phase. If you're
 running low on context, re-read `_exploration_notes.md` rather than
 re-reading source files.
 
-**Always end the plan with the two mandatory final tasks** described
-in *Mandatory final tasks* below. They live in their own final phase
-(numbered with the next available phase number, e.g. `99_01_*` /
-`99_02_*`) and appear last in the Task Index. The Build agent treats
-them like any other task and will skip the commit step on either if
-nothing changed.
+After the task files, write `plan.yaml` (see *Write `plan.yaml`*
+below). Do NOT add verify-all-tests or launch-review tasks to the
+plan — final verification is the coordinator's built-in mechanical
+gate, and spawning the Review agent is coordinator code; both happen
+automatically at the end of a successful run.
 
 ### `00_overview.md` format
 
@@ -337,128 +296,76 @@ do. Include:>
   identified for each task. Use your question tool to ask the user to confirm these are the right tests, or suggest
   additional ones.
 
-### Mandatory final tasks (every plan)
+### Write `plan.yaml` (the coordinator's manifest)
 
-Every plan MUST end with two final tasks in their own final phase.
-They run after all feature tasks complete and exist to make the
-"end of build" stage impossible to forget — the Build agent treats
-them like any other entry in its TODO list.
+After the task files, write `<plan-folder>/plan.yaml` — the manifest
+the build coordinator parses and executes (workers read only the task
+files; the coordinator reads only this). The schema is version 1; its
+source of truth is the module docstring in
+`tools/coordinator/coordinator/manifest.py`. Example:
 
-Both task files MUST instruct the implementer to **skip the commit
-step if nothing changed**, so the build agent never produces an
-empty commit on these. (The Build agent's `implement_task.md`
-already enforces no-empty-commits, but the task files restate it
-to be explicit.)
-
-#### Task `<final>_01_verify_all_tests.md`
-
-```markdown
-# Task <final>.1: Run all tests added in this plan and iterate to green
-
-## Goal
-
-Run every test introduced or modified by this plan and iterate
-until they all pass. This is a safety check after all the
-per-task work — even though each task verified its own scope, this
-task verifies them as a whole.
-
-## Background
-
-This is the second-to-last task in the plan. By now every feature
-task has been completed and committed. Per-task verification has
-already passed, but cross-task interactions may have introduced
-regressions.
-
-## Files to modify/create
-
-None expected. If you find a failure, fix it in the source file
-the failure originates from.
-
-## Implementation details
-
-1. Determine which tests were added in this plan. Either:
-   - Read each task file's *Testing suggestions* / *Verification
-     checklist* and gather the test names; or
-   - Run `git diff --stat <base>...HEAD` filtered to test paths
-     (per the **Test location** field in `.sculptor/testing.md`).
-2. Run those tests using the appropriate command from
-   `.sculptor/code.md` (unit tests) and/or the test-running skill
-   named in `.sculptor/testing.md` (end-to-end tests).
-3. If a test fails: debug, fix the source, re-run. Iterate until
-   green.
-4. Run the full pre-commit verification one final time per
-   `.sculptor/code.md`'s *Pre-commit Verification* section.
-
-## Verification checklist
-
-- [ ] Every test added in this plan passes.
-- [ ] The full pre-commit verification passes.
-
-## Commit policy
-
-**Do NOT make an empty commit.** If you didn't have to change
-anything (everything passed first try), report success without a
-commit. If you fixed regressions, commit those fixes with a
-descriptive message.
+```yaml
+version: 1
+meta:
+  slug: <slug>
+  spec: ../spec.md                 # relative to the plan folder
+  architecture: ../architecture.md
+defaults:
+  worker: claude-sonnet            # worker registration name
+  escalation_worker: claude-opus   # stronger worker for the last attempt
+  attempts: 2                      # base attempts before escalation
+  verification:                    # materialized from .sculptor/code.md
+    - just format
+    - just check
+    - just test-unit
+phases:
+  - id: 1
+    name: Core executor
+    review: agentic                # phase-boundary review: agentic|human|none
+    tasks:
+      - id: "1.1"
+        file: 01_01_scaffold.md
+      - id: "1.2"
+        file: 01_02_manifest_parser.md
+        deps: ["1.1"]
+        gates: [mechanical, agentic]   # optional per-task override
+        attempts: 3                    # optional per-task override
+        attempt_timeout_minutes: 240   # optional per-task override
+        no_change: false           # true for tasks expected to not commit
 ```
 
-#### Task `<final>_02_launch_review.md`
+Authoring rules:
 
-```markdown
-# Task <final>.2: Launch the Review agent
-
-## Goal
-
-Spawn `/sculptor-workflow:review` in a new agent tab so the Review
-agent can verify requirements coverage, re-run the test suite, and
-invoke the repo's code-review skill. This is the final task in the
-plan.
-
-## Background
-
-This is the last task in the plan. Every feature task is complete
-and committed; the verification task before this one confirmed all
-tests pass. The Review agent reads the spec, architecture, plan,
-and the diff to produce `review.md`.
-
-## Files to modify/create
-
-None. This task spawns an agent; it does not edit code.
-
-## Implementation details
-
-1. Compute the diff range. Default: `origin/main...HEAD`. If the
-   repo's default branch is something else (per `.sculptor/code.md`),
-   use that instead.
-2. Spawn a new agent in the same workspace via the
-   `/sculptor:sculpt-cli` skill, invoking
-   `/sculptor-workflow:review` there. Seed it with:
-   - `Slug:` <slug>
-   - `Spec path:` <absolute or repo-relative spec path>
-   - `Architecture path:` <absolute or repo-relative architecture path>
-   - `Plan folder:` <absolute or repo-relative plan folder>
-   - `Diff range:` the computed range (e.g. `origin/main...HEAD`)
-3. The Review agent self-renames on entry; you do not need to
-   rename it.
-4. End this turn with **text instructions** pointing the user to
-   the new Review tab. Do NOT ask the user a question (the
-   workspace's "waiting for
-   input" state must belong to the Review agent now).
-
-## Verification checklist
-
-- [ ] The Review agent is running in a new tab.
-- [ ] Text instructions point the user there.
-
-## Commit policy
-
-**Do NOT commit.** This task does not edit any files. After
-spawning the Review agent, report success with no commit.
-```
-
-When writing these into the plan, substitute the actual slug and
-paths. Renumber `<final>` to the next available phase number (one
-higher than the last feature phase).
+- **Task ids mirror the file numbering**: `01_02_foo.md` → id `"1.2"`.
+  Quote the ids (unquoted `1.2` is a YAML float). Every task file in
+  the folder appears exactly once in the manifest.
+- **`deps` encode real prerequisites** (by task id, within or across
+  phases). Default: the previous task in the same phase when it
+  genuinely blocks this one; leave `deps` empty for independent tasks.
+  Do NOT write phase-review entries — the coordinator inserts
+  phase-boundary review nodes itself from each phase's `review` field.
+- **`defaults.verification` is materialized from `.sculptor/code.md`'s
+  *Pre-commit Verification* section** — copy the actual commands into
+  the list; the coordinator cannot parse prose.
+- **Workers**: default to the built-in pair — `claude-sonnet` to build,
+  `claude-opus` to escalate to once the base attempts are spent — unless
+  the repo's `.sculptor/workers/` directory offers something better
+  suited. Naming a registration that does not exist fails the run at
+  start.
+- **Per-task overrides only where a task is genuinely risky or
+  special**: gnarly concurrency/migration work → `worker: claude-opus`,
+  `gates: [mechanical, agentic]`, or more `attempts`; schema
+  migrations or destructive steps → add `human` to the gates;
+  `no_change: true` for tasks not expected to produce a commit (the
+  mechanical gate otherwise fails a commit-less task).
+- **`attempt_timeout_minutes`** (on `defaults` or a task) caps how long
+  one attempt may run; the built-in default is 120. Raise it for a
+  task whose verification runs a long end-to-end suite — a timeout
+  kills the worker mid-tool-call and the attempt's work is discarded
+  uncommitted.
+- **`meta`** carries the slug and the spec/architecture paths
+  (relative to the plan folder); the coordinator uses them to seed the
+  Review agent at the end of a successful run.
 
 ## Step 8: Finalize
 
@@ -466,22 +373,25 @@ After writing all task files:
 
 1. Walk back through `00_overview.md` and the task files to confirm
    coverage of every `REQ-*` in the spec.
-2. Verify the two mandatory final tasks are present (the
-   verify-all-tests and launch-review tasks at the end of the Task
-   Index). If they're missing, write them now.
+2. Verify `plan.yaml`: every task file appears exactly once, ids
+   match the file numbering, `deps` reference existing ids and are
+   acyclic, and `defaults.verification` holds the repo's actual
+   pre-commit commands. (Eyeball it — the coordinator validates for
+   real at run start and refuses a broken manifest.)
 3. Show the plan folder path in a code block.
 4. Emit the finalizing question on its own
    turn:
-   - **Proceed to Build** — spawn the Build agent, hand off
+   - **Proceed to Build** — launch the coordinator tab on this plan
    - **Revise** — keep iterating on the plan
    - **Stop** — leave the plan as-is
 
 ### Before acting: commit the plan
 
 When the user's choice is **Proceed to Build** or **Stop**, commit
-the plan folder (including `00_overview.md`, `_exploration_notes.md`,
-and every task file) before doing anything else. The Build agent
-should see a clean, committed baseline.
+the plan folder (including `00_overview.md`, `plan.yaml`,
+`_exploration_notes.md`, and every task file) before doing anything
+else. The coordinator refuses to start on a dirty working tree, so
+everything must be committed first.
 
 ```bash
 git add <plan-folder>/
@@ -502,17 +412,27 @@ yet final.
 
 ### If the user picks "Proceed to Build"
 
-1. Spawn a new agent in the same workspace via the
-   `/sculptor:sculpt-cli` skill, invoking `/sculptor-workflow:build` there. Seed it
-   with:
-   - `Slug:` the feature slug
-   - `Spec path:` absolute or repo-relative
-   - `Architecture path:` absolute or repo-relative
-   - `Plan folder:` absolute or repo-relative path to the `plan/`
-     folder
-2. Rename the new agent to `Build` via `/sculptor:sculpt-cli`.
-3. End this turn with **text instructions** pointing the user to the
-   new tab — without asking the user a question.
+1. Create a **coordinator tab** in this workspace via the
+   `/sculptor:sculpt-cli` skill:
+
+   ```bash
+   sculpt agent create --harness Coordinator \
+     --launch-arg run --launch-arg <repo-relative-plan-folder> --json
+   ```
+
+   `--harness` matches the registration's display name
+   ("Coordinator", case-insensitive). Do NOT send any prompt or text
+   to the new tab — the launch args carry everything, and the
+   coordinator's registration does not accept automated prompts.
+2. End this turn with **text instructions** pointing the user to the
+   new Coordinator tab — without asking the user a question. The
+   coordinator executes the plan task-by-task with fresh worker
+   agents, gates every task, and spawns the Review agent itself when
+   every task passes.
+3. If `sculpt agent create` fails (e.g. the Coordinator registration
+   is not installed), tell the user to run
+   `coordinator run <repo-relative-plan-folder>` in any terminal
+   instead — the coordinator behaves identically outside Sculptor.
 
 ### If the user picks "Revise" or "Stop"
 
@@ -577,5 +497,6 @@ verified them in the codebase.
 - Do NOT omit end-to-end tests for user-facing features.
 - **Ask every question with your question tool** — the built-in `AskUserQuestion`. Never ask in plain text: only the tool call puts the workspace into the "waiting for input" state that alerts the user.
 - The finalize question is its own turn.
-- When spawning the Build agent, end the spawning turn with **text
-  instructions** rather than a question.
+- When launching the coordinator tab, end the spawning turn with
+  **text instructions** rather than a question. Never send a prompt
+  to the coordinator tab.

@@ -4,6 +4,7 @@
 
 project_includes = [
     "sculptor/**",
+    "tools/coordinator/**",
 ]
 
 # Mirrors the old Pyre `exclude` + `ignore_all_errors` lists: build artifacts,
@@ -22,6 +23,7 @@ project_excludes = [
 # Import root: `sculptor/sculptor/...` -> `sculptor.x`.
 search_path = [
     "sculptor",
+    "tools/coordinator",
 ]
 
 python_version = "3.11"

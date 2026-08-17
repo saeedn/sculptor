@@ -5,7 +5,8 @@ description: |
   satisfies the spec's requirements, that tests were written and pass,
   and invokes the repo's configured code-review skill. Writes review.md
   alongside the spec, then offers options for handling findings.
-  Input: a feature slug (or seed message from /build with paths).
+  Input: a feature slug (or a seed message with paths, from /plan or
+  from the build coordinator at the end of a run).
 argument-hint: <feature-slug>
 ---
 
@@ -28,72 +29,23 @@ Before doing anything else, rename this agent to "Review" via the
 
 Most of this skill runs autonomously (Steps 1-8). A Q&A loop only
 kicks in if the user picks **Address findings in this tab** at
-Step 9's finalize. The rules below apply to that loop and to any
-other turn where you ask the user a question with your question tool
-(including the finalize question itself).
+Step 9's finalize; the ritual applies to that loop and to any other
+turn where you ask the user a question (including the finalize
+question itself). The non-negotiable rule: **every Q&A turn MUST end
+by asking the user a question with your question tool** — ending a
+turn without it is a silent stop.
 
-### Every turn ends by asking the user a question
+**Read `../_shared/qa-ritual.md` (relative to this SKILL.md) at skill
+start.** It holds the full ritual: the every-turn rule, handling
+push-back and research turns, never announcing upcoming tool calls,
+and how to ask.
 
-**Every turn in a Q&A loop MUST end by asking the user a question with your question tool.**
-This is the single
-rule that determines whether the turn succeeded. If you end a turn
-without it, you have stopped silently and the user has nothing to
-respond to.
+Review-specific deltas on top of the shared ritual:
 
-The ritual holds regardless of what happened earlier in the turn —
-research, fixing a finding, answering the user's question, long
-discussion. Every one of those ends by asking the user a question with your question tool.
-
-**One narrow exception: spawning a fixer agent.** When the user
-picks "Spawn a fixer agent" at finalize and you spawn it, the
-spawning turn ends with **text instructions** rather than
-by asking the user a question. The workspace's "waiting for
-input" state must belong to the fixer agent, not to this one. The
-exception applies only to the spawn turn.
-
-### When the user asks a question back or pushes back
-
-The user will often ask a question back, push back on a finding, or
-want to drill into a topic. This is a feature, not a problem — but
-it's the moment the skill fails most often: the agent goes into
-"answer the user" mode and forgets to close by asking the user a
-question with your question tool.
-
-Handle it like this:
-
-1. Engage with what the user said. Answer, push back, do research
-   (Grep, Read) if needed.
-2. Update `review.md` to reflect anything new the conversation
-   surfaced — mark findings as resolved with commit references when
-   a fix has landed.
-3. End the turn by asking the user a question with your question tool — usually a
-   follow-up that builds on the discussion, or a "address the next
-   finding or stop?" pacing question.
-
-Research does not excuse skipping the ritual.
-
-### Do not announce upcoming tool calls
-
-When you're about to ask the user a question, do
-**not** announce it in text first. Just make the call.
-
-Any sentence that announces an upcoming tool call ("Here are the
-options:", "Let me ask the next round.", "A few more questions.") is
-a known failure trigger — the model emits an end-of-turn token after
-the announcement instead of continuing into the tool call. Options,
-questions, and choices go INSIDE the tool call.
-
-Context about prior state ("I marked REQ-XYZ-3 as resolved in
-`review.md` after commit abc1234.") is fine. Announcements about the
-next action are not.
-
-### How to ask
-
-Provide 1-4 concrete options per question. Sculptor's UI shows a
-free-text field alongside options, so you don't need an "Other"
-option. For genuinely open-ended questions, omit options entirely.
-
-One sharp question beats four padded ones.
+- The artifact you update after every answer is **`review.md`** —
+  mark findings as resolved with commit references when a fix lands.
+- The spawn-turn exception applies when you spawn a **fixer agent** at
+  finalize: that turn ends with text instructions, not a question.
 
 ## Step 1: Load configs
 
@@ -113,7 +65,9 @@ Read them. Key sections:
 
 ## Step 2: Parse the input
 
-`$ARGUMENTS` may contain a bare slug or seed markers from `/sculptor-workflow:build`:
+`$ARGUMENTS` may contain a bare slug or seed markers. The build
+coordinator seeds these same markers automatically at the end of a
+successful run; `/sculptor-workflow:plan` uses the same format:
 
 - `Slug:` feature slug
 - `Spec path:` absolute or repo-relative

@@ -100,6 +100,14 @@ def create(
             + " most-recently-used harness from the Sculptor app."
         ),
     ),
+    launch_arg: list[str] | None = typer.Option(
+        None,
+        "--launch-arg",
+        help=(
+            "Launch argument for a registered terminal agent whose launch_command"
+            + " contains {args}; repeatable, order preserved."
+        ),
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
     base_url: str | None = typer.Option(None, "--base-url", "-u", help="The Sculptor server URL"),
 ) -> None:
@@ -119,6 +127,7 @@ def create(
             if selection is not None and selection.registration_id is not None
             else UNSET
         ),
+        launch_args=launch_arg if launch_arg else UNSET,
     )
 
     try:

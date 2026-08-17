@@ -36,11 +36,13 @@ editable_mode = "compat"
 
 [tool.uv.workspace]
 members = [
+    "tools/coordinator",
     "tools/sculpt",
     "sculptor",
 ]
 
 [tool.uv.sources]
+coordinator = { workspace = true }
 sculpt = { workspace = true }
 sculptor = { workspace = true }
 
@@ -78,6 +80,7 @@ force-single-line = true
 case-sensitive = true
 order-by-type = false
 known-first-party = [
+    "coordinator",
     "sculptor",
     "tests",
 ]

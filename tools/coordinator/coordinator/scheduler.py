@@ -562,16 +562,41 @@ class Scheduler:
                 ),
             )
             return
+        if not self._reopenable_findings(outcome):
+            # Nothing to send back: re-running the reviewer over an
+            # unchanged tree would only re-derive this verdict, so spend
+            # no round on it.
+            self.transition(
+                node.node_id,
+                NodeState.WAITING_HUMAN,
+                reason=(
+                    "phase review findings name no task that can be re-opened; needs a human "
+                    + f"decision (`coordinator extend <plan> {node.node_id}` re-runs the review anyway)"
+                ),
+            )
+            return
         self._reopen_for_review(node, outcome)
+
+    def _reopenable_findings(self, outcome: GateOutcome) -> dict[str, list[Finding]]:
+        """The failing verdict's findings, grouped by the passed task each names.
+
+        Findings naming no task — or one that is not sitting at passed —
+        are work no re-opened build agent could pick up.
+        """
+        grouped: dict[str, list[Finding]] = {}
+        for finding in outcome.findings_list:
+            if finding.task_id is None or self.states.get(finding.task_id) != NodeState.PASSED:
+                continue
+            grouped.setdefault(finding.task_id, []).append(finding)
+        return grouped
 
     def _reopen_for_review(self, node: Node, outcome: GateOutcome) -> None:
         """Send a failing review's findings back to the tasks they name."""
-        reopened = False
-        for finding in outcome.findings_list:
-            task_id = finding.task_id
-            if task_id is None or self.states.get(task_id) != NodeState.PASSED:
-                continue
-            self._failures[task_id].append(
+        grouped = self._reopenable_findings(outcome)
+        for task_id, findings in grouped.items():
+            # Every finding against the task, not just the first: the
+            # retry context is the only place the agent reads them.
+            self._failures[task_id].extend(
                 FailureRecord(
                     attempt_index=self.attempt_counts[task_id] - 1,
                     registration=None,
@@ -579,6 +604,7 @@ class Scheduler:
                     findings=f"phase review finding: {finding.summary}: {finding.detail}",
                     last_assistant_message=None,
                 )
+                for finding in findings
             )
             self._seed_context[task_id] = format_seed_context(self._failures[task_id])
             # Fresh work, fresh ladder: the task passed its own gates, and
@@ -587,10 +613,9 @@ class Scheduler:
             for record in self._attempt_records[task_id]:
                 record.reopened = True
             self.transition(task_id, NodeState.PENDING, reason=PHASE_REVIEW_REOPEN_REASON)
-            reopened = True
         # The review node re-runs after the reopened tasks pass again (or
-        # immediately, when no finding named a task).
-        reason = "phase-review-retry" if reopened else "phase-review-retry (no task attributed)"
+        # immediately, when an extend re-ran a review that named no task).
+        reason = "phase-review-retry" if grouped else "phase-review-retry (no task attributed)"
         self.transition(node.node_id, NodeState.PENDING, reason=reason)
 
     def _worker_for(self, node: Node) -> str:

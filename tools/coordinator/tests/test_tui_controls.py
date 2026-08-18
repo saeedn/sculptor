@@ -91,6 +91,25 @@ async def test_approve_only_for_waiting_human(tmp_path: Path) -> None:
         assert intents(plan_dir) == [("approve", "1.1")]
 
 
+async def test_drilldown_extend_only_for_a_stopped_node(tmp_path: Path) -> None:
+    plan_dir = make_plan_dir(tmp_path)
+    journal = start_journal(plan_dir)
+    app = make_app(plan_dir)
+    async with app.run_test() as pilot:
+        # A running node has no exhausted budget to raise.
+        await pilot.press("enter")
+        await pilot.press("e")
+        assert intents(plan_dir) == []
+        await pilot.press("escape")
+        journal.append(TaskStateChanged(node_id="1.1", old_state="pending", new_state="running"))
+        journal.append(TaskStateChanged(node_id="1.1", old_state="running", new_state="gate-checking"))
+        journal.append(TaskStateChanged(node_id="1.1", old_state="gate-checking", new_state="waiting-human"))
+        app.refresh_state()
+        await pilot.press("enter")
+        await pilot.press("e")
+        assert intents(plan_dir) == [("extend", "1.1")]
+
+
 async def test_drilldown_renders_attempt_history(tmp_path: Path) -> None:
     plan_dir = make_plan_dir(tmp_path)
     journal = start_journal(plan_dir)

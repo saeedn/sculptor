@@ -273,6 +273,19 @@ def test_phase_review_rounds_zero_escalates_on_the_first_failure(tmp_path: Path)
     assert load_snapshot(plan_dir).nodes["phase-review:1"].state == "waiting-human"
 
 
+def test_unattributed_findings_stop_the_run_without_a_re_review(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "agentic", "tasks": [task_entry("1.1")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
+    # Findings naming no task: nothing can be re-opened, so the run stops
+    # on the first verdict rather than re-reviewing an unchanged tree.
+    write_scenario(scenario_dir, "phase-review:1", 0, failing_review_actions(None))
+    assert run_plan(plan_dir, repo) == "waiting-human"
+    snapshot = load_snapshot(plan_dir)
+    assert snapshot.nodes["phase-review:1"].state == "waiting-human"
+    assert len(snapshot.nodes["phase-review:1"].attempts) == 1
+
+
 def test_extend_cli_grants_another_review_round(tmp_path: Path) -> None:
     phases = [{"id": 1, "name": "P1", "review": "agentic", "review_rounds": 1, "tasks": [task_entry("1.1")]}]
     repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)

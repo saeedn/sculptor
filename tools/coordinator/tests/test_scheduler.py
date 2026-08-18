@@ -472,6 +472,40 @@ def test_phase_review_with_zero_rounds_escalates_immediately(tmp_path: Path) -> 
     ]
 
 
+def test_unattributed_findings_escalate_without_spending_a_round(tmp_path: Path) -> None:
+    # Nothing to hand back, so re-reviewing the same tree is pure spin:
+    # the run stops at once and keeps its rounds for real fixes.
+    manifest = review_manifest(rounds=2)
+    executor = FakeExecutor(gates={"phase-review:1": [review_failure(task_id=None)]})
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "waiting-human"
+    assert executor.calls == ["attempt:a:0", "gates:a", "attempt:phase-review:1:0", "gates:phase-review:1"]
+    assert not [
+        e
+        for e in replay(journal_path(tmp_path))
+        if isinstance(e, TaskStateChanged) and e.reason == PHASE_REVIEW_REOPEN_REASON
+    ]
+
+
+def test_every_finding_against_a_task_reaches_its_retry_context(tmp_path: Path) -> None:
+    manifest = review_manifest(rounds=1)
+    two_findings = GateOutcome(
+        gate="phase-review",
+        passed=False,
+        findings="two blockers",
+        findings_list=(
+            Finding(task_id="a", severity="blocker", summary="missing case"),
+            Finding(task_id="a", severity="blocker", summary="leaks a handle"),
+        ),
+    )
+    executor = FakeExecutor(gates={"phase-review:1": [two_findings]})
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "completed"
+    seed = executor.seeds["a"][1]
+    assert seed is not None
+    assert "missing case" in seed and "leaks a handle" in seed
+
+
 class ExtendingExecutor(FakeExecutor):
     """Appends an extend intent the moment the phase review fails.
 

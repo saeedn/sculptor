@@ -567,6 +567,8 @@ Delete:
   human gate. `coordinator extend <plan> <node>` grants more mid-run —
   review rounds for a review node, ladder attempts for a task — so a
   loop that is visibly converging can keep going on a human's call.
+  A verdict whose blocking findings name no re-openable task escalates
+  at once and spends no round: nothing would change before the re-review.
 - **Workers touching files outside their task's scope** in the shared
   working tree: sequential execution (increment 1) means each task's
   gate sees exactly that task's diff; coordinator refuses to start a run

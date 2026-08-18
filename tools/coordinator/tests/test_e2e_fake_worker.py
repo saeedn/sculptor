@@ -231,16 +231,70 @@ def test_phase_review_reopen_then_pass(tmp_path: Path) -> None:
     assert snapshot.nodes["phase-review:1"].state == "passed"
 
 
-def test_phase_review_fails_twice_waits_for_human(tmp_path: Path) -> None:
+def fix_actions(node_id: str, content: str) -> list[dict]:
+    """A reopened task's re-run: recommit its file with new content."""
+    return [
+        {"signal": "SessionStart"},
+        {"write": {"path": f"file_{node_id}.txt", "content": content}},
+        {"commit": f"fix for review findings in {node_id}"},
+        {"signal": "Stop"},
+    ]
+
+
+def test_phase_review_spends_its_round_budget_before_waiting_for_human(tmp_path: Path) -> None:
     phases = [{"id": 1, "name": "P1", "review": "agentic", "tasks": [task_entry("1.1")]}]
     repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
     write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
-    # Findings with no task attribution: the review itself retries, then
-    # the second failure escalates to a human.
-    write_scenario(scenario_dir, "phase-review:1", 0, failing_review_actions(None))
-    write_scenario(scenario_dir, "phase-review:1", 1, failing_review_actions(None))
+    # The default budget is two rounds of findings, so the task is
+    # reopened twice and only the THIRD failing review needs a human.
+    write_scenario(scenario_dir, "1.1", 1, fix_actions("1.1", "first fix\n"))
+    write_scenario(scenario_dir, "1.1", 2, fix_actions("1.1", "second fix\n"))
+    for attempt in (0, 1, 2):
+        write_scenario(scenario_dir, "phase-review:1", attempt, failing_review_actions("1.1"))
     assert run_plan(plan_dir, repo) == "waiting-human"
+    events = list(replay(journal_path(plan_dir)))
+    reopens = [
+        e
+        for e in events
+        if isinstance(e, TaskStateChanged) and e.node_id == "1.1" and e.reason == "phase-review-reopen"
+    ]
+    assert len(reopens) == 2
     assert load_snapshot(plan_dir).nodes["phase-review:1"].state == "waiting-human"
+
+
+def test_phase_review_rounds_zero_escalates_on_the_first_failure(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "agentic", "review_rounds": 0, "tasks": [task_entry("1.1")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
+    write_scenario(scenario_dir, "phase-review:1", 0, failing_review_actions("1.1"))
+    assert run_plan(plan_dir, repo) == "waiting-human"
+    events = list(replay(journal_path(plan_dir)))
+    assert not [e for e in events if isinstance(e, TaskStateChanged) and e.reason == "phase-review-reopen"]
+    assert load_snapshot(plan_dir).nodes["phase-review:1"].state == "waiting-human"
+
+
+def test_extend_cli_grants_another_review_round(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "agentic", "review_rounds": 1, "tasks": [task_entry("1.1")]}]
+    repo, plan_dir, scenario_dir = make_plan(tmp_path, phases)
+    write_scenario(scenario_dir, "1.1", 0, pass_actions("1.1"))
+    write_scenario(scenario_dir, "1.1", 1, fix_actions("1.1", "first fix\n"))
+    write_scenario(scenario_dir, "1.1", 2, fix_actions("1.1", "second fix\n"))
+    write_scenario(scenario_dir, "phase-review:1", 0, failing_review_actions("1.1"))
+    write_scenario(scenario_dir, "phase-review:1", 1, failing_review_actions("1.1"))
+    # The single round is spent, so the second failing review stops.
+    assert run_plan(plan_dir, repo) == "waiting-human"
+    # The human judges the loop worth continuing and grants one more round.
+    result = CliRunner().invoke(cli_app, ["extend", str(plan_dir), "phase-review:1"])
+    assert result.exit_code == 0
+    # The resumed run re-reviews (its verdict is no longer in memory),
+    # reopens the task on those findings, and the next review passes.
+    write_scenario(scenario_dir, "phase-review:1", 2, failing_review_actions("1.1"))
+    write_scenario(scenario_dir, "phase-review:1", 3, passing_review_actions())
+    assert run_plan(plan_dir, repo, resume=True) == "completed"
+    snapshot = load_snapshot(plan_dir)
+    assert snapshot.nodes["1.1"].state == "passed"
+    assert snapshot.nodes["phase-review:1"].state == "passed"
+    assert (plan_dir.parent / "file_1.1.txt").read_text() == "second fix\n"
 
 
 def test_per_task_agentic_gate_passes(tmp_path: Path) -> None:
@@ -463,6 +517,18 @@ def test_intent_cli_validates(tmp_path: Path) -> None:
     assert runner.invoke(cli_app, ["intent", str(plan_dir), "retry"]).exit_code == 1
     assert runner.invoke(cli_app, ["intent", str(plan_dir), "retry", "no-such-node"]).exit_code == 1
     assert runner.invoke(cli_app, ["intent", str(plan_dir), "pause"]).exit_code == 0
+
+
+def test_extend_cli_validates(tmp_path: Path) -> None:
+    phases = [{"id": 1, "name": "P1", "review": "none", "tasks": [task_entry("a")]}]
+    _, plan_dir, _ = make_plan(tmp_path, phases)
+    runner = CliRunner()
+    assert runner.invoke(cli_app, ["extend", "/nonexistent", "a"]).exit_code == 1
+    assert runner.invoke(cli_app, ["extend", str(plan_dir), "no-such-node"]).exit_code == 1
+    assert runner.invoke(cli_app, ["extend", str(plan_dir), "a", "--by", "0"]).exit_code == 1
+    assert runner.invoke(cli_app, ["extend", str(plan_dir), "a", "--by", "2"]).exit_code == 0
+    intents = [e for e in replay(journal_path(plan_dir)) if isinstance(e, ControlIntent)]
+    assert [(e.intent, e.node_id, e.amount) for e in intents] == [("extend", "a", 2)]
 
 
 def test_abort_kills_in_flight_worker(tmp_path: Path) -> None:

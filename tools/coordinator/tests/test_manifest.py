@@ -95,7 +95,13 @@ phases:
     assert manifest.phases[0].tasks[0].kind == "review"
 
 
-def minimal_manifest(task_lines: str, defaults_attempts: str = "", version: str = "1", review: str = "agentic") -> str:
+def minimal_manifest(
+    task_lines: str,
+    defaults_attempts: str = "",
+    version: str = "1",
+    review: str = "agentic",
+    phase_extra: str = "",
+) -> str:
     return f"""\
 version: {version}
 defaults:
@@ -105,7 +111,7 @@ defaults:
   - id: 1
     name: P
     review: {review}
-    tasks:
+{phase_extra}    tasks:
 {task_lines}
 """
 
@@ -206,6 +212,30 @@ def test_defaults_attempts_below_one(tmp_path: Path) -> None:
     plan_dir = write_plan(tmp_path, manifest_text, ["a.md"])
     error = load_expecting_error(plan_dir)
     assert "defaults.attempts: must be >= 1" in str(error)
+
+
+def test_phase_review_rounds_default_and_override(tmp_path: Path) -> None:
+    manifest_text = minimal_manifest('      - id: "1.1"\n        file: a.md', phase_extra="    review_rounds: 4\n")
+    plan_dir = write_plan(tmp_path, manifest_text, ["a.md"])
+    manifest = load_manifest(plan_dir)
+    assert manifest.defaults.phase_review_rounds == 2
+    assert manifest.phases[0].review_rounds == 4
+
+
+def test_phase_review_rounds_below_zero(tmp_path: Path) -> None:
+    manifest_text = minimal_manifest('      - id: "1.1"\n        file: a.md', phase_extra="    review_rounds: -1\n")
+    plan_dir = write_plan(tmp_path, manifest_text, ["a.md"])
+    error = load_expecting_error(plan_dir)
+    assert "phase 1: review_rounds must be >= 0" in str(error)
+
+
+def test_defaults_phase_review_rounds_below_zero(tmp_path: Path) -> None:
+    manifest_text = minimal_manifest(
+        '      - id: "1.1"\n        file: a.md', defaults_attempts="  phase_review_rounds: -1\n"
+    )
+    plan_dir = write_plan(tmp_path, manifest_text, ["a.md"])
+    error = load_expecting_error(plan_dir)
+    assert "defaults.phase_review_rounds: must be >= 0" in str(error)
 
 
 def test_task_attempt_timeout_below_one(tmp_path: Path) -> None:

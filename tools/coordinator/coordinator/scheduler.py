@@ -6,8 +6,8 @@ drives each node through
 Every transition is appended to the journal BEFORE it takes effect
 (write-ahead), so a killed coordinator resumes from disk without
 redoing completed work. Control intents (pause/resume/retry/skip/
-approve/abort) arrive through the same journal, giving the scheduler
-one ordered input history.
+approve/abort/extend) arrive through the same journal, giving the
+scheduler one ordered input history.
 
 Worker execution and gates are injected as an :class:`Executor` — the
 scheduler never reads ``signals.jsonl`` or task files; it sees only
@@ -55,6 +55,7 @@ from coordinator.ladder import format_seed_context
 from coordinator.ladder import next_attempt
 from coordinator.manifest import ManifestError
 from coordinator.manifest import PlanManifest
+from coordinator.manifest import review_round_budget
 from coordinator.ratelimit import classify_attempt
 from coordinator.signals import read_completed_signals
 from coordinator.statedir import attempt_dir
@@ -213,6 +214,15 @@ class Scheduler:
         self._last_results: dict[str, AttemptResult] = {}
         self._resume_completed: dict[str, ResumedAttempt] = {}
         self._phase_review_failures: dict[str, int] = {node_id: 0 for node_id in graph.nodes}
+        # Budget granted mid-run by "extend" intents, on top of what the
+        # manifest allows: review rounds for phase-review nodes, ladder
+        # attempts for tasks.
+        self._extra_review_rounds: dict[str, int] = {node_id: 0 for node_id in graph.nodes}
+        self._extra_attempts: dict[str, int] = {node_id: 0 for node_id in graph.nodes}
+        # The verdict that last failed each phase review, so an extend can
+        # send its findings back to the build agents without paying for a
+        # re-review. Not restored on resume (see _apply_extend).
+        self._last_review_outcome: dict[str, GateOutcome] = {}
 
     @classmethod
     def load(
@@ -268,6 +278,20 @@ class Scheduler:
             )
             if scheduler._failures[node_id] and scheduler.states[node_id] == NodeState.PENDING:
                 scheduler._seed_context[node_id] = format_seed_context(scheduler._failures[node_id])
+        # Extensions the previous coordinator already consumed are part of
+        # the run's budget; re-add them. Intents at or past
+        # intents_consumed are left for _consume_intents, so nothing is
+        # granted twice.
+        for index, event in enumerate(replay(journal.path)):
+            if index >= snapshot.intents_consumed:
+                break
+            if (
+                isinstance(event, ControlIntent)
+                and event.intent == "extend"
+                and event.node_id is not None
+                and event.node_id in scheduler.states
+            ):
+                scheduler._grant_extension(event.node_id, max(1, event.amount or 1))
         for node_id, state in scheduler.states.items():
             if state in (NodeState.RUNNING, NodeState.GATE_CHECKING):
                 # Reap the implementer AND any per-task reviewer that was
@@ -459,7 +483,7 @@ class Scheduler:
 
     def _schedule_next_rung(self, node: Node, reason_findings: str | None) -> None:
         """Ladder arithmetic after a non-rate-limited failure."""
-        budget = attempt_plan(node.task, self.manifest.defaults)
+        budget = attempt_plan(node.task, self.manifest.defaults, self._extra_attempts[node.node_id])
         decision = next_attempt(self._attempt_records[node.node_id], budget)
         if isinstance(decision, Exhausted):
             self.transition(node.node_id, NodeState.FAILED, reason=reason_findings or "attempts exhausted")
@@ -517,14 +541,31 @@ class Scheduler:
         )
         self._schedule_next_rung(node, outcome.findings or f"gate {outcome.gate} failed")
 
+    def _review_round_budget(self, node: Node) -> int:
+        """Rounds of findings this review may send back before a human decides."""
+        return review_round_budget(node.phase, self.manifest.defaults) + self._extra_review_rounds[node.node_id]
+
     def _on_phase_review_failure(self, node: Node, outcome: GateOutcome) -> None:
-        """Re-open the offending tasks; a second review failure needs a human."""
+        """Re-open the offending tasks until the round budget runs out."""
         self._phase_review_failures[node.node_id] += 1
-        if self._phase_review_failures[node.node_id] >= 2:
+        self._last_review_outcome[node.node_id] = outcome
+        rounds = self._phase_review_failures[node.node_id]
+        budget = self._review_round_budget(node)
+        if rounds > budget:
             self.transition(
-                node.node_id, NodeState.WAITING_HUMAN, reason="phase review failed twice; needs a human decision"
+                node.node_id,
+                NodeState.WAITING_HUMAN,
+                reason=(
+                    f"phase review failed {rounds} times, spending its {budget} fix "
+                    + f"round(s); needs a human decision (`coordinator extend <plan> {node.node_id}` "
+                    + "grants another round)"
+                ),
             )
             return
+        self._reopen_for_review(node, outcome)
+
+    def _reopen_for_review(self, node: Node, outcome: GateOutcome) -> None:
+        """Send a failing review's findings back to the tasks they name."""
         reopened = False
         for finding in outcome.findings_list:
             task_id = finding.task_id
@@ -606,6 +647,8 @@ class Scheduler:
                 if self._failures.get(intent.node_id):
                     self._seed_context[intent.node_id] = format_seed_context(self._failures[intent.node_id])
                 self.transition(intent.node_id, NodeState.PENDING, reason="retry-intent")
+        elif intent.intent == "extend":
+            self._apply_extend(intent)
         elif intent.intent == "skip":
             if intent.node_id is not None and self.states.get(intent.node_id) in (
                 NodeState.PENDING,
@@ -633,6 +676,53 @@ class Scheduler:
             # Unreachable for valid inputs: pydantic validates the intent
             # name against ControlIntentName.
             raise ValueError(f"unhandled intent {intent.intent!r}")
+
+    def _grant_extension(self, node_id: str, amount: int) -> None:
+        """Add budget for a node without touching its state (the replay-safe half)."""
+        if self.graph.nodes[node_id].kind == PHASE_REVIEW_NODE:
+            self._extra_review_rounds[node_id] += amount
+        else:
+            self._extra_attempts[node_id] += amount
+
+    def _apply_extend(self, intent: ControlIntent) -> None:
+        """Grant a node more budget and re-queue it if it already ran out.
+
+        The human's judgement call that the loop is making progress:
+        a phase review gets another round of findings to hand back, a
+        task another rung of its ladder.
+        """
+        node_id = intent.node_id
+        if node_id is None or node_id not in self.states:
+            return
+        # A hand-written intent may carry no (or a nonsense) amount; one
+        # unit is the useful floor, and negatives must never shrink a budget.
+        amount = max(1, intent.amount or 1)
+        self._grant_extension(node_id, amount)
+        node = self.graph.nodes[node_id]
+        state = self.states[node_id]
+        # A review waiting on a "human" policy has no findings to hand
+        # back — approve or skip is the answer there, so only a review
+        # stopped by its own failing verdicts is re-queued.
+        if (
+            node.kind == PHASE_REVIEW_NODE
+            and state == NodeState.WAITING_HUMAN
+            and self._phase_review_failures[node_id]
+        ):
+            outcome = self._last_review_outcome.get(node_id)
+            if outcome is not None:
+                self._reopen_for_review(node, outcome)
+            else:
+                # Resumed run: the verdict that stopped it is not in
+                # memory. Re-run the review to get its findings back, at
+                # the cost of one reviewer attempt on an unchanged tree.
+                # That re-review only re-derives a verdict already counted,
+                # so it must not eat the round just granted.
+                self._phase_review_failures[node_id] = max(0, self._phase_review_failures[node_id] - 1)
+                self.transition(node_id, NodeState.PENDING, reason="extend-intent")
+        elif node.kind == TASK_NODE and state in (NodeState.FAILED, NodeState.WAITING_HUMAN):
+            if self._failures.get(node_id):
+                self._seed_context[node_id] = format_seed_context(self._failures[node_id])
+            self.transition(node_id, NodeState.PENDING, reason="extend-intent")
 
     def _fail_in_flight_nodes(self, reason: str) -> None:
         for node_id, state in self.states.items():

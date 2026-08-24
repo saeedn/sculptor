@@ -5,13 +5,13 @@ program that executes implementation plans with fresh Claude Code
 workers — as a Sculptor tab. Sculptor installs `coordinator.toml` into
 `<sculptor folder>/terminal_agents/` on first run.
 
-The launch command invokes plain `coordinator`, so the binary must be
-on PATH inside agent shells — install it with
-`uv tool install --from tools/coordinator coordinator` (or any
-equivalent). For development against this repo, edit the installed
-TOML's commands to
-`uv run --project tools/coordinator coordinator {args}` (and the resume
-template accordingly).
+The launch command invokes plain `coordinator`, and Sculptor puts its
+own bundled CLIs first on the PATH of every agent shell, so no install
+is needed: the packaged app ships a `coordinator` binary alongside
+`sculpt`, and a source checkout exposes the one its dev venv builds.
+Nothing stops you pointing the registration elsewhere — edit the
+installed TOML's `launch_command` and `resume_command_template` to any
+command you prefer.
 
 Create a coordinator tab pointed at a plan with:
 

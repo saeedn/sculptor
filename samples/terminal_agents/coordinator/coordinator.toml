@@ -6,8 +6,9 @@
 
 display_name = "Coordinator"
 
-# The launch command runs in the agent's login shell, so `coordinator` must
-# be installed and reachable on PATH (see this sample's README.md).
+# The launch command runs in the agent's login shell, which Sculptor starts
+# with its own bundled CLIs first on PATH, so plain `coordinator` resolves to
+# the copy that ships with this Sculptor (see this sample's README.md).
 # {args} is replaced with the launch args supplied at agent creation, each
 # shell-quoted — e.g.
 #   sculpt agent create --harness Coordinator \

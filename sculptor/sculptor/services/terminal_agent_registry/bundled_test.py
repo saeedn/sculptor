@@ -28,6 +28,23 @@ def test_bundled_sample_dir_resolves_from_source_checkout() -> None:
     assert (source_dir / "claude-code-hooks.json").is_file()
 
 
+@pytest.mark.parametrize("bundle", bundled_module._BUNDLES, ids=lambda bundle: bundle.sample_dir_name)
+def test_every_shipped_file_hash_is_registered_as_managed(bundle: bundled_module._Bundle) -> None:
+    """Each shipped file's current hash must appear in its known-managed set.
+
+    An unregistered hash makes existing installs stop auto-refreshing that file:
+    the installed copy no longer matches any hash Sculptor has shipped, so it
+    reads as a user edit and is left frozen at the old version forever.
+    """
+    sample_dir = get_bundled_sample_dir(bundle.sample_dir_name)
+    assert sample_dir is not None
+    for file_name in bundle.file_names:
+        shipped_hash = bundled_module._sha256((sample_dir / file_name).read_text())
+        assert shipped_hash in bundled_module._KNOWN_MANAGED_FILE_SHA256.get(file_name, frozenset()), (
+            f"add {shipped_hash} to _KNOWN_MANAGED_FILE_SHA256[{file_name!r}] (keep the existing hashes)"
+        )
+
+
 def test_fresh_install_writes_files_and_loads(sculptor_folder: Path) -> None:
     install_bundled_registrations()
 

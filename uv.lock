@@ -1282,6 +1282,7 @@ packaging = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "coordinator" },
     { name = "inline-snapshot" },
     { name = "playwright" },
     { name = "pyrefly" },
@@ -1333,6 +1334,7 @@ provides-extras = ["packaging"]
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "coordinator", editable = "tools/coordinator" },
     { name = "inline-snapshot" },
     { name = "playwright", specifier = "==1.60.0" },
     { name = "pyrefly", specifier = ">=1.0.0" },

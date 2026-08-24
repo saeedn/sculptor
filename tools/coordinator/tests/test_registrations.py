@@ -14,7 +14,7 @@ from coordinator.registrations import load_registrations
 from coordinator.registrations import render
 from coordinator.registrations import resolve_worker
 
-BUILTIN_NAMES = {"claude-sonnet", "claude-opus"}
+BUILTIN_NAMES = {"claude-sonnet", "claude-opus", "claude-fable"}
 
 
 @pytest.fixture(autouse=True)
@@ -35,9 +35,10 @@ def test_builtins_load(tmp_path: Path) -> None:
     for name in BUILTIN_NAMES:
         assert "-p" in registrations[name].command
         assert "--dangerously-skip-permissions" in registrations[name].command
-    # A default plan can escalate: the pair differs only by model.
+    # A default plan can escalate: the registrations differ only by model.
     assert registrations["claude-sonnet"].model == "sonnet"
     assert registrations["claude-opus"].model == "opus"
+    assert registrations["claude-fable"].model == "fable"
 
 
 def test_claude_renders_to_valid_argv(tmp_path: Path) -> None:

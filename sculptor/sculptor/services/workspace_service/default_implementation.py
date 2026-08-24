@@ -63,8 +63,8 @@ from sculptor.services.workspace_service.environment_manager.environments.local_
 from sculptor.services.workspace_service.environment_manager.environments.worktree import remove_worktree
 from sculptor.services.workspace_service.setup_command_runner import SetupCommandRunner
 from sculptor.services.workspace_service.setup_command_runner import SetupStateChanged
+from sculptor.utils.build import build_agent_cli_path
 from sculptor.utils.build import build_sculpt_backend_env
-from sculptor.utils.build import get_sculpt_bin_dir
 from sculptor.utils.timeout import timeout_monitor
 from sculptor.web.data_types import StreamingUpdateSourceTypes
 
@@ -624,10 +624,10 @@ class DefaultWorkspaceService(WorkspaceService):
             # Type narrowing for pycharm/the type checker
             assert isinstance(environment, LocalEnvironment)
 
-            # Expose sculpt CLI env vars in the terminal so bare `sculpt` invocations
-            # can reach the backend and resolve the workspace/project without flags.
-            # Set on the concrete type — this is a workspace-level concern
-            # that doesn't belong in the EnvironmentManager interface.
+            # Put Sculptor's bundled CLIs on the terminal's PATH and expose the sculpt
+            # env vars, so bare `sculpt` invocations can reach the backend and resolve
+            # the workspace/project without flags. Set on the concrete type — this is a
+            # workspace-level concern that doesn't belong in the EnvironmentManager interface.
             environment.set_sculpt_terminal_env_vars(
                 {
                     **build_sculpt_backend_env(
@@ -635,7 +635,7 @@ class DefaultWorkspaceService(WorkspaceService):
                         workspace_id=workspace_id,
                         project_id=project.object_id,
                     ),
-                    "PATH": str(get_sculpt_bin_dir()),
+                    "PATH": build_agent_cli_path(),
                 }
             )
 

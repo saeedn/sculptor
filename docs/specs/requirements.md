@@ -204,6 +204,7 @@ makes durability and upgrade-survival guarantees (§9.5) that rest directly on t
   `SCULPTOR_WORKSPACES_FOLDER` (`sculptor/sculptor/utils/build.py`).
 - **REQ-DATA-002 (MUST).** Within it: `internal/database.db` (SQLite), `internal/config.toml`
   (settings), `internal/logs/`, `internal/artifacts/`, `internal/sculpt-bin/`,
+  `internal/coordinator-bin/`,
   and `workspaces/` (`sculptor/sculptor/utils/build.py`, `get_internal_folder` /
   `get_workspaces_folder`; `sculptor/sculptor/config/settings.py`). Startup bootstraps the
   `internal/` and `workspaces/` subdirectories idempotently

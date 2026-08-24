@@ -313,6 +313,7 @@ meta:
 defaults:
   worker: claude-sonnet            # worker registration name
   escalation_worker: claude-opus   # stronger worker for the last attempt
+  reviewer: claude-opus            # worker for agentic reviews
   attempts: 2                      # base attempts before escalation
   verification:                    # materialized from .sculptor/code.md
     - just format
@@ -354,6 +355,12 @@ Authoring rules:
   most expensive; reach for it only where a plan is dominated by
   long-horizon reasoning, not as a blanket default. Naming a
   registration that does not exist fails the run at start.
+- **`defaults.reviewer`** is what runs every agentic review — phase
+  reviews and per-task `agentic` gates alike. Set it to the escalation
+  worker: left unset, a phase review falls back to `defaults.worker`,
+  so the plan reviews its hardest phases with the weaker of the two
+  models it builds with (`escalation_worker` is never consulted for
+  review).
 - **Per-task overrides only where a task is genuinely risky or
   special**: gnarly concurrency/migration work → `worker: claude-opus`,
   `gates: [mechanical, agentic]`, or more `attempts`; schema

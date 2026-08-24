@@ -53,8 +53,8 @@ from sculptor.tasks.handlers.run_terminal_agent.terminal_session import render_t
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import stop_agent_terminal
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import unregister_agent_terminal_config
 from sculptor.tasks.handlers.run_terminal_agent.terminal_session import write_launch_command
+from sculptor.utils.build import build_agent_cli_path
 from sculptor.utils.build import build_sculpt_backend_env
-from sculptor.utils.build import get_sculpt_bin_dir
 
 # it will take at most this much time to notice a shutdown request
 _POLL_SECONDS: float = 1.0
@@ -215,7 +215,7 @@ def _run_terminal_agent_in_environment(
         # Managed binary when resolvable; bare `claude` (PATH) as fallback so
         # the command still works for users who manage their own install.
         "SCULPT_CLAUDE_BIN": claude_binary_path or "claude",
-        "PATH": str(get_sculpt_bin_dir()),
+        "PATH": build_agent_cli_path(),
     }
     register_agent_terminal_config(
         task.object_id,

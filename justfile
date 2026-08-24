@@ -946,6 +946,11 @@ sidecar python_key="": dist
 sculpt-binary python_key="": generate-sculpt-client
     /usr/bin/env bash "{{justfile_directory()}}/sculptor/builder/build-sculpt.sh" {{ python_key }}
 
+# Builds a standalone binary for the coordinator CLI.
+[group("build")]
+coordinator-binary python_key="":
+    /usr/bin/env bash "{{justfile_directory()}}/sculptor/builder/build-coordinator.sh" {{ python_key }}
+
 # Resizes and reformats icons for packaging based on an original
 [group("build")]
 icons:
@@ -970,7 +975,7 @@ electron-assets: icons
 The one-stop shop to clean, rebuild all intermediate targets from source, download all dependencies from remotes, and
 prepare for a clean build. Prefix your electron build targets for ease of use, e.g. `just refresh app` or `just refresh pkg`")]
 [group("build")]
-refresh-assets: clean build-frontend sidecar sculpt-binary electron-assets
+refresh-assets: clean build-frontend sidecar sculpt-binary coordinator-binary electron-assets
 
 # Uses electron forge to create an executable application for MacOS on Arm64. This app will not be bundled into an installer.
 [group("build")]

@@ -50,6 +50,7 @@ let config = {
     extraResource: [
       path.resolve(__dirname, "../dist/sculptor_backend"), // Our backend
       path.resolve(__dirname, "../dist/sculpt"), // Sculpt CLI for agents
+      path.resolve(__dirname, "../dist/coordinator"), // Build coordinator CLI for agents
     ],
     // Path to application icon (platform-specific extensions will be auto-selected)
     icon: path.resolve(__dirname, "assets/icons/icon"),
@@ -290,7 +291,7 @@ if (IS_NOTARIZING_AND_SIGNING) {
         "signature-flags": "library",
 
         // Skip signing non-executable data files in the PyInstaller sidecar and
-        // sculpt CLI bundles. @electron/osx-sign uses isBinaryFile to decide what
+        // CLI bundles. @electron/osx-sign uses isBinaryFile to decide what
         // to sign, which treats JSON, gzip, and other non-text data as "binary."
         // This causes ~2200 unnecessary codesign calls on data files that are
         // already protected by the parent bundle's code seal. Only Mach-O
@@ -300,14 +301,21 @@ if (IS_NOTARIZING_AND_SIGNING) {
         ignore: (filePath: string): boolean => {
           // Only apply filtering inside the PyInstaller-produced dirs
           const isInSidecar =
-            filePath.includes("sculptor_backend/_internal/") || filePath.includes("sculpt/_internal/");
+            filePath.includes("sculptor_backend/_internal/") ||
+            filePath.includes("sculpt/_internal/") ||
+            filePath.includes("coordinator/_internal/");
           if (!isInSidecar) return false;
 
           // Always sign Mach-O binaries and bundle directories
           if (/\.(dylib|so|node)$/.test(filePath)) return false;
 
           // Sign the top-level PyInstaller executables (no extension, in the bundle root)
-          if (filePath.endsWith("/sculptor_backend") || filePath.endsWith("/sculpt")) return false;
+          if (
+            filePath.endsWith("/sculptor_backend") ||
+            filePath.endsWith("/sculpt") ||
+            filePath.endsWith("/coordinator")
+          )
+            return false;
 
           // Skip everything else (JSON, gzip, .pyc, images, source maps, etc.)
           return true;

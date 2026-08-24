@@ -3,6 +3,7 @@ import sys
 from functools import cache
 from pathlib import Path
 from typing import Final
+from typing import Literal
 from typing import TYPE_CHECKING
 
 from loguru import logger
@@ -20,65 +21,90 @@ SCULPTOR_FOLDER_OVERRIDE_ENV_FLAG: Final = "SCULPTOR_FOLDER"
 SCULPTOR_WORKSPACES_FOLDER_OVERRIDE_ENV_FLAG: Final = "SCULPTOR_WORKSPACES_FOLDER"
 
 
-def get_sculpt_bin_dir(executable_parent: Path | None = None, *, packaged: bool | None = None) -> Path:
-    """Return the directory containing the ``sculpt`` CLI binary.
+# The CLIs Sculptor builds alongside itself and puts on the PATH of the shells it
+# spawns: a PyInstaller bundle each in the packaged app, a venv entry point each
+# when running from source.
+AgentCLIName = Literal["sculpt", "coordinator"]
+AGENT_CLI_NAMES: Final[tuple[AgentCLIName, ...]] = ("sculpt", "coordinator")
+
+
+def get_agent_cli_bin_dir(
+    cli_name: AgentCLIName, executable_parent: Path | None = None, *, packaged: bool | None = None
+) -> Path:
+    """Return the directory containing the bundled ``cli_name`` binary.
 
     Args:
+        cli_name: The CLI to locate.
         executable_parent: The directory containing the running executable.
             Defaults to ``Path(sys.executable).parent``.
         packaged: Whether the app is running from a PyInstaller bundle.
             Defaults to ``is_packaged()``.
 
     In dev mode the server runs inside a uv-managed venv that has an editable
-    install of the ``sculpt`` package; the binary lives in the venv's bin
+    install of each CLI's package; the binary lives in the venv's bin
     directory. We don't return the venv bin directly though — user shell init
     (conda, custom rc snippets) often demotes anything that looks like a venv
     bin to the back of PATH for Python isolation, which would let a packaged
-    Sculptor's ``sculpt`` win over the dev one. Instead, we materialize a
-    dedicated ``sculpt-bin/`` directory under the internal folder containing
-    only a symlink to the venv's ``sculpt``, so PATH lookup is robust to that
-    demotion. If the venv's ``sculpt`` is missing we deliberately do NOT
-    create the symlink (a dangling link would be silently skipped by PATH,
-    letting the stale packaged ``sculpt`` win); instead we warn loudly so the
-    fallback is diagnosable.
+    Sculptor's copy win over the dev one. Instead, we materialize a dedicated
+    ``<cli_name>-bin/`` directory under the internal folder containing only a
+    symlink to the venv's binary, so PATH lookup is robust to that demotion.
+    If the venv's binary is missing we deliberately do NOT create the symlink
+    (a dangling link would be silently skipped by PATH, letting the stale
+    packaged binary win); instead we warn loudly so the fallback is
+    diagnosable.
 
-    In packaged mode the sculpt binary is a PyInstaller ``--onedir`` bundle
-    placed as an Electron extraResource alongside ``sculptor_backend``, i.e.
-    ``<resources>/sculpt/``.
+    In packaged mode each CLI is a PyInstaller ``--onedir`` bundle placed as an
+    Electron extraResource alongside ``sculptor_backend``, i.e.
+    ``<resources>/<cli_name>/``.
     """
     if executable_parent is None:
         executable_parent = Path(sys.executable).parent
     if packaged is None:
         packaged = is_packaged()
     if packaged:
-        return executable_parent.parent / "sculpt"
-    sculpt_bin_dir = get_internal_folder() / "sculpt-bin"
-    sculpt_bin_dir.mkdir(parents=True, exist_ok=True)
-    sculpt_link = sculpt_bin_dir / "sculpt"
-    sculpt_target = executable_parent / "sculpt"
-    if not sculpt_target.exists():
-        # The source sculpt is not installed in the dev venv (e.g. uv only synced the
-        # sculptor project so the sculpt workspace member was never installed, or a later
+        return executable_parent.parent / cli_name
+    cli_bin_dir = get_internal_folder() / f"{cli_name}-bin"
+    cli_bin_dir.mkdir(parents=True, exist_ok=True)
+    cli_link = cli_bin_dir / cli_name
+    cli_target = executable_parent / cli_name
+    if not cli_target.exists():
+        # The source CLI is not installed in the dev venv (e.g. uv only synced the
+        # sculptor project so the workspace member was never installed, or a later
         # `uv sync` pruned the editable install). Symlinking to a missing target would leave
         # a dangling link that PATH lookup silently skips, falling through to the stale
-        # packaged sculpt with no signal (SCU-1360). Remove any stale link and warn loudly
+        # packaged binary with no signal (SCU-1360). Remove any stale link and warn loudly
         # instead of failing silently.
-        if sculpt_link.is_symlink() or sculpt_link.exists():
-            sculpt_link.unlink()
+        if cli_link.is_symlink() or cli_link.exists():
+            cli_link.unlink()
         logger.warning(
-            "Source sculpt not found at {}; dev agents will fall back to the stale packaged sculpt CLI.",
-            sculpt_target,
+            "Source {} not found at {}; dev agents will fall back to the stale packaged {} CLI.",
+            cli_name,
+            cli_target,
+            cli_name,
         )
-        return sculpt_bin_dir
+        return cli_bin_dir
     try:
-        current_target = os.readlink(sculpt_link) if sculpt_link.is_symlink() else None
+        current_target = os.readlink(cli_link) if cli_link.is_symlink() else None
     except OSError:
         current_target = None
-    if current_target != str(sculpt_target):
-        if sculpt_link.is_symlink() or sculpt_link.exists():
-            sculpt_link.unlink()
-        sculpt_link.symlink_to(sculpt_target)
-    return sculpt_bin_dir
+    if current_target != str(cli_target):
+        if cli_link.is_symlink() or cli_link.exists():
+            cli_link.unlink()
+        cli_link.symlink_to(cli_target)
+    return cli_bin_dir
+
+
+def build_agent_cli_path(executable_parent: Path | None = None, *, packaged: bool | None = None) -> str:
+    """The ``PATH`` prefix that makes Sculptor's bundled CLIs available to a shell.
+
+    Every surface that spawns a shell for the user or an agent prepends this, so
+    bare ``sculpt`` and ``coordinator`` invocations resolve to the binaries that
+    ship with (or are built alongside) this Sculptor, not to whatever else the
+    user happens to have installed.
+    """
+    return os.pathsep.join(
+        str(get_agent_cli_bin_dir(cli_name, executable_parent, packaged=packaged)) for cli_name in AGENT_CLI_NAMES
+    )
 
 
 def build_sculpt_backend_env(
@@ -92,13 +118,11 @@ def build_sculpt_backend_env(
     invocation reaches this backend and resolves its workspace/project (and,
     when given, agent) without flags.
 
-    Single source for the three surfaces that expose these — the chat task
-    handler, the terminal-agent task handler, and the workspace terminal
-    manager — so the set cannot drift between them. ``PATH`` is intentionally
-    NOT included: each caller computes it differently (the chat handler's
-    packaging-aware ``_build_agent_path`` vs. ``get_sculpt_bin_dir()``), so it
-    stays a per-site concern. Workspace terminals are not agent-scoped, so they
-    omit ``agent_id``.
+    Single source for the surfaces that expose these — the terminal-agent task
+    handler and the workspace terminal manager — so the set cannot drift
+    between them. ``PATH`` is intentionally NOT included: it is a separate
+    concern with its own single source, ``build_agent_cli_path()``. Workspace
+    terminals are not agent-scoped, so they omit ``agent_id``.
     """
     env = {
         "SCULPT_API_PORT": str(backend_port),

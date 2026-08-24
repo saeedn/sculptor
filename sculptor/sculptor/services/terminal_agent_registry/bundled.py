@@ -61,6 +61,7 @@ _KNOWN_MANAGED_FILE_SHA256: dict[str, frozenset[str]] = {
     "claude-code.toml": frozenset(
         {
             "f04ba8bc5b7a0730420f05aab2e7bee45d187429322d970c38cd4b4fa4e8dcc3",
+            "9525a9c73aa666c1f473db88fb9e19b9d13f50eabb866090ddb4130ea4dd3957",
         }
     ),
     "claude-code-hooks.json": frozenset(
@@ -74,6 +75,7 @@ _KNOWN_MANAGED_FILE_SHA256: dict[str, frozenset[str]] = {
     "coordinator.toml": frozenset(
         {
             "bd612507922fce45405c5251cffa521a43c3b79674e9dffa101623af692aca73",
+            "6d20d6b5c6ca24336c048d31b14e7d2ce6c6438829bfbc1c3d5538c862abb5ef",
         }
     ),
 }

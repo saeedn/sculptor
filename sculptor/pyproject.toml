@@ -47,6 +47,7 @@ requires-python = ">=3.14"
 
 [tool.uv.sources]
 sculpt = { workspace = true }
+coordinator = { workspace = true }
 
 [tool.setuptools.packages.find]
 exclude = [
@@ -74,6 +75,10 @@ dev = [
     # extraneous package, which is what let agents silently fall back to the stale
     # packaged CLI (SCU-1360). Excluded from production via `uv sync --no-dev`.
     "sculpt",
+    # The source-built `coordinator` CLI, on the same terms as `sculpt` above:
+    # sculptor never imports it, but agent shells get `.venv/bin/coordinator` on
+    # PATH, so the dev venv must always contain it built from source.
+    "coordinator",
     # inline-snapshot, pytest-asyncio and pytest-mock were absorbed from the former
     # imbue_core library (now sculptor.foundation) — its tests need them.
     "inline-snapshot",

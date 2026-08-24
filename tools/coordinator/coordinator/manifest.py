@@ -26,6 +26,9 @@ Full schema (version 1):
       attempts: 2                    # base attempts before escalation; >= 1
       attempt_timeout_minutes: 120   # optional; how long one attempt may
                                      # run before it is killed; >= 1
+      phase_review_rounds: 2         # rounds of findings a phase review may
+                                     # send back to the build agents before
+                                     # the run stops for a human; >= 0
       verification:                  # commands run by the mechanical gate
         - just format
         - just check
@@ -36,6 +39,8 @@ Full schema (version 1):
       - id: 1
         name: Core executor
         review: agentic              # phase-boundary review: agentic|human|none
+        review_rounds: 3             # optional per-phase override of
+                                     # defaults.phase_review_rounds; >= 0
         tasks:
           - id: "1.2"
             file: 01_02_manifest_parser.md   # relative to the plan folder
@@ -93,6 +98,10 @@ class ManifestDefaults(BaseModel):
     reviewer: str | None = None
     attempts: int = 2
     attempt_timeout_minutes: int | None = None
+    # Rounds of phase-review findings handed back to the build agents
+    # before the run stops for a human. 0 escalates on the first failing
+    # review; the `coordinator extend` verb raises it mid-run.
+    phase_review_rounds: int = 2
     verification: list[str]
     process_doc: str | None = None
 
@@ -126,6 +135,7 @@ class PhaseSpec(BaseModel):
     id: int | str
     name: str
     review: str = "agentic"
+    review_rounds: int | None = None
     tasks: list[TaskSpec]
 
 
@@ -140,6 +150,13 @@ class PlanManifest(BaseModel):
     meta: ManifestMeta | None = None
     defaults: ManifestDefaults
     phases: list[PhaseSpec]
+
+
+def review_round_budget(phase: PhaseSpec | None, defaults: ManifestDefaults) -> int:
+    """How many rounds of findings this phase's review may send back."""
+    if phase is not None and phase.review_rounds is not None:
+        return phase.review_rounds
+    return defaults.phase_review_rounds
 
 
 def _format_pydantic_errors(error: ValidationError) -> list[str]:
@@ -186,6 +203,8 @@ def _validate_manifest(manifest: PlanManifest, plan_dir: Path) -> list[str]:
         problems.append(
             f"defaults.attempt_timeout_minutes: must be >= 1, got {manifest.defaults.attempt_timeout_minutes}"
         )
+    if manifest.defaults.phase_review_rounds < 0:
+        problems.append(f"defaults.phase_review_rounds: must be >= 0, got {manifest.defaults.phase_review_rounds}")
     if manifest.defaults.process_doc is not None:
         _validate_process_doc(manifest.defaults.process_doc, plan_dir, problems)
 
@@ -203,6 +222,8 @@ def _validate_manifest(manifest: PlanManifest, plan_dir: Path) -> list[str]:
             problems.append(
                 f"phase {phase.id}: review must be one of {', '.join(ALLOWED_PHASE_REVIEWS)}, got {phase.review!r}"
             )
+        if phase.review_rounds is not None and phase.review_rounds < 0:
+            problems.append(f"phase {phase.id}: review_rounds must be >= 0, got {phase.review_rounds}")
         for task in phase.tasks:
             for dep in task.deps:
                 if dep not in all_task_ids:

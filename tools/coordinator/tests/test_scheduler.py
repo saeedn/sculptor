@@ -97,9 +97,11 @@ def make_scheduler(
     return factory(tmp_path, manifest, graph, journal, executor, reaper)
 
 
-def append_intent(tmp_path: Path, intent: ControlIntentName, node_id: str | None = None) -> None:
+def append_intent(
+    tmp_path: Path, intent: ControlIntentName, node_id: str | None = None, amount: int | None = None
+) -> None:
     ensure_state_dir(tmp_path)
-    Journal(journal_path(tmp_path)).append(ControlIntent(intent=intent, node_id=node_id))
+    Journal(journal_path(tmp_path)).append(ControlIntent(intent=intent, node_id=node_id, amount=amount))
 
 
 def test_happy_path_sequential_order(tmp_path: Path) -> None:
@@ -416,6 +418,192 @@ def test_restored_budget_survives_a_resume(tmp_path: Path) -> None:
     resumed = make_scheduler(tmp_path, manifest, executor, resume=True)
     assert resumed.run() == "completed"
     assert executor.calls == ["attempt:a:2", "gates:a", "attempt:a:3", "gates:a"]
+
+
+def review_manifest(rounds: int | None, attempts: int = 1) -> PlanManifest:
+    return PlanManifest(
+        version=1,
+        defaults=ManifestDefaults(worker="w", verification=[], attempts=attempts),
+        phases=[PhaseSpec(id=1, name="P", review="agentic", review_rounds=rounds, tasks=[task("a")])],
+    )
+
+
+def review_failure(task_id: str | None = "a") -> GateOutcome:
+    return GateOutcome(
+        gate="phase-review",
+        passed=False,
+        findings="[blocker] missing case",
+        findings_list=(Finding(task_id=task_id, severity="blocker", summary="missing case"),),
+    )
+
+
+def test_phase_review_reopens_once_per_round_in_its_budget(tmp_path: Path) -> None:
+    # Two rounds of findings go back to the build agents; only the third
+    # failing review is the human's problem.
+    manifest = review_manifest(rounds=2)
+    executor = FakeExecutor(gates={"phase-review:1": [review_failure(), review_failure(), review_failure()]})
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "waiting-human"
+    assert scheduler.states["phase-review:1"] == NodeState.WAITING_HUMAN
+    reopens = [
+        e
+        for e in replay(journal_path(tmp_path))
+        if isinstance(e, TaskStateChanged) and e.node_id == "a" and e.reason == PHASE_REVIEW_REOPEN_REASON
+    ]
+    assert len(reopens) == 2
+    assert executor.calls.count("attempt:a:0") == 1
+    assert [call for call in executor.calls if call.startswith("attempt:a")] == [
+        "attempt:a:0",
+        "attempt:a:1",
+        "attempt:a:2",
+    ]
+
+
+def test_phase_review_with_zero_rounds_escalates_immediately(tmp_path: Path) -> None:
+    manifest = review_manifest(rounds=0)
+    executor = FakeExecutor(gates={"phase-review:1": [review_failure()]})
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "waiting-human"
+    assert scheduler.states["a"] == NodeState.PASSED
+    assert not [
+        e
+        for e in replay(journal_path(tmp_path))
+        if isinstance(e, TaskStateChanged) and e.reason == PHASE_REVIEW_REOPEN_REASON
+    ]
+
+
+def test_unattributed_findings_escalate_without_spending_a_round(tmp_path: Path) -> None:
+    # Nothing to hand back, so re-reviewing the same tree is pure spin:
+    # the run stops at once and keeps its rounds for real fixes.
+    manifest = review_manifest(rounds=2)
+    executor = FakeExecutor(gates={"phase-review:1": [review_failure(task_id=None)]})
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "waiting-human"
+    assert executor.calls == ["attempt:a:0", "gates:a", "attempt:phase-review:1:0", "gates:phase-review:1"]
+    assert not [
+        e
+        for e in replay(journal_path(tmp_path))
+        if isinstance(e, TaskStateChanged) and e.reason == PHASE_REVIEW_REOPEN_REASON
+    ]
+
+
+def test_every_finding_against_a_task_reaches_its_retry_context(tmp_path: Path) -> None:
+    manifest = review_manifest(rounds=1)
+    two_findings = GateOutcome(
+        gate="phase-review",
+        passed=False,
+        findings="two blockers",
+        findings_list=(
+            Finding(task_id="a", severity="blocker", summary="missing case"),
+            Finding(task_id="a", severity="blocker", summary="leaks a handle"),
+        ),
+    )
+    executor = FakeExecutor(gates={"phase-review:1": [two_findings]})
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "completed"
+    seed = executor.seeds["a"][1]
+    assert seed is not None
+    assert "missing case" in seed and "leaks a handle" in seed
+
+
+class ExtendingExecutor(FakeExecutor):
+    """Appends an extend intent the moment the phase review fails.
+
+    Models the human granting another round while the coordinator is
+    still alive, so the scheduler still holds the failing verdict.
+    """
+
+    def __init__(self, plan_dir: Path, **kwargs) -> None:
+        super().__init__(**kwargs)
+        self.plan_dir = plan_dir
+
+    def run_gates(self, node: Node, result: AttemptResult) -> GateOutcome:
+        outcome = super().run_gates(node, result)
+        if node.node_id == "phase-review:1" and not outcome.passed:
+            append_intent(self.plan_dir, "extend", node_id="phase-review:1")
+        return outcome
+
+
+def test_extend_intent_reopens_a_review_that_ran_out_of_rounds(tmp_path: Path) -> None:
+    manifest = review_manifest(rounds=0)
+    executor = ExtendingExecutor(tmp_path, gates={"phase-review:1": [review_failure()]})
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "completed"
+    # The granted round sends the findings the scheduler already has back
+    # to the task — no second reviewer run to re-derive the same verdict.
+    assert executor.calls == [
+        "attempt:a:0",
+        "gates:a",
+        "attempt:phase-review:1:0",
+        "gates:phase-review:1",
+        "attempt:a:1",
+        "gates:a",
+        "attempt:phase-review:1:1",
+        "gates:phase-review:1",
+    ]
+    seeds = executor.seeds["a"]
+    assert seeds[1] is not None and "missing case" in seeds[1]
+
+
+def test_extend_intent_on_a_resumed_review_costs_no_round(tmp_path: Path) -> None:
+    # A resumed coordinator has lost the verdict, so it re-reviews to get
+    # the findings back. That repeat must not spend the granted round.
+    manifest = review_manifest(rounds=0)
+    executor = FakeExecutor(gates={"phase-review:1": [review_failure()]})
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "waiting-human"
+    # The real executor journals its verdicts; the fake does not.
+    Journal(journal_path(tmp_path)).append(
+        GateResult(node_id="phase-review:1", gate="phase-review", passed=False, findings="missing case")
+    )
+    append_intent(tmp_path, "extend", node_id="phase-review:1")
+    executor_2 = FakeExecutor(gates={"phase-review:1": [review_failure()]})
+    resumed = make_scheduler(tmp_path, manifest, executor_2, resume=True)
+    assert resumed.run() == "completed"
+    assert executor_2.calls == [
+        # The re-review that recovers the findings...
+        "attempt:phase-review:1:1",
+        "gates:phase-review:1",
+        # ...then the round the human actually paid for.
+        "attempt:a:1",
+        "gates:a",
+        "attempt:phase-review:1:2",
+        "gates:phase-review:1",
+    ]
+
+
+def test_extend_intent_widens_a_failed_task_ladder(tmp_path: Path) -> None:
+    manifest = make_manifest([task("a")])  # attempts=1: one failure is terminal
+    executor = FakeExecutor(gates={"a": [GateOutcome(gate="mechanical", passed=False, findings="boom")]})
+    scheduler = make_scheduler(tmp_path, manifest, executor)
+    assert scheduler.run() == "failed"
+    append_intent(tmp_path, "extend", node_id="a", amount=3)
+    executor_2 = FakeExecutor(
+        gates={
+            "a": [
+                GateOutcome(gate="mechanical", passed=False, findings="boom"),
+                GateOutcome(gate="mechanical", passed=False, findings="boom"),
+            ]
+        }
+    )
+    resumed = make_scheduler(tmp_path, manifest, executor_2, resume=True)
+    assert resumed.run() == "completed"
+    assert executor_2.calls == ["attempt:a:1", "gates:a", "attempt:a:2", "gates:a", "attempt:a:3", "gates:a"]
+
+
+def test_extended_budget_survives_a_later_resume(tmp_path: Path) -> None:
+    manifest = make_manifest([task("a")])
+    executor = FakeExecutor(gates={"a": [GateOutcome(gate="mechanical", passed=False, findings="boom")]})
+    assert make_scheduler(tmp_path, manifest, executor).run() == "failed"
+    # The extend is consumed by a run that pauses before using any of it.
+    append_intent(tmp_path, "extend", node_id="a", amount=2)
+    append_intent(tmp_path, "pause")
+    assert make_scheduler(tmp_path, manifest, FakeExecutor(), resume=True).run() == "paused"
+    append_intent(tmp_path, "resume")
+    executor_3 = FakeExecutor(gates={"a": [GateOutcome(gate="mechanical", passed=False, findings="boom")]})
+    resumed = make_scheduler(tmp_path, manifest, executor_3, resume=True)
+    assert resumed.run() == "completed"
+    assert executor_3.calls == ["attempt:a:1", "gates:a", "attempt:a:2", "gates:a"]
 
 
 def write_stop_signals(attempt_directory: Path) -> None:

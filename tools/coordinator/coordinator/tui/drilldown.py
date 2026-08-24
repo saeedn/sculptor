@@ -81,6 +81,7 @@ class NodeDetailScreen(Screen):
         ("d", "open_diff", "Diff"),
         ("a", "approve", "Approve"),
         ("t", "retry", "Retry"),
+        ("e", "extend", "Extend budget"),
     ]
 
     def __init__(
@@ -145,7 +146,10 @@ class NodeDetailScreen(Screen):
                     lines.append(f"Diagnose with: claude --resume {latest.session_id}")
                 lines.append("")
         if self.state == "waiting-human":
-            lines.append("WAITING FOR HUMAN APPROVAL — press 'd' to view the diff, 'a' to approve, 't' to retry.")
+            lines.append(
+                "WAITING FOR HUMAN APPROVAL — press 'd' to view the diff, 'a' to approve, "
+                + "'t' to retry, 'e' for another round."
+            )
         return "\n".join(lines) or "(no attempts yet)"
 
     def action_open_transcript(self) -> None:
@@ -175,4 +179,16 @@ class NodeDetailScreen(Screen):
 
     def action_retry(self) -> None:
         self.on_intent("retry", self.node_id)
+        self.app.pop_screen()
+
+    def action_extend(self) -> None:
+        """Grant one more round/attempt — the answer 'retry' cannot give.
+
+        Retrying a review that spent its rounds just re-reviews and
+        stops again; this raises the budget first.
+        """
+        if self.state not in ("waiting-human", "failed"):
+            self.notify("node is not stopped; nothing to extend", severity="warning")
+            return
+        self.on_intent("extend", self.node_id)
         self.app.pop_screen()

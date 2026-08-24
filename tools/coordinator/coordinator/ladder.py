@@ -4,8 +4,8 @@ The ladder: ``defaults.attempts`` base attempts (default 2 — initial +
 one seeded retry) on the task's registration, then one escalated
 attempt on ``defaults.escalation_worker`` seeded with ALL prior
 attempts' failure context. Per-task ``attempts`` overrides the base
-count. Rate-limited, discarded, and phase-review-reopened attempts
-never burn budget.
+count, and an ``extend`` intent adds to it mid-run. Rate-limited,
+discarded, and phase-review-reopened attempts never burn budget.
 
 Pure arithmetic and string formatting — no journal, no processes.
 """
@@ -69,7 +69,8 @@ class FailureRecord(BaseModel):
     last_assistant_message: str | None
 
 
-def attempt_plan(task_spec: TaskSpec | None, defaults: ManifestDefaults) -> AttemptBudget:
+def attempt_plan(task_spec: TaskSpec | None, defaults: ManifestDefaults, extra_attempts: int = 0) -> AttemptBudget:
+    """The task's budget: manifest counts plus any attempts an extend intent granted."""
     base = defaults.attempts
     escalation = defaults.escalation_worker
     if task_spec is not None:
@@ -77,7 +78,7 @@ def attempt_plan(task_spec: TaskSpec | None, defaults: ManifestDefaults) -> Atte
             base = task_spec.attempts
         if task_spec.escalation_worker is not None:
             escalation = task_spec.escalation_worker
-    return AttemptBudget(base_count=base, escalation_worker=escalation)
+    return AttemptBudget(base_count=base + extra_attempts, escalation_worker=escalation)
 
 
 def next_attempt(history: list[AttemptRecordLite], budget: AttemptBudget) -> NextAttempt | Exhausted:

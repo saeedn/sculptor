@@ -18,7 +18,7 @@ from coordinator.run import find_plan_by_run_id
 from coordinator.statedir import ensure_state_dir
 from coordinator.statedir import journal_path
 
-_NODE_INTENTS = ("retry", "skip", "approve")
+_NODE_INTENTS = ("retry", "skip", "approve", "extend")
 
 app = typer.Typer(
     name="coordinator",
@@ -141,20 +141,37 @@ def resume(
     _execute_plan_dir(plan_dir, resume_run=True, no_tui=no_tui, timeout_minutes=timeout_minutes)
 
 
+def _check_plan_dir(plan_dir: Path) -> None:
+    if not plan_dir.is_dir():
+        typer.echo(f"Error: plan directory does not exist: {plan_dir}", err=True)
+        raise typer.Exit(1)
+
+
+def _check_node_id(plan_dir: Path, node_id: str) -> None:
+    try:
+        graph = build_graph(load_manifest(plan_dir))
+    except ManifestError as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from e
+    if node_id not in graph.nodes:
+        typer.echo(f"Error: unknown node {node_id!r}; known: {', '.join(graph.nodes)}", err=True)
+        raise typer.Exit(1)
+
+
 @app.command()
 def intent(
     plan_dir: Path = typer.Argument(..., help="Path to the plan directory containing plan.yaml."),
-    intent_name: str = typer.Argument(..., metavar="INTENT", help="pause | resume | retry | skip | approve | abort"),
-    node_id: str | None = typer.Argument(None, help="Node id (required for retry/skip/approve)."),
+    intent_name: str = typer.Argument(
+        ..., metavar="INTENT", help="pause | resume | retry | skip | approve | abort | extend"
+    ),
+    node_id: str | None = typer.Argument(None, help="Node id (required for retry/skip/approve/extend)."),
 ) -> None:
     """Append a control intent to the run's journal (works without the TUI).
 
     A running coordinator picks it up on its next loop iteration; a
     paused or killed run picks it up on its next start.
     """
-    if not plan_dir.is_dir():
-        typer.echo(f"Error: plan directory does not exist: {plan_dir}", err=True)
-        raise typer.Exit(1)
+    _check_plan_dir(plan_dir)
     allowed = get_args(ControlIntentName)
     if intent_name not in allowed:
         typer.echo(f"Error: unknown intent {intent_name!r}; allowed: {', '.join(allowed)}", err=True)
@@ -163,19 +180,34 @@ def intent(
         typer.echo(f"Error: intent {intent_name!r} requires a node id", err=True)
         raise typer.Exit(1)
     if node_id is not None:
-        try:
-            graph = build_graph(load_manifest(plan_dir))
-        except ManifestError as e:
-            typer.echo(f"Error: {e}", err=True)
-            raise typer.Exit(1) from e
-        if node_id not in graph.nodes:
-            typer.echo(f"Error: unknown node {node_id!r}; known: {', '.join(graph.nodes)}", err=True)
-            raise typer.Exit(1)
+        _check_node_id(plan_dir, node_id)
     ensure_state_dir(plan_dir)
     # pyrefly: ignore [bad-argument-type]  (intent_name is validated against the Literal above)
     Journal(journal_path(plan_dir)).append(ControlIntent(intent=intent_name, node_id=node_id))
     target = f" for node {node_id}" if node_id is not None else ""
     typer.echo(f"appended {intent_name} intent{target}")
+
+
+@app.command()
+def extend(
+    plan_dir: Path = typer.Argument(..., help="Path to the plan directory containing plan.yaml."),
+    node_id: str = typer.Argument(..., help="Node id to give more budget (task or phase-review node)."),
+    by: int = typer.Option(1, "--by", help="How much budget to add; >= 1."),
+) -> None:
+    """Give a node more budget: review rounds for a phase review, attempts for a task.
+
+    Your judgement call that a loop is worth continuing. A phase review
+    that stopped for a human sends its findings back to the build agents
+    again; a task that exhausted its retry ladder gets more rungs.
+    """
+    _check_plan_dir(plan_dir)
+    if by < 1:
+        typer.echo(f"Error: --by must be >= 1, got {by}", err=True)
+        raise typer.Exit(1)
+    _check_node_id(plan_dir, node_id)
+    ensure_state_dir(plan_dir)
+    Journal(journal_path(plan_dir)).append(ControlIntent(intent="extend", node_id=node_id, amount=by))
+    typer.echo(f"appended extend intent for node {node_id} (+{by})")
 
 
 @app.command()

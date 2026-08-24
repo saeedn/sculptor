@@ -32,7 +32,7 @@ from coordinator.statedir import snapshot_path
 
 JOURNAL_SCHEMA_VERSION = 1
 
-ControlIntentName = Literal["pause", "resume", "retry", "skip", "approve", "abort"]
+ControlIntentName = Literal["pause", "resume", "retry", "skip", "approve", "abort", "extend"]
 
 # Transition reason the scheduler writes when a phase review sends an
 # already-passed task back for more work. Shared so the snapshot can
@@ -113,6 +113,9 @@ class ControlIntent(BaseModel):
     ts: float = Field(default_factory=time.time)
     intent: ControlIntentName
     node_id: str | None = None
+    # How much budget an "extend" intent grants the node: review rounds
+    # for a phase-review node, attempts for a task. Unused by the others.
+    amount: int | None = None
 
 
 class RunPaused(BaseModel):

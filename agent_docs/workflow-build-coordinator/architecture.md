@@ -411,7 +411,7 @@ executed from increment 2 (REQ-INC-4).
 events — run-started, task-state-changed, attempt-started (worker
 registration, PID), signal-observed (session id, transcript path),
 gate-started/gate-result (findings), commit-recorded, control-intent
-(pause/retry/skip/approve/abort), run-paused (rate limit). Snapshot
+(pause/retry/skip/approve/abort/extend), run-paused (rate limit). Snapshot
 (`_state/state.json`) is derived and disposable.
 
 **Worker registration** (`.sculptor/workers/<name>.yaml`, layered
@@ -561,8 +561,14 @@ Delete:
   re-run a gate without a fresh worker.
 - **Phase-review re-open loops** (review fails → tasks retried →
   review fails again): re-opened tasks keep their attempt history, so
-  the ladder still bounds total attempts; a phase review that fails
-  twice escalates to a human gate.
+  the ladder still bounds total attempts; a review may hand back
+  `defaults.phase_review_rounds` rounds of findings (per-phase
+  `review_rounds` overrides it, default 2) before it escalates to a
+  human gate. `coordinator extend <plan> <node>` grants more mid-run —
+  review rounds for a review node, ladder attempts for a task — so a
+  loop that is visibly converging can keep going on a human's call.
+  A verdict whose blocking findings name no re-openable task escalates
+  at once and spends no round: nothing would change before the re-review.
 - **Workers touching files outside their task's scope** in the shared
   working tree: sequential execution (increment 1) means each task's
   gate sees exactly that task's diff; coordinator refuses to start a run

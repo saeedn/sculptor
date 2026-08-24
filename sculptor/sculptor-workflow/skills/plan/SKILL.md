@@ -350,8 +350,10 @@ Authoring rules:
 - **Workers**: default to the built-in pair — `claude-sonnet` to build,
   `claude-opus` to escalate to once the base attempts are spent — unless
   the repo's `.sculptor/workers/` directory offers something better
-  suited. Naming a registration that does not exist fails the run at
-  start.
+  suited. A third built-in, `claude-fable`, is the most capable and the
+  most expensive; reach for it only where a plan is dominated by
+  long-horizon reasoning, not as a blanket default. Naming a
+  registration that does not exist fails the run at start.
 - **Per-task overrides only where a task is genuinely risky or
   special**: gnarly concurrency/migration work → `worker: claude-opus`,
   `gates: [mechanical, agentic]`, or more `attempts`; schema
